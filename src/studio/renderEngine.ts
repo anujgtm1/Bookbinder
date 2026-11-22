@@ -1,5 +1,6 @@
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont } from 'pdf-lib';
+import { escapeXml } from '@/lib/utils';
 import {
   GeometryPrimitives,
   type CaseGeometry,
@@ -487,14 +488,6 @@ export async function generatePrintReadyRollPdf(
   }
 
   return pdfDoc.save();
-}
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 /**

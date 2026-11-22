@@ -1,16 +1,9 @@
+import { escapeXml } from '@/lib/utils';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import { roundTo } from '@/types/units';
 
 const SPLIT_PANEL_GAP_MM = 12;
-
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function fmt(value: number): string {
   return String(roundTo(value, 3));
