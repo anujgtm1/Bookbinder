@@ -340,12 +340,18 @@ export function CoverStyler({
   };
 
   const applySampledColor = (hex: string, target: Exclude<EyedropperTarget, null>) => {
+    const latest = studioRef.current;
     if (target === 'spine') {
-      updateStudio({ spineBgColor: hex });
+      onChangeRef.current({ ...latest, spineBgColor: hex });
     } else if (target === 'back') {
-      updateStudio({ backBgColor: hex });
+      onChangeRef.current({ ...latest, backBgColor: hex });
     } else {
-      updateStudio({ spineBgColor: hex, backBgColor: hex, frontBgColor: hex });
+      onChangeRef.current({
+        ...latest,
+        spineBgColor: hex,
+        backBgColor: hex,
+        frontBgColor: hex,
+      });
     }
     setEyedropperTarget(null);
     onStatusMessage(`Sampled ${hex.toUpperCase()} from cover`);
