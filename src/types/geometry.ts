@@ -1,0 +1,195 @@
+import { roundTo } from './units';
+
+export interface Point2D {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface Rect2D {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface LineSegment2D {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+  readonly label?: string;
+}
+
+export type Polygon2D = readonly Point2D[];
+
+export const GeometryPrimitives = {
+  rectRight(rect: Rect2D): number {
+    return rect.x + rect.width;
+  },
+
+  rectBottom(rect: Rect2D): number {
+    return rect.y + rect.height;
+  },
+
+  rectCenter(rect: Rect2D): Point2D {
+    return {
+      x: rect.x + rect.width / 2,
+      y: rect.y + rect.height / 2,
+    };
+  },
+
+  translatePoint(pt: Point2D, dx: number, dy: number): Point2D {
+    return { x: pt.x + dx, y: pt.y + dy };
+  },
+
+  translatePolygon(polygon: Polygon2D, dx: number, dy: number): Polygon2D {
+    return polygon.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }));
+  },
+
+  /** Rotate a point 90° clockwise inside a box of original height `boxHeight`. */
+  rotatePoint90CW(pt: Point2D, boxHeight: number): Point2D {
+    return { x: boxHeight - pt.y, y: pt.x };
+  },
+
+  polygonToSvgPoints(polygon: Polygon2D, decimals = 3): string {
+    return polygon
+      .map((pt) => `${roundTo(pt.x, decimals)},${roundTo(pt.y, decimals)}`)
+      .join(' ');
+  },
+
+  polygonToSvgPath(polygon: Polygon2D, decimals = 3): string {
+    if (polygon.length === 0) return '';
+    const [first, ...rest] = polygon;
+    const start = `M ${roundTo(first.x, decimals)} ${roundTo(first.y, decimals)}`;
+    const lines = rest
+      .map((pt) => `L ${roundTo(pt.x, decimals)} ${roundTo(pt.y, decimals)}`)
+      .join(' ');
+    return `${start} ${lines} Z`;
+  },
+
+  boundingBox(polygon: Polygon2D): Rect2D {
+    if (polygon.length === 0) {
+      return { x: 0, y: 0, width: 0, height: 0 };
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const pt of polygon) {
+      if (pt.x < minX) minX = pt.x;
+      if (pt.y < minY) minY = pt.y;
+      if (pt.x > maxX) maxX = pt.x;
+      if (pt.y > maxY) maxY = pt.y;
+    }
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  },
+} as const;
+
+export interface ChipboardPieceSpec {
+  readonly label: string;
+  readonly quantity: number;
+  readonly widthMm: number;
+  readonly heightMm: number;
+}
+
+export interface ChipboardCutList {
+  readonly coverBoards: ChipboardPieceSpec;
+  readonly spineStrip: ChipboardPieceSpec;
+  readonly boardThicknessMm: number;
+  readonly hingeSpacerMm: number;
+}
+
+export type RollFeedOrientation = 'unrotated' | 'rotated-90';
+
+export interface RollWidthOption {
+  readonly inches: number;
+  readonly widthMm: number;
+  readonly label: string;
+}
+
+export const STANDARD_ROLL_WIDTHS: readonly RollWidthOption[] = [
+  { inches: 13, widthMm: 330, label: '13"' },
+  { inches: 17, widthMm: 432, label: '17"' },
+  { inches: 24, widthMm: 610, label: '24"' },
+  { inches: 36, widthMm: 914, label: '36"' },
+  { inches: 44, widthMm: 1118, label: '44"' },
+] as const;
+
+export const ROLL_TOTAL_MARGIN_MM = 10.0; // 5.0 mm unprintable margin per side
+
+export interface RollRecommendation {
+  readonly fits: boolean;
+  readonly roll: RollWidthOption | null;
+  readonly printableWidthMm: number;
+  readonly orientation: RollFeedOrientation;
+  readonly usedWidthMm: number;
+  readonly spareWidthMm: number;
+  readonly summary: string;
+}
+
+export interface OuterWrapGeometry {
+  readonly widthMm: number;
+  readonly heightMm: number;
+  readonly innerWidthMm: number;
+  readonly turnInMm: number;
+  readonly bleedMm: number;
+  readonly includeBleed: boolean;
+  readonly miterGapMm: number;
+  readonly miterCutLegMm: number;
+  readonly outerCutPolygon: Polygon2D;
+  readonly bleedRect: Rect2D;
+  readonly backBoardRect: Rect2D;
+  readonly leftHingeRect: Rect2D;
+  readonly spineRect: Rect2D;
+  readonly rightHingeRect: Rect2D;
+  readonly frontBoardRect: Rect2D;
+}
+
+export interface SplitWrapPanel {
+  readonly id: 'back' | 'spine' | 'front';
+  readonly label: string;
+  readonly widthMm: number;
+  readonly heightMm: number;
+  readonly cutPolygon: Polygon2D;
+  readonly guideRects: readonly { readonly label: string; readonly rect: Rect2D }[];
+}
+
+export interface SpineLinerGeometry {
+  readonly widthMm: number;
+  readonly heightMm: number;
+  readonly boardOverlapMm: number;
+  readonly scoreLines: readonly LineSegment2D[];
+  readonly spineZoneRect: Rect2D;
+  readonly leftHingeZoneRect: Rect2D;
+  readonly rightHingeZoneRect: Rect2D;
+}
+
+export interface PocketEnvelopeGeometry {
+  readonly side: 'front' | 'back';
+  readonly label: string;
+  readonly pocketWidthMm: number;
+  readonly pocketHeightMm: number;
+  readonly flapWidthMm: number;
+  readonly totalWidthMm: number;
+  readonly totalHeightMm: number;
+  readonly openEdge: 'left' | 'right';
+  readonly outerCutPolygon: Polygon2D;
+  readonly faceRect: Rect2D;
+  readonly scoreLines: readonly LineSegment2D[];
+  readonly glueFlapPolygons: readonly Polygon2D[];
+}
+
+export interface CaseGeometry {
+  readonly cutList: ChipboardCutList;
+  readonly outerWrap: OuterWrapGeometry;
+  readonly splitPanels: readonly SplitWrapPanel[];
+  readonly rollRecommendation: RollRecommendation;
+  readonly spineLiner: SpineLinerGeometry;
+  readonly frontPocket: PocketEnvelopeGeometry;
+  readonly backPocket: PocketEnvelopeGeometry;
+}
