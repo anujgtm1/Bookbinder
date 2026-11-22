@@ -1,8 +1,10 @@
+import { Layers, Palette } from 'lucide-react';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BlueprintPreview } from '@/components/BlueprintPreview';
 import { CutListCard } from '@/components/CutListCard';
-import { Header, type WorkspaceTab } from '@/components/Header';
+import { Header } from '@/components/Header';
 import { SidebarControls } from '@/components/SidebarControls';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { generateInnerTemplatesPdf } from '@/core/pdfExport';
 import {
@@ -16,6 +18,8 @@ import { generateOuterWrapSvg } from '@/core/svgExport';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
+
+type WorkspaceTab = 'templates' | 'studio';
 
 const CoverStyler = lazy(async () => {
   const mod = await import('@/studio/CoverStyler');
@@ -122,11 +126,7 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        statusMessage={statusMessage}
-      />
+      <Header statusMessage={statusMessage} />
 
       <main
         id="main-workspace"
@@ -144,32 +144,62 @@ export function App() {
         <div className="flex min-w-0 flex-col gap-5">
           <CutListCard geometry={geometry} unit={project.parameters.unit} />
 
-          {activeTab === 'templates' ? (
-            <BlueprintPreview
-              geometry={geometry}
-              splitMode={project.parameters.splitMode}
-              pdfPageSize={project.parameters.pdfPageSize}
-              unit={project.parameters.unit}
-              isExportingPdf={isExportingPdf}
-              onDownloadSvg={handleDownloadSvg}
-              onDownloadPdf={handleDownloadPdf}
-            />
-          ) : (
-            <Suspense
-              fallback={
-                <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-                  Loading Cover &amp; Spine Styler…
-                </div>
-              }
-            >
-              <CoverStyler
+          {/* Workspace mode tabs co-located directly with the swappable panel */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
+            className="flex flex-col"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <TabsList className="h-10 border border-border/80 bg-secondary/70 p-1">
+                <TabsTrigger
+                  value="templates"
+                  data-testid="nav-templates"
+                  className="px-4 py-1.5 text-sm"
+                >
+                  <Layers className="h-4 w-4" aria-hidden="true" />
+                  Structural Templates
+                </TabsTrigger>
+                <TabsTrigger
+                  value="studio"
+                  data-testid="nav-studio"
+                  className="px-4 py-1.5 text-sm"
+                >
+                  <Palette className="h-4 w-4" aria-hidden="true" />
+                  Cover &amp; Spine Styler
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="templates" className="mt-3">
+              <BlueprintPreview
                 geometry={geometry}
-                studio={project.studio}
-                onChange={handleStudioChange}
-                onStatusMessage={setStatusMessage}
+                splitMode={project.parameters.splitMode}
+                pdfPageSize={project.parameters.pdfPageSize}
+                unit={project.parameters.unit}
+                isExportingPdf={isExportingPdf}
+                onDownloadSvg={handleDownloadSvg}
+                onDownloadPdf={handleDownloadPdf}
               />
-            </Suspense>
-          )}
+            </TabsContent>
+
+            <TabsContent value="studio" className="mt-3">
+              <Suspense
+                fallback={
+                  <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                    Loading Cover &amp; Spine Styler…
+                  </div>
+                }
+              >
+                <CoverStyler
+                  geometry={geometry}
+                  studio={project.studio}
+                  onChange={handleStudioChange}
+                  onStatusMessage={setStatusMessage}
+                />
+              </Suspense>
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>

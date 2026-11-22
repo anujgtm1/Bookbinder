@@ -1,4 +1,4 @@
-import { BookOpen, Layers, Moon, Palette, Sun } from 'lucide-react';
+import { BookOpen, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,15 +13,11 @@ import {
   type ResolvedColorScheme,
 } from '@/core/theme';
 
-export type WorkspaceTab = 'templates' | 'studio';
-
 export interface HeaderProps {
-  readonly activeTab: WorkspaceTab;
-  readonly onTabChange: (tab: WorkspaceTab) => void;
   readonly statusMessage: string | null;
 }
 
-export function Header({ activeTab, onTabChange, statusMessage }: HeaderProps) {
+export function Header({ statusMessage }: HeaderProps) {
   const [override, setOverride] = useState<ColorSchemeOverride>(() => readStoredColorScheme());
   const [systemScheme, setSystemScheme] = useState<ResolvedColorScheme>(() =>
     getSystemColorScheme(),
@@ -83,44 +79,12 @@ export function Header({ activeTab, onTabChange, statusMessage }: HeaderProps) {
           </div>
         </div>
 
-        {/* Mode Switcher */}
-        <nav aria-label="Workspace mode" className="flex items-center gap-1 rounded-lg bg-muted p-1">
-          <button
-            type="button"
-            aria-current={activeTab === 'templates' ? 'page' : undefined}
-            data-testid="nav-templates"
-            onClick={() => onTabChange('templates')}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-              activeTab === 'templates'
-                ? 'bg-card text-foreground shadow-xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-            Structural Templates
-          </button>
-          <button
-            type="button"
-            aria-current={activeTab === 'studio' ? 'page' : undefined}
-            data-testid="nav-studio"
-            onClick={() => onTabChange('studio')}
-            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-              activeTab === 'studio'
-                ? 'bg-card text-foreground shadow-xs'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Palette className="h-3.5 w-3.5" aria-hidden="true" />
-            Cover &amp; Spine Styler
-          </button>
-        </nav>
-
         <div className="flex items-center gap-2">
           <div
             role="status"
             aria-live="polite"
             data-testid="status-message"
-            className="hidden max-w-60 truncate text-xs text-muted-foreground md:block"
+            className="hidden max-w-72 truncate text-xs text-muted-foreground sm:block"
           >
             {statusMessage ?? 'Auto-saved locally'}
           </div>
