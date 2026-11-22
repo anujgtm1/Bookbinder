@@ -6,7 +6,7 @@ import { Header } from '@/components/Header';
 import { SidebarControls } from '@/components/SidebarControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { calculateCaseGeometry } from '@/core/geometry';
-import { generateInnerTemplatesPdf } from '@/core/pdfExport';
+import { generateInnerTemplatesPdf, generateOuterWrapPdf } from '@/core/pdfExport';
 import {
   clearProjectStorage,
   loadProjectFromStorage,
@@ -14,7 +14,7 @@ import {
   triggerBytesDownload,
   triggerTextDownload,
 } from '@/core/storage';
-import { generateOuterWrapSvg } from '@/core/svgExport';
+import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExport';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
@@ -30,7 +30,7 @@ export function App() {
   const [project, setProject] = useState<BookbinderProject>(() => loadProjectFromStorage());
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('templates');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportingTarget, setExportingTarget] = useState<'outer-pdf' | 'inner-pdf' | null>(null);
 
   const geometry = useMemo(
     () => calculateCaseGeometry(project.parameters),
@@ -60,7 +60,7 @@ export function App() {
     }));
   };
 
-  const handleDownloadSvg = () => {
+  const handleDownloadOuterSvg = () => {
     const svg = generateOuterWrapSvg(geometry, project.parameters.splitMode);
     const filename =
       project.parameters.splitMode === 'three-piece'
@@ -70,8 +70,31 @@ export function App() {
     setStatusMessage(`Exported ${filename}`);
   };
 
-  const handleDownloadPdf = async () => {
-    setIsExportingPdf(true);
+  const handleDownloadOuterPdf = async () => {
+    setExportingTarget('outer-pdf');
+    try {
+      const bytes = await generateOuterWrapPdf(geometry, project.parameters.splitMode);
+      const filename =
+        project.parameters.splitMode === 'three-piece'
+          ? 'outer_case_wrap_3piece.pdf'
+          : 'outer_case_wrap.pdf';
+      triggerBytesDownload(bytes, filename, 'application/pdf');
+      setStatusMessage(`Exported ${filename} (1:1 mm)`);
+    } catch {
+      setStatusMessage('Failed to generate outer wrap PDF.');
+    } finally {
+      setExportingTarget(null);
+    }
+  };
+
+  const handleDownloadInnerSvg = () => {
+    const svg = generateInnerTemplatesSvg(geometry);
+    triggerTextDownload(svg, 'inner_pockets_and_liner.svg', 'image/svg+xml;charset=utf-8');
+    setStatusMessage('Exported inner_pockets_and_liner.svg (1:1 mm)');
+  };
+
+  const handleDownloadInnerPdf = async () => {
+    setExportingTarget('inner-pdf');
     try {
       const { bytes, plan } = await generateInnerTemplatesPdf(
         geometry,
@@ -84,7 +107,7 @@ export function App() {
     } catch {
       setStatusMessage('Failed to generate inner templates PDF.');
     } finally {
-      setIsExportingPdf(false);
+      setExportingTarget(null);
     }
   };
 
@@ -177,9 +200,11 @@ export function App() {
                 splitMode={project.parameters.splitMode}
                 pdfPageSize={project.parameters.pdfPageSize}
                 unit={project.parameters.unit}
-                isExportingPdf={isExportingPdf}
-                onDownloadSvg={handleDownloadSvg}
-                onDownloadPdf={handleDownloadPdf}
+                exportingTarget={exportingTarget}
+                onDownloadOuterSvg={handleDownloadOuterSvg}
+                onDownloadOuterPdf={handleDownloadOuterPdf}
+                onDownloadInnerSvg={handleDownloadInnerSvg}
+                onDownloadInnerPdf={handleDownloadInnerPdf}
               />
             </TabsContent>
 

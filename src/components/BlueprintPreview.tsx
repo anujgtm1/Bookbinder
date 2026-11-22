@@ -14,9 +14,11 @@ export interface BlueprintPreviewProps {
   readonly splitMode: SplitMode;
   readonly pdfPageSize: PageSizeId;
   readonly unit: UnitSystem;
-  readonly isExportingPdf?: boolean;
-  readonly onDownloadSvg: () => void;
-  readonly onDownloadPdf: () => void;
+  readonly exportingTarget?: 'outer-pdf' | 'inner-pdf' | null;
+  readonly onDownloadOuterSvg: () => void;
+  readonly onDownloadOuterPdf: () => void;
+  readonly onDownloadInnerSvg: () => void;
+  readonly onDownloadInnerPdf: () => void;
 }
 
 const MIN_ZOOM = 0.5;
@@ -112,9 +114,11 @@ export function BlueprintPreview({
   splitMode,
   pdfPageSize,
   unit,
-  isExportingPdf = false,
-  onDownloadSvg,
-  onDownloadPdf,
+  exportingTarget = null,
+  onDownloadOuterSvg,
+  onDownloadOuterPdf,
+  onDownloadInnerSvg,
+  onDownloadInnerPdf,
 }: BlueprintPreviewProps) {
   const [activeSheet, setActiveSheet] = useState<'outer' | 'inner'>('outer');
   const [zoom, setZoom] = useState(1);
@@ -200,26 +204,93 @@ export function BlueprintPreview({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={onDownloadSvg}
-              data-testid="download-svg-btn"
+          {/* Clean 2 × 2 Export Matrix: Outer Wrap & Inner Pockets × SVG & PDF */}
+          <div
+            className="flex flex-wrap items-center gap-2.5"
+            aria-label="Structural template downloads"
+            data-testid="structural-export-matrix"
+          >
+            <div
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+                activeSheet === 'outer'
+                  ? 'border-primary/50 bg-primary/5'
+                  : 'border-border bg-secondary/35'
+              }`}
             >
-              <FileCode2 className="h-4 w-4" aria-hidden="true" />
-              Download Outer Wrap (.SVG)
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onDownloadPdf}
-              disabled={isExportingPdf}
-              data-testid="download-pdf-btn"
+              <div className="pr-1">
+                <p className="text-xs font-semibold leading-tight text-foreground">Outer Wrap</p>
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  {splitMode === 'three-piece' ? '3-piece • 1:1 mm' : 'Roll • 1:1 mm'}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={activeSheet === 'outer' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={onDownloadOuterSvg}
+                  aria-label="Download Outer Case Wrap as SVG"
+                  data-testid="download-outer-svg-btn"
+                >
+                  <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  SVG
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={onDownloadOuterPdf}
+                  disabled={exportingTarget === 'outer-pdf'}
+                  aria-label="Download Outer Case Wrap as PDF"
+                  data-testid="download-outer-pdf-btn"
+                >
+                  <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                  {exportingTarget === 'outer-pdf' ? '…' : 'PDF'}
+                </Button>
+              </div>
+            </div>
+
+            <div
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+                activeSheet === 'inner'
+                  ? 'border-primary/50 bg-primary/5'
+                  : 'border-border bg-secondary/35'
+              }`}
             >
-              <FileText className="h-4 w-4" aria-hidden="true" />
-              {isExportingPdf ? 'Generating PDF…' : 'Download Inner Envelopes & Liner (.PDF)'}
-            </Button>
+              <div className="pr-1">
+                <p className="text-xs font-semibold leading-tight text-foreground">
+                  Pockets &amp; Liner
+                </p>
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  {pdfPlan.pageCount}p {PAGE_SIZES[pdfPageSize].id.toUpperCase()} • 1:1 mm
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={onDownloadInnerSvg}
+                  aria-label="Download Inner Pockets and Spine Liner as SVG"
+                  data-testid="download-inner-svg-btn"
+                >
+                  <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  SVG
+                </Button>
+                <Button
+                  variant={activeSheet === 'inner' ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  onClick={onDownloadInnerPdf}
+                  disabled={exportingTarget === 'inner-pdf'}
+                  aria-label="Download Inner Pockets and Spine Liner as PDF"
+                  data-testid="download-inner-pdf-btn"
+                >
+                  <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                  {exportingTarget === 'inner-pdf' ? '…' : 'PDF'}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </CardHeader>

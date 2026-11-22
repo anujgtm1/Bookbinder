@@ -6,10 +6,12 @@ import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
 import { BlueprintPreview } from './BlueprintPreview';
 
 describe('BlueprintPreview', () => {
-  it('renders outer wrap blueprint with cut polygon and bleed rect, and triggers downloads', async () => {
+  it('renders outer wrap blueprint and triggers all four 2x2 SVG/PDF downloads', async () => {
     const user = userEvent.setup();
-    const onDownloadSvg = vi.fn();
-    const onDownloadPdf = vi.fn();
+    const onDownloadOuterSvg = vi.fn();
+    const onDownloadOuterPdf = vi.fn();
+    const onDownloadInnerSvg = vi.fn();
+    const onDownloadInnerPdf = vi.fn();
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
 
     render(
@@ -18,8 +20,10 @@ describe('BlueprintPreview', () => {
         splitMode="single"
         pdfPageSize="letter"
         unit="mm"
-        onDownloadSvg={onDownloadSvg}
-        onDownloadPdf={onDownloadPdf}
+        onDownloadOuterSvg={onDownloadOuterSvg}
+        onDownloadOuterPdf={onDownloadOuterPdf}
+        onDownloadInnerSvg={onDownloadInnerSvg}
+        onDownloadInnerPdf={onDownloadInnerPdf}
       />,
     );
 
@@ -27,11 +31,17 @@ describe('BlueprintPreview', () => {
     expect(screen.getByTestId('blueprint-cut-polygon')).toBeInTheDocument();
     expect(screen.getByTestId('blueprint-bleed-rect')).toBeInTheDocument();
 
-    await user.click(screen.getByTestId('download-svg-btn'));
-    expect(onDownloadSvg).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByTestId('download-outer-svg-btn'));
+    expect(onDownloadOuterSvg).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByTestId('download-pdf-btn'));
-    expect(onDownloadPdf).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByTestId('download-outer-pdf-btn'));
+    expect(onDownloadOuterPdf).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTestId('download-inner-svg-btn'));
+    expect(onDownloadInnerSvg).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTestId('download-inner-pdf-btn'));
+    expect(onDownloadInnerPdf).toHaveBeenCalledTimes(1);
   });
 
   it('switches to Inner Pockets & Spine Liner tab and supports 3-piece split mode', async () => {
@@ -44,8 +54,10 @@ describe('BlueprintPreview', () => {
         splitMode="three-piece"
         pdfPageSize="tabloid"
         unit="mm"
-        onDownloadSvg={vi.fn()}
-        onDownloadPdf={vi.fn()}
+        onDownloadOuterSvg={vi.fn()}
+        onDownloadOuterPdf={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
       />,
     );
 
