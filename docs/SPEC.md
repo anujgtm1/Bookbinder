@@ -81,9 +81,12 @@ src/
 - `WRAP_W = INNER_W + (TURN_IN * 2)`
 - `WRAP_H = BOARD_H + (TURN_IN * 2)`
 - **45° Mitered Corner Polygon:**
-  - `MITER_GAP = BOARD_T * MITER_FACTOR`
-  - `d = TURN_IN - MITER_GAP`
-  - 8-point outer cut polygon beveling all four outer corners at 45° so folded turn-ins meet cleanly without overlapping chipboard corners.
+  - `MITER_GAP = BOARD_T * MITER_FACTOR` (perpendicular clearance outside each chipboard corner)
+  - `MITER_CUT_LEG = max(0, 2 * TURN_IN - MITER_GAP * √2)` (45° corner bevel leg measured along each outer wrap edge from the outer corner)
+  - 8-point outer cut polygon beveling all four outer corners at 45° so folded turn-ins meet cleanly without overlapping chipboard corners or exposing raw board tips.
+- **3-Piece / Quarter-Bound Split Panels (when `SPLIT_MODE = 3-Piece`):**
+  - Spine wrap width = `SPINE_W + (HINGE_W * 2) + (QUARTER_BOUND_OVERLAP * 2)` (default `QUARTER_BOUND_OVERLAP = 20.0 mm`), height = `WRAP_H` (includes top/bottom `TURN_IN`).
+  - Front & Back cover panels: each covers the remaining board face (`BOARD_W - QUARTER_BOUND_OVERLAP + 3.0 mm` lap overlap) plus outer fore-edge, top, and bottom `TURN_IN` with 45° miters on the two outer fore-edge corners.
 - **Roll Printer Width Recommendation:**
   - Evaluates standard roll widths (`13" / 330 mm`, `17" / 432 mm`, `24" / 610 mm`, `36" / 914 mm`, `44" / 1118 mm`) minus `10.0 mm` total unprintable side margin (`5.0 mm` per edge).
   - Checks both **Unrotated Feed** (`WRAP_W` across roll width) and **90°-Rotated Landscape Feed** (`WRAP_H` across roll width) and recommends the narrowest compatible roll plus orientation (e.g., *"Fits on a 17" roll (rotated 90°) with 163 mm spare width"*).
