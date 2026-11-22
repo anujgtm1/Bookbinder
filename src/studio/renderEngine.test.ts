@@ -84,6 +84,28 @@ describe('studio renderEngine', () => {
     expect(stackedPlacements[0].fontSizePt).toBeLessThanOrEqual(
       CoverStudioModel.maxSpineFontSizePt(geom.outerWrap.spineRect.width),
     );
+
+    const horizontalAuthorState = {
+      ...base,
+      spineText: {
+        ...base.spineText,
+        title: 'Dune',
+        author: 'Frank Herbert',
+        layout: 'stacked' as const,
+        orientation: 'top-to-bottom' as const,
+        authorOrientation: 'horizontal' as const,
+        fontSizePt: 18,
+      },
+    };
+    const horizPlacements = computeSpineTextPlacements(geom, horizontalAuthorState);
+    // Title vertical + 2 horizontal author lines ("Frank", "Herbert")
+    expect(horizPlacements).toHaveLength(3);
+    expect(horizPlacements[0].rotationDegCss).toBe(90);
+    expect(horizPlacements[1].rotationDegCss).toBe(0);
+    expect(horizPlacements[1].text).toBe('Frank');
+    expect(horizPlacements[2].rotationDegCss).toBe(0);
+    expect(horizPlacements[2].text).toBe('Herbert');
+    expect(horizPlacements[2].anchorYMm).toBeGreaterThan(horizPlacements[1].anchorYMm);
   });
 
   it('generates Print-Ready Roll PDF at exact 1:1 physical mm size for both cut-line modes', async () => {

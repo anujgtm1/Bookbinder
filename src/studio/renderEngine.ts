@@ -34,7 +34,7 @@ export interface SpineTextPlacement {
   readonly anchorXMm: number;
   readonly anchorYMm: number;
   readonly fontSizePt: number;
-  readonly rotationDegCss: 90 | -90;
+  readonly rotationDegCss: 0 | 90 | -90;
   readonly kind: 'inline' | 'title' | 'author';
 }
 
@@ -148,42 +148,69 @@ export function computeSpineTextPlacements(
     spineText.fontSizePt,
     outerWrap.spineRect.width,
   );
-  const rotationDegCss: 90 | -90 = spineText.orientation === 'top-to-bottom' ? 90 : -90;
+  const verticalRotDeg: 90 | -90 = spineText.orientation === 'top-to-bottom' ? 90 : -90;
+  const isAuthorHorizontal = spineText.authorOrientation === 'horizontal';
 
-  if (spineText.layout === 'inline') {
+  if (spineText.layout === 'inline' && !isAuthorHorizontal) {
     return [
       {
         text: CoverStudioModel.formatInlineSpineText(title, author),
         anchorXMm: spineCenterX,
         anchorYMm: boardTopY + boardH / 2,
         fontSizePt: baseFontSizePt,
-        rotationDegCss,
+        rotationDegCss: verticalRotDeg,
         kind: 'inline',
       },
     ];
   }
 
-  // Stacked layout: Title upper-center, Author near bottom of spine
+  // Stacked layout (or Horizontal author mode): Title upper-center, Author near tail of spine
   const placements: SpineTextPlacement[] = [];
   if (title) {
     placements.push({
       text: title,
       anchorXMm: spineCenterX,
-      anchorYMm: boardTopY + boardH * (author ? 0.36 : 0.5),
+      anchorYMm: boardTopY + boardH * (author ? (isAuthorHorizontal ? 0.42 : 0.36) : 0.5),
       fontSizePt: baseFontSizePt,
-      rotationDegCss,
+      rotationDegCss: verticalRotDeg,
       kind: 'title',
     });
   }
+
   if (author) {
-    placements.push({
-      text: author,
-      anchorXMm: spineCenterX,
-      anchorYMm: boardTopY + boardH * (title ? 0.8 : 0.5),
-      fontSizePt: roundTo(Math.max(6, baseFontSizePt * 0.78), 1),
-      rotationDegCss,
-      kind: 'author',
-    });
+    const requestedAuthorPt = roundTo(Math.max(6, baseFontSizePt * 0.78), 1);
+
+    if (isAuthorHorizontal) {
+      const lines = CoverStudioModel.splitHorizontalAuthorLines(author);
+      const horizPt = CoverStudioModel.horizontalAuthorFontSizePt(
+        lines,
+        requestedAuthorPt,
+        outerWrap.spineRect.width,
+      );
+      const lineHeightMm = UnitConverter.pointsToMm(horizPt) * 1.28;
+      const blockCenterY = boardTopY + boardH * (title ? 0.88 : 0.5);
+      const firstLineY = blockCenterY - ((lines.length - 1) * lineHeightMm) / 2;
+
+      lines.forEach((line, idx) => {
+        placements.push({
+          text: line,
+          anchorXMm: spineCenterX,
+          anchorYMm: roundTo(firstLineY + idx * lineHeightMm, 2),
+          fontSizePt: horizPt,
+          rotationDegCss: 0,
+          kind: 'author',
+        });
+      });
+    } else {
+      placements.push({
+        text: author,
+        anchorXMm: spineCenterX,
+        anchorYMm: boardTopY + boardH * (title ? 0.8 : 0.5),
+        fontSizePt: requestedAuthorPt,
+        rotationDegCss: verticalRotDeg,
+        kind: 'author',
+      });
+    }
   }
   return placements;
 }
@@ -411,7 +438,8 @@ export async function generatePrintReadyRollPdf(
       const centerYPt = toPdfY(item.anchorYMm);
 
       // Rotate around text center cleanly in PDF coordinate space (CCW positive)
-      const pdfRotDeg = item.rotationDegCss === 90 ? -90 : 90;
+      const pdfRotDeg =
+        item.rotationDegCss === 0 ? 0 : item.rotationDegCss === 90 ? -90 : 90;
       const rad = (pdfRotDeg * Math.PI) / 180;
       const dxLocal = -textWidthPt / 2;
       const dyLocal = -textHeightPt * 0.36;
