@@ -46,30 +46,46 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     await expect(page.getByTestId('inner-blueprint-svg')).toBeVisible();
   });
 
-  test('downloads 1:1 mm Outer Case Wrap SVG and Inner Envelopes PDF', async ({ page }) => {
-    const svgDownloadPromise = page.waitForEvent('download');
-    await page.getByTestId('download-svg-btn').click();
-    const svgDownload = await svgDownloadPromise;
-    expect(svgDownload.suggestedFilename()).toBe('outer_case_wrap.svg');
+  test('downloads all four 1:1 mm templates from the 2x2 SVG/PDF export matrix', async ({
+    page,
+  }) => {
+    // 1. Outer Case Wrap SVG
+    const outerSvgPromise = page.waitForEvent('download');
+    await page.getByTestId('download-outer-svg-btn').click();
+    const outerSvgDownload = await outerSvgPromise;
+    expect(outerSvgDownload.suggestedFilename()).toBe('outer_case_wrap.svg');
+    const outerSvgContent = await readFile((await outerSvgDownload.path())!, 'utf-8');
+    expect(outerSvgContent).toContain('width="372mm"');
+    expect(outerSvgContent).toContain('height="265mm"');
+    expect(outerSvgContent).toContain('id="cut-lines"');
+    expect(outerSvgContent).toContain('id="board-guides"');
 
-    const svgPath = await svgDownload.path();
-    expect(svgPath).toBeTruthy();
-    const svgContent = await readFile(svgPath!, 'utf-8');
-    expect(svgContent).toContain('width="372mm"');
-    expect(svgContent).toContain('height="265mm"');
-    expect(svgContent).toContain('id="cut-lines"');
-    expect(svgContent).toContain('id="board-guides"');
+    // 2. Outer Case Wrap PDF
+    const outerPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('download-outer-pdf-btn').click();
+    const outerPdfDownload = await outerPdfPromise;
+    expect(outerPdfDownload.suggestedFilename()).toBe('outer_case_wrap.pdf');
+    const outerPdfBuffer = await readFile((await outerPdfDownload.path())!);
+    expect(outerPdfBuffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
 
-    const pdfDownloadPromise = page.waitForEvent('download');
-    await page.getByTestId('download-pdf-btn').click();
-    const pdfDownload = await pdfDownloadPromise;
-    expect(pdfDownload.suggestedFilename()).toBe('inner_pockets_and_liner.pdf');
+    // 3. Inner Pockets & Spine Liner SVG
+    const innerSvgPromise = page.waitForEvent('download');
+    await page.getByTestId('download-inner-svg-btn').click();
+    const innerSvgDownload = await innerSvgPromise;
+    expect(innerSvgDownload.suggestedFilename()).toBe('inner_pockets_and_liner.svg');
+    const innerSvgContent = await readFile((await innerSvgDownload.path())!, 'utf-8');
+    expect(innerSvgContent).toContain('id="glue-flaps"');
+    expect(innerSvgContent).toContain('id="score-lines"');
+    expect(innerSvgContent).toContain('width="50" height="50"');
 
-    const pdfPath = await pdfDownload.path();
-    expect(pdfPath).toBeTruthy();
-    const pdfBuffer = await readFile(pdfPath!);
-    expect(pdfBuffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
-    expect(pdfBuffer.byteLength).toBeGreaterThan(1500);
+    // 4. Inner Pockets & Spine Liner PDF
+    const innerPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('download-inner-pdf-btn').click();
+    const innerPdfDownload = await innerPdfPromise;
+    expect(innerPdfDownload.suggestedFilename()).toBe('inner_pockets_and_liner.pdf');
+    const innerPdfBuffer = await readFile((await innerPdfDownload.path())!);
+    expect(innerPdfBuffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(innerPdfBuffer.byteLength).toBeGreaterThan(1500);
   });
 
   test('exports and re-imports project JSON and persists theme override', async ({ page }) => {
