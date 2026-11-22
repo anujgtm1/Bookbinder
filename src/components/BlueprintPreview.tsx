@@ -144,27 +144,26 @@ export function BlueprintPreview({
   const { outerWrap, splitPanels, spineLiner, frontPocket, backPocket, cutList } = geometry;
   const bleedPad = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
 
-  // Outer wrap viewBox
-  const outerViewBox = useMemo(() => {
+  // Outer wrap viewBox & positioned split panels
+  const outerLayout = useMemo(() => {
     const pad = 14 + bleedPad;
     if (splitMode === 'three-piece') {
       const gap = 14;
-      const totalW =
-        splitPanels.reduce((sum, p) => sum + p.widthMm, 0) + gap * (splitPanels.length - 1);
+      let cursorX = 0;
+      const positionedPanels = splitPanels.map((panel) => {
+        const xOffset = cursorX;
+        cursorX += panel.widthMm + gap;
+        return { panel, xOffset };
+      });
+      const totalW = Math.max(0, cursorX - gap);
       return {
-        x: -pad,
-        y: -pad,
-        w: totalW + pad * 2,
-        h: outerWrap.heightMm + pad * 2,
-        gap,
+        viewBox: `${-pad} ${-pad} ${totalW + pad * 2} ${outerWrap.heightMm + pad * 2}`,
+        positionedPanels,
       };
     }
     return {
-      x: -pad,
-      y: -pad,
-      w: outerWrap.widthMm + pad * 2,
-      h: outerWrap.heightMm + pad * 2,
-      gap: 0,
+      viewBox: `${-pad} ${-pad} ${outerWrap.widthMm + pad * 2} ${outerWrap.heightMm + pad * 2}`,
+      positionedPanels: [],
     };
   }, [outerWrap, splitPanels, splitMode, bleedPad]);
 
@@ -329,7 +328,7 @@ export function BlueprintPreview({
                   role="img"
                   aria-label="Outer Case Wrap 1:1 structural blueprint"
                   data-testid="outer-blueprint-svg"
-                  viewBox={`${outerViewBox.x} ${outerViewBox.y} ${outerViewBox.w} ${outerViewBox.h}`}
+                  viewBox={outerLayout.viewBox}
                   className="max-h-full max-w-full"
                 >
                   <title>
@@ -445,69 +444,62 @@ export function BlueprintPreview({
                     </g>
                   ) : (
                     <g data-testid="blueprint-split-panels">
-                      {(() => {
-                        let cursorX = 0;
-                        return splitPanels.map((panel) => {
-                          const xOffset = cursorX;
-                          cursorX += panel.widthMm + outerViewBox.gap;
-                          return (
-                            <g key={panel.id} transform={`translate(${xOffset}, 0)`}>
-                              {outerWrap.includeBleed && outerWrap.bleedMm > 0 && (
-                                <rect
-                                  x={-outerWrap.bleedMm}
-                                  y={-outerWrap.bleedMm}
-                                  width={panel.widthMm + outerWrap.bleedMm * 2}
-                                  height={panel.heightMm + outerWrap.bleedMm * 2}
-                                  fill="none"
-                                  stroke="#00AA44"
-                                  strokeWidth="0.9"
-                                  strokeDasharray="5 3"
-                                />
-                              )}
-                              <path
-                                d={GeometryPrimitives.polygonToSvgPath(panel.cutPolygon, 2)}
-                                fill="var(--card)"
-                                fillOpacity="0.85"
-                                stroke="#FF0000"
-                                strokeWidth="1.2"
-                              />
-                              {panel.guideRects.map((g) => (
-                                <rect
-                                  key={g.label}
-                                  x={g.rect.x}
-                                  y={g.rect.y}
-                                  width={g.rect.width}
-                                  height={g.rect.height}
-                                  fill="#0066FF"
-                                  fillOpacity="0.07"
-                                  stroke="#0066FF"
-                                  strokeWidth="0.8"
-                                  strokeDasharray="5 2.5"
-                                />
-                              ))}
-                              <text
-                                x={panel.widthMm / 2}
-                                y={panel.heightMm / 2 - 4}
-                                textAnchor="middle"
-                                fontSize="7"
-                                fontWeight="700"
-                                fill="#0066FF"
-                              >
-                                {panel.label.toUpperCase()}
-                              </text>
-                              <text
-                                x={panel.widthMm / 2}
-                                y={panel.heightMm / 2 + 6}
-                                textAnchor="middle"
-                                fontSize="5.8"
-                                fill="#0066FF"
-                              >
-                                {UnitConverter.formatDimensions(panel.widthMm, panel.heightMm, unit)}
-                              </text>
-                            </g>
-                          );
-                        });
-                      })()}
+                      {outerLayout.positionedPanels.map(({ panel, xOffset }) => (
+                        <g key={panel.id} transform={`translate(${xOffset}, 0)`}>
+                          {outerWrap.includeBleed && outerWrap.bleedMm > 0 && (
+                            <rect
+                              x={-outerWrap.bleedMm}
+                              y={-outerWrap.bleedMm}
+                              width={panel.widthMm + outerWrap.bleedMm * 2}
+                              height={panel.heightMm + outerWrap.bleedMm * 2}
+                              fill="none"
+                              stroke="#00AA44"
+                              strokeWidth="0.9"
+                              strokeDasharray="5 3"
+                            />
+                          )}
+                          <path
+                            d={GeometryPrimitives.polygonToSvgPath(panel.cutPolygon, 2)}
+                            fill="var(--card)"
+                            fillOpacity="0.85"
+                            stroke="#FF0000"
+                            strokeWidth="1.2"
+                          />
+                          {panel.guideRects.map((g) => (
+                            <rect
+                              key={g.label}
+                              x={g.rect.x}
+                              y={g.rect.y}
+                              width={g.rect.width}
+                              height={g.rect.height}
+                              fill="#0066FF"
+                              fillOpacity="0.07"
+                              stroke="#0066FF"
+                              strokeWidth="0.8"
+                              strokeDasharray="5 2.5"
+                            />
+                          ))}
+                          <text
+                            x={panel.widthMm / 2}
+                            y={panel.heightMm / 2 - 4}
+                            textAnchor="middle"
+                            fontSize="7"
+                            fontWeight="700"
+                            fill="#0066FF"
+                          >
+                            {panel.label.toUpperCase()}
+                          </text>
+                          <text
+                            x={panel.widthMm / 2}
+                            y={panel.heightMm / 2 + 6}
+                            textAnchor="middle"
+                            fontSize="5.8"
+                            fill="#0066FF"
+                          >
+                            {UnitConverter.formatDimensions(panel.widthMm, panel.heightMm, unit)}
+                          </text>
+                        </g>
+                      ))}
                     </g>
                   )}
                 </svg>
