@@ -10,6 +10,13 @@ export function roundTo(value: number, decimals = 2): number {
   return Math.round((value + Number.EPSILON) * factor) / factor;
 }
 
+export function clampFinite(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
 export const UnitConverter = {
   isUnitSystem(value: unknown): value is UnitSystem {
     return value === 'mm' || value === 'in';

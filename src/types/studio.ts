@@ -1,4 +1,4 @@
-import { UnitConverter, roundTo } from './units';
+import { UnitConverter, clampFinite, roundTo } from './units';
 
 export type CoverImageMode = 'front-cover' | 'full-wrap';
 export type SpineLayoutPreset = 'inline' | 'stacked';
@@ -103,13 +103,6 @@ function parseHexColor(value: unknown, fallback: string): string {
   return typeof value === 'string' && HEX_COLOR_RE.test(value) ? value.toLowerCase() : fallback;
 }
 
-function clamp(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, value));
-}
-
 function parseFontId(value: unknown): StudioFontId {
   if (value === 'custom') return 'custom';
   if (typeof value === 'string' && (CURATED_FONT_IDS as readonly string[]).includes(value)) {
@@ -193,19 +186,19 @@ export const CoverStudioModel = {
           typeof rawImg.naturalHeight === 'number' && rawImg.naturalHeight > 0
             ? rawImg.naturalHeight
             : 0,
-        zoom: clamp(
+        zoom: clampFinite(
           rawImg.zoom,
           defaults.image.zoom,
           STUDIO_BOUNDS.zoom.min,
           STUDIO_BOUNDS.zoom.max,
         ),
-        offsetXMm: clamp(
+        offsetXMm: clampFinite(
           rawImg.offsetXMm,
           0,
           STUDIO_BOUNDS.offsetMm.min,
           STUDIO_BOUNDS.offsetMm.max,
         ),
-        offsetYMm: clamp(
+        offsetYMm: clampFinite(
           rawImg.offsetYMm,
           0,
           STUDIO_BOUNDS.offsetMm.min,
@@ -223,14 +216,14 @@ export const CoverStudioModel = {
           rawSpine.orientation === 'bottom-to-top' ? 'bottom-to-top' : 'top-to-bottom',
         fontId: parseFontId(rawSpine.fontId),
         customFontName: typeof rawSpine.customFontName === 'string' ? rawSpine.customFontName : null,
-        fontSizePt: clamp(
+        fontSizePt: clampFinite(
           rawSpine.fontSizePt,
           defaults.spineText.fontSizePt,
           STUDIO_BOUNDS.fontSizePt.min,
           STUDIO_BOUNDS.fontSizePt.max,
         ),
         textColor: parseHexColor(rawSpine.textColor, defaults.spineText.textColor),
-        opticalNudgeMm: clamp(
+        opticalNudgeMm: clampFinite(
           rawSpine.opticalNudgeMm,
           0,
           STUDIO_BOUNDS.opticalNudgeMm.min,

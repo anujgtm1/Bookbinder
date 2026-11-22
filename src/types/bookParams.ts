@@ -1,4 +1,4 @@
-import { UnitConverter, type UnitSystem } from './units';
+import { UnitConverter, clampFinite, type UnitSystem } from './units';
 
 export type SplitMode = 'single' | 'three-piece';
 export type PageSizeId = 'letter' | 'a4' | 'tabloid';
@@ -162,13 +162,6 @@ export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
   unit: 'mm',
 };
 
-function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.min(max, Math.max(min, value));
-}
-
 function parseSplitMode(value: unknown): SplitMode {
   return value === 'three-piece' ? 'three-piece' : 'single';
 }
@@ -185,7 +178,7 @@ export const BookParametersModel = {
   clampAndNormalize(partial: Partial<BookParameters>): BookParameters {
     const b = BOOK_PARAM_BOUNDS;
     const d = DEFAULT_BOOK_PARAMETERS;
-    const boardThicknessMm = clampNumber(
+    const boardThicknessMm = clampFinite(
       partial.boardThicknessMm,
       d.boardThicknessMm,
       b.boardThicknessMm.min,
@@ -202,63 +195,63 @@ export const BookParametersModel = {
         : partial.spineAllowanceMm;
 
     return {
-      pbHeightMm: clampNumber(partial.pbHeightMm, d.pbHeightMm, b.pbHeightMm.min, b.pbHeightMm.max),
-      pbWidthMm: clampNumber(partial.pbWidthMm, d.pbWidthMm, b.pbWidthMm.min, b.pbWidthMm.max),
-      pbThicknessMm: clampNumber(
+      pbHeightMm: clampFinite(partial.pbHeightMm, d.pbHeightMm, b.pbHeightMm.min, b.pbHeightMm.max),
+      pbWidthMm: clampFinite(partial.pbWidthMm, d.pbWidthMm, b.pbWidthMm.min, b.pbWidthMm.max),
+      pbThicknessMm: clampFinite(
         partial.pbThicknessMm,
         d.pbThicknessMm,
         b.pbThicknessMm.min,
         b.pbThicknessMm.max,
       ),
       boardThicknessMm,
-      hingeWidthMm: clampNumber(
+      hingeWidthMm: clampFinite(
         partial.hingeWidthMm,
         d.hingeWidthMm,
         b.hingeWidthMm.min,
         b.hingeWidthMm.max,
       ),
-      overhangTopBottomMm: clampNumber(
+      overhangTopBottomMm: clampFinite(
         partial.overhangTopBottomMm,
         d.overhangTopBottomMm,
         b.overhangTopBottomMm.min,
         b.overhangTopBottomMm.max,
       ),
-      overhangForeEdgeMm: clampNumber(
+      overhangForeEdgeMm: clampFinite(
         partial.overhangForeEdgeMm,
         d.overhangForeEdgeMm,
         b.overhangForeEdgeMm.min,
         b.overhangForeEdgeMm.max,
       ),
-      spineAllowanceMm: clampNumber(
+      spineAllowanceMm: clampFinite(
         rawSpineAllowance,
         boardThicknessMm,
         b.spineAllowanceMm.min,
         b.spineAllowanceMm.max,
       ),
       spineAllowanceLinked,
-      turnInMm: clampNumber(partial.turnInMm, d.turnInMm, b.turnInMm.min, b.turnInMm.max),
-      miterFactor: clampNumber(
+      turnInMm: clampFinite(partial.turnInMm, d.turnInMm, b.turnInMm.min, b.turnInMm.max),
+      miterFactor: clampFinite(
         partial.miterFactor,
         d.miterFactor,
         b.miterFactor.min,
         b.miterFactor.max,
       ),
-      bleedMm: clampNumber(partial.bleedMm, d.bleedMm, b.bleedMm.min, b.bleedMm.max),
+      bleedMm: clampFinite(partial.bleedMm, d.bleedMm, b.bleedMm.min, b.bleedMm.max),
       includeBleed: typeof partial.includeBleed === 'boolean' ? partial.includeBleed : d.includeBleed,
-      pocketDepthPct: clampNumber(
+      pocketDepthPct: clampFinite(
         partial.pocketDepthPct,
         d.pocketDepthPct,
         b.pocketDepthPct.min,
         b.pocketDepthPct.max,
       ),
-      pocketFlapMm: clampNumber(
+      pocketFlapMm: clampFinite(
         partial.pocketFlapMm,
         d.pocketFlapMm,
         b.pocketFlapMm.min,
         b.pocketFlapMm.max,
       ),
       splitMode: parseSplitMode(partial.splitMode),
-      quarterBoundOverlapMm: clampNumber(
+      quarterBoundOverlapMm: clampFinite(
         partial.quarterBoundOverlapMm,
         d.quarterBoundOverlapMm,
         b.quarterBoundOverlapMm.min,
@@ -271,7 +264,7 @@ export const BookParametersModel = {
 
   withBoardThickness(params: BookParameters, nextBoardThicknessMm: number): BookParameters {
     const b = BOOK_PARAM_BOUNDS.boardThicknessMm;
-    const clamped = clampNumber(nextBoardThicknessMm, params.boardThicknessMm, b.min, b.max);
+    const clamped = clampFinite(nextBoardThicknessMm, params.boardThicknessMm, b.min, b.max);
     return {
       ...params,
       boardThicknessMm: clamped,
