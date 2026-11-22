@@ -7,7 +7,7 @@ import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { CoverStyler } from './CoverStyler';
 
 describe('CoverStyler', () => {
-  it('renders live spine typography preview and updates title/author/full-wrap mode', async () => {
+  it('renders live spine typography preview, switches Front/Spine/Back image zones, and toggles full-wrap', async () => {
     const user = userEvent.setup();
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     let state: CoverStudioState = CoverStudioModel.createDefault();
@@ -22,6 +22,17 @@ describe('CoverStyler', () => {
         onChange={onChange}
         onStatusMessage={vi.fn()}
       />,
+    );
+
+    // Switch between Front, Spine, and Back artwork tabs
+    expect(screen.getByTestId('studio-upload-image-btn')).toHaveTextContent(
+      'Upload Front Cover Image',
+    );
+    await user.click(screen.getByTestId('studio-zone-tab-spine'));
+    expect(screen.getByTestId('studio-upload-image-btn')).toHaveTextContent('Upload Spine Image');
+    await user.click(screen.getByTestId('studio-zone-tab-back'));
+    expect(screen.getByTestId('studio-upload-image-btn')).toHaveTextContent(
+      'Upload Back Cover Image',
     );
 
     await user.type(screen.getByTestId('studio-spine-title-input'), 'D');

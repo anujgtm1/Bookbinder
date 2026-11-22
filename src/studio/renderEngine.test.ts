@@ -5,6 +5,7 @@ import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
 import { CoverStudioModel } from '@/types/studio';
 import { UnitConverter } from '@/types/units';
 import {
+  computeActiveImageLayers,
   computeImageDrawRect,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
@@ -60,6 +61,50 @@ describe('studio renderEngine', () => {
         offsetYMm: 0,
       }),
     ).toBeNull();
+  });
+
+  it('computes independent active image layers for back, spine, and front zones vs full-wrap mode', () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const spec = computeStudioCanvasSpec(geom, 300);
+    const base = CoverStudioModel.createDefault();
+    const img = (name: string) => ({
+      dataUrl: `data:image/png;base64,${name}`,
+      fileName: `${name}.png`,
+      naturalWidth: 600,
+      naturalHeight: 900,
+      zoom: 1,
+      offsetXMm: 0,
+      offsetYMm: 0,
+    });
+
+    const threeZone = {
+      ...base,
+      imageMode: 'per-zone' as const,
+      images: {
+        ...base.images,
+        front: img('front'),
+        spine: img('spine'),
+        back: img('back'),
+      },
+    };
+    const perZoneLayers = computeActiveImageLayers(spec, threeZone);
+    expect(perZoneLayers.map((l) => l.slot)).toEqual(['back', 'spine', 'front']);
+    expect(perZoneLayers[0].zoneRect).toEqual(spec.backZoneRect);
+    expect(perZoneLayers[1].zoneRect).toEqual(spec.spineZoneRect);
+    expect(perZoneLayers[2].zoneRect).toEqual(spec.frontZoneRect);
+
+    const fullWrap = {
+      ...base,
+      imageMode: 'full-wrap' as const,
+      images: {
+        ...base.images,
+        fullWrap: img('panoramic'),
+      },
+    };
+    const fullLayers = computeActiveImageLayers(spec, fullWrap);
+    expect(fullLayers).toHaveLength(1);
+    expect(fullLayers[0].slot).toBe('fullWrap');
+    expect(fullLayers[0].zoneRect).toEqual(spec.fullWrapRect);
   });
 
   it('computes inline and stacked spine typography placements with font clamping and optical nudge', () => {

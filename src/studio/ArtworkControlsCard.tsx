@@ -13,10 +13,15 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  COVER_ZONES,
+  CoverStudioModel,
   STUDIO_BOUNDS,
   type CoverImagePlacement,
+  type CoverImageSlot,
   type CoverStudioState,
+  type CoverZoneId,
   type CutLineExportMode,
 } from '@/types/studio';
 
@@ -24,22 +29,37 @@ export type EyedropperTarget = 'spine' | 'back' | 'both' | null;
 
 export interface ArtworkControlsCardProps {
   readonly studio: CoverStudioState;
+  readonly activeZone: CoverZoneId;
   readonly eyedropperTarget: EyedropperTarget;
+  readonly onActiveZoneChange: (zone: CoverZoneId) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
-  readonly onUpdateImage: (patch: Partial<CoverImagePlacement>) => void;
-  readonly onImageFileSelected: (file: File) => void;
+  readonly onUpdateImageSlot: (slot: CoverImageSlot, patch: Partial<CoverImagePlacement>) => void;
+  readonly onImageFileSelected: (slot: CoverImageSlot, file: File) => void;
   readonly onToggleEyedropper: (target: Exclude<EyedropperTarget, null>) => void;
 }
 
+const SLOT_LABELS: Readonly<Record<CoverImageSlot, string>> = {
+  front: 'Front Cover',
+  spine: 'Spine',
+  back: 'Back Cover',
+  fullWrap: 'Full-Wrap Panoramic',
+};
+
 export function ArtworkControlsCard({
   studio,
+  activeZone,
   eyedropperTarget,
+  onActiveZoneChange,
   onUpdateStudio,
-  onUpdateImage,
+  onUpdateImageSlot,
   onImageFileSelected,
   onToggleEyedropper,
 }: ArtworkControlsCardProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const activeSlot: CoverImageSlot = studio.imageMode === 'full-wrap' ? 'fullWrap' : activeZone;
+  const activeImage = studio.images[activeSlot];
+  const slotLabel = SLOT_LABELS[activeSlot];
 
   return (
     <Card>
@@ -50,72 +70,14 @@ export function ArtworkControlsCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => imageInputRef.current?.click()}
-            data-testid="studio-upload-image-btn"
-          >
-            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-            Upload Cover Image
-          </Button>
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="visually-hidden"
-            aria-label="Upload cover artwork image"
-            data-testid="studio-upload-image-input"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                onImageFileSelected(file);
-                e.target.value = '';
-              }
-            }}
-          />
-          {studio.image.dataUrl && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onUpdateImage({ zoom: 1, offsetXMm: 0, offsetYMm: 0 })}
-                data-testid="studio-reset-framing-btn"
-              >
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                Center
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive"
-                onClick={() =>
-                  onUpdateImage({
-                    dataUrl: null,
-                    fileName: null,
-                    naturalWidth: 0,
-                    naturalHeight: 0,
-                    zoom: 1,
-                    offsetXMm: 0,
-                    offsetYMm: 0,
-                  })
-                }
-                data-testid="studio-clear-image-btn"
-              >
-                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                Remove
-              </Button>
-            </>
-          )}
-        </div>
-
         {/* Full-Wrap Panoramic Mode Toggle */}
         <div className="flex items-center justify-between rounded-md border border-border bg-secondary/35 p-2.5">
           <div>
             <Label htmlFor="full-wrap-mode-toggle">Full-Wrap Panoramic Mode</Label>
             <p className="text-[11px] text-muted-foreground">
-              Span one wide image across Back + Spine + Front + Turn-ins
+              {studio.imageMode === 'full-wrap'
+                ? 'One wide image spans Back + Spine + Front + Turn-ins'
+                : 'Upload separate images for Front, Spine, and Back covers'}
             </p>
           </div>
           <Switch
@@ -123,28 +85,126 @@ export function ArtworkControlsCard({
             data-testid="studio-full-wrap-toggle"
             checked={studio.imageMode === 'full-wrap'}
             onCheckedChange={(checked) =>
-              onUpdateStudio({ imageMode: checked ? 'full-wrap' : 'front-cover' })
+              onUpdateStudio({ imageMode: checked ? 'full-wrap' : 'per-zone' })
             }
           />
         </div>
 
-        {/* Image Zoom Slider */}
+        {/* Per-Zone Image Slot Selector (Front / Spine / Back) */}
+        {studio.imageMode === 'per-zone' && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Artwork Zone
+            </span>
+            <Tabs
+              value={activeZone}
+              onValueChange={(val) => onActiveZoneChange(val as CoverZoneId)}
+            >
+              <TabsList className="grid w-full grid-cols-3">
+                {COVER_ZONES.map((zone) => {
+                  const hasImg = studio.images[zone.id].dataUrl !== null;
+                  return (
+                    <TabsTrigger
+                      key={zone.id}
+                      value={zone.id}
+                      data-testid={`studio-zone-tab-${zone.id}`}
+                    >
+                      <span>{zone.label}</span>
+                      {hasImg && (
+                        <span
+                          className="h-1.5 w-1.5 rounded-full bg-primary"
+                          aria-label={`${zone.label} image loaded`}
+                        />
+                      )}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </Tabs>
+          </div>
+        )}
+
+        {/* Active Slot Upload / Center / Remove */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => imageInputRef.current?.click()}
+              data-testid="studio-upload-image-btn"
+            >
+              <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+              Upload {slotLabel} Image
+            </Button>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="visually-hidden"
+              aria-label={`Upload ${slotLabel} artwork image`}
+              data-testid="studio-upload-image-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  onImageFileSelected(activeSlot, file);
+                  e.target.value = '';
+                }
+              }}
+            />
+            {activeImage.dataUrl && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    onUpdateImageSlot(activeSlot, { zoom: 1, offsetXMm: 0, offsetYMm: 0 })
+                  }
+                  data-testid="studio-reset-framing-btn"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  Center
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                  onClick={() =>
+                    onUpdateImageSlot(activeSlot, CoverStudioModel.createEmptyImage())
+                  }
+                  data-testid="studio-clear-image-btn"
+                >
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Remove
+                </Button>
+              </>
+            )}
+          </div>
+
+          {activeImage.fileName && (
+            <p className="truncate font-mono text-[11px] text-muted-foreground">
+              {slotLabel}: {activeImage.fileName} ({activeImage.naturalWidth}×
+              {activeImage.naturalHeight}px)
+            </p>
+          )}
+        </div>
+
+        {/* Active Image Zoom Slider */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label htmlFor="studio-image-zoom">Artwork Zoom</Label>
+            <Label htmlFor="studio-image-zoom">{slotLabel} Zoom</Label>
             <span className="font-mono text-xs text-muted-foreground">
-              {Math.round(studio.image.zoom * 100)}%
+              {Math.round(activeImage.zoom * 100)}%
             </span>
           </div>
           <Slider
             id="studio-image-zoom"
-            aria-label="Cover artwork zoom"
-            disabled={!studio.image.dataUrl}
+            aria-label={`${slotLabel} artwork zoom`}
+            disabled={!activeImage.dataUrl}
             min={STUDIO_BOUNDS.zoom.min}
             max={STUDIO_BOUNDS.zoom.max}
             step={0.05}
-            value={[studio.image.zoom]}
-            onValueChange={([zoom]) => onUpdateImage({ zoom })}
+            value={[activeImage.zoom]}
+            onValueChange={([zoom]) => onUpdateImageSlot(activeSlot, { zoom })}
           />
         </div>
 

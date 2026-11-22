@@ -1,6 +1,8 @@
 import { UnitConverter, clampFinite, roundTo } from './units';
 
-export type CoverImageMode = 'front-cover' | 'full-wrap';
+export type CoverZoneId = 'front' | 'spine' | 'back';
+export type CoverImageSlot = CoverZoneId | 'fullWrap';
+export type CoverImageMode = 'per-zone' | 'full-wrap';
 export type SpineLayoutPreset = 'inline' | 'stacked';
 export type SpineOrientation = 'top-to-bottom' | 'bottom-to-top';
 export type CutLineExportMode = 'full-cut-miter' | 'bleed-registration';
@@ -24,6 +26,12 @@ export const CURATED_FONT_IDS: readonly CuratedFontId[] = [
   'montserrat',
 ] as const;
 
+export const COVER_ZONES: readonly { readonly id: CoverZoneId; readonly label: string }[] = [
+  { id: 'front', label: 'Front Cover' },
+  { id: 'spine', label: 'Spine' },
+  { id: 'back', label: 'Back Cover' },
+] as const;
+
 export interface CoverImagePlacement {
   dataUrl: string | null;
   fileName: string | null;
@@ -35,6 +43,13 @@ export interface CoverImagePlacement {
   offsetXMm: number;
   /** Vertical pan offset in physical mm */
   offsetYMm: number;
+}
+
+export interface CoverZoneImages {
+  front: CoverImagePlacement;
+  spine: CoverImagePlacement;
+  back: CoverImagePlacement;
+  fullWrap: CoverImagePlacement;
 }
 
 export interface SpineTypographyConfig {
@@ -53,7 +68,7 @@ export interface SpineTypographyConfig {
 
 export interface CoverStudioState {
   imageMode: CoverImageMode;
-  image: CoverImagePlacement;
+  images: CoverZoneImages;
   frontBgColor: string;
   spineBgColor: string;
   backBgColor: string;
@@ -69,16 +84,23 @@ export const STUDIO_BOUNDS = {
   spineSafeMarginMm: 4.0,
 } as const;
 
+export const EMPTY_IMAGE_PLACEMENT: Readonly<CoverImagePlacement> = {
+  dataUrl: null,
+  fileName: null,
+  naturalWidth: 0,
+  naturalHeight: 0,
+  zoom: 1.0,
+  offsetXMm: 0,
+  offsetYMm: 0,
+};
+
 export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
-  imageMode: 'front-cover',
-  image: {
-    dataUrl: null,
-    fileName: null,
-    naturalWidth: 0,
-    naturalHeight: 0,
-    zoom: 1.0,
-    offsetXMm: 0,
-    offsetYMm: 0,
+  imageMode: 'per-zone',
+  images: {
+    front: { ...EMPTY_IMAGE_PLACEMENT },
+    spine: { ...EMPTY_IMAGE_PLACEMENT },
+    back: { ...EMPTY_IMAGE_PLACEMENT },
+    fullWrap: { ...EMPTY_IMAGE_PLACEMENT },
   },
   frontBgColor: '#1f3a52',
   spineBgColor: '#1f3a52',
@@ -111,13 +133,79 @@ function parseFontId(value: unknown): StudioFontId {
   return DEFAULT_COVER_STUDIO_STATE.spineText.fontId;
 }
 
+function deserializeImagePlacement(raw: unknown): CoverImagePlacement {
+  if (!raw || typeof raw !== 'object') {
+    return { ...EMPTY_IMAGE_PLACEMENT };
+  }
+  const obj = raw as Record<string, unknown>;
+  return {
+    dataUrl:
+      typeof obj.dataUrl === 'string' && obj.dataUrl.startsWith('data:image/')
+        ? obj.dataUrl
+        : null,
+    fileName: typeof obj.fileName === 'string' ? obj.fileName : null,
+    naturalWidth:
+      typeof obj.naturalWidth === 'number' && obj.naturalWidth > 0 ? obj.naturalWidth : 0,
+    naturalHeight:
+      typeof obj.naturalHeight === 'number' && obj.naturalHeight > 0 ? obj.naturalHeight : 0,
+    zoom: clampFinite(
+      obj.zoom,
+      EMPTY_IMAGE_PLACEMENT.zoom,
+      STUDIO_BOUNDS.zoom.min,
+      STUDIO_BOUNDS.zoom.max,
+    ),
+    offsetXMm: clampFinite(
+      obj.offsetXMm,
+      0,
+      STUDIO_BOUNDS.offsetMm.min,
+      STUDIO_BOUNDS.offsetMm.max,
+    ),
+    offsetYMm: clampFinite(
+      obj.offsetYMm,
+      0,
+      STUDIO_BOUNDS.offsetMm.min,
+      STUDIO_BOUNDS.offsetMm.max,
+    ),
+  };
+}
+
+function serializeImagePlacement(
+  img: CoverImagePlacement,
+  includeImageData: boolean,
+): CoverImagePlacement {
+  return {
+    ...img,
+    dataUrl: includeImageData ? img.dataUrl : null,
+  };
+}
+
 export const CoverStudioModel = {
+  createEmptyImage(): CoverImagePlacement {
+    return { ...EMPTY_IMAGE_PLACEMENT };
+  },
+
   createDefault(): CoverStudioState {
     return {
       ...DEFAULT_COVER_STUDIO_STATE,
-      image: { ...DEFAULT_COVER_STUDIO_STATE.image },
+      images: {
+        front: { ...EMPTY_IMAGE_PLACEMENT },
+        spine: { ...EMPTY_IMAGE_PLACEMENT },
+        back: { ...EMPTY_IMAGE_PLACEMENT },
+        fullWrap: { ...EMPTY_IMAGE_PLACEMENT },
+      },
       spineText: { ...DEFAULT_COVER_STUDIO_STATE.spineText },
     };
+  },
+
+  hasAnyActiveImage(state: CoverStudioState): boolean {
+    if (state.imageMode === 'full-wrap') {
+      return state.images.fullWrap.dataUrl !== null;
+    }
+    return (
+      state.images.front.dataUrl !== null ||
+      state.images.spine.dataUrl !== null ||
+      state.images.back.dataUrl !== null
+    );
   },
 
   /**
@@ -149,9 +237,11 @@ export const CoverStudioModel = {
     const includeImageData = options?.includeImageData ?? true;
     return {
       ...state,
-      image: {
-        ...state.image,
-        dataUrl: includeImageData ? state.image.dataUrl : null,
+      images: {
+        front: serializeImagePlacement(state.images.front, includeImageData),
+        spine: serializeImagePlacement(state.images.spine, includeImageData),
+        back: serializeImagePlacement(state.images.back, includeImageData),
+        fullWrap: serializeImagePlacement(state.images.fullWrap, includeImageData),
       },
       spineText: { ...state.spineText },
     };
@@ -163,48 +253,37 @@ export const CoverStudioModel = {
       return defaults;
     }
     const obj = raw as Record<string, unknown>;
-    const rawImg = (obj.image && typeof obj.image === 'object'
-      ? obj.image
-      : {}) as Record<string, unknown>;
     const rawSpine = (obj.spineText && typeof obj.spineText === 'object'
       ? obj.spineText
       : {}) as Record<string, unknown>;
 
+    const imageMode: CoverImageMode = obj.imageMode === 'full-wrap' ? 'full-wrap' : 'per-zone';
+
+    // Support current `images` map AND transparently migrate legacy single `image` projects
+    let images: CoverZoneImages;
+    if (obj.images && typeof obj.images === 'object') {
+      const rawImages = obj.images as Record<string, unknown>;
+      images = {
+        front: deserializeImagePlacement(rawImages.front),
+        spine: deserializeImagePlacement(rawImages.spine),
+        back: deserializeImagePlacement(rawImages.back),
+        fullWrap: deserializeImagePlacement(rawImages.fullWrap),
+      };
+    } else if (obj.image && typeof obj.image === 'object') {
+      const legacy = deserializeImagePlacement(obj.image);
+      images = {
+        front: imageMode === 'per-zone' ? legacy : { ...EMPTY_IMAGE_PLACEMENT },
+        spine: { ...EMPTY_IMAGE_PLACEMENT },
+        back: { ...EMPTY_IMAGE_PLACEMENT },
+        fullWrap: imageMode === 'full-wrap' ? legacy : { ...EMPTY_IMAGE_PLACEMENT },
+      };
+    } else {
+      images = defaults.images;
+    }
+
     return {
-      imageMode: obj.imageMode === 'full-wrap' ? 'full-wrap' : 'front-cover',
-      image: {
-        dataUrl:
-          typeof rawImg.dataUrl === 'string' && rawImg.dataUrl.startsWith('data:image/')
-            ? rawImg.dataUrl
-            : null,
-        fileName: typeof rawImg.fileName === 'string' ? rawImg.fileName : null,
-        naturalWidth:
-          typeof rawImg.naturalWidth === 'number' && rawImg.naturalWidth > 0
-            ? rawImg.naturalWidth
-            : 0,
-        naturalHeight:
-          typeof rawImg.naturalHeight === 'number' && rawImg.naturalHeight > 0
-            ? rawImg.naturalHeight
-            : 0,
-        zoom: clampFinite(
-          rawImg.zoom,
-          defaults.image.zoom,
-          STUDIO_BOUNDS.zoom.min,
-          STUDIO_BOUNDS.zoom.max,
-        ),
-        offsetXMm: clampFinite(
-          rawImg.offsetXMm,
-          0,
-          STUDIO_BOUNDS.offsetMm.min,
-          STUDIO_BOUNDS.offsetMm.max,
-        ),
-        offsetYMm: clampFinite(
-          rawImg.offsetYMm,
-          0,
-          STUDIO_BOUNDS.offsetMm.min,
-          STUDIO_BOUNDS.offsetMm.max,
-        ),
-      },
+      imageMode,
+      images,
       frontBgColor: parseHexColor(obj.frontBgColor, defaults.frontBgColor),
       spineBgColor: parseHexColor(obj.spineBgColor, defaults.spineBgColor),
       backBgColor: parseHexColor(obj.backBgColor, defaults.backBgColor),

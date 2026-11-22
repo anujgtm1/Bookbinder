@@ -10,6 +10,7 @@ import {
 import {
   CoverStudioModel,
   type CoverImagePlacement,
+  type CoverImageSlot,
   type CoverStudioState,
 } from '@/types/studio';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
@@ -117,6 +118,41 @@ export function computeImageDrawRect(
     width: drawW,
     height: drawH,
   };
+}
+
+export interface ActiveImageLayer {
+  readonly slot: CoverImageSlot;
+  readonly zoneRect: Rect2D;
+  readonly drawRect: Rect2D;
+  readonly image: CoverImagePlacement;
+}
+
+export function computeActiveImageLayers(
+  spec: StudioCanvasSpec,
+  studio: CoverStudioState,
+): readonly ActiveImageLayer[] {
+  if (studio.imageMode === 'full-wrap') {
+    const drawRect = computeImageDrawRect(spec.fullWrapRect, studio.images.fullWrap);
+    return drawRect
+      ? [{ slot: 'fullWrap', zoneRect: spec.fullWrapRect, drawRect, image: studio.images.fullWrap }]
+      : [];
+  }
+
+  const candidates: readonly { slot: CoverImageSlot; zoneRect: Rect2D; image: CoverImagePlacement }[] =
+    [
+      { slot: 'back', zoneRect: spec.backZoneRect, image: studio.images.back },
+      { slot: 'spine', zoneRect: spec.spineZoneRect, image: studio.images.spine },
+      { slot: 'front', zoneRect: spec.frontZoneRect, image: studio.images.front },
+    ];
+
+  const layers: ActiveImageLayer[] = [];
+  for (const c of candidates) {
+    const drawRect = computeImageDrawRect(c.zoneRect, c.image);
+    if (drawRect) {
+      layers.push({ slot: c.slot, zoneRect: c.zoneRect, drawRect, image: c.image });
+    }
+  }
+  return layers;
 }
 
 export function computeSpineTextPlacements(
@@ -234,31 +270,28 @@ export async function renderCoverArtworkCanvas(
     toPx(spec.frontZoneRect.height),
   );
 
-  // 2. Uploaded cover image (front zone or full-wrap panoramic)
-  if (studio.image.dataUrl) {
-    const targetZone =
-      studio.imageMode === 'full-wrap' ? spec.fullWrapRect : spec.frontZoneRect;
-    const drawRect = computeImageDrawRect(targetZone, studio.image);
-    if (drawRect) {
-      const img = await loadHtmlImage(studio.image.dataUrl);
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(
-        toPx(targetZone.x),
-        toPx(targetZone.y),
-        toPx(targetZone.width),
-        toPx(targetZone.height),
-      );
-      ctx.clip();
-      ctx.drawImage(
-        img,
-        toPx(drawRect.x),
-        toPx(drawRect.y),
-        toPx(drawRect.width),
-        toPx(drawRect.height),
-      );
-      ctx.restore();
-    }
+  // 2. Uploaded cover images (per-zone back/spine/front OR full-wrap panoramic)
+  const imageLayers = computeActiveImageLayers(spec, studio);
+  for (const layer of imageLayers) {
+    if (!layer.image.dataUrl) continue;
+    const img = await loadHtmlImage(layer.image.dataUrl);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(
+      toPx(layer.zoneRect.x),
+      toPx(layer.zoneRect.y),
+      toPx(layer.zoneRect.width),
+      toPx(layer.zoneRect.height),
+    );
+    ctx.clip();
+    ctx.drawImage(
+      img,
+      toPx(layer.drawRect.x),
+      toPx(layer.drawRect.y),
+      toPx(layer.drawRect.width),
+      toPx(layer.drawRect.height),
+    );
+    ctx.restore();
   }
 
   // 3. Optional rasterized spine typography (used for 300 DPI PNG export)
@@ -363,7 +396,11 @@ export async function generatePrintReadyRollPdf(
   const toPdfY = (mm: number) => UnitConverter.mmToPoints(spec.totalHeightMm - mm);
 
   // 1. Background & Artwork layer
-  if (studio.image.dataUrl && !options?.skipCanvasRaster && typeof document !== 'undefined') {
+  if (
+    CoverStudioModel.hasAnyActiveImage(studio) &&
+    !options?.skipCanvasRaster &&
+    typeof document !== 'undefined'
+  ) {
     const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
       includeSpineText: false,
       dpi: options?.rasterDpi ?? PRINT_DPI,

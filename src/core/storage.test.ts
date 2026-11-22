@@ -56,11 +56,15 @@ describe('storage persistence', () => {
       }),
     } as unknown as Storage;
 
+    const defaultStudio = CoverStudioModel.createDefault();
     const studio = {
-      ...CoverStudioModel.createDefault(),
-      image: {
-        ...CoverStudioModel.createDefault().image,
-        dataUrl: 'data:image/png;base64,AAAA',
+      ...defaultStudio,
+      images: {
+        ...defaultStudio.images,
+        front: {
+          ...defaultStudio.images.front,
+          dataUrl: 'data:image/png;base64,AAAA',
+        },
       },
     };
     const project = BookbinderProjectModel.create(BookParametersModel.createDefault(), studio);

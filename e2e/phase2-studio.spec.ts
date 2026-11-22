@@ -78,7 +78,7 @@ test.describe('Phase 2 — Cover & Spine Styler', () => {
       buffer: pngBuffer,
     });
 
-    await expect(page.getByTestId('studio-cover-image')).toBeVisible();
+    await expect(page.getByTestId('studio-image-front')).toBeVisible();
 
     // Activate Eyedropper (Spine + Back) and click on the right side (front cover artwork)
     await page.getByTestId('studio-eyedropper-both-btn').click();
