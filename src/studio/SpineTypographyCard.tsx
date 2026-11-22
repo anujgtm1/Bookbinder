@@ -15,6 +15,7 @@ import {
 import { Slider } from '@/components/ui/slider';
 import {
   STUDIO_BOUNDS,
+  type AuthorOrientation,
   type SpineLayoutPreset,
   type SpineOrientation,
   type SpineTypographyConfig,
@@ -112,6 +113,46 @@ export function SpineTypographyCard({
                 <SelectItem value="bottom-to-top">Bottom-to-Top (European)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        {/* Author Writing Orientation Toggle (Vertical vs Horizontal) */}
+        <div className="flex items-center justify-between gap-2 rounded-md border border-border/80 bg-secondary/35 px-2.5 py-2">
+          <div>
+            <span className="text-xs font-medium text-foreground">Author Writing</span>
+            <p className="text-[11px] text-muted-foreground">
+              Flip author name vertical along spine or horizontal across tail
+            </p>
+          </div>
+          <div
+            role="group"
+            aria-label="Author writing orientation"
+            className="inline-flex shrink-0 rounded-md border border-input bg-muted p-0.5"
+          >
+            {(
+              [
+                { id: 'vertical', label: 'Vertical' },
+                { id: 'horizontal', label: 'Horizontal' },
+              ] as const satisfies readonly { id: AuthorOrientation; label: string }[]
+            ).map((opt) => {
+              const active = spineText.authorOrientation === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  aria-pressed={active}
+                  data-testid={`author-orientation-${opt.id}`}
+                  onClick={() => onUpdateSpineText({ authorOrientation: opt.id })}
+                  className={`rounded-sm px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-card text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

@@ -58,9 +58,12 @@ describe('CoverStyler', () => {
     await user.click(screen.getByTestId('layer-scale-up-btn'));
     expect(state.layers[0].widthMm).toBeGreaterThan(widthBefore);
 
-    // Spine typography update
+    // Spine typography update + flip author orientation to horizontal
     await user.type(screen.getByTestId('studio-spine-title-input'), 'D');
     expect(state.spineText.title).toBe('D');
+
+    await user.click(screen.getByTestId('author-orientation-horizontal'));
+    expect(state.spineText.authorOrientation).toBe('horizontal');
   });
 
   it('activates eyedropper sampling mode banner cleanly', async () => {
