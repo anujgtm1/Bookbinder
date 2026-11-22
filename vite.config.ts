@@ -10,6 +10,9 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['pdf-lib', '@pdf-lib/fontkit'],
+  },
   build: {
     rollupOptions: {
       output: {

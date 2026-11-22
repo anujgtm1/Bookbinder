@@ -229,9 +229,19 @@ export function CoverStyler({
   ) => {
     const svgEl = svgRef.current;
     if (!svgEl) return;
-    const rect = svgEl.getBoundingClientRect();
-    const relX = (clientX - rect.left) / rect.width;
-    const relY = (clientY - rect.top) / rect.height;
+
+    let relX: number;
+    let relY: number;
+    const ctm = typeof svgEl.getScreenCTM === 'function' ? svgEl.getScreenCTM() : null;
+    if (ctm && typeof DOMPoint !== 'undefined') {
+      const svgPt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+      relX = svgPt.x / spec.totalWidthMm;
+      relY = svgPt.y / spec.totalHeightMm;
+    } else {
+      const rect = svgEl.getBoundingClientRect();
+      relX = (clientX - rect.left) / Math.max(1, rect.width);
+      relY = (clientY - rect.top) / Math.max(1, rect.height);
+    }
 
     try {
       const sampleCanvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
