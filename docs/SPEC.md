@@ -106,18 +106,25 @@ src/
 
 ## 5. UI / UX & Visual Components
 
-### 5.1 Main Workspace & Controls
-- **Left Sidebar:**
-  - Unit toggle (`mm` / `in`) + Preset selector
-  - Paperback Dimensions (`H`, `W`, `Spine Thickness`)
-  - Collapsible "Construction & Hinge Settings" (`9.0 mm` hinge spacer, board thickness, turn-in, pocket depth %, bleed, 3-piece split toggle)
-  - PDF Page Size selector for Inner Envelopes (`US Letter 8.5×11"`, `A4`, `Tabloid 11×17"`)
-  - Project Save/Load (`Export .json` / `Import .json` + automatic `localStorage` persistence)
-- **Top Summary Card (`CutListCard.tsx`):**
-  - Displays exact dimensions for **2× Cover Boards**, **1× Spine Strip**, and the **Roll Printer Size & Orientation Badge**.
-  - Includes a clean inline **SVG Assembly Diagram** visually reminding the user to place their **`9 mm` spacer** between the spine strip and front/back boards during gluing.
+### 5.1 Aesthetic & Layout Architecture ("Bindery Cutting Mat" + "Folio Workbench")
+- **Visual Theme ("Bindery Cutting Mat"):**
+  - Pairs a deep spruce-teal self-healing cutting-mat drafting surface (`#1B3A34` light / `#112420` dark) with subtle dual-scale millimeter grid lines against warm cotton-rag paper control sheets (`#F8F4EC` / `#1C1917`), lampblack ink (`#231F1B` / `#F3EDE2`), antique brass foil (`#C59B48`), and vermilion cut-line (`#C84B31`) accents.
+  - Display headings use `EB Garamond`, UI labels use `Inter`, and all millimeter/inch readouts use `tabular-nums` monospace typography for jitter-free editing.
+  - Respects `prefers-reduced-motion` (opting into spatial transitions inside `@media (prefers-reduced-motion: no-preference)`) and dual-mode `color-scheme` (`light-dark()` with fallbacks).
+- **Folio Workbench Layout:**
+  - **Compact Single-Row Header:** Brand wordmark, collapsible Book Spec Rail toggle, live status readout, and light/dark theme toggle.
+  - **Collapsible Left Book Spec Rail (`SidebarControls.tsx`):** Can be collapsed on demand to expand the drafting cutting mat edge-to-edge:
+    - Unit toggle (`mm` / `in`) + Preset selector
+    - Paperback Dimensions (`H`, `W`, `Spine Thickness`)
+    - Collapsible "Construction & Hinge Settings" (`9.0 mm` hinge spacer, board thickness, turn-in, pocket depth %, bleed, 3-piece split toggle)
+    - PDF Page Size selector for Inner Envelopes (`US Letter 8.5×11"`, `A4`, `Tabloid 11×17"`)
+    - Project Save/Load (`Export .json` / `Import .json` + automatic `localStorage` persistence)
+  - **Spec & Cut List Strip (`CutListCard.tsx`):**
+    - Displays exact dimensions for **2× Cover Boards**, **1× Spine Strip**, **Outer Wrap**, and the **Roll Printer Size & Orientation Badge**.
+    - Includes a clean inline **SVG Assembly Diagram** visually reminding the user to place their **`9 mm` spacer** between the spine strip and front/back boards during gluing.
+  - **Folder-Style Paper Index Tabs:** `Structural Templates` and `Cover & Spine Styler` attach directly to the top edge of the workbench panel.
 - **Interactive Blueprint Preview (`BlueprintPreview.tsx`):**
-  - Zoomable/pannable `1:1` proportional SVG preview showing:
+  - Full-bleed cutting-mat `1:1` proportional SVG viewport with a **Floating Bottom-Center HUD Toolbar** (`role="toolbar"` with roving keyboard navigation) for sheet switching (`Outer Case Wrap` / `Inner Pockets & Spine Liner`) and zoom/reset controls:
     - Outer Case Wrap: Solid Red (`#FF0000`) 45°-mitered cut polygon, Dashed Blue (`#0066FF`) board/spine placement boxes, Dashed Green (`#00AA44`) optional bleed box.
     - Inner Spine Liner & Front/Back Pocket Envelopes with dashed score lines and labeled open edges.
   - **2 × 2 Structural Export Matrix:**
@@ -165,6 +172,10 @@ src/
   - **Author Orientation toggle:** **Vertical** (matches spine reading direction) vs. **Horizontal** (classic clothbound horizontal author block centered near the tail of the spine, auto-wrapping multi-word names and clamping width within `SPINE_W - 4.0 mm`).
   - Font selector: Curated classic literary serifs/sans-serifs (*EB Garamond, Libre Baskerville, Cormorant Garamond, Lora, Inter, Montserrat*) + **Custom Font Uploader** (`.ttf`, `.otf`, `.woff2` via `FontFace` API).
   - Automatic font-size clamping so text height never exceeds `SPINE_W - 4.0 mm` (preventing text from spilling into the `9 mm` hinge grooves), paired with a **`±2.0 mm` Optical Horizontal Nudge** slider.
+- **Interactive 3D Folded Book Preview (`Book3DPreview.tsx`):**
+  - Toggleable right inside the Cover & Spine Styler's floating HUD (`2D Flat Wrap` ↔ `3D Book Preview`).
+  - Renders a physically proportioned CSS 3D hardcover volume using exact `BOARD_W × BOARD_H × SPINE_W` ratios, mapping the live Front Cover, Spine (with live vertical/horizontal typography), and Back Cover artwork onto the 3D book faces alongside cream paper page-block edges inset inside the hardcover overhang.
+  - Supports free pointer drag-to-orbit (`Yaw` / `Pitch`), keyboard arrow rotation, and one-click angle presets (`Front 3/4`, `Spine`, `Back 3/4`, `Reset`).
 
 ### 7.3 Dual High-Resolution Exports (Exact `WRAP_W × WRAP_H` Physical Scale)
 1. **Print-Ready Roll PDF (`outer_cover_print.pdf`):**
