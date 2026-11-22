@@ -146,12 +146,12 @@ src/
 - Lightweight zone-based compositor consuming `CaseGeometry` read-only from `geometry.ts`—intentionally focused on rapid cover image placement, spine typography, and export without duplicating full vector illustration tools.
 
 ### 7.2 Zone-Based Controls
-- **Front Cover Zone:**
-  - Drag-and-drop image upload (`PNG`, `JPG`, `WEBP`).
-  - Simple interactive **Pan (`drag`)** and **Zoom (`slider / scroll wheel`)** to frame the artwork cleanly across the Front Board + Turn-in/Bleed area.
-  - Optional **Full-Wrap Panoramic Mode** toggle allowing one wide image to span Back + Spine + Front + Turn-Ins.
+- **Per-Zone Artwork Placement (Front Cover, Spine, & Back Cover):**
+  - Independent drag-and-drop or file upload (`PNG`, `JPG`, `WEBP`) for up to **three separate zone images**: **Front Cover**, **Spine**, and **Back Cover**.
+  - Simple interactive **Pan (`drag`)** and **Zoom (`slider / scroll wheel`)** per zone to frame each artwork cleanly across its respective board/spine + turn-in/bleed area (dropping or dragging directly over a zone on the canvas targets that zone automatically).
+  - Optional **Full-Wrap Panoramic Mode** toggle allowing one wide image to span Back + Spine + Front + Turn-Ins instead of separate per-zone images.
 - **Back Cover & Spine Background Fill:**
-  - Solid color pickers for Spine and Back Cover backgrounds, plus an **Eyedropper Tool** to sample a matching color directly from the uploaded front cover image.
+  - Solid color pickers for Back Cover, Spine, and Front base backgrounds (visible wherever no image is placed), plus an **Eyedropper Tool** to sample a matching color directly from the preview artwork.
 - **Spine Typography:**
   - Separate **Spine Title** and **Spine Author** text inputs.
   - Layout preset: **Inline** (`Title — Author` centered along spine) vs. **Stacked** (`Title` upper-center, `Author` near bottom of spine).
