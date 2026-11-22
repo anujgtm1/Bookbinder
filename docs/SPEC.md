@@ -120,36 +120,42 @@ src/
   - Zoomable/pannable `1:1` proportional SVG preview showing:
     - Outer Case Wrap: Solid Red (`#FF0000`) 45°-mitered cut polygon, Dashed Blue (`#0066FF`) board/spine placement boxes, Dashed Green (`#00AA44`) optional bleed box.
     - Inner Spine Liner & Front/Back Pocket Envelopes with dashed score lines and labeled open edges.
-  - Primary Phase 1 Action Buttons:
-    - `Download Outer Wrap (.SVG)`
-    - `Download Inner Envelopes & Liner (.PDF)`
+  - **2 × 2 Structural Export Matrix:**
+    - **Outer Case Wrap:** `.SVG` (Affinity `1:1` mm layers) and `.PDF` (`1:1` mm vector print template, single-piece or 3-piece split)
+    - **Inner Pockets & Spine Liner:** `.SVG` (`1:1` mm vector cut/score/glue layers) and `.PDF` (`1:1` mm auto-paginated sheet PDF)
 
 ---
 
 ## 6. Phase 1 Export Specifications
 
-### 6.1 Outer Case Wrap SVG (`outer_case_wrap.svg`)
-- Root `<svg>` explicitly defines physical millimeter dimensions (`width="{WRAP_W}mm" height="{WRAP_H}mm" viewBox="0 0 {WRAP_W} {WRAP_H}"`) so Affinity Designer/Publisher/Photo opens it at exact `1:1` physical scale without DPI scaling errors.
-- Organized into clean named `<g id="...">` groups (`cut-lines`, `board-guides`, `bleed-box`, `dimensions-notes`) so guide layers can be locked or toggled before printing.
+### 6.1 Outer Case Wrap Exports (`outer_case_wrap.svg` & `outer_case_wrap.pdf`)
+- **SVG (`outer_case_wrap.svg`):** Root `<svg>` explicitly defines physical millimeter dimensions (`width="{WRAP_W}mm" height="{WRAP_H}mm" viewBox="0 0 {WRAP_W} {WRAP_H}"`, expanding symmetrically when bleed is enabled) so Affinity Designer/Publisher/Photo opens it at exact `1:1` physical scale without DPI scaling errors. Organized into clean named `<g id="...">` groups (`cut-lines`, `board-guides`, `bleed-box`, `dimensions-notes`) so guide layers can be locked or toggled before printing.
+- **PDF (`outer_case_wrap.pdf`):** Generated client-side via `pdf-lib` at exact `1:1` physical millimeter scale (`1 mm = 2.83465 pt`) for both Single-Piece Continuous Wrap (roll-size page) and 3-Piece Quarter-Bound Split (3 exact panels), including the 45°-mitered cut polygon, dashed blue board/hinge guides, optional bleed frame, and a `50.0 mm × 50.0 mm` scale verification note.
 
-### 6.2 Inner Envelopes & Spine Liner PDF (`inner_pockets_and_liner.pdf`)
-- Generated client-side via `pdf-lib` in exact millimeter coordinates (`1 mm = 2.83465 pt`).
-- **Auto-Pagination & Rotation:** Automatically arranges Front Pocket, Back Pocket, and Spine Liner across 1 or 2 pages depending on selected sheet size (`Letter`, `A4`, or `Tabloid`), automatically rotating pieces 90° if needed to prevent clipping.
-- **Calibration Square:** Includes a `50.0 mm × 50.0 mm` verification square on Page 1 labeled *"Verify 50mm × 50mm — Print at 100% / Actual Size"*.
-- **Visual Legend:** Solid lines = Cut; Dashed lines = Score & Fold; Shaded/hatched tabs = Apply Glue Here.
+### 6.2 Inner Envelopes & Spine Liner Exports (`inner_pockets_and_liner.pdf` & `inner_pockets_and_liner.svg`)
+- **PDF (`inner_pockets_and_liner.pdf`):** Generated client-side via `pdf-lib` in exact millimeter coordinates (`1 mm = 2.83465 pt`).
+  - **Auto-Pagination & Rotation:** Automatically arranges Front Pocket, Back Pocket, and Spine Liner across 1 or 2 pages depending on selected sheet size (`Letter`, `A4`, or `Tabloid`), automatically rotating pieces 90° if needed to prevent clipping.
+  - **Calibration Square:** Includes a `50.0 mm × 50.0 mm` verification square on Page 1 labeled *"Verify 50mm × 50mm — Print at 100% / Actual Size"*.
+  - **Visual Legend:** Solid lines = Cut; Dashed lines = Score & Fold; Shaded/hatched tabs = Apply Glue Here.
+- **SVG (`inner_pockets_and_liner.svg`):** Exact `1:1` physical millimeter vector layout of Back Pocket, Spine Liner, Front Pocket, and `50 × 50 mm` calibration square organized into named `<g id="...">` groups (`glue-flaps`, `cut-lines`, `score-lines`, `dimensions-notes`) for Affinity or electronic cutting machines.
 
 ---
 
 ## 7. Phase 2 Specification: Decoupled Cover & Spine Styler (`src/studio/`)
 
 ### 7.1 Design Scope & Constraints
-- Lightweight zone-based compositor consuming `CaseGeometry` read-only from `geometry.ts`—intentionally focused on rapid cover image placement, spine typography, and export without duplicating full vector illustration tools.
+- Lightweight interactive layer-based compositor consuming `CaseGeometry` read-only from `geometry.ts`—intentionally focused on rapid cover artwork composition, spine typography, and print-ready export without duplicating full vector illustration tools.
 
-### 7.2 Zone-Based Controls
-- **Per-Zone Artwork Placement (Front Cover, Spine, & Back Cover):**
-  - Independent drag-and-drop or file upload (`PNG`, `JPG`, `WEBP`) for up to **three separate zone images**: **Front Cover**, **Spine**, and **Back Cover**.
-  - Simple interactive **Pan (`drag`)** and **Zoom (`slider / scroll wheel`)** per zone to frame each artwork cleanly across its respective board/spine + turn-in/bleed area (dropping or dragging directly over a zone on the canvas targets that zone automatically).
-  - Optional **Full-Wrap Panoramic Mode** toggle allowing one wide image to span Back + Spine + Front + Turn-Ins instead of separate per-zone images.
+### 7.2 Interactive Canvas & Controls
+- **Free-Form Multi-Image Layer Stack (`layers: CoverImageLayer[]`):**
+  - Upload or drag-and-drop **any number of images** (`PNG`, `JPG`, `WEBP`) directly onto the outer wrap canvas (e.g., front cover art, back cover art, spine artwork, emblems, textures, or a full-wrap panoramic image).
+  - **Direct Canvas Manipulation:**
+    - Click any image to select it (showing selection frame and 4 corner resize handles).
+    - **Drag anywhere** across the wrap to position freely in millimeter coordinates.
+    - **Drag corner handles** (or use mouse wheel / scale slider) to resize proportionally.
+  - **Layer Stack & Quick-Fit Helpers:**
+    - Reorder layers (bring forward / send backward), remove individual layers, or reset.
+    - One-click **Quick Fit** presets for the selected layer (`Fit Front`, `Fit Spine`, `Fit Back`, `Fit Full Wrap`) plus an optional **Clip to Zone** mask (`None`, `Front`, `Spine`, `Back`) for crisp edges at board/spine seams.
 - **Back Cover & Spine Background Fill:**
   - Solid color pickers for Back Cover, Spine, and Front base backgrounds (visible wherever no image is placed), plus an **Eyedropper Tool** to sample a matching color directly from the preview artwork.
 - **Spine Typography:**
