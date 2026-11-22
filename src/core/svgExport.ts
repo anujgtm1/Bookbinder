@@ -167,3 +167,111 @@ export function generateOuterWrapSvg(geometry: CaseGeometry, splitMode: SplitMod
     ? renderThreePieceSvg(geometry)
     : renderSinglePieceSvg(geometry);
 }
+
+/**
+ * Generates an exact 1:1 physical mm SVG of Back Pocket, Spine Liner, Front Pocket,
+ * and a 50 × 50 mm calibration square organized into named Affinity / cutter layers.
+ */
+export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
+  const { backPocket, spineLiner, frontPocket } = geometry;
+  const pad = 10;
+  const gap = 14;
+  const calHeaderH = 58; // 50 mm calibration square + breathing room
+
+  const backX = pad;
+  const linerX = backX + backPocket.totalWidthMm + gap;
+  const frontX = linerX + spineLiner.widthMm + gap;
+
+  const contentW = frontX + frontPocket.totalWidthMm + pad;
+  const maxPieceH = Math.max(
+    backPocket.totalHeightMm,
+    spineLiner.heightMm,
+    frontPocket.totalHeightMm,
+  );
+  const piecesTopY = pad + calHeaderH;
+  const totalH = piecesTopY + maxPieceH + pad;
+  const linerY = piecesTopY + (maxPieceH - spineLiner.heightMm) / 2;
+
+  const shiftPoly = (poly: typeof backPocket.outerCutPolygon, dx: number, dy: number) =>
+    GeometryPrimitives.polygonToSvgPath(GeometryPrimitives.translatePolygon(poly, dx, dy), 3);
+
+  const glueFlapPaths = [
+    ...backPocket.glueFlapPolygons.map((f) => `<path d="${shiftPoly(f, backX, piecesTopY)}" />`),
+    ...frontPocket.glueFlapPolygons.map((f) => `<path d="${shiftPoly(f, frontX, piecesTopY)}" />`),
+  ].join('\n    ');
+
+  const cutPaths = [
+    `<path d="${shiftPoly(backPocket.outerCutPolygon, backX, piecesTopY)}" data-label="Back Pocket Envelope" />`,
+    svgRect(
+      { x: linerX, y: linerY, width: spineLiner.widthMm, height: spineLiner.heightMm },
+      'data-label="Spine Reinforcement Liner"',
+    ),
+    `<path d="${shiftPoly(frontPocket.outerCutPolygon, frontX, piecesTopY)}" data-label="Front Pocket Envelope" />`,
+  ].join('\n    ');
+
+  const scoreLines = [
+    ...backPocket.scoreLines.map(
+      (l) =>
+        `<line x1="${fmt(l.x1 + backX)}" y1="${fmt(l.y1 + piecesTopY)}" x2="${fmt(l.x2 + backX)}" y2="${fmt(l.y2 + piecesTopY)}" />`,
+    ),
+    ...spineLiner.scoreLines.map(
+      (l) =>
+        `<line x1="${fmt(l.x1 + linerX)}" y1="${fmt(l.y1 + linerY)}" x2="${fmt(l.x2 + linerX)}" y2="${fmt(l.y2 + linerY)}" />`,
+    ),
+    ...frontPocket.scoreLines.map(
+      (l) =>
+        `<line x1="${fmt(l.x1 + frontX)}" y1="${fmt(l.y1 + piecesTopY)}" x2="${fmt(l.x2 + frontX)}" y2="${fmt(l.y2 + piecesTopY)}" />`,
+    ),
+  ].join('\n    ');
+
+  const backCenter = GeometryPrimitives.translatePoint(
+    GeometryPrimitives.rectCenter(backPocket.faceRect),
+    backX,
+    piecesTopY,
+  );
+  const frontCenter = GeometryPrimitives.translatePoint(
+    GeometryPrimitives.rectCenter(frontPocket.faceRect),
+    frontX,
+    piecesTopY,
+  );
+  const linerCenter = {
+    x: linerX + spineLiner.widthMm / 2,
+    y: linerY + spineLiner.heightMm / 2,
+  };
+
+  const pocketDim = `${roundTo(frontPocket.pocketWidthMm, 1)} × ${roundTo(frontPocket.pocketHeightMm, 1)} mm`;
+  const linerDim = `${roundTo(spineLiner.widthMm, 1)} × ${roundTo(spineLiner.heightMm, 1)} mm`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${fmt(contentW)}mm"
+     height="${fmt(totalH)}mm"
+     viewBox="0 0 ${fmt(contentW)} ${fmt(totalH)}">
+  <title>Inner Pockets &amp; Spine Liner — 1:1 mm Vector Templates</title>
+  <g id="glue-flaps" fill="#e6dccb" fill-opacity="0.65" stroke="none">
+    ${glueFlapPaths}
+  </g>
+  <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
+    ${cutPaths}
+  </g>
+  <g id="score-lines" fill="none" stroke="#0066FF" stroke-width="0.35" stroke-dasharray="4 2">
+    ${scoreLines}
+  </g>
+  <g id="dimensions-notes" font-family="sans-serif" fill="#222222">
+    <rect x="${fmt(pad)}" y="${fmt(pad)}" width="50" height="50" fill="none" stroke="#222222" stroke-width="0.5" data-label="50x50mm Calibration Square" />
+    <text x="${fmt(pad + 25)}" y="${fmt(pad + 22)}" font-size="4.5" font-weight="600" text-anchor="middle">50 × 50 mm</text>
+    <text x="${fmt(pad + 25)}" y="${fmt(pad + 30)}" font-size="3.4" text-anchor="middle">Verify 1:1 Scale</text>
+    <text x="${fmt(pad + 58)}" y="${fmt(pad + 18)}" font-size="5" font-weight="700">INNER POCKETS &amp; SPINE LINER (1:1 mm)</text>
+    <text x="${fmt(pad + 58)}" y="${fmt(pad + 27)}" font-size="3.8" fill="#555555">Solid Red = Cut • Dashed Blue = Score &amp; Fold • Shaded = Apply Glue Here</text>
+    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">BACK POCKET</text>
+    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: RIGHT (SPINE)</text>
+    <text x="${fmt(linerCenter.x)}" y="${fmt(linerCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">SPINE LINER</text>
+    <text x="${fmt(linerCenter.x)}" y="${fmt(linerCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(linerDim)}</text>
+    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">FRONT POCKET</text>
+    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: LEFT (SPINE)</text>
+  </g>
+</svg>
+`;
+}

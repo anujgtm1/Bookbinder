@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
 import { calculateCaseGeometry } from './geometry';
-import { generateOuterWrapSvg } from './svgExport';
+import { generateInnerTemplatesSvg, generateOuterWrapSvg } from './svgExport';
 
 describe('generateOuterWrapSvg', () => {
   it('generates 1:1 physical mm single-piece SVG with bleed and named Affinity layers', () => {
@@ -42,5 +42,21 @@ describe('generateOuterWrapSvg', () => {
     expect(svg).toContain('data-label="Front Cover Panel"');
     expect(svg).toContain('<g id="cut-lines"');
     expect(svg).toContain('<g id="board-guides"');
+  });
+
+  it('generates 1:1 physical mm Inner Pockets & Spine Liner SVG with named cutter layers and calibration square', () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const svg = generateInnerTemplatesSvg(geom);
+
+    expect(svg).toMatch(/width="[\d.]+mm"/);
+    expect(svg).toMatch(/height="[\d.]+mm"/);
+    expect(svg).toContain('<g id="glue-flaps"');
+    expect(svg).toContain('<g id="cut-lines"');
+    expect(svg).toContain('<g id="score-lines"');
+    expect(svg).toContain('<g id="dimensions-notes"');
+    expect(svg).toContain('data-label="Back Pocket Envelope"');
+    expect(svg).toContain('data-label="Spine Reinforcement Liner"');
+    expect(svg).toContain('data-label="Front Pocket Envelope"');
+    expect(svg).toContain('width="50" height="50"');
   });
 });
