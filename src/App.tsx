@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BlueprintPreview } from '@/components/BlueprintPreview';
 import { CutListCard } from '@/components/CutListCard';
 import { Header, type WorkspaceTab } from '@/components/Header';
@@ -15,7 +15,12 @@ import {
 import { generateOuterWrapSvg } from '@/core/svgExport';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
-import { CoverStudioModel } from '@/types/studio';
+import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
+
+const CoverStyler = lazy(async () => {
+  const mod = await import('@/studio/CoverStyler');
+  return { default: mod.CoverStyler };
+});
 
 export function App() {
   const [project, setProject] = useState<BookbinderProject>(() => loadProjectFromStorage());
@@ -40,6 +45,14 @@ export function App() {
       ...prev,
       updatedAt: new Date().toISOString(),
       parameters,
+    }));
+  };
+
+  const handleStudioChange = (studio: CoverStudioState) => {
+    setProject((prev) => ({
+      ...prev,
+      updatedAt: new Date().toISOString(),
+      studio,
     }));
   };
 
@@ -142,9 +155,20 @@ export function App() {
               onDownloadPdf={handleDownloadPdf}
             />
           ) : (
-            <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
-              Cover &amp; Spine Styler loading…
-            </div>
+            <Suspense
+              fallback={
+                <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                  Loading Cover &amp; Spine Styler…
+                </div>
+              }
+            >
+              <CoverStyler
+                geometry={geometry}
+                studio={project.studio}
+                onChange={handleStudioChange}
+                onStatusMessage={setStatusMessage}
+              />
+            </Suspense>
           )}
         </div>
       </main>
