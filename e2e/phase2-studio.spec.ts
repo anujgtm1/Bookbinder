@@ -158,6 +158,13 @@ test.describe('Phase 2 — Interactive Cover & Spine Styler', () => {
 
     await page.getByTestId('studio-spine-orientation-select').click();
     await page.getByRole('option', { name: /Bottom-to-Top/i }).click();
+
+    // Flip Author writing to Horizontal (2 horizontal lines: "Frank" / "Herbert" with rotate(0 ...))
+    await page.getByTestId('author-orientation-horizontal').click();
+    const spineTexts = page.getByTestId('studio-spine-typography').locator('text');
+    await expect(spineTexts).toHaveCount(3);
+    await expect(spineTexts.nth(1)).toHaveAttribute('transform', /^rotate\(0 /);
+    await expect(spineTexts.nth(2)).toHaveAttribute('transform', /^rotate\(0 /);
   });
 
   test('exports 300 DPI Print-Ready PDF, 300 DPI Affinity PNG, and 1:1 mm Affinity SVG', async ({
