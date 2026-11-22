@@ -113,6 +113,13 @@ export function CoverStyler({
 
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragInteraction>({ mode: 'none' });
+  const suppressNextClickRef = useRef(false);
+  const studioRef = useRef(studio);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    studioRef.current = studio;
+    onChangeRef.current = onChange;
+  }, [studio, onChange]);
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
   const spinePlacements = useMemo(
@@ -150,6 +157,57 @@ export function CoverStyler({
       layers: studio.layers.map((layer) => (layer.id === id ? updater(layer) : layer)),
     });
   };
+
+  // Window-level pointer move/up so dragging or corner-resizing keeps tracking smoothly even outside the SVG
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (drag.mode === 'none') return;
+      const svgEl = svgRef.current;
+      if (!svgEl) return;
+
+      let xMm: number;
+      let yMm: number;
+      const ctm = typeof svgEl.getScreenCTM === 'function' ? svgEl.getScreenCTM() : null;
+      if (ctm && typeof DOMPoint !== 'undefined') {
+        const svgPt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
+        xMm = svgPt.x;
+        yMm = svgPt.y;
+      } else {
+        const rect = svgEl.getBoundingClientRect();
+        xMm = ((e.clientX - rect.left) / Math.max(1, rect.width)) * spec.totalWidthMm;
+        yMm = ((e.clientY - rect.top) / Math.max(1, rect.height)) * spec.totalHeightMm;
+      }
+
+      suppressNextClickRef.current = true;
+      const currentStudio = studioRef.current;
+      const nextLayers = currentStudio.layers.map((layer) => {
+        if (layer.id !== drag.layerId) return layer;
+        if (drag.mode === 'move') {
+          return CoverImageLayerModel.moveBy(
+            drag.origLayer,
+            xMm - drag.startXMm,
+            yMm - drag.startYMm,
+          );
+        }
+        return CoverImageLayerModel.resizeFromCorner(drag.origLayer, drag.corner, xMm, yMm);
+      });
+      onChangeRef.current({ ...currentStudio, layers: nextLayers });
+    };
+
+    const onPointerEnd = () => {
+      dragRef.current = { mode: 'none' };
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerEnd);
+    window.addEventListener('pointercancel', onPointerEnd);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerEnd);
+    };
+  }, [spec.totalWidthMm, spec.totalHeightMm]);
 
   // Delete selected layer via Backspace/Delete key when focus is not inside a text control
   useEffect(() => {
@@ -369,7 +427,7 @@ export function CoverStyler({
     }
   };
 
-  const handleCornerSize = Math.max(4.5, spec.totalWidthMm * 0.015);
+  const handleCornerSize = Math.max(7.5, spec.totalWidthMm * 0.022);
 
   return (
     <div className="flex flex-col gap-5" data-testid="cover-styler">
@@ -484,6 +542,10 @@ export function CoverStyler({
               }`}
               style={{ touchAction: 'none' }}
               onClick={(e) => {
+                if (suppressNextClickRef.current) {
+                  suppressNextClickRef.current = false;
+                  return;
+                }
                 if (eyedropperTarget) {
                   void sampleColorAtSvgClick(e.clientX, e.clientY, eyedropperTarget);
                 } else if (e.target === e.currentTarget) {
@@ -497,34 +559,6 @@ export function CoverStyler({
                 updateLayer(selectedLayer.id, (layer) =>
                   CoverImageLayerModel.scaleAroundCenter(layer, factor),
                 );
-              }}
-              onPointerMove={(e) => {
-                const drag = dragRef.current;
-                if (drag.mode === 'none') return;
-                const pt = clientPointToSvgMm(e.clientX, e.clientY);
-                if (!pt) return;
-                if (drag.mode === 'move') {
-                  const dx = pt.xMm - drag.startXMm;
-                  const dy = pt.yMm - drag.startYMm;
-                  updateLayer(drag.layerId, () =>
-                    CoverImageLayerModel.moveBy(drag.origLayer, dx, dy),
-                  );
-                } else if (drag.mode === 'resize') {
-                  updateLayer(drag.layerId, () =>
-                    CoverImageLayerModel.resizeFromCorner(
-                      drag.origLayer,
-                      drag.corner,
-                      pt.xMm,
-                      pt.yMm,
-                    ),
-                  );
-                }
-              }}
-              onPointerUp={() => {
-                dragRef.current = { mode: 'none' };
-              }}
-              onPointerCancel={() => {
-                dragRef.current = { mode: 'none' };
               }}
             >
               <title>Outer Cover Styler Interactive Canvas</title>
@@ -629,7 +663,6 @@ export function CoverStyler({
                         setSelectedLayerId(layer.id);
                         const pt = clientPointToSvgMm(e.clientX, e.clientY);
                         if (!pt) return;
-                        svgRef.current?.setPointerCapture(e.pointerId);
                         dragRef.current = {
                           mode: 'move',
                           layerId: layer.id,
@@ -793,7 +826,6 @@ export function CoverStyler({
                       data-testid={`resize-handle-${handle.corner}`}
                       onPointerDown={(e) => {
                         e.stopPropagation();
-                        svgRef.current?.setPointerCapture(e.pointerId);
                         dragRef.current = {
                           mode: 'resize',
                           layerId: selectedLayer.id,
