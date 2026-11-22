@@ -1,0 +1,250 @@
+@import 'tailwindcss';
+
+/*
+ * Craft-meets-CAD Studio Theme
+ * Follows modern-web-guidance: base color-scheme: light dark on :root,
+ * mirrored from <meta name="color-scheme">, using light-dark() with
+ * prefers-color-scheme fallbacks for older browsers.
+ */
+:root {
+  color-scheme: light dark;
+
+  &:has(> head > meta[name='color-scheme'][content='dark']) {
+    color-scheme: dark;
+  }
+
+  &:has(> head > meta[name='color-scheme'][content='light']) {
+    color-scheme: light;
+  }
+
+  /* Raw palette tokens */
+  --bg-light: #f6f2eb;
+  --bg-dark: #141210;
+  --fg-light: #1f1b16;
+  --fg-dark: #f2ede4;
+
+  --card-light: #fffdf9;
+  --card-dark: #1c1916;
+  --card-fg-light: #1f1b16;
+  --card-fg-dark: #f2ede4;
+
+  --popover-light: #fffdf9;
+  --popover-dark: #221f1b;
+  --popover-fg-light: #1f1b16;
+  --popover-fg-dark: #f2ede4;
+
+  /* Rich bookcloth navy-indigo primary accent */
+  --primary-light: #24476e;
+  --primary-dark: #7db4ec;
+  --primary-fg-light: #fffdf9;
+  --primary-fg-dark: #101924;
+
+  /* Warm linen secondary */
+  --secondary-light: #ece5d8;
+  --secondary-dark: #2a2520;
+  --secondary-fg-light: #2d261e;
+  --secondary-fg-dark: #ece5d8;
+
+  --muted-light: #efe9de;
+  --muted-dark: #26221d;
+  --muted-fg-light: #63584b;
+  --muted-fg-dark: #a99e90;
+
+  /* Warm craft terracotta highlight */
+  --accent-light: #e7ddd0;
+  --accent-dark: #302a23;
+  --accent-fg-light: #1f1b16;
+  --accent-fg-dark: #f2ede4;
+
+  --destructive-light: #b91c1c;
+  --destructive-dark: #ef6461;
+  --destructive-fg-light: #fffdf9;
+  --destructive-fg-dark: #1c0b0a;
+
+  --border-light: #ddd3c3;
+  --border-dark: #342e27;
+  --input-light: #d4c8b6;
+  --input-dark: #3c352d;
+  --ring-light: #24476e;
+  --ring-dark: #7db4ec;
+
+  /* Drafting grid surface */
+  --drafting-bg-light: #fcfaf6;
+  --drafting-bg-dark: #181613;
+  --drafting-grid-light: #e8e0d2;
+  --drafting-grid-dark: #29241e;
+
+  --scrollbar-track-light: #efe9de;
+  --scrollbar-track-dark: #1c1916;
+  --scrollbar-thumb-light: #b5a896;
+  --scrollbar-thumb-dark: #574f45;
+
+  /* Fallback defaults (light) */
+  --background: var(--bg-light);
+  --foreground: var(--fg-light);
+  --card: var(--card-light);
+  --card-foreground: var(--card-fg-light);
+  --popover: var(--popover-light);
+  --popover-foreground: var(--popover-fg-light);
+  --primary: var(--primary-light);
+  --primary-foreground: var(--primary-fg-light);
+  --secondary: var(--secondary-light);
+  --secondary-foreground: var(--secondary-fg-light);
+  --muted: var(--muted-light);
+  --muted-foreground: var(--muted-fg-light);
+  --accent: var(--accent-light);
+  --accent-foreground: var(--accent-fg-light);
+  --destructive: var(--destructive-light);
+  --destructive-foreground: var(--destructive-fg-light);
+  --border: var(--border-light);
+  --input: var(--input-light);
+  --ring: var(--ring-light);
+  --drafting-bg: var(--drafting-bg-light);
+  --drafting-grid: var(--drafting-grid-light);
+  --scrollbar-track: var(--scrollbar-track-light);
+  --scrollbar-thumb: var(--scrollbar-thumb-light);
+
+  --radius: 0.5rem;
+
+  @media (prefers-color-scheme: dark) {
+    --background: var(--bg-dark);
+    --foreground: var(--fg-dark);
+    --card: var(--card-dark);
+    --card-foreground: var(--card-fg-dark);
+    --popover: var(--popover-dark);
+    --popover-foreground: var(--popover-fg-dark);
+    --primary: var(--primary-dark);
+    --primary-foreground: var(--primary-fg-dark);
+    --secondary: var(--secondary-dark);
+    --secondary-foreground: var(--secondary-fg-dark);
+    --muted: var(--muted-dark);
+    --muted-foreground: var(--muted-fg-dark);
+    --accent: var(--accent-dark);
+    --accent-foreground: var(--accent-fg-dark);
+    --destructive: var(--destructive-dark);
+    --destructive-foreground: var(--destructive-fg-dark);
+    --border: var(--border-dark);
+    --input: var(--input-dark);
+    --ring: var(--ring-dark);
+    --drafting-bg: var(--drafting-bg-dark);
+    --drafting-grid: var(--drafting-grid-dark);
+    --scrollbar-track: var(--scrollbar-track-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --background: light-dark(var(--bg-light), var(--bg-dark));
+    --foreground: light-dark(var(--fg-light), var(--fg-dark));
+    --card: light-dark(var(--card-light), var(--card-dark));
+    --card-foreground: light-dark(var(--card-fg-light), var(--card-fg-dark));
+    --popover: light-dark(var(--popover-light), var(--popover-dark));
+    --popover-foreground: light-dark(var(--popover-fg-light), var(--popover-fg-dark));
+    --primary: light-dark(var(--primary-light), var(--primary-dark));
+    --primary-foreground: light-dark(var(--primary-fg-light), var(--primary-fg-dark));
+    --secondary: light-dark(var(--secondary-light), var(--secondary-dark));
+    --secondary-foreground: light-dark(var(--secondary-fg-light), var(--secondary-fg-dark));
+    --muted: light-dark(var(--muted-light), var(--muted-dark));
+    --muted-foreground: light-dark(var(--muted-fg-light), var(--muted-fg-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark));
+    --accent-foreground: light-dark(var(--accent-fg-light), var(--accent-fg-dark));
+    --destructive: light-dark(var(--destructive-light), var(--destructive-dark));
+    --destructive-foreground: light-dark(var(--destructive-fg-light), var(--destructive-fg-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --input: light-dark(var(--input-light), var(--input-dark));
+    --ring: light-dark(var(--ring-light), var(--ring-dark));
+    --drafting-bg: light-dark(var(--drafting-bg-light), var(--drafting-bg-dark));
+    --drafting-grid: light-dark(var(--drafting-grid-light), var(--drafting-grid-dark));
+    --scrollbar-track: light-dark(var(--scrollbar-track-light), var(--scrollbar-track-dark));
+    --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
+  }
+
+  accent-color: var(--primary);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'EB Garamond', Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :where(a:any-link, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Drafting blueprint dot/line grid surface */
+.drafting-surface {
+  background-color: var(--drafting-bg);
+  background-image:
+    linear-gradient(to right, var(--drafting-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--drafting-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Visually hidden utility per accessibility guide */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Scrollbar fallback for browsers without scrollbar-color */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}
