@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_BOOK_PARAMETERS, PAGE_SIZES } from '@/types/bookParams';
 import { UnitConverter } from '@/types/units';
 import { calculateCaseGeometry } from './geometry';
-import { generateInnerTemplatesPdf, planInnerTemplateLayout } from './pdfExport';
+import {
+  generateInnerTemplatesPdf,
+  generateOuterWrapPdf,
+  planInnerTemplateLayout,
+} from './pdfExport';
 
 describe('Inner Envelopes & Spine Liner PDF exporter', () => {
   it('packs default book onto 2 pages on US Letter and A4 with zero clipping', () => {
@@ -60,5 +64,21 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     const { width, height } = firstPage.getSize();
     expect(UnitConverter.pointsToMm(width)).toBeCloseTo(PAGE_SIZES.a4.widthMm, 2);
     expect(UnitConverter.pointsToMm(height)).toBeCloseTo(PAGE_SIZES.a4.heightMm, 2);
+  });
+
+  it('generates exact 1:1 mm Outer Case Wrap PDF for single-piece and 3-piece split modes', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    const singleBytes = await generateOuterWrapPdf(geom, 'single');
+    const singleDoc = await PDFDocument.load(singleBytes);
+    expect(singleDoc.getPageCount()).toBe(1);
+    const singleSize = singleDoc.getPage(0).getSize();
+    // Default WRAP_W = 366 + 6 bleed = 372 mm, WRAP_H = 259 + 6 bleed = 265 mm
+    expect(UnitConverter.pointsToMm(singleSize.width)).toBeCloseTo(372, 2);
+    expect(UnitConverter.pointsToMm(singleSize.height)).toBeCloseTo(265, 2);
+
+    const splitBytes = await generateOuterWrapPdf(geom, 'three-piece');
+    const splitDoc = await PDFDocument.load(splitBytes);
+    expect(splitDoc.getPageCount()).toBe(3);
   });
 });

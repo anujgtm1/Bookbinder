@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { PAGE_SIZES, type PageSizeId } from '@/types/bookParams';
+import { PAGE_SIZES, type PageSizeId, type SplitMode } from '@/types/bookParams';
 import {
   GeometryPrimitives,
   type CaseGeometry,
@@ -609,4 +609,128 @@ export async function generateInnerTemplatesPdf(
 
   const bytes = await pdfDoc.save();
   return { bytes, plan };
+}
+
+/**
+ * Generates an exact 1:1 physical mm structural PDF for the Outer Case Wrap
+ * (1 page for Single-Piece Continuous Wrap; 3 pages for 3-Piece Quarter-Bound Split).
+ */
+export async function generateOuterWrapPdf(
+  geometry: CaseGeometry,
+  splitMode: SplitMode,
+): Promise<Uint8Array> {
+  const { outerWrap, splitPanels, cutList } = geometry;
+  const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
+
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle('Bookbinder — Outer Case Wrap Structural Template (1:1 mm)');
+  pdfDoc.setCreator('Bookbinder Studio');
+
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const cutColor = rgb(0.9, 0.1, 0.1);
+  const guideColor = rgb(0.05, 0.38, 0.9);
+  const bleedColor = rgb(0.0, 0.62, 0.28);
+  const mutedColor = rgb(0.35, 0.35, 0.35);
+
+  if (splitMode === 'three-piece') {
+    for (const panel of splitPanels) {
+      const pageW = panel.widthMm + bleed * 2;
+      const pageH = panel.heightMm + bleed * 2;
+      const page = pdfDoc.addPage([
+        UnitConverter.mmToPoints(pageW),
+        UnitConverter.mmToPoints(pageH),
+      ]);
+      const writer = new PdfMmWriter(page, pageH);
+
+      if (bleed > 0) {
+        writer.drawRect(0.2, 0.2, pageW - 0.4, pageH - 0.4, {
+          borderColor: bleedColor,
+          borderWidthPt: 0.7,
+          dashArray: [4, 2.5],
+        });
+      }
+
+      const shiftedCut = GeometryPrimitives.translatePolygon(panel.cutPolygon, bleed, bleed);
+      writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.9 });
+
+      for (const guide of panel.guideRects) {
+        writer.drawRect(
+          guide.rect.x + bleed,
+          guide.rect.y + bleed,
+          guide.rect.width,
+          guide.rect.height,
+          {
+            borderColor: guideColor,
+            borderWidthPt: 0.7,
+            dashArray: [4, 2.5],
+          },
+        );
+      }
+
+      const cx = pageW / 2;
+      const cy = pageH / 2;
+      writer.drawText(panel.label.toUpperCase(), cx - 32, cy - 3, boldFont, 9, guideColor);
+      writer.drawText(
+        `${roundTo(panel.widthMm, 1)} × ${roundTo(panel.heightMm, 1)} mm • Scale 1:1 mm`,
+        cx - 32,
+        cy + 5,
+        font,
+        7.5,
+        mutedColor,
+      );
+    }
+
+    return pdfDoc.save();
+  }
+
+  // Single-Piece Continuous Wrap
+  const pageW = outerWrap.widthMm + bleed * 2;
+  const pageH = outerWrap.heightMm + bleed * 2;
+  const page = pdfDoc.addPage([UnitConverter.mmToPoints(pageW), UnitConverter.mmToPoints(pageH)]);
+  const writer = new PdfMmWriter(page, pageH);
+
+  if (bleed > 0) {
+    writer.drawRect(0.2, 0.2, pageW - 0.4, pageH - 0.4, {
+      borderColor: bleedColor,
+      borderWidthPt: 0.7,
+      dashArray: [4, 2.5],
+    });
+  }
+
+  const shiftedCut = GeometryPrimitives.translatePolygon(outerWrap.outerCutPolygon, bleed, bleed);
+  writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
+
+  const boardRects = [
+    { label: 'BACK BOARD', rect: outerWrap.backBoardRect },
+    { label: 'SPINE', rect: outerWrap.spineRect },
+    { label: 'FRONT BOARD', rect: outerWrap.frontBoardRect },
+  ];
+  for (const { label, rect } of boardRects) {
+    writer.drawRect(rect.x + bleed, rect.y + bleed, rect.width, rect.height, {
+      borderColor: guideColor,
+      borderWidthPt: 0.75,
+      dashArray: [5, 2.5],
+    });
+    const c = GeometryPrimitives.rectCenter(rect);
+    const dim = `${roundTo(rect.width, 1)} × ${roundTo(rect.height, 1)} mm`;
+    writer.drawText(label, c.x + bleed - 16, c.y + bleed - 3, boldFont, 8.5, guideColor);
+    if (label !== 'SPINE') {
+      writer.drawText(dim, c.x + bleed - 16, c.y + bleed + 4, font, 7.2, mutedColor);
+    }
+  }
+
+  for (const hinge of [outerWrap.leftHingeRect, outerWrap.rightHingeRect]) {
+    writer.drawRect(hinge.x + bleed, hinge.y + bleed, hinge.width, hinge.height, {
+      borderColor: guideColor,
+      borderWidthPt: 0.5,
+      dashArray: [2, 2],
+    });
+  }
+
+  const headerNote = `Outer Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Hinge Spacer ${roundTo(cutList.hingeSpacerMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`;
+  writer.drawText(headerNote, bleed + outerWrap.turnInMm, bleed + outerWrap.turnInMm * 0.6, font, 7.5, mutedColor);
+
+  return pdfDoc.save();
 }
