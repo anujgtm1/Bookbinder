@@ -6,6 +6,7 @@ import { UnitConverter, clampFinite, roundTo } from './units';
 
 export type SpineLayoutPreset = 'inline' | 'stacked';
 export type SpineOrientation = 'top-to-bottom' | 'bottom-to-top';
+export type AuthorOrientation = 'vertical' | 'horizontal';
 export type CutLineExportMode = 'full-cut-miter' | 'bleed-registration';
 
 export type CuratedFontId =
@@ -32,6 +33,8 @@ export interface SpineTypographyConfig {
   author: string;
   layout: SpineLayoutPreset;
   orientation: SpineOrientation;
+  /** Vertical (follows spine direction) vs Horizontal (classic tail-end author block) */
+  authorOrientation: AuthorOrientation;
   fontId: StudioFontId;
   customFontName: string | null;
   /** Desired font size in points (automatically clamped against spine width) */
@@ -67,6 +70,7 @@ export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
     author: '',
     layout: 'inline',
     orientation: 'top-to-bottom',
+    authorOrientation: 'vertical',
     fontId: 'eb-garamond',
     customFontName: null,
     fontSizePt: 18,
@@ -124,6 +128,41 @@ export const CoverStudioModel = {
     return cleanTitle || cleanAuthor;
   },
 
+  /**
+   * Splits a multi-word author name cleanly into balanced horizontal lines
+   * for classic horizontal clothbound spine lettering (e.g. "JULES" / "VERNE").
+   */
+  splitHorizontalAuthorLines(author: string): readonly string[] {
+    const trimmed = author.trim();
+    if (!trimmed) return [];
+    const words = trimmed.split(/\s+/);
+    if (words.length === 1 || trimmed.length <= 7) {
+      return [trimmed];
+    }
+    if (words.length === 2) {
+      return [words[0], words[1]];
+    }
+    // Keep initials/first names together on top line, surname on bottom line
+    return [words.slice(0, -1).join(' '), words[words.length - 1]];
+  },
+
+  /**
+   * Clamps horizontal author font size so the widest line fits comfortably inside
+   * `spineWidthMm - 4.0 mm` without spilling into the 9 mm hinge grooves.
+   */
+  horizontalAuthorFontSizePt(
+    lines: readonly string[],
+    requestedPt: number,
+    spineWidthMm: number,
+  ): number {
+    const longestChars = Math.max(1, ...lines.map((line) => line.length));
+    const usableWidthMm = Math.max(4, spineWidthMm - STUDIO_BOUNDS.spineSafeMarginMm);
+    // Average proportional glyph width ~0.62 em for serif/sans caps
+    const maxMmHeight = usableWidthMm / (longestChars * 0.62);
+    const maxPt = UnitConverter.mmToPoints(maxMmHeight);
+    return roundTo(Math.max(5.5, Math.min(requestedPt, maxPt)), 1);
+  },
+
   serialize(state: CoverStudioState, options?: { includeImageData?: boolean }): CoverStudioState {
     const includeImageData = options?.includeImageData ?? true;
     return {
@@ -162,6 +201,8 @@ export const CoverStudioModel = {
         layout: rawSpine.layout === 'stacked' ? 'stacked' : 'inline',
         orientation:
           rawSpine.orientation === 'bottom-to-top' ? 'bottom-to-top' : 'top-to-bottom',
+        authorOrientation:
+          rawSpine.authorOrientation === 'horizontal' ? 'horizontal' : 'vertical',
         fontId: parseFontId(rawSpine.fontId),
         customFontName: typeof rawSpine.customFontName === 'string' ? rawSpine.customFontName : null,
         fontSizePt: clampFinite(

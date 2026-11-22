@@ -21,6 +21,21 @@ describe('CoverStudioModel', () => {
     expect(CoverStudioModel.formatInlineSpineText('', '')).toBe('');
   });
 
+  it('splits multi-word horizontal author names and clamps font size to spine width', () => {
+    expect(CoverStudioModel.splitHorizontalAuthorLines('JULES VERNE')).toEqual(['JULES', 'VERNE']);
+    expect(CoverStudioModel.splitHorizontalAuthorLines('Ursula K. Le Guin')).toEqual([
+      'Ursula K. Le',
+      'Guin',
+    ]);
+    expect(CoverStudioModel.splitHorizontalAuthorLines('Tolkien')).toEqual(['Tolkien']);
+    expect(CoverStudioModel.splitHorizontalAuthorLines('   ')).toEqual([]);
+
+    // On a 26 mm spine (22 mm usable), "HERBERT" (7 chars) fits around ~14.4 pt max
+    const clamped = CoverStudioModel.horizontalAuthorFontSizePt(['FRANK', 'HERBERT'], 24, 26);
+    expect(clamped).toBeLessThan(24);
+    expect(clamped).toBeGreaterThanOrEqual(5.5);
+  });
+
   it('serializes and deserializes multi-layer cover studio state with clamping and validation', () => {
     const raw = {
       layers: [
