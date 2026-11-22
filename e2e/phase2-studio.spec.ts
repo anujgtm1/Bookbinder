@@ -58,7 +58,7 @@ function createSolidPngBuffer(width: number, height: number, r: number, g: numbe
   ]);
 }
 
-test.describe('Phase 2 — Cover & Spine Styler', () => {
+test.describe('Phase 2 — Interactive Cover & Spine Styler', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
@@ -67,20 +67,73 @@ test.describe('Phase 2 — Cover & Spine Styler', () => {
     await expect(page.getByTestId('cover-styler')).toBeVisible();
   });
 
-  test('uploads cover artwork, samples color with eyedropper, and styles spine typography', async ({
+  test('uploads multiple images, drags and resizes interactively, samples color with eyedropper, and styles spine typography', async ({
     page,
   }) => {
-    // Upload a crimson (#c82832) PNG cover image
-    const pngBuffer = createSolidPngBuffer(64, 96, 200, 40, 50);
+    const crimsonPng = createSolidPngBuffer(64, 96, 200, 40, 50);
+    const forestPng = createSolidPngBuffer(64, 96, 30, 110, 60);
+    const goldPng = createSolidPngBuffer(40, 40, 215, 175, 55);
+
+    // Upload 1st image (placed on Front Cover), then 2nd (Back), then 3rd (Spine)
     await page.getByTestId('studio-upload-image-input').setInputFiles({
-      name: 'crimson-cover.png',
+      name: 'crimson-front.png',
       mimeType: 'image/png',
-      buffer: pngBuffer,
+      buffer: crimsonPng,
+    });
+    await expect(page.getByTestId('studio-layer-0')).toBeVisible();
+
+    await page.getByTestId('studio-upload-image-input').setInputFiles({
+      name: 'forest-back.png',
+      mimeType: 'image/png',
+      buffer: forestPng,
+    });
+    await page.getByTestId('studio-upload-image-input').setInputFiles({
+      name: 'gold-emblem.png',
+      mimeType: 'image/png',
+      buffer: goldPng,
     });
 
-    await expect(page.getByTestId('studio-image-front')).toBeVisible();
+    await expect(page.getByTestId('layer-count-badge')).toHaveText('3 images');
+    await expect(page.getByTestId('studio-layer-2')).toBeVisible();
 
-    // Activate Eyedropper (Spine + Back) and click on the right side (front cover artwork)
+    // Drag the selected 3rd layer (gold emblem) interactively across the canvas
+    const layer2 = page.getByTestId('studio-layer-2');
+    await layer2.scrollIntoViewIfNeeded();
+    const initialX = Number(await layer2.getAttribute('x'));
+    const layerBox = await layer2.boundingBox();
+    expect(layerBox).not.toBeNull();
+
+    await page.mouse.move(layerBox!.x + layerBox!.width / 2, layerBox!.y + layerBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      layerBox!.x + layerBox!.width / 2 + 40,
+      layerBox!.y + layerBox!.height / 2 + 20,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+
+    const movedX = Number(await layer2.getAttribute('x'));
+    expect(movedX).toBeGreaterThan(initialX + 5);
+
+    // Resize selected layer via SE corner handle
+    const widthBeforeResize = Number(await layer2.getAttribute('width'));
+    const seHandle = page.getByTestId('resize-handle-se');
+    await seHandle.hover();
+    const seBox = await seHandle.boundingBox();
+    expect(seBox).not.toBeNull();
+    await page.mouse.down();
+    await page.mouse.move(seBox!.x + seBox!.width / 2 + 40, seBox!.y + seBox!.height / 2 + 40, {
+      steps: 5,
+    });
+    await page.mouse.up();
+
+    const widthAfterResize = Number(await layer2.getAttribute('width'));
+    expect(widthAfterResize).toBeGreaterThan(widthBeforeResize + 2);
+
+    // Select 1st layer (crimson) and Quick-Fit to Front, then sample its crimson color via Eyedropper
+    await page.getByTestId('layer-select-0').click();
+    await page.getByTestId('quick-fit-front').click();
+
     await page.getByTestId('studio-eyedropper-both-btn').click();
     await expect(page.getByTestId('eyedropper-active-banner')).toBeVisible();
 
@@ -88,9 +141,8 @@ test.describe('Phase 2 — Cover & Spine Styler', () => {
     await previewSvg.scrollIntoViewIfNeeded();
     const box = await previewSvg.boundingBox();
     expect(box).not.toBeNull();
-    await previewSvg.click({ position: { x: box!.width * 0.8, y: box!.height * 0.5 } });
+    await previewSvg.click({ position: { x: box!.width * 0.85, y: box!.height * 0.5 } });
 
-    // Spine and Back fills should now match sampled crimson #c82832
     await expect(page.getByTestId('studio-spine-fill')).toHaveAttribute('fill', '#c82832');
     await expect(page.getByTestId('studio-back-fill')).toHaveAttribute('fill', '#c82832');
 
@@ -106,8 +158,6 @@ test.describe('Phase 2 — Cover & Spine Styler', () => {
 
     await page.getByTestId('studio-spine-orientation-select').click();
     await page.getByRole('option', { name: /Bottom-to-Top/i }).click();
-
-    await page.getByTestId('studio-full-wrap-toggle').click();
   });
 
   test('exports 300 DPI Print-Ready PDF, 300 DPI Affinity PNG, and 1:1 mm Affinity SVG', async ({
