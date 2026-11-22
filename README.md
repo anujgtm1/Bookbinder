@@ -75,6 +75,10 @@ docs/
 - [GitHub Pages Deployment Guide](./docs/DEPLOYMENT.md)
 - [Affinity Connector Research](./docs/RESEARCH.md)
 
+## Development Note
+
+This codebase was generated using AI following a **spec-first** workflow: design and geometry requirements are authored and updated in [docs/SPEC.md](./docs/SPEC.md) in standalone spec commits prior to implementation, with every feature backed by Vitest unit tests and Playwright end-to-end behavioral tests.
+
 ## License
 
 [MIT](./LICENSE)
