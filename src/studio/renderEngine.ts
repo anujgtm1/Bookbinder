@@ -7,12 +7,8 @@ import {
   type Point2D,
   type Rect2D,
 } from '@/types/geometry';
-import {
-  CoverStudioModel,
-  type CoverImagePlacement,
-  type CoverImageSlot,
-  type CoverStudioState,
-} from '@/types/studio';
+import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
+import type { LayerClipZone, QuickFitTarget } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import {
   getCuratedFont,
@@ -99,60 +95,36 @@ export function computeStudioCanvasSpec(
   };
 }
 
-export function computeImageDrawRect(
-  zoneRect: Rect2D,
-  image: CoverImagePlacement,
-): Rect2D | null {
-  if (!image.dataUrl || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
-    return null;
-  }
-  const coverScale = Math.max(
-    zoneRect.width / image.naturalWidth,
-    zoneRect.height / image.naturalHeight,
-  );
-  const drawW = image.naturalWidth * coverScale * image.zoom;
-  const drawH = image.naturalHeight * coverScale * image.zoom;
-  return {
-    x: zoneRect.x + (zoneRect.width - drawW) / 2 + image.offsetXMm,
-    y: zoneRect.y + (zoneRect.height - drawH) / 2 + image.offsetYMm,
-    width: drawW,
-    height: drawH,
-  };
-}
-
-export interface ActiveImageLayer {
-  readonly slot: CoverImageSlot;
-  readonly zoneRect: Rect2D;
-  readonly drawRect: Rect2D;
-  readonly image: CoverImagePlacement;
-}
-
-export function computeActiveImageLayers(
+export function resolveZoneClipRect(
   spec: StudioCanvasSpec,
-  studio: CoverStudioState,
-): readonly ActiveImageLayer[] {
-  if (studio.imageMode === 'full-wrap') {
-    const drawRect = computeImageDrawRect(spec.fullWrapRect, studio.images.fullWrap);
-    return drawRect
-      ? [{ slot: 'fullWrap', zoneRect: spec.fullWrapRect, drawRect, image: studio.images.fullWrap }]
-      : [];
+  clipZone: LayerClipZone,
+): Rect2D {
+  switch (clipZone) {
+    case 'front':
+      return spec.frontZoneRect;
+    case 'spine':
+      return spec.spineZoneRect;
+    case 'back':
+      return spec.backZoneRect;
+    case 'none':
+      return spec.fullWrapRect;
   }
+}
 
-  const candidates: readonly { slot: CoverImageSlot; zoneRect: Rect2D; image: CoverImagePlacement }[] =
-    [
-      { slot: 'back', zoneRect: spec.backZoneRect, image: studio.images.back },
-      { slot: 'spine', zoneRect: spec.spineZoneRect, image: studio.images.spine },
-      { slot: 'front', zoneRect: spec.frontZoneRect, image: studio.images.front },
-    ];
-
-  const layers: ActiveImageLayer[] = [];
-  for (const c of candidates) {
-    const drawRect = computeImageDrawRect(c.zoneRect, c.image);
-    if (drawRect) {
-      layers.push({ slot: c.slot, zoneRect: c.zoneRect, drawRect, image: c.image });
-    }
+export function resolveQuickFitRect(
+  spec: StudioCanvasSpec,
+  target: QuickFitTarget,
+): Rect2D {
+  switch (target) {
+    case 'front':
+      return spec.frontZoneRect;
+    case 'spine':
+      return spec.spineZoneRect;
+    case 'back':
+      return spec.backZoneRect;
+    case 'fullWrap':
+      return spec.fullWrapRect;
   }
-  return layers;
 }
 
 export function computeSpineTextPlacements(
@@ -270,26 +242,25 @@ export async function renderCoverArtworkCanvas(
     toPx(spec.frontZoneRect.height),
   );
 
-  // 2. Uploaded cover images (per-zone back/spine/front OR full-wrap panoramic)
-  const imageLayers = computeActiveImageLayers(spec, studio);
-  for (const layer of imageLayers) {
-    if (!layer.image.dataUrl) continue;
-    const img = await loadHtmlImage(layer.image.dataUrl);
+  // 2. Uploaded free-form artwork layers rendered bottom-to-top
+  for (const layer of studio.layers) {
+    const clipRect = resolveZoneClipRect(spec, layer.clipZone);
+    const img = await loadHtmlImage(layer.dataUrl);
     ctx.save();
     ctx.beginPath();
     ctx.rect(
-      toPx(layer.zoneRect.x),
-      toPx(layer.zoneRect.y),
-      toPx(layer.zoneRect.width),
-      toPx(layer.zoneRect.height),
+      toPx(clipRect.x),
+      toPx(clipRect.y),
+      toPx(clipRect.width),
+      toPx(clipRect.height),
     );
     ctx.clip();
     ctx.drawImage(
       img,
-      toPx(layer.drawRect.x),
-      toPx(layer.drawRect.y),
-      toPx(layer.drawRect.width),
-      toPx(layer.drawRect.height),
+      toPx(layer.xMm),
+      toPx(layer.yMm),
+      toPx(layer.widthMm),
+      toPx(layer.heightMm),
     );
     ctx.restore();
   }
@@ -397,7 +368,7 @@ export async function generatePrintReadyRollPdf(
 
   // 1. Background & Artwork layer
   if (
-    CoverStudioModel.hasAnyActiveImage(studio) &&
+    studio.layers.length > 0 &&
     !options?.skipCanvasRaster &&
     typeof document !== 'undefined'
   ) {

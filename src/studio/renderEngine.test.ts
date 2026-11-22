@@ -5,13 +5,13 @@ import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
 import { CoverStudioModel } from '@/types/studio';
 import { UnitConverter } from '@/types/units';
 import {
-  computeActiveImageLayers,
-  computeImageDrawRect,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   generateAffinityCoverSvg,
   generatePrintReadyRollPdf,
   hexToRgb01,
+  resolveQuickFitRect,
+  resolveZoneClipRect,
 } from './renderEngine';
 
 describe('studio renderEngine', () => {
@@ -25,86 +25,24 @@ describe('studio renderEngine', () => {
     expect(spec.pixelWidth).toBe(UnitConverter.mmToPixels(372, 300));
     expect(spec.pixelHeight).toBe(UnitConverter.mmToPixels(265, 300));
 
-    // Zones partition totalWidthMm contiguously
     expect(
       spec.backZoneRect.width + spec.spineZoneRect.width + spec.frontZoneRect.width,
     ).toBeCloseTo(spec.totalWidthMm, 5);
   });
 
-  it('computes cover-fit image draw rect with pan and zoom', () => {
-    const zone = { x: 200, y: 0, width: 160, height: 265 };
-    const rect = computeImageDrawRect(zone, {
-      dataUrl: 'data:image/png;base64,abc',
-      fileName: 'cover.png',
-      naturalWidth: 1000,
-      naturalHeight: 1000,
-      zoom: 1.5,
-      offsetXMm: 10,
-      offsetYMm: -5,
-    });
-
-    expect(rect).not.toBeNull();
-    // Square image covering 160 x 265 => baseScale = 265 / 1000 => 265 * 1.5 = 397.5 mm square
-    expect(rect!.width).toBeCloseTo(397.5, 4);
-    expect(rect!.height).toBeCloseTo(397.5, 4);
-    expect(rect!.x).toBeCloseTo(200 + (160 - 397.5) / 2 + 10, 4);
-    expect(rect!.y).toBeCloseTo((265 - 397.5) / 2 - 5, 4);
-
-    expect(
-      computeImageDrawRect(zone, {
-        dataUrl: null,
-        fileName: null,
-        naturalWidth: 0,
-        naturalHeight: 0,
-        zoom: 1,
-        offsetXMm: 0,
-        offsetYMm: 0,
-      }),
-    ).toBeNull();
-  });
-
-  it('computes independent active image layers for back, spine, and front zones vs full-wrap mode', () => {
+  it('resolves clip rects and quick-fit rects for every zone cleanly', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const spec = computeStudioCanvasSpec(geom, 300);
-    const base = CoverStudioModel.createDefault();
-    const img = (name: string) => ({
-      dataUrl: `data:image/png;base64,${name}`,
-      fileName: `${name}.png`,
-      naturalWidth: 600,
-      naturalHeight: 900,
-      zoom: 1,
-      offsetXMm: 0,
-      offsetYMm: 0,
-    });
 
-    const threeZone = {
-      ...base,
-      imageMode: 'per-zone' as const,
-      images: {
-        ...base.images,
-        front: img('front'),
-        spine: img('spine'),
-        back: img('back'),
-      },
-    };
-    const perZoneLayers = computeActiveImageLayers(spec, threeZone);
-    expect(perZoneLayers.map((l) => l.slot)).toEqual(['back', 'spine', 'front']);
-    expect(perZoneLayers[0].zoneRect).toEqual(spec.backZoneRect);
-    expect(perZoneLayers[1].zoneRect).toEqual(spec.spineZoneRect);
-    expect(perZoneLayers[2].zoneRect).toEqual(spec.frontZoneRect);
+    expect(resolveZoneClipRect(spec, 'front')).toEqual(spec.frontZoneRect);
+    expect(resolveZoneClipRect(spec, 'spine')).toEqual(spec.spineZoneRect);
+    expect(resolveZoneClipRect(spec, 'back')).toEqual(spec.backZoneRect);
+    expect(resolveZoneClipRect(spec, 'none')).toEqual(spec.fullWrapRect);
 
-    const fullWrap = {
-      ...base,
-      imageMode: 'full-wrap' as const,
-      images: {
-        ...base.images,
-        fullWrap: img('panoramic'),
-      },
-    };
-    const fullLayers = computeActiveImageLayers(spec, fullWrap);
-    expect(fullLayers).toHaveLength(1);
-    expect(fullLayers[0].slot).toBe('fullWrap');
-    expect(fullLayers[0].zoneRect).toEqual(spec.fullWrapRect);
+    expect(resolveQuickFitRect(spec, 'front')).toEqual(spec.frontZoneRect);
+    expect(resolveQuickFitRect(spec, 'spine')).toEqual(spec.spineZoneRect);
+    expect(resolveQuickFitRect(spec, 'back')).toEqual(spec.backZoneRect);
+    expect(resolveQuickFitRect(spec, 'fullWrap')).toEqual(spec.fullWrapRect);
   });
 
   it('computes inline and stacked spine typography placements with font clamping and optical nudge', () => {

@@ -1,5 +1,15 @@
-import { ImagePlus, Pipette, RotateCcw, Trash2, Upload } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ImagePlus,
+  Minus,
+  Pipette,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { useRef } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -11,202 +21,251 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  COVER_ZONES,
-  CoverStudioModel,
-  STUDIO_BOUNDS,
-  type CoverImagePlacement,
-  type CoverImageSlot,
-  type CoverStudioState,
-  type CoverZoneId,
-  type CutLineExportMode,
-} from '@/types/studio';
+import type { CoverStudioState, CutLineExportMode } from '@/types/studio';
+import type {
+  CoverImageLayer,
+  LayerClipZone,
+  QuickFitTarget,
+} from '@/types/studioLayer';
+import { roundTo } from '@/types/units';
 
 export type EyedropperTarget = 'spine' | 'back' | 'both' | null;
 
 export interface ArtworkControlsCardProps {
   readonly studio: CoverStudioState;
-  readonly activeZone: CoverZoneId;
+  readonly selectedLayerId: string | null;
   readonly eyedropperTarget: EyedropperTarget;
-  readonly onActiveZoneChange: (zone: CoverZoneId) => void;
+  readonly onSelectLayer: (id: string | null) => void;
+  readonly onAddImageFiles: (files: readonly File[]) => void;
+  readonly onQuickFitLayer: (id: string, target: QuickFitTarget) => void;
+  readonly onSetLayerClip: (id: string, clipZone: LayerClipZone) => void;
+  readonly onScaleLayer: (id: string, factor: number) => void;
+  readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
+  readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
-  readonly onUpdateImageSlot: (slot: CoverImageSlot, patch: Partial<CoverImagePlacement>) => void;
-  readonly onImageFileSelected: (slot: CoverImageSlot, file: File) => void;
   readonly onToggleEyedropper: (target: Exclude<EyedropperTarget, null>) => void;
 }
 
-const SLOT_LABELS: Readonly<Record<CoverImageSlot, string>> = {
-  front: 'Front Cover',
-  spine: 'Spine',
-  back: 'Back Cover',
-  fullWrap: 'Full-Wrap Panoramic',
-};
+const QUICK_FIT_OPTIONS: readonly { readonly id: QuickFitTarget; readonly label: string }[] = [
+  { id: 'front', label: 'Fit Front' },
+  { id: 'spine', label: 'Fit Spine' },
+  { id: 'back', label: 'Fit Back' },
+  { id: 'fullWrap', label: 'Full Wrap' },
+];
 
 export function ArtworkControlsCard({
   studio,
-  activeZone,
+  selectedLayerId,
   eyedropperTarget,
-  onActiveZoneChange,
+  onSelectLayer,
+  onAddImageFiles,
+  onQuickFitLayer,
+  onSetLayerClip,
+  onScaleLayer,
+  onReorderLayer,
+  onDeleteLayer,
   onUpdateStudio,
-  onUpdateImageSlot,
-  onImageFileSelected,
   onToggleEyedropper,
 }: ArtworkControlsCardProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  const activeSlot: CoverImageSlot = studio.imageMode === 'full-wrap' ? 'fullWrap' : activeZone;
-  const activeImage = studio.images[activeSlot];
-  const slotLabel = SLOT_LABELS[activeSlot];
+  const selectedLayer: CoverImageLayer | null =
+    studio.layers.find((l) => l.id === selectedLayerId) ?? null;
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 font-serif text-base">
-          <ImagePlus className="h-4 w-4 text-primary" aria-hidden="true" />
-          Cover Artwork &amp; Color Fill
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 font-serif text-base">
+            <ImagePlus className="h-4 w-4 text-primary" aria-hidden="true" />
+            Artwork Layers &amp; Color Fill
+          </CardTitle>
+          <Badge variant="outline" className="font-mono text-[11px]" data-testid="layer-count-badge">
+            {studio.layers.length} {studio.layers.length === 1 ? 'image' : 'images'}
+          </Badge>
+        </div>
       </CardHeader>
+
       <CardContent className="space-y-4">
-        {/* Full-Wrap Panoramic Mode Toggle */}
-        <div className="flex items-center justify-between rounded-md border border-border bg-secondary/35 p-2.5">
-          <div>
-            <Label htmlFor="full-wrap-mode-toggle">Full-Wrap Panoramic Mode</Label>
-            <p className="text-[11px] text-muted-foreground">
-              {studio.imageMode === 'full-wrap'
-                ? 'One wide image spans Back + Spine + Front + Turn-ins'
-                : 'Upload separate images for Front, Spine, and Back covers'}
-            </p>
-          </div>
-          <Switch
-            id="full-wrap-mode-toggle"
-            data-testid="studio-full-wrap-toggle"
-            checked={studio.imageMode === 'full-wrap'}
-            onCheckedChange={(checked) =>
-              onUpdateStudio({ imageMode: checked ? 'full-wrap' : 'per-zone' })
-            }
+        {/* Upload / Add Images */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => imageInputRef.current?.click()}
+            data-testid="studio-upload-image-btn"
+          >
+            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+            Add Images
+          </Button>
+          <span className="text-[11px] text-muted-foreground">
+            Upload as many as you like &amp; drag freely on the book
+          </span>
+          <input
+            ref={imageInputRef}
+            type="file"
+            multiple
+            accept="image/png,image/jpeg,image/webp"
+            className="visually-hidden"
+            aria-label="Add cover artwork images"
+            data-testid="studio-upload-image-input"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              if (files.length > 0) {
+                onAddImageFiles(files);
+                e.target.value = '';
+              }
+            }}
           />
         </div>
 
-        {/* Per-Zone Image Slot Selector (Front / Spine / Back) */}
-        {studio.imageMode === 'per-zone' && (
-          <div className="space-y-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Artwork Zone
-            </span>
-            <Tabs
-              value={activeZone}
-              onValueChange={(val) => onActiveZoneChange(val as CoverZoneId)}
-            >
-              <TabsList className="grid w-full grid-cols-3">
-                {COVER_ZONES.map((zone) => {
-                  const hasImg = studio.images[zone.id].dataUrl !== null;
-                  return (
-                    <TabsTrigger
-                      key={zone.id}
-                      value={zone.id}
-                      data-testid={`studio-zone-tab-${zone.id}`}
+        {/* Layer Stack List (top-most layer shown first) */}
+        {studio.layers.length > 0 && (
+          <ul
+            aria-label="Uploaded artwork layers"
+            data-testid="studio-layer-list"
+            className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-border bg-secondary/25 p-1.5"
+          >
+            {[...studio.layers].reverse().map((layer, revIdx) => {
+              const actualIdx = studio.layers.length - 1 - revIdx;
+              const isSelected = layer.id === selectedLayerId;
+              return (
+                <li
+                  key={layer.id}
+                  className={`flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-xs transition-colors ${
+                    isSelected
+                      ? 'bg-primary/12 text-foreground ring-1 ring-primary/40'
+                      : 'hover:bg-accent/60'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelectLayer(layer.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
+                    data-testid={`layer-select-${actualIdx}`}
+                  >
+                    <img
+                      src={layer.dataUrl}
+                      alt=""
+                      className="h-6 w-6 shrink-0 rounded-xs border border-border object-cover"
+                    />
+                    <span className="truncate font-medium">{layer.fileName}</span>
+                  </button>
+
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={actualIdx === studio.layers.length - 1}
+                      aria-label={`Bring ${layer.fileName} forward`}
+                      onClick={() => onReorderLayer(layer.id, 'forward')}
                     >
-                      <span>{zone.label}</span>
-                      {hasImg && (
-                        <span
-                          className="h-1.5 w-1.5 rounded-full bg-primary"
-                          aria-label={`${zone.label} image loaded`}
-                        />
-                      )}
-                    </TabsTrigger>
-                  );
-                })}
-              </TabsList>
-            </Tabs>
-          </div>
+                      <ArrowUp className="h-3 w-3" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={actualIdx === 0}
+                      aria-label={`Send ${layer.fileName} backward`}
+                      onClick={() => onReorderLayer(layer.id, 'backward')}
+                    >
+                      <ArrowDown className="h-3 w-3" aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive"
+                      aria-label={`Remove ${layer.fileName}`}
+                      data-testid={`layer-delete-${actualIdx}`}
+                      onClick={() => onDeleteLayer(layer.id)}
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         )}
 
-        {/* Active Slot Upload / Center / Remove */}
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => imageInputRef.current?.click()}
-              data-testid="studio-upload-image-btn"
-            >
-              <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-              Upload {slotLabel} Image
-            </Button>
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="visually-hidden"
-              aria-label={`Upload ${slotLabel} artwork image`}
-              data-testid="studio-upload-image-input"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  onImageFileSelected(activeSlot, file);
-                  e.target.value = '';
-                }
-              }}
-            />
-            {activeImage.dataUrl && (
-              <>
+        {/* Selected Image Quick-Fit, Clip Mask & Scale Controls */}
+        {selectedLayer && (
+          <div
+            className="space-y-2.5 rounded-md border border-primary/30 bg-primary/5 p-2.5"
+            data-testid="selected-layer-controls"
+          >
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="truncate font-semibold text-foreground">
+                Selected: {selectedLayer.fileName}
+              </span>
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                {roundTo(selectedLayer.widthMm, 1)} × {roundTo(selectedLayer.heightMm, 1)} mm
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {QUICK_FIT_OPTIONS.map((opt) => (
                 <Button
-                  variant="ghost"
+                  key={opt.id}
+                  variant="outline"
                   size="sm"
-                  onClick={() =>
-                    onUpdateImageSlot(activeSlot, { zoom: 1, offsetXMm: 0, offsetYMm: 0 })
-                  }
-                  data-testid="studio-reset-framing-btn"
+                  className="h-7 px-2 text-xs"
+                  data-testid={`quick-fit-${opt.id}`}
+                  onClick={() => onQuickFitLayer(selectedLayer.id, opt.id)}
                 >
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                  Center
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-[1fr_auto] items-end gap-2.5">
+              <div className="space-y-1">
+                <Label htmlFor="layer-clip-select">Clip Mask</Label>
+                <Select
+                  value={selectedLayer.clipZone}
+                  onValueChange={(val) =>
+                    onSetLayerClip(selectedLayer.id, val as LayerClipZone)
+                  }
+                >
+                  <SelectTrigger id="layer-clip-select" data-testid="layer-clip-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (Free across entire wrap)</SelectItem>
+                    <SelectItem value="front">Clip to Front Cover</SelectItem>
+                    <SelectItem value="spine">Clip to Spine &amp; Hinges</SelectItem>
+                    <SelectItem value="back">Clip to Back Cover</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label="Scale selected image down"
+                  data-testid="layer-scale-down-btn"
+                  onClick={() => onScaleLayer(selectedLayer.id, 0.9)}
+                >
+                  <Minus className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive"
-                  onClick={() =>
-                    onUpdateImageSlot(activeSlot, CoverStudioModel.createEmptyImage())
-                  }
-                  data-testid="studio-clear-image-btn"
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label="Scale selected image up"
+                  data-testid="layer-scale-up-btn"
+                  onClick={() => onScaleLayer(selectedLayer.id, 1.1)}
                 >
-                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  Remove
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>
-              </>
-            )}
+              </div>
+            </div>
           </div>
-
-          {activeImage.fileName && (
-            <p className="truncate font-mono text-[11px] text-muted-foreground">
-              {slotLabel}: {activeImage.fileName} ({activeImage.naturalWidth}×
-              {activeImage.naturalHeight}px)
-            </p>
-          )}
-        </div>
-
-        {/* Active Image Zoom Slider */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="studio-image-zoom">{slotLabel} Zoom</Label>
-            <span className="font-mono text-xs text-muted-foreground">
-              {Math.round(activeImage.zoom * 100)}%
-            </span>
-          </div>
-          <Slider
-            id="studio-image-zoom"
-            aria-label={`${slotLabel} artwork zoom`}
-            disabled={!activeImage.dataUrl}
-            min={STUDIO_BOUNDS.zoom.min}
-            max={STUDIO_BOUNDS.zoom.max}
-            step={0.05}
-            value={[activeImage.zoom]}
-            onValueChange={([zoom]) => onUpdateImageSlot(activeSlot, { zoom })}
-          />
-        </div>
+        )}
 
         <Separator />
 
@@ -214,7 +273,7 @@ export function ArtworkControlsCard({
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Zone Background Colors
+              Base Background Colors
             </span>
             <Button
               variant={eyedropperTarget === 'both' ? 'default' : 'outline'}

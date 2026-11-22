@@ -1,5 +1,5 @@
 import { FileCode2, FileImage, FileText, Pipette } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,17 +10,20 @@ import {
   triggerBytesDownload,
   triggerTextDownload,
 } from '@/core/storage';
-import { GeometryPrimitives, type CaseGeometry } from '@/types/geometry';
+import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import {
   CoverStudioModel,
-  STUDIO_BOUNDS,
-  type CoverImagePlacement,
-  type CoverImageSlot,
   type CoverStudioState,
-  type CoverZoneId,
   type SpineTypographyConfig,
 } from '@/types/studio';
-import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
+import {
+  CoverImageLayerModel,
+  type CoverImageLayer,
+  type LayerClipZone,
+  type QuickFitTarget,
+  type ResizeCorner,
+} from '@/types/studioLayer';
+import { PRINT_DPI, UnitConverter } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
 import {
@@ -29,13 +32,14 @@ import {
   type CustomFontAsset,
 } from './fonts';
 import {
-  computeActiveImageLayers,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   exportCoverPng300Dpi,
   generateAffinityCoverSvg,
   generatePrintReadyRollPdf,
   renderCoverArtworkCanvas,
+  resolveQuickFitRect,
+  resolveZoneClipRect,
 } from './renderEngine';
 
 export interface CoverStylerProps {
@@ -44,6 +48,29 @@ export interface CoverStylerProps {
   readonly onChange: (next: CoverStudioState) => void;
   readonly onStatusMessage: (message: string) => void;
 }
+
+type DragInteraction =
+  | { readonly mode: 'none' }
+  | {
+      readonly mode: 'move';
+      readonly layerId: string;
+      readonly startXMm: number;
+      readonly startYMm: number;
+      readonly origLayer: CoverImageLayer;
+    }
+  | {
+      readonly mode: 'resize';
+      readonly layerId: string;
+      readonly corner: ResizeCorner;
+      readonly origLayer: CoverImageLayer;
+    };
+
+const CORNER_CURSORS: Readonly<Record<ResizeCorner, string>> = {
+  nw: 'nwse-resize',
+  se: 'nwse-resize',
+  ne: 'nesw-resize',
+  sw: 'nesw-resize',
+};
 
 function rgbToHex(r: number, g: number, b: number): string {
   return (
@@ -75,7 +102,9 @@ export function CoverStyler({
   onChange,
   onStatusMessage,
 }: CoverStylerProps) {
-  const [activeZone, setActiveZone] = useState<CoverZoneId>('front');
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
+    () => studio.layers[studio.layers.length - 1]?.id ?? null,
+  );
   const [customFont, setCustomFont] = useState<CustomFontAsset | null>(null);
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
@@ -83,26 +112,9 @@ export function CoverStyler({
   const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{
-    active: boolean;
-    slot: CoverImageSlot;
-    startClientX: number;
-    startClientY: number;
-    origOffsetX: number;
-    origOffsetY: number;
-    mmPerPx: number;
-  }>({
-    active: false,
-    slot: 'front',
-    startClientX: 0,
-    startClientY: 0,
-    origOffsetX: 0,
-    origOffsetY: 0,
-    mmPerPx: 1,
-  });
+  const dragRef = useRef<DragInteraction>({ mode: 'none' });
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
-  const imageLayers = useMemo(() => computeActiveImageLayers(spec, studio), [spec, studio]);
   const spinePlacements = useMemo(
     () => computeSpineTextPlacements(geometry, studio),
     [geometry, studio],
@@ -113,8 +125,11 @@ export function CoverStyler({
     geometry.outerWrap.spineRect.width,
   );
   const activeFontFamily = resolveFontCssFamily(studio.spineText.fontId, customFont);
-  const activeSlot: CoverImageSlot = studio.imageMode === 'full-wrap' ? 'fullWrap' : activeZone;
-  const hasAnyImage = CoverStudioModel.hasAnyActiveImage(studio);
+
+  const selectedLayer = useMemo(
+    () => studio.layers.find((l) => l.id === selectedLayerId) ?? null,
+    [studio.layers, selectedLayerId],
+  );
 
   const shiftedCutPolygon = useMemo(
     () =>
@@ -129,16 +144,41 @@ export function CoverStyler({
   const updateStudio = (patch: Partial<CoverStudioState>) => onChange({ ...studio, ...patch });
   const updateSpineText = (patch: Partial<SpineTypographyConfig>) =>
     onChange({ ...studio, spineText: { ...studio.spineText, ...patch } });
-  const updateImageSlot = (slot: CoverImageSlot, patch: Partial<CoverImagePlacement>) =>
+  const updateLayer = (id: string, updater: (layer: CoverImageLayer) => CoverImageLayer) => {
     onChange({
       ...studio,
-      images: {
-        ...studio.images,
-        [slot]: { ...studio.images[slot], ...patch },
-      },
+      layers: studio.layers.map((layer) => (layer.id === id ? updater(layer) : layer)),
     });
+  };
 
-  const clientPointToSvgMm = (clientX: number, clientY: number): { xMm: number; yMm: number } | null => {
+  // Delete selected layer via Backspace/Delete key when focus is not inside a text control
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!selectedLayerId) return;
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      const remaining = studio.layers.filter((l) => l.id !== selectedLayerId);
+      onChange({ ...studio, layers: remaining });
+      setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedLayerId, studio, onChange]);
+
+  const clientPointToSvgMm = (
+    clientX: number,
+    clientY: number,
+  ): { xMm: number; yMm: number } | null => {
     const svgEl = svgRef.current;
     if (!svgEl) return null;
     const ctm = typeof svgEl.getScreenCTM === 'function' ? svgEl.getScreenCTM() : null;
@@ -153,38 +193,76 @@ export function CoverStyler({
     };
   };
 
-  const detectZoneAtClientPoint = (clientX: number, clientY: number): CoverZoneId => {
-    const pt = clientPointToSvgMm(clientX, clientY);
-    if (!pt) return activeZone;
-    if (pt.xMm < spec.spineZoneRect.x) return 'back';
-    if (pt.xMm < spec.frontZoneRect.x) return 'spine';
-    return 'front';
+  const defaultPlacementRectForDrop = (dropPoint?: { xMm: number; yMm: number }): Rect2D => {
+    if (dropPoint) {
+      if (dropPoint.xMm < spec.spineZoneRect.x) return spec.backZoneRect;
+      if (dropPoint.xMm < spec.frontZoneRect.x) return spec.spineZoneRect;
+      return spec.frontZoneRect;
+    }
+    // Smart sequential default when clicking "Add Images": Front -> Back -> Spine -> Center
+    const count = studio.layers.length;
+    if (count === 0) return spec.frontZoneRect;
+    if (count === 1) return spec.backZoneRect;
+    if (count === 2) return spec.spineZoneRect;
+    return {
+      x: spec.totalWidthMm * 0.25,
+      y: spec.totalHeightMm * 0.2,
+      width: spec.totalWidthMm * 0.5,
+      height: spec.totalHeightMm * 0.6,
+    };
   };
 
-  const handleImageUpload = async (slot: CoverImageSlot, file: File) => {
-    if (!/^image\/(png|jpeg|webp)$/i.test(file.type) && !/\.(png|jpe?g|webp)$/i.test(file.name)) {
-      onStatusMessage('Please upload a PNG, JPG, or WEBP cover image.');
+  const handleAddImageFiles = async (
+    files: readonly File[],
+    dropPoint?: { xMm: number; yMm: number },
+  ) => {
+    const validFiles = files.filter(
+      (f) => /^image\/(png|jpeg|webp)$/i.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name),
+    );
+    if (validFiles.length === 0) {
+      onStatusMessage('Please upload PNG, JPG, or WEBP image files.');
       return;
     }
-    try {
-      const decoded = await readImageFile(file);
-      updateImageSlot(slot, {
-        dataUrl: decoded.dataUrl,
-        fileName: file.name,
-        naturalWidth: decoded.width,
-        naturalHeight: decoded.height,
-        zoom: 1.0,
-        offsetXMm: 0,
-        offsetYMm: 0,
-      });
-      if (slot !== 'fullWrap') {
-        setActiveZone(slot);
+
+    const addedLayers: CoverImageLayer[] = [];
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i];
+      try {
+        const decoded = await readImageFile(file);
+        const baseRect = defaultPlacementRectForDrop(dropPoint);
+        const offset = i * 8;
+        const targetRect = {
+          x: baseRect.x + offset,
+          y: baseRect.y + offset,
+          width: baseRect.width,
+          height: baseRect.height,
+        };
+        const layer = CoverImageLayerModel.createInRect({
+          dataUrl: decoded.dataUrl,
+          fileName: file.name,
+          naturalWidth: decoded.width,
+          naturalHeight: decoded.height,
+          targetRect,
+          clipZone: 'none',
+          mode: 'contain',
+        });
+        addedLayers.push(layer);
+      } catch {
+        onStatusMessage(`Could not read image "${file.name}".`);
       }
+    }
+
+    if (addedLayers.length > 0) {
+      onChange({
+        ...studio,
+        layers: [...studio.layers, ...addedLayers],
+      });
+      setSelectedLayerId(addedLayers[addedLayers.length - 1].id);
       onStatusMessage(
-        `Loaded ${slot === 'fullWrap' ? 'full-wrap' : slot} image "${file.name}" (${decoded.width}×${decoded.height}px)`,
+        addedLayers.length === 1
+          ? `Added "${addedLayers[0].fileName}" — drag to move or pull corners to resize`
+          : `Added ${addedLayers.length} artwork images to canvas`,
       );
-    } catch (err) {
-      onStatusMessage(err instanceof Error ? err.message : 'Failed to load cover image.');
     }
   };
 
@@ -274,7 +352,7 @@ export function CoverStyler({
     setExportingKind('svg');
     try {
       let artworkDataUrl: string | undefined;
-      if (hasAnyImage) {
+      if (studio.layers.length > 0) {
         const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
           includeSpineText: false,
           dpi: PRINT_DPI,
@@ -291,6 +369,8 @@ export function CoverStyler({
     }
   };
 
+  const handleCornerSize = Math.max(4.5, spec.totalWidthMm * 0.015);
+
   return (
     <div className="flex flex-col gap-5" data-testid="cover-styler">
       {/* Live Interactive Cover Canvas + Export Toolbar */}
@@ -299,11 +379,12 @@ export function CoverStyler({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle className="font-serif text-base">
-                Cover &amp; Spine Compositor
+                Interactive Cover &amp; Spine Canvas
               </CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Drop images directly onto Back, Spine, or Front zones, drag to pan, scroll to zoom,
-                and export at exact 1:1 mm / 300 DPI ({spec.pixelWidth} × {spec.pixelHeight} px).
+                Drop any number of images onto the book, click to select, drag to move, pull corner
+                handles to resize, and export at 1:1 mm / 300 DPI ({spec.pixelWidth} ×{' '}
+                {spec.pixelHeight} px).
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -351,9 +432,9 @@ export function CoverStyler({
                 </Badge>
               ) : (
                 <span className="text-muted-foreground">
-                  {hasAnyImage
-                    ? 'Drag any zone with artwork to pan • Drop new images onto Back, Spine, or Front'
-                    : 'Drop PNG, JPG, or WEBP artwork onto Back, Spine, or Front zones — or upload below'}
+                  {selectedLayer
+                    ? `Selected "${selectedLayer.fileName}" — drag to move, pull corners or scroll to resize`
+                    : 'Drop PNG, JPG, or WEBP images anywhere on the book or click Add Images below'}
                 </span>
               )}
             </div>
@@ -379,15 +460,12 @@ export function CoverStyler({
             onDrop={(e) => {
               e.preventDefault();
               setIsDraggingOver(false);
-              const file = e.dataTransfer.files?.[0];
-              if (!file) return;
-              const dropSlot: CoverImageSlot =
-                studio.imageMode === 'full-wrap'
-                  ? 'fullWrap'
-                  : detectZoneAtClientPoint(e.clientX, e.clientY);
-              void handleImageUpload(dropSlot, file);
+              const files = Array.from(e.dataTransfer.files ?? []);
+              if (files.length === 0) return;
+              const dropPt = clientPointToSvgMm(e.clientX, e.clientY) ?? undefined;
+              void handleAddImageFiles(files, dropPt);
             }}
-            className={`drafting-surface relative flex h-[410px] w-full items-center justify-center overflow-hidden rounded-lg border-2 p-4 transition-colors ${
+            className={`drafting-surface relative flex h-[430px] w-full items-center justify-center overflow-hidden rounded-lg border-2 p-4 transition-colors ${
               isDraggingOver
                 ? 'border-primary bg-primary/5'
                 : eyedropperTarget
@@ -398,107 +476,89 @@ export function CoverStyler({
             <svg
               ref={svgRef}
               role="img"
-              aria-label="Interactive hardcover outer wrap preview with spine typography"
+              aria-label="Interactive hardcover outer wrap canvas with draggable images and spine typography"
               data-testid="studio-preview-svg"
               viewBox={`0 0 ${spec.totalWidthMm} ${spec.totalHeightMm}`}
-              className={`max-h-full max-w-full shadow-md ${
-                eyedropperTarget
-                  ? 'cursor-crosshair'
-                  : hasAnyImage
-                    ? 'cursor-grab active:cursor-grabbing'
-                    : 'cursor-default'
+              className={`max-h-full max-w-full select-none shadow-md ${
+                eyedropperTarget ? 'cursor-crosshair' : 'cursor-default'
               }`}
               style={{ touchAction: 'none' }}
               onClick={(e) => {
                 if (eyedropperTarget) {
                   void sampleColorAtSvgClick(e.clientX, e.clientY, eyedropperTarget);
-                } else if (studio.imageMode === 'per-zone') {
-                  setActiveZone(detectZoneAtClientPoint(e.clientX, e.clientY));
+                } else if (e.target === e.currentTarget) {
+                  setSelectedLayerId(null);
                 }
               }}
               onWheel={(e) => {
-                const targetSlot: CoverImageSlot =
-                  studio.imageMode === 'full-wrap'
-                    ? 'fullWrap'
-                    : detectZoneAtClientPoint(e.clientX, e.clientY);
-                const img = studio.images[targetSlot];
-                if (!img.dataUrl) return;
+                if (!selectedLayer) return;
                 e.preventDefault();
-                const delta = e.deltaY < 0 ? 0.1 : -0.1;
-                const nextZoom = roundTo(
-                  Math.min(
-                    STUDIO_BOUNDS.zoom.max,
-                    Math.max(STUDIO_BOUNDS.zoom.min, img.zoom + delta),
-                  ),
-                  2,
+                const factor = e.deltaY < 0 ? 1.06 : 0.94;
+                updateLayer(selectedLayer.id, (layer) =>
+                  CoverImageLayerModel.scaleAroundCenter(layer, factor),
                 );
-                updateImageSlot(targetSlot, { zoom: nextZoom });
-              }}
-              onPointerDown={(e) => {
-                if (eyedropperTarget) return;
-                const dragSlot: CoverImageSlot =
-                  studio.imageMode === 'full-wrap'
-                    ? 'fullWrap'
-                    : detectZoneAtClientPoint(e.clientX, e.clientY);
-                if (dragSlot !== 'fullWrap') {
-                  setActiveZone(dragSlot);
-                }
-                const img = studio.images[dragSlot];
-                if (!img.dataUrl) return;
-                const rect = e.currentTarget.getBoundingClientRect();
-                e.currentTarget.setPointerCapture(e.pointerId);
-                dragRef.current = {
-                  active: true,
-                  slot: dragSlot,
-                  startClientX: e.clientX,
-                  startClientY: e.clientY,
-                  origOffsetX: img.offsetXMm,
-                  origOffsetY: img.offsetYMm,
-                  mmPerPx: spec.totalWidthMm / Math.max(1, rect.width),
-                };
               }}
               onPointerMove={(e) => {
-                if (!dragRef.current.active) return;
-                const dxMm = (e.clientX - dragRef.current.startClientX) * dragRef.current.mmPerPx;
-                const dyMm = (e.clientY - dragRef.current.startClientY) * dragRef.current.mmPerPx;
-                updateImageSlot(dragRef.current.slot, {
-                  offsetXMm: roundTo(
-                    Math.min(
-                      STUDIO_BOUNDS.offsetMm.max,
-                      Math.max(STUDIO_BOUNDS.offsetMm.min, dragRef.current.origOffsetX + dxMm),
+                const drag = dragRef.current;
+                if (drag.mode === 'none') return;
+                const pt = clientPointToSvgMm(e.clientX, e.clientY);
+                if (!pt) return;
+                if (drag.mode === 'move') {
+                  const dx = pt.xMm - drag.startXMm;
+                  const dy = pt.yMm - drag.startYMm;
+                  updateLayer(drag.layerId, () =>
+                    CoverImageLayerModel.moveBy(drag.origLayer, dx, dy),
+                  );
+                } else if (drag.mode === 'resize') {
+                  updateLayer(drag.layerId, () =>
+                    CoverImageLayerModel.resizeFromCorner(
+                      drag.origLayer,
+                      drag.corner,
+                      pt.xMm,
+                      pt.yMm,
                     ),
-                    1,
-                  ),
-                  offsetYMm: roundTo(
-                    Math.min(
-                      STUDIO_BOUNDS.offsetMm.max,
-                      Math.max(STUDIO_BOUNDS.offsetMm.min, dragRef.current.origOffsetY + dyMm),
-                    ),
-                    1,
-                  ),
-                });
+                  );
+                }
               }}
               onPointerUp={() => {
-                dragRef.current.active = false;
+                dragRef.current = { mode: 'none' };
               }}
               onPointerCancel={() => {
-                dragRef.current.active = false;
+                dragRef.current = { mode: 'none' };
               }}
             >
-              <title>Outer Cover Styler Preview</title>
+              <title>Outer Cover Styler Interactive Canvas</title>
               <defs>
-                {imageLayers.map((layer) => (
-                  <clipPath key={layer.slot} id={`studio-clip-${layer.slot}`}>
-                    <rect
-                      x={layer.zoneRect.x}
-                      y={layer.zoneRect.y}
-                      width={layer.zoneRect.width}
-                      height={layer.zoneRect.height}
-                    />
-                  </clipPath>
-                ))}
+                <clipPath id="studio-clip-none">
+                  <rect x={0} y={0} width={spec.totalWidthMm} height={spec.totalHeightMm} />
+                </clipPath>
+                <clipPath id="studio-clip-back">
+                  <rect
+                    x={spec.backZoneRect.x}
+                    y={spec.backZoneRect.y}
+                    width={spec.backZoneRect.width}
+                    height={spec.backZoneRect.height}
+                  />
+                </clipPath>
+                <clipPath id="studio-clip-spine">
+                  <rect
+                    x={spec.spineZoneRect.x}
+                    y={spec.spineZoneRect.y}
+                    width={spec.spineZoneRect.width}
+                    height={spec.spineZoneRect.height}
+                  />
+                </clipPath>
+                <clipPath id="studio-clip-front">
+                  <rect
+                    x={spec.frontZoneRect.x}
+                    y={spec.frontZoneRect.y}
+                    width={spec.frontZoneRect.width}
+                    height={spec.frontZoneRect.height}
+                  />
+                </clipPath>
               </defs>
 
+              {/* Base Zone Background Fills */}
               <rect
                 x={spec.backZoneRect.x}
                 y={spec.backZoneRect.y}
@@ -506,6 +566,12 @@ export function CoverStyler({
                 height={spec.backZoneRect.height}
                 fill={studio.backBgColor}
                 data-testid="studio-back-fill"
+                onClick={(e) => {
+                  if (!eyedropperTarget) {
+                    e.stopPropagation();
+                    setSelectedLayerId(null);
+                  }
+                }}
               />
               <rect
                 x={spec.spineZoneRect.x}
@@ -514,6 +580,12 @@ export function CoverStyler({
                 height={spec.spineZoneRect.height}
                 fill={studio.spineBgColor}
                 data-testid="studio-spine-fill"
+                onClick={(e) => {
+                  if (!eyedropperTarget) {
+                    e.stopPropagation();
+                    setSelectedLayerId(null);
+                  }
+                }}
               />
               <rect
                 x={spec.frontZoneRect.x}
@@ -522,24 +594,57 @@ export function CoverStyler({
                 height={spec.frontZoneRect.height}
                 fill={studio.frontBgColor}
                 data-testid="studio-front-fill"
+                onClick={(e) => {
+                  if (!eyedropperTarget) {
+                    e.stopPropagation();
+                    setSelectedLayerId(null);
+                  }
+                }}
               />
 
-              {/* Per-Zone or Full-Wrap Uploaded Artwork Images */}
-              {imageLayers.map((layer) => (
-                <g key={layer.slot} clipPath={`url(#studio-clip-${layer.slot})`}>
-                  <image
-                    href={layer.image.dataUrl ?? undefined}
-                    x={layer.drawRect.x}
-                    y={layer.drawRect.y}
-                    width={layer.drawRect.width}
-                    height={layer.drawRect.height}
-                    preserveAspectRatio="none"
-                    data-testid={`studio-image-${layer.slot}`}
-                  />
-                </g>
-              ))}
+              {/* Free-Form Draggable & Resizable Artwork Layers */}
+              {studio.layers.map((layer, index) => {
+                const clipId = `studio-clip-${layer.clipZone}`;
+                return (
+                  <g key={layer.id} clipPath={`url(#${clipId})`}>
+                    <image
+                      href={layer.dataUrl}
+                      x={layer.xMm}
+                      y={layer.yMm}
+                      width={layer.widthMm}
+                      height={layer.heightMm}
+                      preserveAspectRatio="none"
+                      data-testid={`studio-layer-${index}`}
+                      className={
+                        eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+                      }
+                      onClick={(e) => {
+                        if (eyedropperTarget) return;
+                        e.stopPropagation();
+                        setSelectedLayerId(layer.id);
+                      }}
+                      onPointerDown={(e) => {
+                        if (eyedropperTarget) return;
+                        e.stopPropagation();
+                        setSelectedLayerId(layer.id);
+                        const pt = clientPointToSvgMm(e.clientX, e.clientY);
+                        if (!pt) return;
+                        svgRef.current?.setPointerCapture(e.pointerId);
+                        dragRef.current = {
+                          mode: 'move',
+                          layerId: layer.id,
+                          startXMm: pt.xMm,
+                          startYMm: pt.yMm,
+                          origLayer: layer,
+                        };
+                      }}
+                    />
+                  </g>
+                );
+              })}
 
-              <g data-testid="studio-spine-typography">
+              {/* Spine Typography Overlay */}
+              <g data-testid="studio-spine-typography" pointerEvents="none">
                 {spinePlacements.map((item, idx) => (
                   <text
                     key={`${item.kind}-${idx}`}
@@ -557,6 +662,7 @@ export function CoverStyler({
                 ))}
               </g>
 
+              {/* Fold, Board & Cut Guides Overlay */}
               {showGuides && (
                 <g pointerEvents="none">
                   <path
@@ -569,60 +675,134 @@ export function CoverStyler({
                     }
                   />
                   {[
-                    { id: 'back' as const, rect: geometry.outerWrap.backBoardRect },
-                    { id: 'spine' as const, rect: geometry.outerWrap.spineRect },
-                    { id: 'front' as const, rect: geometry.outerWrap.frontBoardRect },
-                  ].map(({ id, rect }) => {
-                    const isActive = activeSlot === id;
+                    geometry.outerWrap.backBoardRect,
+                    geometry.outerWrap.spineRect,
+                    geometry.outerWrap.frontBoardRect,
+                  ].map((rect, i) => (
+                    <rect
+                      key={i}
+                      x={rect.x + spec.bleedMm}
+                      y={rect.y + spec.bleedMm}
+                      width={rect.width}
+                      height={rect.height}
+                      fill="none"
+                      stroke="#ffffff"
+                      strokeOpacity="0.65"
+                      strokeWidth="0.7"
+                      strokeDasharray="5 3"
+                    />
+                  ))}
+                  {studio.layers.length === 0 && (
+                    <>
+                      <text
+                        x={
+                          spec.bleedMm +
+                          geometry.outerWrap.backBoardRect.x +
+                          geometry.outerWrap.backBoardRect.width / 2
+                        }
+                        y={spec.totalHeightMm / 2}
+                        fill="#ffffff"
+                        fillOpacity="0.45"
+                        fontSize="7.5"
+                        fontWeight="600"
+                        textAnchor="middle"
+                      >
+                        BACK COVER
+                      </text>
+                      <text
+                        x={
+                          spec.bleedMm +
+                          geometry.outerWrap.frontBoardRect.x +
+                          geometry.outerWrap.frontBoardRect.width / 2
+                        }
+                        y={spec.totalHeightMm / 2}
+                        fill="#ffffff"
+                        fillOpacity="0.45"
+                        fontSize="7.5"
+                        fontWeight="600"
+                        textAnchor="middle"
+                      >
+                        DROP IMAGES ANYWHERE
+                      </text>
+                    </>
+                  )}
+                </g>
+              )}
+
+              {/* Selection Frame & Corner Resize Handles for Selected Layer */}
+              {selectedLayer && !eyedropperTarget && (
+                <g data-testid="studio-selection-handles">
+                  {selectedLayer.clipZone !== 'none' && (() => {
+                    const clipRect = resolveZoneClipRect(spec, selectedLayer.clipZone);
                     return (
                       <rect
-                        key={id}
-                        x={rect.x + spec.bleedMm}
-                        y={rect.y + spec.bleedMm}
-                        width={rect.width}
-                        height={rect.height}
+                        x={clipRect.x}
+                        y={clipRect.y}
+                        width={clipRect.width}
+                        height={clipRect.height}
                         fill="none"
-                        stroke={isActive ? '#facc15' : '#ffffff'}
-                        strokeOpacity={isActive ? '0.9' : '0.6'}
-                        strokeWidth={isActive ? '1.1' : '0.7'}
-                        strokeDasharray="5 3"
+                        stroke="#38bdf8"
+                        strokeWidth="0.8"
+                        strokeDasharray="3 2"
+                        pointerEvents="none"
                       />
                     );
-                  })}
-                  {studio.imageMode === 'per-zone' && !studio.images.back.dataUrl && (
-                    <text
-                      x={
-                        spec.bleedMm +
-                        geometry.outerWrap.backBoardRect.x +
-                        geometry.outerWrap.backBoardRect.width / 2
-                      }
-                      y={spec.totalHeightMm / 2}
+                  })()}
+                  <rect
+                    x={selectedLayer.xMm}
+                    y={selectedLayer.yMm}
+                    width={selectedLayer.widthMm}
+                    height={selectedLayer.heightMm}
+                    fill="none"
+                    stroke="#facc15"
+                    strokeWidth="1.2"
+                    strokeDasharray="4 2"
+                    pointerEvents="none"
+                  />
+                  {(
+                    [
+                      { corner: 'nw' as const, x: selectedLayer.xMm, y: selectedLayer.yMm },
+                      {
+                        corner: 'ne' as const,
+                        x: selectedLayer.xMm + selectedLayer.widthMm,
+                        y: selectedLayer.yMm,
+                      },
+                      {
+                        corner: 'se' as const,
+                        x: selectedLayer.xMm + selectedLayer.widthMm,
+                        y: selectedLayer.yMm + selectedLayer.heightMm,
+                      },
+                      {
+                        corner: 'sw' as const,
+                        x: selectedLayer.xMm,
+                        y: selectedLayer.yMm + selectedLayer.heightMm,
+                      },
+                    ] as const
+                  ).map((handle) => (
+                    <rect
+                      key={handle.corner}
+                      x={handle.x - handleCornerSize / 2}
+                      y={handle.y - handleCornerSize / 2}
+                      width={handleCornerSize}
+                      height={handleCornerSize}
+                      rx={1}
                       fill="#ffffff"
-                      fillOpacity="0.45"
-                      fontSize="7.5"
-                      fontWeight="600"
-                      textAnchor="middle"
-                    >
-                      BACK COVER
-                    </text>
-                  )}
-                  {studio.imageMode === 'per-zone' && !studio.images.front.dataUrl && (
-                    <text
-                      x={
-                        spec.bleedMm +
-                        geometry.outerWrap.frontBoardRect.x +
-                        geometry.outerWrap.frontBoardRect.width / 2
-                      }
-                      y={spec.totalHeightMm / 2}
-                      fill="#ffffff"
-                      fillOpacity="0.45"
-                      fontSize="7.5"
-                      fontWeight="600"
-                      textAnchor="middle"
-                    >
-                      FRONT COVER
-                    </text>
-                  )}
+                      stroke="#24476e"
+                      strokeWidth="1"
+                      style={{ cursor: CORNER_CURSORS[handle.corner] }}
+                      data-testid={`resize-handle-${handle.corner}`}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        svgRef.current?.setPointerCapture(e.pointerId);
+                        dragRef.current = {
+                          mode: 'resize',
+                          layerId: selectedLayer.id,
+                          corner: handle.corner,
+                          origLayer: selectedLayer,
+                        };
+                      }}
+                    />
+                  ))}
                 </g>
               )}
             </svg>
@@ -630,16 +810,38 @@ export function CoverStyler({
         </CardContent>
       </Card>
 
-      {/* Decoupled Zone-Based Controls Grid */}
+      {/* Decoupled Controls Grid */}
       <div className="grid gap-5 xl:grid-cols-2">
         <ArtworkControlsCard
           studio={studio}
-          activeZone={activeZone}
+          selectedLayerId={selectedLayerId}
           eyedropperTarget={eyedropperTarget}
-          onActiveZoneChange={setActiveZone}
+          onSelectLayer={setSelectedLayerId}
+          onAddImageFiles={(files) => void handleAddImageFiles(files)}
+          onQuickFitLayer={(id, target: QuickFitTarget) => {
+            const targetRect = resolveQuickFitRect(spec, target);
+            updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect));
+          }}
+          onSetLayerClip={(id, clipZone: LayerClipZone) =>
+            updateLayer(id, (layer) => ({ ...layer, clipZone }))
+          }
+          onScaleLayer={(id, factor) =>
+            updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
+          }
+          onReorderLayer={(id, direction) =>
+            onChange({
+              ...studio,
+              layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
+            })
+          }
+          onDeleteLayer={(id) => {
+            const remaining = studio.layers.filter((l) => l.id !== id);
+            onChange({ ...studio, layers: remaining });
+            if (selectedLayerId === id) {
+              setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
+            }
+          }}
           onUpdateStudio={updateStudio}
-          onUpdateImageSlot={updateImageSlot}
-          onImageFileSelected={(slot, file) => void handleImageUpload(slot, file)}
           onToggleEyedropper={(target) =>
             setEyedropperTarget((prev) => (prev === target ? null : target))
           }

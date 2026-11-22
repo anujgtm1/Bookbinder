@@ -21,38 +21,35 @@ describe('CoverStudioModel', () => {
     expect(CoverStudioModel.formatInlineSpineText('', '')).toBe('');
   });
 
-  it('serializes and deserializes independent front, spine, back, and fullWrap images', () => {
+  it('serializes and deserializes multi-layer cover studio state with clamping and validation', () => {
     const raw = {
-      imageMode: 'per-zone',
-      images: {
-        front: {
+      layers: [
+        {
+          id: 'img-1',
           dataUrl: 'data:image/png;base64,front',
           fileName: 'front.png',
           naturalWidth: 1200,
           naturalHeight: 1800,
-          zoom: 99,
-          offsetXMm: 500,
-          offsetYMm: -500,
+          xMm: 210,
+          yMm: 0,
+          widthMm: 162,
+          heightMm: 265,
+          clipZone: 'front',
         },
-        spine: {
-          dataUrl: 'data:image/png;base64,spine',
-          fileName: 'spine.png',
-          naturalWidth: 300,
-          naturalHeight: 1800,
-          zoom: 1.2,
-          offsetXMm: 2,
-          offsetYMm: -3,
+        {
+          id: 'img-2',
+          dataUrl: 'data:image/jpeg;base64,emblem',
+          fileName: 'emblem.jpg',
+          naturalWidth: 400,
+          naturalHeight: 400,
+          xMm: 170,
+          yMm: 100,
+          widthMm: 20,
+          heightMm: 20,
+          clipZone: 'none',
         },
-        back: {
-          dataUrl: 'data:image/jpeg;base64,back',
-          fileName: 'back.jpg',
-          naturalWidth: 1200,
-          naturalHeight: 1800,
-          zoom: 1.0,
-          offsetXMm: 0,
-          offsetYMm: 0,
-        },
-      },
+        { id: 'bad', dataUrl: 'javascript:alert(1)' },
+      ],
       frontBgColor: '#ABCDEF',
       spineBgColor: 'not-a-color',
       backBgColor: '#123456',
@@ -70,14 +67,10 @@ describe('CoverStudioModel', () => {
     };
 
     const parsed = CoverStudioModel.deserialize(raw);
-    expect(parsed.imageMode).toBe('per-zone');
-    expect(parsed.images.front.zoom).toBe(5.0);
-    expect(parsed.images.front.offsetXMm).toBe(300);
-    expect(parsed.images.front.offsetYMm).toBe(-300);
-    expect(parsed.images.spine.fileName).toBe('spine.png');
-    expect(parsed.images.back.fileName).toBe('back.jpg');
-    expect(parsed.images.fullWrap.dataUrl).toBeNull();
-    expect(CoverStudioModel.hasAnyActiveImage(parsed)).toBe(true);
+    expect(parsed.layers).toHaveLength(2);
+    expect(parsed.layers[0].fileName).toBe('front.png');
+    expect(parsed.layers[0].clipZone).toBe('front');
+    expect(parsed.layers[1].fileName).toBe('emblem.jpg');
     expect(parsed.frontBgColor).toBe('#abcdef');
     expect(parsed.spineBgColor).toBe(DEFAULT_COVER_STUDIO_STATE.spineBgColor);
     expect(parsed.backBgColor).toBe('#123456');
@@ -88,45 +81,11 @@ describe('CoverStudioModel', () => {
     expect(parsed.cutLineMode).toBe('full-cut-miter');
 
     const stripped = CoverStudioModel.serialize(parsed, { includeImageData: false });
-    expect(stripped.images.front.dataUrl).toBeNull();
-    expect(stripped.images.spine.dataUrl).toBeNull();
-    expect(stripped.images.back.dataUrl).toBeNull();
-    expect(CoverStudioModel.hasAnyActiveImage(stripped)).toBe(false);
+    expect(stripped.layers).toHaveLength(0);
   });
 
-  it('migrates legacy single-image projects cleanly and rejects non-image dataUrls', () => {
+  it('falls back cleanly on null or malformed input', () => {
     expect(CoverStudioModel.deserialize(null)).toEqual(DEFAULT_COVER_STUDIO_STATE);
-
-    const legacyFront = CoverStudioModel.deserialize({
-      imageMode: 'front-cover',
-      image: {
-        dataUrl: 'data:image/png;base64,legacyFront',
-        fileName: 'old-front.png',
-        naturalWidth: 800,
-        naturalHeight: 1200,
-        zoom: 1.5,
-      },
-    });
-    expect(legacyFront.imageMode).toBe('per-zone');
-    expect(legacyFront.images.front.fileName).toBe('old-front.png');
-    expect(legacyFront.images.front.zoom).toBe(1.5);
-
-    const legacyFull = CoverStudioModel.deserialize({
-      imageMode: 'full-wrap',
-      image: {
-        dataUrl: 'data:image/png;base64,legacyWrap',
-        fileName: 'old-wrap.png',
-        naturalWidth: 2400,
-        naturalHeight: 1600,
-      },
-    });
-    expect(legacyFull.imageMode).toBe('full-wrap');
-    expect(legacyFull.images.fullWrap.fileName).toBe('old-wrap.png');
-    expect(CoverStudioModel.hasAnyActiveImage(legacyFull)).toBe(true);
-
-    const badImg = CoverStudioModel.deserialize({
-      images: { front: { dataUrl: 'javascript:alert(1)' } },
-    });
-    expect(badImg.images.front.dataUrl).toBeNull();
+    expect(CoverStudioModel.deserialize('invalid')).toEqual(DEFAULT_COVER_STUDIO_STATE);
   });
 });

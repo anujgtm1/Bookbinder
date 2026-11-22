@@ -59,13 +59,20 @@ describe('storage persistence', () => {
     const defaultStudio = CoverStudioModel.createDefault();
     const studio = {
       ...defaultStudio,
-      images: {
-        ...defaultStudio.images,
-        front: {
-          ...defaultStudio.images.front,
+      layers: [
+        {
+          id: 'img-1',
           dataUrl: 'data:image/png;base64,AAAA',
+          fileName: 'cover.png',
+          naturalWidth: 100,
+          naturalHeight: 150,
+          xMm: 0,
+          yMm: 0,
+          widthMm: 100,
+          heightMm: 150,
+          clipZone: 'none' as const,
         },
-      },
+      ],
     };
     const project = BookbinderProjectModel.create(BookParametersModel.createDefault(), studio);
 
