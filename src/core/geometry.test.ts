@@ -5,6 +5,7 @@ import {
   calculateCaseGeometry,
   calculateChipboardCutList,
   calculateMaxSlipFlapForSheetMm,
+  computeMaxFlapWidthForSheet,
   evaluatePrintMediaFit,
   evaluateRollWidth,
 } from './geometry';
@@ -348,5 +349,110 @@ describe('calculateCaseGeometry', () => {
     const clampedHigh = evaluatePrintMediaFit('letter', 366, 259, 50);
     expect(clampedHigh.status).toBe('fits-2-sheet-tile');
     expect(clampedHigh.tileOverlapMm).toBe(30);
+  });
+
+  it('computes flush 1-piece paperback-wrap geometry (0 boards, 0 flaps, 0 glue tabs) fitting 1× US Letter on A6', () => {
+    const a6Paperback = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      printMedia: 'letter' as const,
+    };
+
+    const geom = calculateCaseGeometry(a6Paperback);
+    expect(geom.bindingStyle).toBe('paperback-wrap');
+    expect(geom.cutList.coverBoards.quantity).toBe(0);
+    expect(geom.cutList.coverBoards.widthMm).toBe(105);
+    expect(geom.cutList.coverBoards.heightMm).toBe(148);
+    expect(geom.cutList.spineStrip.quantity).toBe(0);
+    expect(geom.cutList.spineStrip.widthMm).toBe(10);
+    expect(geom.cutList.spineStrip.heightMm).toBe(148);
+    expect(geom.cutList.boardThicknessMm).toBe(0);
+    expect(geom.cutList.hingeSpacerMm).toBe(0);
+
+    const { outerWrap } = geom;
+    expect(outerWrap.widthMm).toBe(220);
+    expect(outerWrap.heightMm).toBe(148);
+    expect(outerWrap.turnInMm).toBe(0);
+    expect(outerWrap.miterCutLegMm).toBe(0);
+    expect(outerWrap.jacketFlapWidthMm).toBe(0);
+    expect(outerWrap.jacketGlueTabHeightMm).toBe(0);
+    expect(outerWrap.jacketGlueTabPolygons).toHaveLength(0);
+    expect(outerWrap.outerCutPolygon).toEqual([
+      { x: 0, y: 0 },
+      { x: 220, y: 0 },
+      { x: 220, y: 148 },
+      { x: 0, y: 148 },
+    ]);
+    expect(outerWrap.backBoardRect).toEqual({ x: 0, y: 0, width: 105, height: 148 });
+    expect(outerWrap.leftHingeRect).toEqual({ x: 105, y: 0, width: 0, height: 148 });
+    expect(outerWrap.spineRect).toEqual({ x: 105, y: 0, width: 10, height: 148 });
+    expect(outerWrap.rightHingeRect).toEqual({ x: 115, y: 0, width: 0, height: 148 });
+    expect(outerWrap.frontBoardRect).toEqual({ x: 115, y: 0, width: 105, height: 148 });
+    expect(outerWrap.foldLines).toHaveLength(2);
+    expect(outerWrap.foldLines.map((l) => l.x1)).toEqual([105, 115]);
+
+    expect(geom.mediaFit.status).toBe('fits-1-sheet');
+    expect(geom.rollRecommendation.fits).toBe(true);
+    expect(geom.rollRecommendation.summary).toContain('US Letter / A4');
+  });
+
+  it('computes classic dust-jacket geometry with wrap ease, wide fold-in flaps, 4-vertex cut rect, and zero glue tabs', () => {
+    const a6DustJacket = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 50,
+      printMedia: 'legal' as const,
+    };
+
+    const geom = calculateCaseGeometry(a6DustJacket);
+    expect(geom.bindingStyle).toBe('dust-jacket');
+    expect(geom.cutList.coverBoards.quantity).toBe(0);
+    expect(geom.cutList.coverBoards.widthMm).toBe(106); // +1.0 mm wrap ease
+    expect(geom.cutList.coverBoards.heightMm).toBe(148); // flush height
+    expect(geom.cutList.spineStrip.quantity).toBe(0);
+    expect(geom.cutList.spineStrip.widthMm).toBe(11.5); // +1.5 mm spine fold ease
+    expect(geom.cutList.hingeSpacerMm).toBe(0);
+
+    const { outerWrap } = geom;
+    // 50 + 106 + 11.5 + 106 + 50 = 323.5 mm
+    expect(outerWrap.widthMm).toBe(323.5);
+    expect(outerWrap.heightMm).toBe(148);
+    expect(outerWrap.turnInMm).toBe(0);
+    expect(outerWrap.miterCutLegMm).toBe(0);
+    expect(outerWrap.jacketFlapWidthMm).toBe(50);
+    expect(outerWrap.jacketGlueTabHeightMm).toBe(0);
+    expect(outerWrap.jacketGlueTabPolygons).toHaveLength(0);
+    expect(outerWrap.outerCutPolygon).toEqual([
+      { x: 0, y: 0 },
+      { x: 323.5, y: 0 },
+      { x: 323.5, y: 148 },
+      { x: 0, y: 148 },
+    ]);
+    expect(outerWrap.backBoardRect).toEqual({ x: 50, y: 0, width: 106, height: 148 });
+    expect(outerWrap.leftHingeRect).toEqual({ x: 156, y: 0, width: 0, height: 148 });
+    expect(outerWrap.spineRect).toEqual({ x: 156, y: 0, width: 11.5, height: 148 });
+    expect(outerWrap.rightHingeRect).toEqual({ x: 167.5, y: 0, width: 0, height: 148 });
+    expect(outerWrap.frontBoardRect).toEqual({ x: 167.5, y: 0, width: 106, height: 148 });
+    expect(outerWrap.foldLines).toHaveLength(4);
+    expect(outerWrap.foldLines.map((l) => l.x1)).toEqual([50, 156, 167.5, 273.5]);
+    expect(geom.mediaFit.status).toBe('fits-1-sheet');
+
+    // Default flap width (pbWidthMm * 0.5 clamped to [40..75]) & custom flap clamping to [20..100]
+    const defaultA6 = calculateCaseGeometry({ ...a6DustJacket, jacketFlapWidthMm: undefined });
+    expect(defaultA6.outerWrap.jacketFlapWidthMm).toBe(52.5);
+    const wideFlap = calculateCaseGeometry({ ...a6DustJacket, jacketFlapWidthMm: 85 });
+    expect(wideFlap.outerWrap.jacketFlapWidthMm).toBe(85);
+    const clampedFlap = calculateCaseGeometry({ ...a6DustJacket, jacketFlapWidthMm: 140 });
+    expect(clampedFlap.outerWrap.jacketFlapWidthMm).toBe(100);
+
+    // computeMaxFlapWidthForSheet for dust-jacket (innerW = 223.5 mm)
+    expect(computeMaxFlapWidthForSheet(a6DustJacket, 269.4)).toBeCloseTo(22.9, 1);
+    expect(computeMaxFlapWidthForSheet(a6DustJacket, 345.6)).toBeCloseTo(61.0, 1);
   });
 });

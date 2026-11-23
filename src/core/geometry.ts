@@ -22,281 +22,55 @@ import type {
   SplitWrapPanel,
 } from '@/types/geometry';
 import { roundTo } from '@/types/units';
+import {
+  buildMiteredRectPolygon,
+  getBindingStrategy,
+  resolveFlapWidthFromConfig,
+} from './bindingStyles';
 
 export type { PrintMediaFitEvaluation, PrintMediaFitStatus };
+export { buildMiteredRectPolygon };
 
 const LINER_OVERLAP_PER_SIDE_MM = 15.0;
 const INNER_VERTICAL_INSET_MM = 1.0; // 1.0 mm inset top & bottom => -2.0 mm height
 const QUARTER_BOUND_LAP_MM = 3.0;
-const SOFTCOVER_GLUE_TAB_H_MM = 10.0;
 
 export function resolveSlipFlapWidthMm(params: BookParameters): number {
-  const defaultFlap = roundTo(Math.min(48, Math.max(24, params.pbWidthMm * 0.23)), 1);
-  return typeof params.jacketFlapWidthMm === 'number' && Number.isFinite(params.jacketFlapWidthMm)
-    ? roundTo(Math.min(65, Math.max(20, params.jacketFlapWidthMm)), 1)
-    : defaultFlap;
+  const strategy = getBindingStrategy(params.bindingStyle);
+  const flapConfig = strategy.flapConfig ?? getBindingStrategy('softcover-jacket').flapConfig!;
+  return resolveFlapWidthFromConfig(params, flapConfig);
+}
+
+export function computeMaxFlapWidthForSheet(
+  params: Pick<BookParameters, 'bindingStyle' | 'pbWidthMm' | 'pbThicknessMm'>,
+  printableWidthMm: number,
+): number {
+  const strategy = getBindingStrategy(params.bindingStyle);
+  if (strategy.computeMaxFlapWidthForSheet) {
+    return strategy.computeMaxFlapWidthForSheet(params, printableWidthMm);
+  }
+  return getBindingStrategy('softcover-jacket').computeMaxFlapWidthForSheet!(
+    params,
+    printableWidthMm,
+  );
 }
 
 export function calculateMaxSlipFlapForSheetMm(
-  params: BookParameters,
+  params: Pick<BookParameters, 'bindingStyle' | 'pbWidthMm' | 'pbThicknessMm'>,
   sheetLongMm: number,
 ): number {
-  const innerW = (params.pbWidthMm + 1.0) * 2 + (params.pbThicknessMm + 1.0);
-  const maxFlap =
-    Math.floor(((sheetLongMm - ROLL_TOTAL_MARGIN_MM - innerW) / 2) * 10 + 1e-9) / 10;
-  return roundTo(Math.min(65, Math.max(20, maxFlap)), 1);
+  return computeMaxFlapWidthForSheet(params, sheetLongMm - ROLL_TOTAL_MARGIN_MM);
 }
 
 export function calculateChipboardCutList(params: BookParameters): ChipboardCutList {
-  const style = params.bindingStyle ?? 'rigid-case';
-  const boardWidthMm = params.pbWidthMm + params.overhangForeEdgeMm;
-  const boardHeightMm = params.pbHeightMm + params.overhangTopBottomMm;
-
-  if (style === 'softcover-jacket') {
-    // 0-board 1-piece fold-and-glue slip cover wraps directly around the notebook with snug slip ease (no rigid board overhang)
-    const coverPanelWidthMm = roundTo(params.pbWidthMm + 1.0, 2);
-    const coverPanelHeightMm = roundTo(params.pbHeightMm + 2.0, 2);
-    const softSpineWidthMm = roundTo(params.pbThicknessMm + 1.0, 2);
-    return {
-      coverBoards: {
-        label: 'Cover Panels (No Chipboard)',
-        quantity: 0,
-        widthMm: coverPanelWidthMm,
-        heightMm: coverPanelHeightMm,
-      },
-      spineStrip: {
-        label: 'Softcover Spine (No Chipboard)',
-        quantity: 0,
-        widthMm: softSpineWidthMm,
-        heightMm: coverPanelHeightMm,
-      },
-      boardThicknessMm: 0,
-      hingeSpacerMm: 0,
-    };
-  }
-
-  if (style === 'flexible-spine') {
-    // Unified flexible cloth spine channel: text block thickness + 2x board wrap thickness + 2 mm opening ease
-    const flexSpineWidthMm = roundTo(params.pbThicknessMm + params.boardThicknessMm * 2 + 2.0, 2);
-    return {
-      coverBoards: {
-        label: 'Cover Boards (Front & Back)',
-        quantity: 2,
-        widthMm: boardWidthMm,
-        heightMm: boardHeightMm,
-      },
-      spineStrip: {
-        label: 'Flexible Cloth Spine (No Rigid Strip)',
-        quantity: 0,
-        widthMm: flexSpineWidthMm,
-        heightMm: boardHeightMm,
-      },
-      boardThicknessMm: params.boardThicknessMm,
-      hingeSpacerMm: 0,
-    };
-  }
-
-  const spineWidthMm = params.pbThicknessMm + params.spineAllowanceMm;
-  return {
-    coverBoards: {
-      label: 'Cover Boards (Front & Back)',
-      quantity: 2,
-      widthMm: boardWidthMm,
-      heightMm: boardHeightMm,
-    },
-    spineStrip: {
-      label: 'Spine Strip',
-      quantity: 1,
-      widthMm: spineWidthMm,
-      heightMm: boardHeightMm,
-    },
-    boardThicknessMm: params.boardThicknessMm,
-    hingeSpacerMm: params.hingeWidthMm,
-  };
-}
-
-export function buildMiteredRectPolygon(
-  widthMm: number,
-  heightMm: number,
-  miterCutLegMm: number,
-  corners: { topLeft: boolean; topRight: boolean; bottomRight: boolean; bottomLeft: boolean },
-): Polygon2D {
-  const leg = Math.max(0, Math.min(miterCutLegMm, widthMm / 2, heightMm / 2));
-  const points: { x: number; y: number }[] = [];
-
-  if (corners.topLeft && leg > 0) {
-    points.push({ x: leg, y: 0 });
-  } else {
-    points.push({ x: 0, y: 0 });
-  }
-
-  if (corners.topRight && leg > 0) {
-    points.push({ x: widthMm - leg, y: 0 }, { x: widthMm, y: leg });
-  } else {
-    points.push({ x: widthMm, y: 0 });
-  }
-
-  if (corners.bottomRight && leg > 0) {
-    points.push({ x: widthMm, y: heightMm - leg }, { x: widthMm - leg, y: heightMm });
-  } else {
-    points.push({ x: widthMm, y: heightMm });
-  }
-
-  if (corners.bottomLeft && leg > 0) {
-    points.push({ x: leg, y: heightMm }, { x: 0, y: heightMm - leg });
-  } else {
-    points.push({ x: 0, y: heightMm });
-  }
-
-  if (corners.topLeft && leg > 0) {
-    points.push({ x: 0, y: leg });
-  }
-
-  return points;
+  return getBindingStrategy(params.bindingStyle).calculateCutList(params);
 }
 
 export function calculateOuterWrap(
   params: BookParameters,
   cutList: ChipboardCutList,
 ): OuterWrapGeometry {
-  const style = params.bindingStyle ?? 'rigid-case';
-  const boardW = cutList.coverBoards.widthMm;
-  const boardH = cutList.coverBoards.heightMm;
-  const spineW = cutList.spineStrip.widthMm;
-  const hingeW = cutList.hingeSpacerMm;
-  const isSoftcover = style === 'softcover-jacket';
-  const jacketFlapWidthMm = isSoftcover ? resolveSlipFlapWidthMm(params) : 0;
-  const jacketGlueTabHeightMm = isSoftcover ? SOFTCOVER_GLUE_TAB_H_MM : 0;
-  const turnIn = isSoftcover ? 0 : params.turnInMm;
-  const sideMargin = isSoftcover ? jacketFlapWidthMm : turnIn;
-  const verticalMargin = isSoftcover ? jacketGlueTabHeightMm : turnIn;
-
-  const innerWidthMm = boardW * 2 + hingeW * 2 + spineW;
-  const widthMm = roundTo(innerWidthMm + sideMargin * 2, 3);
-  const heightMm = roundTo(boardH + verticalMargin * 2, 3);
-
-  const miterGapMm = isSoftcover ? 0 : params.boardThicknessMm * params.miterFactor;
-  const miterCutLegMm = isSoftcover
-    ? 0
-    : Math.max(0, Math.min(widthMm / 2, heightMm / 2, 2 * turnIn - miterGapMm * Math.SQRT2));
-
-  let outerCutPolygon: Polygon2D;
-  let jacketGlueTabPolygons: readonly Polygon2D[] = [];
-
-  if (isSoftcover) {
-    const x0 = 0;
-    const x1 = jacketFlapWidthMm;
-    const x1TabEnd = roundTo(Math.min(x1 + jacketFlapWidthMm, x1 + boardW), 3);
-    const x2 = roundTo(jacketFlapWidthMm + innerWidthMm, 3);
-    const x2TabStart = roundTo(Math.max(x2 - jacketFlapWidthMm, x2 - boardW), 3);
-    const x3 = widthMm;
-    const y0 = 0;
-    const y1 = jacketGlueTabHeightMm;
-    const y2 = roundTo(jacketGlueTabHeightMm + boardH, 3);
-    const y3 = heightMm;
-    const tabSpan = Math.min(x1TabEnd - x1, x2 - x2TabStart);
-    const m = roundTo(Math.min(jacketGlueTabHeightMm, tabSpan * 0.35), 2);
-
-    // 20-vertex clockwise 1-piece fold-and-glue slip cover outline:
-    // 4 mitered wrap-over glue tabs sit on the outer top & bottom edges of the Back & Front covers
-    // so flaps fold inward first and tabs glue over the outside of the flaps (preserving full PB_H + 2 mm pocket clearance).
-    outerCutPolygon = [
-      { x: x0, y: y1 },
-      { x: x1, y: y1 },
-      { x: x1 + m, y: y0 },
-      { x: x1TabEnd - m, y: y0 },
-      { x: x1TabEnd, y: y1 },
-      { x: x2TabStart, y: y1 },
-      { x: x2TabStart + m, y: y0 },
-      { x: x2 - m, y: y0 },
-      { x: x2, y: y1 },
-      { x: x3, y: y1 },
-      { x: x3, y: y2 },
-      { x: x2, y: y2 },
-      { x: x2 - m, y: y3 },
-      { x: x2TabStart + m, y: y3 },
-      { x: x2TabStart, y: y2 },
-      { x: x1TabEnd, y: y2 },
-      { x: x1TabEnd - m, y: y3 },
-      { x: x1 + m, y: y3 },
-      { x: x1, y: y2 },
-      { x: x0, y: y2 },
-    ];
-
-    jacketGlueTabPolygons = [
-      // Back Cover Top Wrap-Over Glue Tab
-      [
-        { x: x1, y: y1 },
-        { x: x1 + m, y: y0 },
-        { x: x1TabEnd - m, y: y0 },
-        { x: x1TabEnd, y: y1 },
-      ],
-      // Front Cover Top Wrap-Over Glue Tab
-      [
-        { x: x2TabStart, y: y1 },
-        { x: x2TabStart + m, y: y0 },
-        { x: x2 - m, y: y0 },
-        { x: x2, y: y1 },
-      ],
-      // Front Cover Bottom Wrap-Over Glue Tab
-      [
-        { x: x2TabStart, y: y2 },
-        { x: x2, y: y2 },
-        { x: x2 - m, y: y3 },
-        { x: x2TabStart + m, y: y3 },
-      ],
-      // Back Cover Bottom Wrap-Over Glue Tab
-      [
-        { x: x1, y: y2 },
-        { x: x1TabEnd, y: y2 },
-        { x: x1TabEnd - m, y: y3 },
-        { x: x1 + m, y: y3 },
-      ],
-    ];
-  } else {
-    outerCutPolygon = buildMiteredRectPolygon(widthMm, heightMm, miterCutLegMm, {
-      topLeft: true,
-      topRight: true,
-      bottomRight: true,
-      bottomLeft: true,
-    });
-  }
-
-  const activeBleed = params.includeBleed ? params.bleedMm : 0;
-  const bleedRect = {
-    x: -activeBleed,
-    y: -activeBleed,
-    width: widthMm + activeBleed * 2,
-    height: heightMm + activeBleed * 2,
-  };
-
-  const backBoardX = sideMargin;
-  const leftHingeX = backBoardX + boardW;
-  const spineX = leftHingeX + hingeW;
-  const rightHingeX = spineX + spineW;
-  const frontBoardX = rightHingeX + hingeW;
-
-  return {
-    bindingStyle: style,
-    widthMm,
-    heightMm,
-    innerWidthMm,
-    turnInMm: turnIn,
-    jacketFlapWidthMm,
-    jacketGlueTabHeightMm,
-    jacketGlueTabPolygons,
-    bleedMm: params.bleedMm,
-    includeBleed: params.includeBleed,
-    miterGapMm,
-    miterCutLegMm,
-    outerCutPolygon,
-    bleedRect,
-    backBoardRect: { x: backBoardX, y: verticalMargin, width: boardW, height: boardH },
-    leftHingeRect: { x: leftHingeX, y: verticalMargin, width: hingeW, height: boardH },
-    spineRect: { x: spineX, y: verticalMargin, width: spineW, height: boardH },
-    rightHingeRect: { x: rightHingeX, y: verticalMargin, width: hingeW, height: boardH },
-    frontBoardRect: { x: frontBoardX, y: verticalMargin, width: boardW, height: boardH },
-  };
+  return getBindingStrategy(params.bindingStyle).calculateOuterWrap(params, cutList);
 }
 
 export function calculateSplitWrapPanels(

@@ -4,6 +4,8 @@ import {
   DEFAULT_BOOK_PARAMETERS,
   PAGE_SIZES,
   PAPERBACK_PRESETS,
+  hasIntegratedFlaps,
+  isBoardlessBinding,
 } from './bookParams';
 
 describe('BookParametersModel', () => {
@@ -84,7 +86,10 @@ describe('BookParametersModel', () => {
     ).toBe(20);
     expect(
       BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 90 }).jacketFlapWidthMm,
-    ).toBe(65);
+    ).toBe(90);
+    expect(
+      BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 140 }).jacketFlapWidthMm,
+    ).toBe(100);
     expect(BookParametersModel.clampAndNormalize({ printMedia: 'tabloid' }).printMedia).toBe(
       'tabloid',
     );
@@ -133,5 +138,47 @@ describe('BookParametersModel', () => {
     expect(PAGE_SIZES.tabloid.widthMm).toBe(279.4);
     expect(PAGE_SIZES.tabloid.heightMm).toBe(431.8);
     expect(BookParametersModel.deserialize({ pdfPageSize: 'legal' }).pdfPageSize).toBe('legal');
+  });
+
+  it('parses, validates, and classifies dust-jacket and paperback-wrap binding styles', () => {
+    const dustJacket = BookParametersModel.deserialize({
+      bindingStyle: 'dust-jacket',
+      jacketFlapWidthMm: 75,
+      hingeWidthMm: 3,
+      turnInMm: 8,
+      boardThicknessMm: 5,
+      miterFactor: 2.5,
+    });
+    expect(dustJacket.bindingStyle).toBe('dust-jacket');
+    expect(dustJacket.jacketFlapWidthMm).toBe(75);
+    const dustValidation = BookParametersModel.validate(dustJacket);
+    expect(dustValidation.isValid).toBe(true);
+    expect(dustValidation.warnings).toHaveLength(0);
+    expect(dustValidation.errors).toHaveLength(0);
+
+    const pbWrap = BookParametersModel.deserialize({
+      bindingStyle: 'paperback-wrap',
+      hingeWidthMm: 3,
+      turnInMm: 8,
+      boardThicknessMm: 5,
+      miterFactor: 2.5,
+    });
+    expect(pbWrap.bindingStyle).toBe('paperback-wrap');
+    const pbValidation = BookParametersModel.validate(pbWrap);
+    expect(pbValidation.isValid).toBe(true);
+    expect(pbValidation.warnings).toHaveLength(0);
+    expect(pbValidation.errors).toHaveLength(0);
+
+    expect(isBoardlessBinding('rigid-case')).toBe(false);
+    expect(isBoardlessBinding('flexible-spine')).toBe(false);
+    expect(isBoardlessBinding('softcover-jacket')).toBe(true);
+    expect(isBoardlessBinding('dust-jacket')).toBe(true);
+    expect(isBoardlessBinding('paperback-wrap')).toBe(true);
+
+    expect(hasIntegratedFlaps('rigid-case')).toBe(false);
+    expect(hasIntegratedFlaps('flexible-spine')).toBe(false);
+    expect(hasIntegratedFlaps('paperback-wrap')).toBe(false);
+    expect(hasIntegratedFlaps('softcover-jacket')).toBe(true);
+    expect(hasIntegratedFlaps('dust-jacket')).toBe(true);
   });
 });

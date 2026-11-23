@@ -1,3 +1,4 @@
+import { BINDING_STYLE_STRATEGIES, getBindingStrategy } from '@/core/bindingStyles';
 import {
   BINDING_STYLES,
   PAGE_SIZES,
@@ -15,7 +16,20 @@ export {
   getPrintMediaSpec,
 };
 
-export type BindingStyle = 'rigid-case' | 'flexible-spine' | 'softcover-jacket';
+export type BindingStyle =
+  | 'rigid-case'
+  | 'flexible-spine'
+  | 'softcover-jacket'
+  | 'dust-jacket'
+  | 'paperback-wrap';
+
+export function isBoardlessBinding(style: BindingStyle): boolean {
+  return !getBindingStrategy(style).capabilities.usesChipboard;
+}
+
+export function hasIntegratedFlaps(style: BindingStyle): boolean {
+  return getBindingStrategy(style).capabilities.hasFlaps;
+}
 export type SplitMode = 'single' | 'three-piece';
 export type PageSizeId = 'letter' | 'a4' | 'legal' | 'tabloid';
 export type PrintMediaId =
@@ -110,7 +124,7 @@ export interface BookParameters {
   pdfPageSize: PageSizeId;
   /** Target output paper sheet or roll width for outer cover Print PDF & paper-fit preflight */
   printMedia: PrintMediaId;
-  /** Optional custom slip-cover flap width in mm for softcover-jacket (undefined = auto default) */
+  /** Optional custom flap width in mm for softcover-jacket or dust-jacket (undefined = auto default) */
   jacketFlapWidthMm?: number;
   /** UI display unit (exports remain strictly 1:1 mm) */
   unit: UnitSystem;
@@ -137,7 +151,7 @@ export const BOOK_PARAM_BOUNDS = {
   pocketDepthPct: { min: 65, max: 80 },
   pocketFlapMm: { min: 6, max: 25 },
   quarterBoundOverlapMm: { min: 10, max: 50 },
-  jacketFlapWidthMm: { min: 20, max: 65 },
+  jacketFlapWidthMm: { min: 20, max: 100 },
 } as const;
 
 export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
@@ -167,8 +181,8 @@ export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
 const VALID_PRINT_MEDIA_IDS = new Set<string>(PRINT_MEDIA_OPTIONS.map((o) => o.id));
 
 function parseBindingStyle(value: unknown): BindingStyle {
-  if (value === 'flexible-spine' || value === 'softcover-jacket') {
-    return value;
+  if (typeof value === 'string' && value in BINDING_STYLE_STRATEGIES) {
+    return value as BindingStyle;
   }
   return 'rigid-case';
 }
@@ -335,7 +349,7 @@ export const BookParametersModel = {
       errors.push('Paperback dimensions must be positive numbers.');
     }
 
-    if (params.bindingStyle !== 'softcover-jacket') {
+    if (!isBoardlessBinding(params.bindingStyle)) {
       const miterGap = params.boardThicknessMm * params.miterFactor;
       if (miterGap * Math.SQRT2 >= params.turnInMm * 2) {
         errors.push('Miter clearance exceeds available turn-in width.');

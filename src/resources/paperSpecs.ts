@@ -149,6 +149,18 @@ export const BINDING_STYLES: readonly BindingStyleOption[] = [
     shortLabel: 'Slip Cover',
     summary: '1-piece printable cover with 4 mitered glue tabs — no separate pockets (fits Letter/A4 on A6)',
   },
+  {
+    id: 'dust-jacket',
+    label: 'Classic Dust Jacket (Fold-In Flaps)',
+    shortLabel: 'Dust Jacket',
+    summary: 'Wrap-around publisher dust jacket with wide left & right fold-in flaps over an existing cover — no glue tabs or rigid boards.',
+  },
+  {
+    id: 'paperback-wrap',
+    label: 'Replacement Paperback Cover (Flush Wrap)',
+    shortLabel: 'Paperback Cover',
+    summary: 'Flush 1-piece cardstock cover (Back + Spine + Front) glued directly to a paperback spine — no boards, flaps, or inner pockets.',
+  },
 ] as const;
 
 /** Paginated inner templates PDF sheet specs. */

@@ -153,7 +153,7 @@ export interface OuterWrapGeometry {
   readonly heightMm: number;
   readonly innerWidthMm: number;
   readonly turnInMm: number;
-  /** Integrated slip-in pocket flap width on each fore-edge when bindingStyle === 'softcover-jacket' (0 otherwise) */
+  /** Integrated flap width on each fore-edge when bindingStyle is 'softcover-jacket' or 'dust-jacket' (0 otherwise) */
   readonly jacketFlapWidthMm: number;
   /** Top & bottom mitered glue tab height on the integrated flaps when bindingStyle === 'softcover-jacket' (0 otherwise) */
   readonly jacketGlueTabHeightMm: number;
@@ -164,6 +164,8 @@ export interface OuterWrapGeometry {
   readonly miterGapMm: number;
   readonly miterCutLegMm: number;
   readonly outerCutPolygon: Polygon2D;
+  /** Score / fold guide segments in wrap-local mm coordinates (turn-ins, spine creases, flaps, glue tabs). */
+  readonly foldLines: readonly LineSegment2D[];
   readonly bleedRect: Rect2D;
   readonly backBoardRect: Rect2D;
   readonly leftHingeRect: Rect2D;
