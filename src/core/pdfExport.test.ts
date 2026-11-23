@@ -115,4 +115,56 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     expect(UnitConverter.pointsToMm(softSize.width)).toBeCloseTo(266.4, 1);
     expect(UnitConverter.pointsToMm(softSize.height)).toBeCloseTo(170.0, 1);
   });
+
+  it('supports printMediaId sheet centering (US Legal) and 2-sheet tiling (US Letter) on generateOuterWrapPdf and legal page size on generateInnerTemplatesPdf', async () => {
+    // A6 slip cover with 52.5 mm flaps -> outerWrap = 323 x 170 mm
+    const a6DeepFlapGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      jacketFlapWidthMm: 52.5,
+      includeBleed: false,
+    });
+
+    // 1. US Legal -> 1 centered Landscape sheet (355.6 x 215.9 mm)
+    const legalBytes = await generateOuterWrapPdf(a6DeepFlapGeom, 'single', {
+      printMediaId: 'legal',
+      includeScaleBar: true,
+    });
+    const legalDoc = await PDFDocument.load(legalBytes);
+    expect(legalDoc.getPageCount()).toBe(1);
+    const legalSize = legalDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(legalSize.width)).toBeCloseTo(355.6, 2);
+    expect(UnitConverter.pointsToMm(legalSize.height)).toBeCloseTo(215.9, 2);
+
+    // 2. US Letter -> 2 tiled Portrait sheets (215.9 x 279.4 mm)
+    const letterTiledBytes = await generateOuterWrapPdf(a6DeepFlapGeom, 'single', {
+      printMediaId: 'letter',
+      tileOverlapMm: 15,
+    });
+    const letterTiledDoc = await PDFDocument.load(letterTiledBytes);
+    expect(letterTiledDoc.getPageCount()).toBe(2);
+    for (const idx of [0, 1]) {
+      const sz = letterTiledDoc.getPage(idx).getSize();
+      expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(215.9, 2);
+      expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(279.4, 2);
+    }
+
+    // 3. Inner templates PDF on US Legal (215.9 x 355.6 mm)
+    const defaultGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const { bytes: innerLegalBytes, plan: innerLegalPlan } = await generateInnerTemplatesPdf(
+      defaultGeom,
+      'legal',
+    );
+    const innerLegalDoc = await PDFDocument.load(innerLegalBytes);
+    expect(innerLegalDoc.getPageCount()).toBe(innerLegalPlan.pageCount);
+    const firstLegalPage = innerLegalDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(firstLegalPage.width)).toBeCloseTo(PAGE_SIZES.legal.widthMm, 2);
+    expect(UnitConverter.pointsToMm(firstLegalPage.height)).toBeCloseTo(
+      PAGE_SIZES.legal.heightMm,
+      2,
+    );
+  });
 });

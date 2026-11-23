@@ -17,7 +17,7 @@ export {
 
 export type BindingStyle = 'rigid-case' | 'flexible-spine' | 'softcover-jacket';
 export type SplitMode = 'single' | 'three-piece';
-export type PageSizeId = 'letter' | 'a4' | 'tabloid';
+export type PageSizeId = 'letter' | 'a4' | 'legal' | 'tabloid';
 export type PrintMediaId =
   | 'exact-auto'
   | 'letter'
@@ -178,7 +178,7 @@ function parseSplitMode(value: unknown): SplitMode {
 }
 
 function parsePageSize(value: unknown): PageSizeId {
-  return value === 'a4' || value === 'tabloid' ? value : 'letter';
+  return value === 'a4' || value === 'legal' || value === 'tabloid' ? value : 'letter';
 }
 
 function parsePrintMedia(value: unknown): PrintMediaId {

@@ -165,9 +165,15 @@ export const PAGE_SIZES: Readonly<Record<PageSizeId, PageSizeSpec>> = {
     widthMm: A4_SHEET.shortMm,
     heightMm: A4_SHEET.longMm,
   },
+  legal: {
+    id: 'legal',
+    label: 'US Legal (8.5 × 14 in)',
+    widthMm: US_LEGAL_SHEET.shortMm,
+    heightMm: US_LEGAL_SHEET.longMm,
+  },
   tabloid: {
     id: 'tabloid',
-    label: 'Tabloid (11 × 17")',
+    label: 'Tabloid / Ledger (11 × 17 in)',
     widthMm: TABLOID_SHEET.shortMm,
     heightMm: TABLOID_SHEET.longMm,
   },

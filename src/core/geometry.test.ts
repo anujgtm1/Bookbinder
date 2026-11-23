@@ -321,4 +321,32 @@ describe('calculateCaseGeometry', () => {
     expect(autoFit.tilePages).toBe(1);
     expect(autoFit.summary).toContain('13" roll');
   });
+
+  it('respects custom tileOverlapMm (clamped to 5..30 mm) when evaluating 2-sheet tiled fit boundaries', () => {
+    // US Letter Portrait printable width = 205.9 mm -> 2-sheet max width = 411.8 - overlapMm
+    // 15 mm overlap -> max = 396.8 mm; 20 mm overlap -> max = 391.8 mm
+    const fit15 = evaluatePrintMediaFit('letter', 395, 250, 15);
+    expect(fit15.status).toBe('fits-2-sheet-tile');
+    expect(fit15.tileOverlapMm).toBe(15);
+    expect(fit15.summary).toContain('15 mm overlap');
+
+    const overflow20 = evaluatePrintMediaFit('letter', 395, 250, 20);
+    expect(overflow20.status).toBe('does-not-fit');
+    expect(overflow20.tileOverlapMm).toBe(0);
+
+    // Fits comfortably with 20 mm overlap when width <= 391.8 mm
+    const fit20 = evaluatePrintMediaFit('letter', 390, 250, 20);
+    expect(fit20.status).toBe('fits-2-sheet-tile');
+    expect(fit20.tileOverlapMm).toBe(20);
+    expect(fit20.summary).toContain('20 mm overlap');
+
+    // Clamps out-of-range overlap values safely to [5..30]
+    const clampedLow = evaluatePrintMediaFit('letter', 366, 259, 1);
+    expect(clampedLow.status).toBe('fits-2-sheet-tile');
+    expect(clampedLow.tileOverlapMm).toBe(5);
+
+    const clampedHigh = evaluatePrintMediaFit('letter', 366, 259, 50);
+    expect(clampedHigh.status).toBe('fits-2-sheet-tile');
+    expect(clampedHigh.tileOverlapMm).toBe(30);
+  });
 });

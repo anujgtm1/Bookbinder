@@ -128,6 +128,10 @@ describe('BookParametersModel', () => {
   it('defines exact physical page sizes', () => {
     expect(PAGE_SIZES.letter.widthMm).toBe(215.9);
     expect(PAGE_SIZES.a4.heightMm).toBe(297.0);
+    expect(PAGE_SIZES.legal.widthMm).toBe(215.9);
+    expect(PAGE_SIZES.legal.heightMm).toBe(355.6);
     expect(PAGE_SIZES.tabloid.widthMm).toBe(279.4);
+    expect(PAGE_SIZES.tabloid.heightMm).toBe(431.8);
+    expect(BookParametersModel.deserialize({ pdfPageSize: 'legal' }).pdfPageSize).toBe('legal');
   });
 });

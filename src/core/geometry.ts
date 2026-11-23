@@ -523,7 +523,16 @@ export function evaluateRollWidth(
 }
 
 const FIT_EPS_MM = 1e-6;
-const TILE_OVERLAP_MM = 10;
+export const TILE_OVERLAP_MM = 10;
+export const MIN_TILE_OVERLAP_MM = 5;
+export const MAX_TILE_OVERLAP_MM = 30;
+
+export function clampTileOverlapMm(overlapMm?: number): number {
+  if (typeof overlapMm !== 'number' || !Number.isFinite(overlapMm)) {
+    return TILE_OVERLAP_MM;
+  }
+  return roundTo(Math.min(MAX_TILE_OVERLAP_MM, Math.max(MIN_TILE_OVERLAP_MM, overlapMm)), 1);
+}
 
 function findSuggestedMediaId(
   wrapWidthMm: number,
@@ -563,6 +572,7 @@ export function evaluatePrintMediaFit(
   mediaId: PrintMediaId,
   wrapWidthMm: number,
   wrapHeightMm: number,
+  tileOverlapMm: number = TILE_OVERLAP_MM,
 ): PrintMediaFitEvaluation {
   const spec = getPrintMediaSpec(mediaId);
 
@@ -654,11 +664,13 @@ export function evaluatePrintMediaFit(
     };
   }
 
-  // State 2: Horizontal 2-sheet tile with 10 mm overlap (check Portrait first, then Landscape)
-  const halfW = wrapWidthMm / 2 + TILE_OVERLAP_MM / 2;
+  // State 2: Horizontal 2-sheet tile with configurable overlap (check Portrait first, then Landscape)
+  const overlapMm = clampTileOverlapMm(tileOverlapMm);
+  const maxTiledPortraitW = shortPrintable * 2 - overlapMm;
+  const maxTiledLandscapeW = longPrintable * 2 - overlapMm;
   const suggestedMediaId = findSuggestedMediaId(wrapWidthMm, wrapHeightMm, spec.id);
 
-  if (halfW <= shortPrintable + FIT_EPS_MM && wrapHeightMm <= longPrintable + FIT_EPS_MM) {
+  if (wrapWidthMm <= maxTiledPortraitW + FIT_EPS_MM && wrapHeightMm <= longPrintable + FIT_EPS_MM) {
     return {
       mediaId: spec.id,
       mediaLabel: spec.shortLabel,
@@ -666,13 +678,13 @@ export function evaluatePrintMediaFit(
       sheetPageWidthMm: shortMm,
       sheetPageHeightMm: longMm,
       tilePages: 2,
-      tileOverlapMm: TILE_OVERLAP_MM,
+      tileOverlapMm: overlapMm,
       suggestedMediaId,
-      summary: `2× ${spec.shortLabel} tiled (Portrait, ${TILE_OVERLAP_MM} mm overlap)`,
+      summary: `2× ${spec.shortLabel} tiled (Portrait, ${overlapMm} mm overlap)`,
     };
   }
 
-  if (halfW <= longPrintable + FIT_EPS_MM && wrapHeightMm <= shortPrintable + FIT_EPS_MM) {
+  if (wrapWidthMm <= maxTiledLandscapeW + FIT_EPS_MM && wrapHeightMm <= shortPrintable + FIT_EPS_MM) {
     return {
       mediaId: spec.id,
       mediaLabel: spec.shortLabel,
@@ -680,9 +692,9 @@ export function evaluatePrintMediaFit(
       sheetPageWidthMm: longMm,
       sheetPageHeightMm: shortMm,
       tilePages: 2,
-      tileOverlapMm: TILE_OVERLAP_MM,
+      tileOverlapMm: overlapMm,
       suggestedMediaId,
-      summary: `2× ${spec.shortLabel} tiled (Landscape, ${TILE_OVERLAP_MM} mm overlap)`,
+      summary: `2× ${spec.shortLabel} tiled (Landscape, ${overlapMm} mm overlap)`,
     };
   }
 

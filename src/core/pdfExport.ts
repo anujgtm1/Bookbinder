@@ -10,6 +10,7 @@ import {
   type SpineLinerGeometry,
 } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
+import { layoutPdfToPrintMedia, type PdfSheetLayoutOptions } from './pdfSheetLayout';
 
 const PAGE_MARGIN_MM = 7.5;
 const PIECE_GAP_MM = 5.0;
@@ -681,6 +682,7 @@ export async function generateInnerTemplatesPdf(
 export async function generateOuterWrapPdf(
   geometry: CaseGeometry,
   splitMode: SplitMode,
+  options?: PdfSheetLayoutOptions,
 ): Promise<Uint8Array> {
   const { outerWrap, splitPanels, cutList } = geometry;
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
@@ -826,5 +828,16 @@ export async function generateOuterWrapPdf(
   const headerY = bleed + (isSoftcover ? outerWrap.jacketGlueTabHeightMm * 0.65 : outerWrap.turnInMm * 0.6);
   writer.drawText(headerNote, headerX, headerY, font, isSoftcover ? 6.5 : 7.5, mutedColor);
 
-  return pdfDoc.save();
+  const baseBytes = await pdfDoc.save();
+
+  if (options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)) {
+    return layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
+      ...options,
+      bleedMm: options.bleedMm ?? bleed,
+      documentTitle:
+        options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template (1:1 mm)',
+    });
+  }
+
+  return baseBytes;
 }
