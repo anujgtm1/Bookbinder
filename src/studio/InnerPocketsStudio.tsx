@@ -352,6 +352,7 @@ export function InnerPocketsStudio({
   const [viewMode, setViewMode] = useState<PocketViewMode>('styled');
   const [showGuides, setShowGuides] = useState(true);
   const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
+  const [includePdfGuides, setIncludePdfGuides] = useState(true);
   const [includePdfLegend, setIncludePdfLegend] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
@@ -581,7 +582,7 @@ export function InnerPocketsStudio({
         pdfPageSize,
         pocketStyle,
         undefined,
-        { includeLegend: includePdfLegend },
+        { includeLegend: includePdfLegend, includeGuides: includePdfGuides },
       );
       triggerBytesDownload(bytes, 'inner_pockets_styled.pdf', 'application/pdf');
       onStatusMessage(
@@ -643,6 +644,20 @@ export function InnerPocketsStudio({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant={includePdfGuides ? 'secondary' : 'outline'}
+              size="sm"
+              className={`h-8 px-2.5 text-xs ${
+                includePdfGuides ? 'border-brass/60 text-foreground' : 'border-dashed text-muted-foreground'
+              }`}
+              aria-pressed={includePdfGuides}
+              data-testid="pocket-pdf-guides-toggle"
+              title="Include red cut lines and dashed blue fold lines on the Styled Pockets PDF (on by default)"
+              onClick={() => setIncludePdfGuides((v) => !v)}
+            >
+              <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
+              {includePdfGuides ? 'Cut & Fold Lines: On' : 'Cut & Fold Lines: Off'}
+            </Button>
             <Button
               variant={includePdfLegend ? 'secondary' : 'outline'}
               size="sm"

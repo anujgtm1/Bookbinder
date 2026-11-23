@@ -466,16 +466,63 @@ export async function generatePrintReadyRollPdf(
   );
 
   if (studio.cutLineMode === 'full-cut-miter') {
-    const hairline = rgb(0.95, 0.12, 0.12);
+    const hairlineCut = rgb(0.92, 0.14, 0.14);
+    const hairlineFold = rgb(0.12, 0.42, 0.88);
+    const { outerWrap } = geometry;
+
+    // 3a. Solid hairline outer cut polygon (including 45° corner miters)
     for (let i = 0; i < shiftedCutPoly.length; i++) {
       const a = shiftedCutPoly[i];
       const b = shiftedCutPoly[(i + 1) % shiftedCutPoly.length];
       page.drawLine({
         start: { x: toPdfX(a.x), y: toPdfY(a.y) },
         end: { x: toPdfX(b.x), y: toPdfY(b.y) },
-        color: hairline,
-        thickness: 0.4,
+        color: hairlineCut,
+        thickness: 0.55,
       });
+    }
+
+    // 3b. Subtle dashed fold / score lines for turn-ins, board seams, spine hinges & softcover flaps
+    const drawFoldLine = (x1Mm: number, y1Mm: number, x2Mm: number, y2Mm: number) => {
+      page.drawLine({
+        start: { x: toPdfX(x1Mm), y: toPdfY(y1Mm) },
+        end: { x: toPdfX(x2Mm), y: toPdfY(y2Mm) },
+        color: hairlineFold,
+        thickness: 0.45,
+        dashArray: [4, 2.5],
+        opacity: 0.78,
+      });
+    };
+
+    const w = outerWrap.widthMm;
+    const h = outerWrap.heightMm;
+
+    // Horizontal top & bottom turn-in fold lines (hardcover styles)
+    if (outerWrap.turnInMm > 0.2) {
+      const topFoldY = bleed + outerWrap.turnInMm;
+      const botFoldY = bleed + h - outerWrap.turnInMm;
+      drawFoldLine(bleed, topFoldY, bleed + w, topFoldY);
+      drawFoldLine(bleed, botFoldY, bleed + w, botFoldY);
+    }
+
+    // Deduplicated vertical fold / score X positions (fore-edge turn-ins/flaps, board edges & spine hinges)
+    const rawVerticalXs = [
+      outerWrap.backBoardRect.x,
+      outerWrap.backBoardRect.x + outerWrap.backBoardRect.width,
+      outerWrap.spineRect.x,
+      outerWrap.spineRect.x + outerWrap.spineRect.width,
+      outerWrap.frontBoardRect.x,
+      outerWrap.frontBoardRect.x + outerWrap.frontBoardRect.width,
+    ];
+    const uniqueVerticalXs: number[] = [];
+    for (const x of rawVerticalXs) {
+      if (x <= 0.2 || x >= w - 0.2) continue;
+      if (!uniqueVerticalXs.some((prev) => Math.abs(prev - x) < 0.2)) {
+        uniqueVerticalXs.push(x);
+      }
+    }
+    for (const vx of uniqueVerticalXs) {
+      drawFoldLine(bleed + vx, bleed, bleed + vx, bleed + h);
     }
   } else {
     // Bleed + Outer Corner Registration Marks Only (outside the trimmed wrap boundary)

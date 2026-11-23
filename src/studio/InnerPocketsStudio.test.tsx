@@ -65,6 +65,11 @@ describe('InnerPocketsStudio', () => {
     await user.click(screen.getByTestId('download-inner-svg-btn'));
     expect(onDownloadInnerSvg).toHaveBeenCalledTimes(1);
 
+    const guidesToggle = screen.getByTestId('pocket-pdf-guides-toggle');
+    expect(guidesToggle).toHaveAttribute('aria-pressed', 'true');
+    await user.click(guidesToggle);
+    expect(guidesToggle).toHaveAttribute('aria-pressed', 'false');
+
     const legendToggle = screen.getByTestId('pocket-pdf-legend-toggle');
     expect(legendToggle).toHaveAttribute('aria-pressed', 'false');
     await user.click(screen.getByTestId('download-inner-pdf-btn'));

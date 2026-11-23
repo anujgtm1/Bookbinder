@@ -594,6 +594,8 @@ export interface InnerPdfRenderOptions {
   readonly hideFaceTextOnStyled?: boolean;
   /** Include the 50×50 mm calibration square & visual legend block. Defaults to false. */
   readonly includeLegend?: boolean;
+  /** Include red cut lines, dashed blue fold/score lines & glue-flap hatches. Defaults to true. */
+  readonly includeGuides?: boolean;
 }
 
 export async function generateInnerTemplatesPdf(
@@ -629,6 +631,7 @@ export async function generateInnerTemplatesPdf(
   }
 
   const showLabels = !options?.hideFaceTextOnStyled;
+  const showGuides = options?.includeGuides ?? true;
 
   for (const placement of plan.placements) {
     const page = pages[placement.pageIndex];
@@ -645,6 +648,10 @@ export async function generateInnerTemplatesPdf(
           height: UnitConverter.mmToPoints(placement.heightMm),
         });
       }
+    }
+
+    if (!showGuides && placement.kind !== 'calibration-legend') {
+      continue;
     }
 
     switch (placement.kind) {

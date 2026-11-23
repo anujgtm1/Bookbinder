@@ -139,6 +139,8 @@ describe('studio renderEngine', () => {
     );
     const loadedCut = await PDFDocument.load(bytesCut);
     expect(loadedCut.getPageCount()).toBe(1);
+    // Cut & Fold Lines mode is the default and adds both outer cut & dashed fold guides
+    expect(CoverStudioModel.createDefault().cutLineMode).toBe('full-cut-miter');
   });
 
   it('generates Affinity Round-Trip 1:1 mm SVG with artwork, vector spine text, and guide layers', () => {

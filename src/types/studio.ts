@@ -124,7 +124,7 @@ export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
     textColor: '#f5efe2',
     opticalNudgeMm: 0,
   },
-  cutLineMode: 'bleed-registration',
+  cutLineMode: 'full-cut-miter',
   pocketStyle: { ...DEFAULT_POCKET_STYLE },
 };
 
@@ -289,7 +289,7 @@ export const CoverStudioModel = {
           STUDIO_BOUNDS.opticalNudgeMm.max,
         ),
       },
-      cutLineMode: obj.cutLineMode === 'full-cut-miter' ? 'full-cut-miter' : 'bleed-registration',
+      cutLineMode: obj.cutLineMode === 'bleed-registration' ? 'bleed-registration' : 'full-cut-miter',
       pocketStyle: {
         backgroundColor: parseHexColor(
           rawPocket.backgroundColor,

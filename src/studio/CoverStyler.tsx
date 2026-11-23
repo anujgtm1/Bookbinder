@@ -566,6 +566,31 @@ export function CoverStyler({
             {/* Styled 300 DPI Artwork Exports */}
             <div className="flex flex-wrap items-center gap-1.5">
               <Button
+                variant={studio.cutLineMode === 'full-cut-miter' ? 'secondary' : 'outline'}
+                size="sm"
+                className={`h-8 px-2.5 text-xs ${
+                  studio.cutLineMode === 'full-cut-miter'
+                    ? 'border-brass/60 text-foreground'
+                    : 'border-dashed text-muted-foreground'
+                }`}
+                aria-pressed={studio.cutLineMode === 'full-cut-miter'}
+                data-testid="outer-pdf-guides-toggle"
+                title="Include solid cut lines and dashed fold lines on the exported Print PDF (on by default)"
+                onClick={() =>
+                  updateStudio({
+                    cutLineMode:
+                      studio.cutLineMode === 'full-cut-miter'
+                        ? 'bleed-registration'
+                        : 'full-cut-miter',
+                  })
+                }
+              >
+                <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
+                {studio.cutLineMode === 'full-cut-miter'
+                  ? 'Cut & Fold Lines: On'
+                  : 'Cut & Fold Lines: Off'}
+              </Button>
+              <Button
                 variant="default"
                 size="sm"
                 onClick={handleExportPrintPdf}
