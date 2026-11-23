@@ -30,13 +30,13 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 
 ---
 
-## Up Next
+## Active / Ready to Ship
 
 ### Milestone 3 — GitHub Pages Deployment & CI Pipeline
-- [ ] Add configurable `base: process.env.VITE_BASE_PATH ?? '/'` to `vite.config.ts`.
-- [ ] Add `.github/workflows/ci.yml` to run typecheck, lint, Vitest coverage, Playwright E2E, and production build on PRs into `main`.
-- [ ] Add `.github/workflows/deploy.yml` to build and deploy `dist/` to GitHub Pages on merge to `main`.
-- [ ] Open first milestone PR from `develop` → `main` and enable GitHub Pages (**Source: GitHub Actions**).
+- [x] Add configurable `base: process.env.VITE_BASE_PATH ?? '/'` to `vite.config.ts` and inline SVG favicon to `index.html`.
+- [x] Add `.github/workflows/ci.yml` to run typecheck, lint, Vitest coverage, Playwright E2E, and production build on PRs into `main`.
+- [x] Add `.github/workflows/deploy.yml` to build (using `actions/configure-pages@v5` `base_path`) and deploy `dist/` to GitHub Pages on merge to `main`.
+- [ ] Enable GitHub Pages (**Settings → Pages → Source: GitHub Actions**) and merge PR `develop` → `main`.
 
 ---
 

@@ -2,6 +2,8 @@
 
 A client-side web application for DIY bookbinders to generate exact **1:1 millimeter-accurate templates** and **300 DPI print-ready wraps** for **removable hardcover slip-cover cases**—designed to house existing paperbacks without damaging or removing their original covers.
 
+**Live App (GitHub Pages):** https://anujgtm1.github.io/Bookbinder/
+
 ![Bookbinder Studio — Structural Templates & Cut List](./docs/screenshots/structural-templates.png)
 
 ## Features

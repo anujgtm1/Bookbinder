@@ -35,10 +35,10 @@ GitHub Pages serves project repositories under a subpath (`/<repo-name>/`) rathe
 
 ---
 
-## Planned CI/CD Workflows (Next Feature)
+## CI/CD Workflows (Implemented)
 
 ### 1. PR Verification Workflow (`.github/workflows/ci.yml`)
-Runs automatically on every pull request targeting `main`:
+Runs automatically on every pull request targeting `main` and push to `develop`:
 1. `pnpm install --frozen-lockfile`
 2. `pnpm typecheck`
 3. `pnpm lint`
@@ -53,7 +53,8 @@ Runs automatically on every push/merge to `main` (plus manual `workflow_dispatch
 3. Build job:
    - `pnpm install --frozen-lockfile`
    - `pnpm typecheck && pnpm lint && pnpm test`
-   - `VITE_BASE_PATH=/Bookbinder/ pnpm build`
+   - `actions/configure-pages@v5` (automatically derives `base_path` for `/Bookbinder/` or a future custom domain)
+   - `VITE_BASE_PATH=${{ steps.pages.outputs.base_path }}/ pnpm build`
    - `actions/upload-pages-artifact@v3` uploading `dist/`
 4. Deploy job (`environment: github-pages`):
    - `actions/deploy-pages@v4`
