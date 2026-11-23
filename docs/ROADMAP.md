@@ -19,11 +19,12 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 ### Milestone 2 — Interactive Cover & Spine Styler (Phase 2)
 - [x] **Free-Form Multi-Image Canvas (`src/studio/CoverStyler.tsx`, `src/types/studioLayer.ts`):** Upload/drop unlimited PNG/JPG/WEBP images, click to select, drag anywhere across the wrap, pull 4 corner resize handles proportionally, scroll to zoom, reorder layer stack, delete via keyboard or button, one-click `Fit Front` / `Fit Spine` / `Fit Back` / `Full Wrap`, and optional per-zone clip masks.
 - [x] **Colors & Eyedropper:** Independent Back, Spine & Hinges, and Front base color pickers plus click-to-sample eyedropper mapped via SVG `getScreenCTM`.
-- [x] **Spine Typography (`src/studio/fonts.ts`, `src/studio/SpineTypographyCard.tsx`):** Separate Title/Author inputs, Inline vs. Stacked presets, US/UK vs. European reading orientation, 6 bundled offline `@fontsource/*` fonts, custom `.ttf`/`.otf`/`.woff`/`.woff2` `FontFace` uploader, automatic font-size clamping (`≤ SPINE_W - 4.0 mm`), and `±2.0 mm` optical horizontal nudge.
+- [x] **Spine Typography (`src/studio/fonts.ts`, `src/studio/SpineTypographyCard.tsx`):** Separate Title/Author inputs, Inline vs. Stacked presets, US/UK vs. European reading orientation, Vertical vs. Horizontal author writing toggle, 6 bundled offline `@fontsource/*` fonts, custom `.ttf`/`.otf`/`.woff`/`.woff2` `FontFace` uploader, automatic font-size clamping (`≤ SPINE_W - 4.0 mm`), and `±2.0 mm` optical horizontal nudge.
+- [x] **Bindery Cutting Mat UI & Interactive 3D Book Preview (`src/studio/Book3DPreview.tsx`, `src/components/FloatingHudToolbar.tsx`):** Self-healing spruce cutting-mat workbench, warm cotton-rag paper sheets, kettle-stitch dividers, collapsible Book Spec rail, folder-style paper index tabs, accessible floating HUD pill toolbars, and a live rotatable CSS 3D folded hardcover book mockup rendered at exact `BOARD_W × BOARD_H × SPINE_W` proportions.
 - [x] **300 DPI Dual Exports (`src/studio/renderEngine.ts`):** Print-Ready Roll PDF (`outer_cover_print.pdf`) with embedded vector spine typography and cut-line vs. bleed-registration mark toggle; Affinity Round-Trip 300 DPI PNG (`outer_cover_300dpi.png`) and `1:1` mm SVG (`outer_cover_300dpi.svg`).
 
 ### Quality & Research
-- [x] **Automated Test Suite:** 65 Vitest unit/component tests (~84% coverage) + 7 Playwright Chromium behavioral E2E tests covering real downloads and interactive canvas manipulation.
+- [x] **Automated Test Suite:** 72 Vitest unit/component tests (~85% coverage) + 8 Playwright Chromium behavioral E2E tests covering real downloads, interactive canvas manipulation, collapsible rail, and 3D book orbiting.
 - [x] **Affinity Connector Research:** Documented feasibility and architectures in [RESEARCH.md](./RESEARCH.md).
 - [x] **Deployment Plan:** Documented GitHub Pages CI/CD plan in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
@@ -51,4 +52,3 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 - [ ] Snap-to-guide magnetism while dragging images near board/spine edges.
 - [ ] Custom user-saved paperback presets library in `localStorage`.
 - [ ] Printable assembly instruction sheet / folding guide.
-- [ ] Interactive 3D folded hardcover mockup preview.
