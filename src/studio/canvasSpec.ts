@@ -1,4 +1,4 @@
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState, type StudioFontId } from '@/types/studio';
@@ -89,7 +89,7 @@ export function computeStudioCanvasSpec(
 
   const spineZoneStart = bleedMm + outerWrap.leftHingeRect.x;
   const frontZoneStart = bleedMm + outerWrap.frontBoardRect.x;
-  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const strategy = resolveBindingStrategy(outerWrap);
 
   const backZoneRect: Rect2D = {
     x: 0,
@@ -110,17 +110,17 @@ export function computeStudioCanvasSpec(
     height: totalHeightMm,
   };
 
-  // On covers with fold-in flaps (slip covers & dust jackets), Fit Front/Back and front/back clip
-  // masks target the visible cover face instead of stretching across tucked-in flaps (and on
-  // fold-and-glue slip covers, stay cleanly inside the top/bottom glue-tab fold lines).
-  const backArtworkRect: Rect2D = strategy.capabilities.hasFlaps
-    ? {
-        x: bleedMm + outerWrap.backBoardRect.x,
-        y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.backBoardRect.y : 0,
-        width: outerWrap.backBoardRect.width,
-        height: strategy.capabilities.hasGlueTabs ? outerWrap.backBoardRect.height : totalHeightMm,
-      }
-    : backZoneRect;
+  // On covers with fold-in flaps or top/bottom glue tabs (slip covers & dust jackets), Fit Front/Back
+  // and front/back clip masks target the visible cover face instead of spilling onto tuck flaps or glue tabs.
+  const backArtworkRect: Rect2D =
+    strategy.capabilities.hasFlaps || strategy.capabilities.hasGlueTabs
+      ? {
+          x: strategy.capabilities.hasFlaps ? bleedMm + outerWrap.backBoardRect.x : 0,
+          y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.backBoardRect.y : 0,
+          width: strategy.capabilities.hasFlaps ? outerWrap.backBoardRect.width : spineZoneStart,
+          height: strategy.capabilities.hasGlueTabs ? outerWrap.backBoardRect.height : totalHeightMm,
+        }
+      : backZoneRect;
 
   const spineArtworkRect: Rect2D = strategy.capabilities.hasGlueTabs
     ? {
@@ -131,14 +131,17 @@ export function computeStudioCanvasSpec(
       }
     : spineZoneRect;
 
-  const frontArtworkRect: Rect2D = strategy.capabilities.hasFlaps
-    ? {
-        x: bleedMm + outerWrap.frontBoardRect.x,
-        y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.frontBoardRect.y : 0,
-        width: outerWrap.frontBoardRect.width,
-        height: strategy.capabilities.hasGlueTabs ? outerWrap.frontBoardRect.height : totalHeightMm,
-      }
-    : frontZoneRect;
+  const frontArtworkRect: Rect2D =
+    strategy.capabilities.hasFlaps || strategy.capabilities.hasGlueTabs
+      ? {
+          x: strategy.capabilities.hasFlaps ? bleedMm + outerWrap.frontBoardRect.x : frontZoneStart,
+          y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.frontBoardRect.y : 0,
+          width: strategy.capabilities.hasFlaps
+            ? outerWrap.frontBoardRect.width
+            : totalWidthMm - frontZoneStart,
+          height: strategy.capabilities.hasGlueTabs ? outerWrap.frontBoardRect.height : totalHeightMm,
+        }
+      : frontZoneRect;
 
   return {
     bleedMm,

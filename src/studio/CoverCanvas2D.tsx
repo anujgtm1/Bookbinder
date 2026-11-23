@@ -1,5 +1,5 @@
 import { useMemo, type RefObject } from 'react';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import {
   CoverTextLayerModel,
   type CoverOrnamentLayer,
@@ -91,7 +91,7 @@ export function CoverCanvas2D({
   onStartOrnamentDrag,
   onStartOrnamentResize,
 }: CoverCanvas2DProps) {
-  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const bindingStrategy = resolveBindingStrategy(geometry);
   const spinePlacements = useMemo(
     () => computeSpineTextPlacements(geometry, studio),
     [geometry, studio],

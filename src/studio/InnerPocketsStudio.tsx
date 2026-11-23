@@ -27,7 +27,7 @@ import {
   type PdfExportSelection,
 } from '@/components/PdfExportDialog';
 import { Button } from '@/components/ui/button';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import { triggerBytesDownload } from '@/core/storage';
 import {
@@ -405,7 +405,7 @@ export function InnerPocketsStudio({
     [frontPocket.outerCutPolygon, innerLayout.frontX],
   );
 
-  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const bindingStrategy = resolveBindingStrategy(geometry);
 
   return (
     <div className="flex flex-col gap-4" data-testid="inner-pockets-studio">

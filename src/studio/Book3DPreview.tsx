@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
@@ -232,7 +232,7 @@ function InnerFrontPocketSvg({
   const pocketLayers = pocketStyle.layers ?? [];
   const boardW = geometry.cutList.coverBoards.widthMm;
   const boardH = geometry.cutList.coverBoards.heightMm;
-  const { capabilities } = getBindingStrategy(geometry.bindingStyle);
+  const { capabilities } = resolveBindingStrategy(geometry);
   const hasFlaps = capabilities.hasFlaps;
   const usesInnerPockets = capabilities.usesInnerPockets;
   const isFlushCardstock = !usesInnerPockets && !hasFlaps;
@@ -481,7 +481,7 @@ export function Book3DPreview({
   const halfDepth = dims.depthPx / 2;
   const halfWidth = dims.widthPx / 2;
   const halfHeight = dims.heightPx / 2;
-  const { capabilities } = getBindingStrategy(geometry.bindingStyle);
+  const { capabilities } = resolveBindingStrategy(geometry);
   const usesChipboard = capabilities.usesChipboard;
   const hasRigidSpine = capabilities.hasRigidSpine;
   const isFlexibleBoardCover = usesChipboard && !hasRigidSpine;

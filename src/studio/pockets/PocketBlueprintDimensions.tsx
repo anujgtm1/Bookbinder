@@ -63,30 +63,43 @@ export function PocketBlueprintDimensions({
       />
 
       {/* Left Vertical Breakdown for Pocket Flaps & Face Height */}
-      <VerticalDimLine
-        y1={0}
-        y2={backPocket.flapWidthMm}
-        x={-12}
-        anchorX={0}
-        label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
-        fontSize={4.0}
-      />
-      <VerticalDimLine
-        y1={backPocket.flapWidthMm}
-        y2={backPocket.flapWidthMm + backPocket.pocketHeightMm}
-        x={-12}
-        anchorX={0}
-        label={UnitConverter.format(backPocket.pocketHeightMm, unit)}
-        fontSize={4.4}
-      />
-      <VerticalDimLine
-        y1={backPocket.flapWidthMm + backPocket.pocketHeightMm}
-        y2={backPocket.totalHeightMm}
-        x={-12}
-        anchorX={0}
-        label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
-        fontSize={4.0}
-      />
+      {backPocket.faceRect.y > 0.2 ? (
+        <>
+          <VerticalDimLine
+            y1={0}
+            y2={backPocket.flapWidthMm}
+            x={-12}
+            anchorX={0}
+            label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
+            fontSize={4.0}
+          />
+          <VerticalDimLine
+            y1={backPocket.flapWidthMm}
+            y2={backPocket.flapWidthMm + backPocket.pocketHeightMm}
+            x={-12}
+            anchorX={0}
+            label={UnitConverter.format(backPocket.pocketHeightMm, unit)}
+            fontSize={4.4}
+          />
+          <VerticalDimLine
+            y1={backPocket.flapWidthMm + backPocket.pocketHeightMm}
+            y2={backPocket.totalHeightMm}
+            x={-12}
+            anchorX={0}
+            label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
+            fontSize={4.0}
+          />
+        </>
+      ) : (
+        <VerticalDimLine
+          y1={0}
+          y2={backPocket.pocketHeightMm}
+          x={-12}
+          anchorX={0}
+          label={UnitConverter.format(backPocket.pocketHeightMm, unit)}
+          fontSize={4.4}
+        />
+      )}
 
       {/* Spine Liner Overall Width (top) & Segment Breakdown (bottom) */}
       <HorizontalDimLine

@@ -535,4 +535,51 @@ describe('studio renderEngine', () => {
     expect(getFontCount(baseNoGuidesPdf)).toBe(0);
     expect(getDecompressedPageStream(baseNoGuidesPdf)).not.toContain('\nBT\n');
   });
+
+  it('appends detached inner pockets as Page 2 when appendInnerPocketsPage: true on A6 softcover-jacket (separate) + US Letter', async () => {
+    const a6SeparateGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      printMedia: 'letter',
+    });
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'Pocket Journal',
+        author: 'A. Binder',
+      },
+    };
+
+    // With appendInnerPocketsPage: true -> 2 pages (Page 1 = US Letter Landscape outer shell, Page 2 = US Letter Portrait detached pockets)
+    const mergedBytes = await generatePrintReadyRollPdf(a6SeparateGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      appendInnerPocketsPage: true,
+      innerPageSizeId: 'letter',
+    });
+    const mergedPdf = await PDFDocument.load(mergedBytes);
+    expect(mergedPdf.getPageCount()).toBe(2);
+
+    const page1 = mergedPdf.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(page1.width)).toBeCloseTo(279.4, 2);
+    expect(UnitConverter.pointsToMm(page1.height)).toBeCloseTo(215.9, 2);
+
+    const page2 = mergedPdf.getPage(1).getSize();
+    expect(UnitConverter.pointsToMm(page2.width)).toBeCloseTo(215.9, 2);
+    expect(UnitConverter.pointsToMm(page2.height)).toBeCloseTo(279.4, 2);
+
+    // Without appendInnerPocketsPage -> 1 page only
+    const singleBytes = await generatePrintReadyRollPdf(a6SeparateGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      appendInnerPocketsPage: false,
+    });
+    const singlePdf = await PDFDocument.load(singleBytes);
+    expect(singlePdf.getPageCount()).toBe(1);
+  });
 });
