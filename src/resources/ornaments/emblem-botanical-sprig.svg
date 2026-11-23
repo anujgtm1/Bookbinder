@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <path fill="currentColor" d="M 49.1 18 L 50.9 18 L 50.9 92 L 49.1 92 Z" />
+  <path fill="currentColor" d="M 50 28 Q 59.17 16.48 50 4 Q 40.83 16.48 50 28 Z" />
+  <path fill="currentColor" d="M 50 36 Q 39.61 20.52 19.76 20 Q 31.36 36.12 50 36 Z" />
+  <path fill="currentColor" d="M 50 36 Q 68.64 36.12 80.24 20 Q 60.39 20.52 50 36 Z" />
+  <path fill="currentColor" d="M 50 56 Q 35.67 38.3 11.36 38 Q 27.23 56.42 50 56 Z" />
+  <path fill="currentColor" d="M 50 56 Q 72.77 56.42 88.64 38 Q 64.33 38.3 50 56 Z" />
+  <path fill="currentColor" d="M 50 76 Q 38.3 60.08 17.24 60 Q 30.25 76.56 50 76 Z" />
+  <path fill="currentColor" d="M 50 76 Q 69.75 76.56 82.76 60 Q 61.7 60.08 50 76 Z" />
+</svg>
