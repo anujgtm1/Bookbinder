@@ -1,3 +1,4 @@
+import { getBindingStrategy } from '@/core/bindingStyles';
 import type { CaseGeometry } from '@/types/geometry';
 import { clampFinite, roundTo } from '@/types/units';
 
@@ -61,6 +62,7 @@ export const Book3DModel = {
     maxHeightPx = 310,
     maxWidthPx = 260,
   ): Book3DDimensionsPx {
+    const { capabilities } = getBindingStrategy(geometry.bindingStyle);
     const boardW = Math.max(40, geometry.cutList.coverBoards.widthMm);
     const boardH = Math.max(40, geometry.cutList.coverBoards.heightMm);
     const spineW = Math.max(8, geometry.cutList.spineStrip.widthMm);
@@ -70,11 +72,20 @@ export const Book3DModel = {
     const heightPx = roundTo(boardH * scalePxPerMm, 1);
     const depthPx = roundTo(Math.max(14, spineW * scalePxPerMm), 1);
 
-    const boardThicknessPx = roundTo(
-      clampFinite(geometry.cutList.boardThicknessMm * scalePxPerMm, 2.5, 1.5, 4.5),
-      1,
-    );
-    const pageInsetPx = roundTo(clampFinite(3.5 * scalePxPerMm, 4.5, 3, 7), 1);
+    const boardThicknessPx = capabilities.usesChipboard
+      ? roundTo(clampFinite(geometry.cutList.boardThicknessMm * scalePxPerMm, 2.5, 1.5, 4.5), 1)
+      : capabilities.hasFlaps
+        ? capabilities.hasGlueTabs
+          ? 1.0
+          : 1.2
+        : 0.8;
+    const pageInsetPx = capabilities.usesChipboard
+      ? roundTo(clampFinite(3.5 * scalePxPerMm, 4.5, 3, 7), 1)
+      : capabilities.hasFlaps
+        ? capabilities.hasGlueTabs
+          ? 1.5
+          : 1.0
+        : 0;
     const pageDepthPx = roundTo(Math.max(8, depthPx - boardThicknessPx * 2), 1);
     const pageWidthPx = roundTo(Math.max(20, widthPx - pageInsetPx), 1);
     const pageHeightPx = roundTo(Math.max(20, heightPx - pageInsetPx * 2), 1);

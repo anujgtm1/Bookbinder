@@ -1,0 +1,494 @@
+import fontkit from '@pdf-lib/fontkit';
+import {
+  PDFDocument,
+  StandardFonts,
+  concatTransformationMatrix,
+  degrees,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  type PDFFont,
+  type PDFPage,
+} from 'pdf-lib';
+import { getBindingStrategy } from '@/core/bindingStyles';
+import { layoutPdfToPrintMedia } from '@/core/pdfSheetLayout';
+import { canvasToPngBytes } from '@/lib/canvasImage';
+import { hexToRgb01 } from '@/lib/color';
+import type { PrintMediaId } from '@/types/bookParams';
+import {
+  GeometryPrimitives,
+  type CaseGeometry,
+  type Point2D,
+  type Rect2D,
+} from '@/types/geometry';
+import type { CoverStudioState, StudioFontId } from '@/types/studio';
+import { PRINT_DPI, UnitConverter } from '@/types/units';
+import {
+  computeCoverTextLinePlacements,
+  computeSpineTextPlacements,
+  computeStudioCanvasSpec,
+  type StudioCanvasSpec,
+} from '../canvasSpec';
+import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from '../classicOrnaments';
+import { getCuratedFont, loadCuratedFontBytes, type CustomFontAsset } from '../fonts';
+import { renderCoverArtworkCanvas } from './coverRasterExporter';
+
+interface PdfCoordMapper {
+  readonly toPdfX: (mm: number) => number;
+  readonly toPdfY: (mm: number) => number;
+}
+
+async function embedFontByIdInPdf(
+  pdfDoc: PDFDocument,
+  fontId: StudioFontId,
+  customFont: CustomFontAsset | null,
+  cache: Map<StudioFontId, PDFFont>,
+): Promise<PDFFont> {
+  const existing = cache.get(fontId);
+  if (existing) return existing;
+
+  pdfDoc.registerFontkit(fontkit);
+
+  try {
+    if (fontId === 'custom' && customFont?.pdfEmbeddable) {
+      const embedded = await pdfDoc.embedFont(customFont.bytes);
+      cache.set(fontId, embedded);
+      return embedded;
+    }
+
+    const curatedId = fontId === 'custom' ? 'eb-garamond' : fontId;
+    const curatedBytes = await loadCuratedFontBytes(curatedId);
+    if (curatedBytes) {
+      const embedded = await pdfDoc.embedFont(curatedBytes);
+      cache.set(fontId, embedded);
+      return embedded;
+    }
+  } catch {
+    // Graceful fallback below if font bytes cannot be embedded
+  }
+
+  const fallbackSpec =
+    fontId === 'custom' ? getCuratedFont('eb-garamond') : getCuratedFont(fontId);
+  const fallback = await pdfDoc.embedFont(
+    fallbackSpec.category === 'sans-serif' ? StandardFonts.Helvetica : StandardFonts.TimesRoman,
+  );
+  cache.set(fontId, fallback);
+  return fallback;
+}
+
+/** Draws hairline cut polygon, dashed score/fold lines, and optional softcover trim-waste instructions. */
+async function drawCoverCutAndFoldOverlay(
+  pdfDoc: PDFDocument,
+  page: PDFPage,
+  geometry: CaseGeometry,
+  spec: StudioCanvasSpec,
+  coords: PdfCoordMapper,
+): Promise<void> {
+  const { toPdfX, toPdfY } = coords;
+  const bleed = spec.bleedMm;
+  const { outerWrap } = geometry;
+  const shiftedCutPoly = GeometryPrimitives.translatePolygon(
+    outerWrap.outerCutPolygon,
+    bleed,
+    bleed,
+  );
+
+  const hairlineCut = rgb(0.92, 0.14, 0.14);
+  const hairlineFold = rgb(0.12, 0.42, 0.88);
+
+  // 3a. Solid hairline outer cut polygon (including 45° corner miters)
+  for (let i = 0; i < shiftedCutPoly.length; i++) {
+    const a = shiftedCutPoly[i];
+    const b = shiftedCutPoly[(i + 1) % shiftedCutPoly.length];
+    page.drawLine({
+      start: { x: toPdfX(a.x), y: toPdfY(a.y) },
+      end: { x: toPdfX(b.x), y: toPdfY(b.y) },
+      color: hairlineCut,
+      thickness: 0.55,
+    });
+  }
+
+  // 3b. Subtle dashed fold / score lines supplied by the active binding strategy
+  const drawFoldLine = (x1Mm: number, y1Mm: number, x2Mm: number, y2Mm: number) => {
+    page.drawLine({
+      start: { x: toPdfX(x1Mm), y: toPdfY(y1Mm) },
+      end: { x: toPdfX(x2Mm), y: toPdfY(y2Mm) },
+      color: hairlineFold,
+      thickness: 0.45,
+      dashArray: [4, 2.5],
+      opacity: 0.78,
+    });
+  };
+
+  for (const line of outerWrap.foldLines) {
+    drawFoldLine(bleed + line.x1, bleed + line.y1, bleed + line.x2, bleed + line.y2);
+  }
+
+  // 3c. Optional trim-waste fold & glue instructions for binding styles with mitered glue tabs
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  if (strategy.capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0) {
+    const w = outerWrap.widthMm;
+    // Print concise 1-2-3 fold & glue instructions inside the top cut-off trim-waste gap
+    // (strictly outside the red cut outline, so it trims cleanly away after cutting)
+    const wasteStartX = bleed + outerWrap.jacketFlapWidthMm * 2 + 3;
+    const wasteEndX = bleed + w - outerWrap.jacketFlapWidthMm * 2 - 3;
+    const wasteWidthMm = wasteEndX - wasteStartX;
+    if (wasteWidthMm >= 80 && outerWrap.jacketGlueTabHeightMm >= 8) {
+      const noteFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const stripY = bleed + 1.4;
+      const stripH = outerWrap.jacketGlueTabHeightMm - 2.8;
+      page.drawRectangle({
+        x: toPdfX(wasteStartX),
+        y: toPdfY(stripY + stripH),
+        width: UnitConverter.mmToPoints(wasteWidthMm),
+        height: UnitConverter.mmToPoints(stripH),
+        color: rgb(0.98, 0.97, 0.94),
+        opacity: 0.92,
+      });
+      const instructionText =
+        'TRIM WASTE • FOLD & GLUE: 1. Fold side flaps inward  2. Glue blank back of 4 tabs  3. Fold tabs over flaps';
+      const fontSizePt = wasteWidthMm >= 145 ? 6.4 : 5.2;
+      const textW = noteFont.widthOfTextAtSize(instructionText, fontSizePt);
+      const centerX = toPdfX(wasteStartX + wasteWidthMm / 2);
+      const centerY = toPdfY(stripY + stripH / 2);
+      page.drawText(instructionText, {
+        x: centerX - textW / 2,
+        y: centerY - fontSizePt * 0.34,
+        size: fontSizePt,
+        font: noteFont,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+    }
+  }
+}
+
+/** Draws bleed-margin miter ticks and outer corner crop brackets outside the trimmed wrap boundary. */
+function drawOuterRegistrationMarks(
+  page: PDFPage,
+  geometry: CaseGeometry,
+  spec: StudioCanvasSpec,
+  coords: PdfCoordMapper,
+): void {
+  const { toPdfX, toPdfY } = coords;
+  const bleed = spec.bleedMm;
+  const regColor = rgb(0.1, 0.1, 0.1);
+  const markLen = Math.max(2.0, bleed);
+  const w = geometry.outerWrap.widthMm;
+  const h = geometry.outerWrap.heightMm;
+  const leg = geometry.outerWrap.miterCutLegMm;
+
+  const drawMark = (a: Point2D, b: Point2D) =>
+    page.drawLine({
+      start: { x: toPdfX(a.x), y: toPdfY(a.y) },
+      end: { x: toPdfX(b.x), y: toPdfY(b.y) },
+      color: regColor,
+      thickness: 0.45,
+    });
+
+  // Outer trim-box corner crop marks (kept strictly in bleed zone outside the wrap)
+  const xL = bleed;
+  const xR = bleed + w;
+  const yT = bleed;
+  const yB = bleed + h;
+
+  // Top-left & Top-right & Bottom-left & Bottom-right miter start ticks in outer margin
+  if (leg > 0.2) {
+    drawMark({ x: xL + leg, y: 0 }, { x: xL + leg, y: Math.max(0.5, yT - 0.3) });
+    drawMark({ x: xR - leg, y: 0 }, { x: xR - leg, y: Math.max(0.5, yT - 0.3) });
+    drawMark(
+      { x: xL + leg, y: spec.totalHeightMm },
+      { x: xL + leg, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.3) },
+    );
+    drawMark(
+      { x: xR - leg, y: spec.totalHeightMm },
+      { x: xR - leg, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.3) },
+    );
+
+    drawMark({ x: 0, y: yT + leg }, { x: Math.max(0.5, xL - 0.3), y: yT + leg });
+    drawMark({ x: 0, y: yB - leg }, { x: Math.max(0.5, xL - 0.3), y: yB - leg });
+    drawMark(
+      { x: spec.totalWidthMm, y: yT + leg },
+      { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.3), y: yT + leg },
+    );
+    drawMark(
+      { x: spec.totalWidthMm, y: yB - leg },
+      { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.3), y: yB - leg },
+    );
+  }
+
+  // Corner outer crop brackets if bleed >= 1mm
+  if (markLen >= 1) {
+    drawMark({ x: 0, y: yT }, { x: Math.max(0.5, xL - 0.5), y: yT });
+    drawMark({ x: xL, y: 0 }, { x: xL, y: Math.max(0.5, yT - 0.5) });
+    drawMark(
+      { x: spec.totalWidthMm, y: yT },
+      { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.5), y: yT },
+    );
+    drawMark({ x: xR, y: 0 }, { x: xR, y: Math.max(0.5, yT - 0.5) });
+    drawMark({ x: 0, y: yB }, { x: Math.max(0.5, xL - 0.5), y: yB });
+    drawMark(
+      { x: xL, y: spec.totalHeightMm },
+      { x: xL, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.5) },
+    );
+    drawMark(
+      { x: spec.totalWidthMm, y: yB },
+      { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.5), y: yB },
+    );
+    drawMark(
+      { x: xR, y: spec.totalHeightMm },
+      { x: xR, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.5) },
+    );
+  }
+}
+
+/** Renders the complete 1:1 mm outer cover onto a single PDFDocument page (artwork, vectors, typography, guides). */
+async function renderBaseCoverPdfPage(
+  geometry: CaseGeometry,
+  studio: CoverStudioState,
+  customFont: CustomFontAsset | null,
+  spec: StudioCanvasSpec,
+  options?: { rasterDpi?: number; skipCanvasRaster?: boolean; includeGuides?: boolean },
+): Promise<{ bytes: Uint8Array; pageW: number; pageH: number }> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle('Bookbinder — Print-Ready Outer Cover (1:1 mm)');
+  pdfDoc.setCreator('Bookbinder Studio');
+
+  const pageW = UnitConverter.mmToPoints(spec.totalWidthMm);
+  const pageH = UnitConverter.mmToPoints(spec.totalHeightMm);
+  const page = pdfDoc.addPage([pageW, pageH]);
+
+  const toPdfX = (mm: number) => UnitConverter.mmToPoints(mm);
+  const toPdfY = (mm: number) => UnitConverter.mmToPoints(spec.totalHeightMm - mm);
+  const coords: PdfCoordMapper = { toPdfX, toPdfY };
+
+  // 1. Background & Artwork layer
+  if (
+    studio.layers.length > 0 &&
+    !options?.skipCanvasRaster &&
+    typeof document !== 'undefined'
+  ) {
+    const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
+      includeSpineText: false,
+      dpi: options?.rasterDpi ?? PRINT_DPI,
+    });
+    const pngBytes = await canvasToPngBytes(canvas);
+    const embeddedImage = await pdfDoc.embedPng(pngBytes);
+    page.drawImage(embeddedImage, { x: 0, y: 0, width: pageW, height: pageH });
+  } else {
+    const zones: { rect: Rect2D; hex: string }[] = [
+      { rect: spec.backZoneRect, hex: studio.backBgColor },
+      { rect: spec.spineZoneRect, hex: studio.spineBgColor },
+      { rect: spec.frontZoneRect, hex: studio.frontBgColor },
+    ];
+    for (const z of zones) {
+      const c = hexToRgb01(z.hex);
+      page.drawRectangle({
+        x: toPdfX(z.rect.x),
+        y: toPdfY(z.rect.y + z.rect.height),
+        width: UnitConverter.mmToPoints(z.rect.width),
+        height: UnitConverter.mmToPoints(z.rect.height),
+        color: rgb(c.r, c.g, c.b),
+      });
+    }
+  }
+
+  // 2a. True Vector Classic Bookbindery Ornaments & Custom SVG Stamps (crisp at any scale, never rasterized)
+  const mmToPt = UnitConverter.mmToPoints(1);
+  for (const orn of studio.ornaments ?? []) {
+    const compoundD = buildOrnamentCompoundPath(orn);
+    if (!compoundD) continue;
+    const style = getOrnamentSvgStyle(orn);
+    const oc = hexToRgb01(orn.color);
+    const pdfColor = rgb(oc.r, oc.g, oc.b);
+    page.drawSvgPath(compoundD, {
+      x: 0,
+      y: pageH,
+      scale: mmToPt,
+      color: style.fill !== 'none' ? pdfColor : undefined,
+      borderColor: style.stroke !== 'none' && style.strokeWidthMm > 0 ? pdfColor : undefined,
+      borderWidth:
+        style.stroke !== 'none' && style.strokeWidthMm > 0
+          ? UnitConverter.mmToPoints(style.strokeWidthMm)
+          : undefined,
+    });
+  }
+
+  // 2b. True Vector Cover Text Layers (Front / Back / Spine)
+  const fontCache = new Map<StudioFontId, PDFFont>();
+  for (const textLayer of studio.textLayers ?? []) {
+    const lineItems = computeCoverTextLinePlacements(textLayer);
+    const pdfFont = await embedFontByIdInPdf(pdfDoc, textLayer.fontId, customFont, fontCache);
+    const tc = hexToRgb01(textLayer.color);
+    const textColor = rgb(tc.r, tc.g, tc.b);
+    const isFlipped = Boolean(textLayer.flipX || textLayer.flipY);
+
+    if (isFlipped) {
+      const layerAnchorXPt = toPdfX(textLayer.xMm);
+      const layerAnchorYPt = toPdfY(textLayer.yMm);
+      const sx = textLayer.flipX ? -1 : 1;
+      const sy = textLayer.flipY ? -1 : 1;
+      const tx = layerAnchorXPt * (1 - sx);
+      const ty = layerAnchorYPt * (1 - sy);
+      page.pushOperators(
+        pushGraphicsState(),
+        concatTransformationMatrix(sx, 0, 0, sy, tx, ty),
+      );
+    }
+
+    for (const item of lineItems) {
+      if (!item.text.trim()) continue;
+      const trackingPt = item.letterSpacingEm * item.fontSizePt;
+      const chars = Array.from(item.text);
+      const totalWidthPt =
+        Math.abs(trackingPt) > 0.05 && chars.length > 1
+          ? chars.reduce(
+              (acc, ch, i) =>
+                acc +
+                pdfFont.widthOfTextAtSize(ch, item.fontSizePt) +
+                (i < chars.length - 1 ? trackingPt : 0),
+              0,
+            )
+          : pdfFont.widthOfTextAtSize(item.text, item.fontSizePt);
+      const textHeightPt = pdfFont.heightAtSize(item.fontSizePt, { descender: false });
+      const anchorXPt = toPdfX(item.anchorXMm);
+      const anchorYPt = toPdfY(item.anchorYMm);
+
+      const startXPt =
+        item.align === 'left'
+          ? anchorXPt
+          : item.align === 'right'
+            ? anchorXPt - totalWidthPt
+            : anchorXPt - totalWidthPt / 2;
+      const baseYPt = anchorYPt - textHeightPt * 0.36;
+
+      if (Math.abs(trackingPt) > 0.05 && chars.length > 1) {
+        let cursorX = startXPt;
+        for (const ch of chars) {
+          page.drawText(ch, {
+            x: cursorX,
+            y: baseYPt,
+            size: item.fontSizePt,
+            font: pdfFont,
+            color: textColor,
+          });
+          cursorX += pdfFont.widthOfTextAtSize(ch, item.fontSizePt) + trackingPt;
+        }
+      } else {
+        page.drawText(item.text, {
+          x: startXPt,
+          y: baseYPt,
+          size: item.fontSizePt,
+          font: pdfFont,
+          color: textColor,
+        });
+      }
+    }
+
+    if (isFlipped) {
+      page.pushOperators(popGraphicsState());
+    }
+  }
+
+  // 2c. True Vector Spine Typography
+  const textPlacements = computeSpineTextPlacements(geometry, studio);
+  if (textPlacements.length > 0) {
+    const pdfFont = await embedFontByIdInPdf(
+      pdfDoc,
+      studio.spineText.fontId,
+      customFont,
+      fontCache,
+    );
+    const tc = hexToRgb01(studio.spineText.textColor);
+    const textColor = rgb(tc.r, tc.g, tc.b);
+
+    for (const item of textPlacements) {
+      const textWidthPt = pdfFont.widthOfTextAtSize(item.text, item.fontSizePt);
+      const textHeightPt = pdfFont.heightAtSize(item.fontSizePt, { descender: false });
+      const centerXPt = toPdfX(item.anchorXMm);
+      const centerYPt = toPdfY(item.anchorYMm);
+
+      // Rotate around text center cleanly in PDF coordinate space (CCW positive)
+      const pdfRotDeg =
+        item.rotationDegCss === 0 ? 0 : item.rotationDegCss === 90 ? -90 : 90;
+      const rad = (pdfRotDeg * Math.PI) / 180;
+      const dxLocal = -textWidthPt / 2;
+      const dyLocal = -textHeightPt * 0.36;
+      const startX = centerXPt + dxLocal * Math.cos(rad) - dyLocal * Math.sin(rad);
+      const startY = centerYPt + dxLocal * Math.sin(rad) + dyLocal * Math.cos(rad);
+
+      page.drawText(item.text, {
+        x: startX,
+        y: startY,
+        size: item.fontSizePt,
+        font: pdfFont,
+        color: textColor,
+        rotate: degrees(pdfRotDeg),
+      });
+    }
+  }
+
+  // 3. Cut Lines vs. Outer Corner Registration Marks Only
+  const showFullGuides = options?.includeGuides ?? studio.cutLineMode === 'full-cut-miter';
+  if (showFullGuides) {
+    await drawCoverCutAndFoldOverlay(pdfDoc, page, geometry, spec, coords);
+  } else {
+    drawOuterRegistrationMarks(page, geometry, spec, coords);
+  }
+
+  return { bytes: await pdfDoc.save(), pageW, pageH };
+}
+
+export interface PrintReadyCoverPdfOptions {
+  /** Override cut/fold overlay visibility (true = full cut & fold lines, false = outer corner marks only; defaults to studio.cutLineMode). */
+  readonly includeGuides?: boolean;
+  /** Target output paper sheet or roll media ID. */
+  readonly printMediaId?: PrintMediaId;
+  /** Backward-compatible alias for printMediaId. */
+  readonly printMedia?: PrintMediaId;
+  /** Rasterization resolution for uploaded artwork layers (300 or 600 DPI; defaults to 300). */
+  readonly dpi?: 300 | 600;
+  /** Backward-compatible alias for dpi. */
+  readonly rasterDpi?: number;
+  /** Horizontal overlap zone width in mm for 2-sheet tiled output (5..30 mm; defaults to 10). */
+  readonly tileOverlapMm?: number;
+  /** Draw a 50 mm 1:1 calibration ruler bar for verifying 100% print scale. */
+  readonly includeScaleBar?: boolean;
+  /** Skip DOM canvas rasterization (useful in headless/unit tests without HTML canvas). */
+  readonly skipCanvasRaster?: boolean;
+}
+
+/**
+ * Generates the Print-Ready Outer Cover PDF (`outer_cover_print.pdf`) at exact 1:1 physical mm scale:
+ * - Solid vector fills or 300/600 DPI embedded artwork raster
+ * - True vector spine & cover typography via pdf-lib + fontkit
+ * - Cut-line toggle: Full Cut & Miter Guides vs. Bleed + Outer Corner Registration Marks Only
+ * - Shared print-media sheet centering, 2-sheet tiling with overlap marks, and optional 50 mm scale check bar
+ */
+export async function generatePrintReadyRollPdf(
+  geometry: CaseGeometry,
+  studio: CoverStudioState,
+  customFont: CustomFontAsset | null,
+  options?: PrintReadyCoverPdfOptions,
+): Promise<Uint8Array> {
+  const rasterDpi = options?.dpi ?? options?.rasterDpi ?? PRINT_DPI;
+  const spec = computeStudioCanvasSpec(geometry, rasterDpi);
+  const { bytes: sourceBytes } = await renderBaseCoverPdfPage(
+    geometry,
+    studio,
+    customFont,
+    spec,
+    {
+      rasterDpi,
+      skipCanvasRaster: options?.skipCanvasRaster,
+      includeGuides: options?.includeGuides,
+    },
+  );
+
+  const printMediaId = options?.printMediaId ?? options?.printMedia ?? 'exact-auto';
+  return layoutPdfToPrintMedia(sourceBytes, spec.totalWidthMm, spec.totalHeightMm, {
+    printMediaId,
+    tileOverlapMm: options?.tileOverlapMm,
+    includeScaleBar: options?.includeScaleBar,
+    bleedMm: spec.bleedMm,
+  });
+}

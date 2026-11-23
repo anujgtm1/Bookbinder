@@ -1,133 +1,136 @@
-import { Box, Eye, EyeOff, FileCode2, FileImage, FileText, Layers, Pipette } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BookOpen,
+  Box,
+  Compass,
+  Eye,
+  EyeOff,
+  Layers,
+  Magnet,
+  Maximize2,
+  Minimize2,
+  Pipette,
+  Ruler,
+  ShieldAlert,
+  ShieldCheck,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FloatingHudToolbar,
   HudButton,
   HudGroup,
   HudSeparator,
 } from '@/components/FloatingHudToolbar';
+import { OuterBlueprintCanvas } from '@/components/OuterBlueprintCanvas';
+import {
+  PdfExportDialog,
+  type OuterPdfExportOptions,
+  type PdfExportSelection,
+} from '@/components/PdfExportDialog';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
-  triggerBlobDownload,
-  triggerBytesDownload,
-  triggerTextDownload,
-} from '@/core/storage';
-import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
+  FULL_PAGE_EXIT_BUTTON_CLASS,
+  getFullPageStageClass,
+  useFullPageCanvas,
+} from '@/hooks/useFullPageCanvas';
 import {
-  CoverStudioModel,
-  type CoverStudioState,
-  type SpineTypographyConfig,
-} from '@/types/studio';
-import {
-  CoverImageLayerModel,
-  type CoverImageLayer,
-  type LayerClipZone,
-  type QuickFitTarget,
-  type ResizeCorner,
-} from '@/types/studioLayer';
-import { PRINT_DPI, UnitConverter } from '@/types/units';
-import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
+  BookParametersModel,
+  type BookParameters,
+  type PageSizeId,
+  type PrintMediaId,
+  type SplitMode,
+} from '@/types/bookParams';
+import type { CaseGeometry, Rect2D } from '@/types/geometry';
+import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
+import { CoverImageLayerModel } from '@/types/studioLayer';
+import { PRINT_DPI, roundTo } from '@/types/units';
+import type { EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
-import { SpineTypographyCard } from './SpineTypographyCard';
+import { CoverCanvas2D } from './CoverCanvas2D';
+import { CoverStudioToolDock, type StudioToolTab } from './CoverStudioToolDock';
+import { CoverWorkbenchHeader } from './CoverWorkbenchHeader';
+import { CricutExportDialog } from './CricutExportDialog';
 import {
   BOOK_3D_PRESETS,
   Book3DModel,
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
-import {
-  loadCustomFontFromFile,
-  resolveFontCssFamily,
-  type CustomFontAsset,
-} from './fonts';
-import {
-  computeSpineTextPlacements,
-  computeStudioCanvasSpec,
-  exportCoverPng300Dpi,
-  generateAffinityCoverSvg,
-  generatePrintReadyRollPdf,
-  renderCoverArtworkCanvas,
-  resolveQuickFitRect,
-  resolveZoneClipRect,
-} from './renderEngine';
+import type { CustomFontAsset } from './fonts';
+import { useCoverElementsInteraction } from './hooks/useCoverElementsInteraction';
+import { useCoverStudioActions } from './hooks/useCoverStudioActions';
+import { PreflightEngine } from './preflight';
+import { computeStudioCanvasSpec } from './renderEngine';
+import { buildCanvasSnapTargets } from './snapGuides';
+import { useInteractiveLayers } from './useInteractiveLayers';
 
 export interface CoverStylerProps {
+  readonly params?: BookParameters;
   readonly geometry: CaseGeometry;
   readonly studio: CoverStudioState;
+  readonly exportingOuterPdf?: boolean;
   readonly onChange: (next: CoverStudioState) => void;
+  readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
+  readonly onDownloadOuterSvg?: () => void;
+  readonly onDownloadOuterPdf?: (options?: OuterPdfExportOptions) => void | Promise<void>;
+  readonly onOpenMeasureAndCut?: () => void;
   readonly onStatusMessage: (message: string) => void;
 }
 
-type StudioViewMode = '2d' | '3d';
-
-type DragInteraction =
-  | { readonly mode: 'none' }
-  | {
-      readonly mode: 'move';
-      readonly layerId: string;
-      readonly startXMm: number;
-      readonly startYMm: number;
-      readonly origLayer: CoverImageLayer;
-    }
-  | {
-      readonly mode: 'resize';
-      readonly layerId: string;
-      readonly corner: ResizeCorner;
-      readonly origLayer: CoverImageLayer;
-    };
-
-const CORNER_CURSORS: Readonly<Record<ResizeCorner, string>> = {
-  nw: 'nwse-resize',
-  se: 'nwse-resize',
-  ne: 'nesw-resize',
-  sw: 'nesw-resize',
-};
-
-function rgbToHex(r: number, g: number, b: number): string {
-  return (
-    '#' +
-    [r, g, b]
-      .map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, '0'))
-      .join('')
-  );
-}
-
-function readImageFile(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      const img = new Image();
-      img.onload = () => resolve({ dataUrl, width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = () => reject(new Error('Unsupported or unreadable image file.'));
-      img.src = dataUrl;
-    };
-    reader.onerror = () => reject(new Error('Could not read image file.'));
-    reader.readAsDataURL(file);
-  });
-}
+type StudioViewMode = '2d' | 'blueprint' | '3d';
 
 export function CoverStyler({
+  params,
   geometry,
   studio,
+  exportingOuterPdf = false,
   onChange,
+  onUpdateParams,
+  onDownloadOuterSvg,
+  onDownloadOuterPdf,
+  onOpenMeasureAndCut,
   onStatusMessage,
 }: CoverStylerProps) {
+  const effectiveParams = useMemo(
+    () => params ?? BookParametersModel.createDefault(),
+    [params],
+  );
   const [viewMode, setViewMode] = useState<StudioViewMode>('2d');
+  const [activeToolTab, setActiveToolTab] = useState<StudioToolTab>('artwork');
+  const [blueprintZoom, setBlueprintZoom] = useState(1);
+  const [blueprintPan, setBlueprintPan] = useState({ x: 0, y: 0 });
+  const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
   const [book3DAngle, setBook3DAngle] = useState<Book3DCameraAngle>(DEFAULT_BOOK_3D_ANGLE);
+  const [book3DCoverOpen, setBook3DCoverOpen] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => studio.layers[studio.layers.length - 1]?.id ?? null,
   );
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [selectedOrnamentId, setSelectedOrnamentId] = useState<string | null>(null);
   const [customFont, setCustomFont] = useState<CustomFontAsset | null>(null);
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [showPreflightOverlays, setShowPreflightOverlays] = useState(true);
+  const [checkDpi, setCheckDpi] = useState(true);
+  const [ignoredIssueIds, setIgnoredIssueIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
+  const [cricutDialogOpen, setCricutDialogOpen] = useState(false);
+  const [pdfDialogTarget, setPdfDialogTarget] = useState<'cover-styled' | 'outer-blueprint' | null>(
+    null,
+  );
+  const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(effectiveParams.printMedia);
+  const [localPageSize, setLocalPageSize] = useState<PageSizeId>(effectiveParams.pdfPageSize);
+  const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(effectiveParams.splitMode);
+  const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
+
+  const activePrintMedia = onUpdateParams ? effectiveParams.printMedia : localPrintMedia;
+  const activePageSize = onUpdateParams ? effectiveParams.pdfPageSize : localPageSize;
+  const activeSplitMode = onUpdateParams ? effectiveParams.splitMode : localSplitMode;
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<DragInteraction>({ mode: 'none' });
-  const suppressNextClickRef = useRef(false);
   const studioRef = useRef(studio);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -136,16 +139,120 @@ export function CoverStyler({
   }, [studio, onChange]);
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
-  const spinePlacements = useMemo(
-    () => computeSpineTextPlacements(geometry, studio),
-    [geometry, studio],
+  const canvasBounds = useMemo<Rect2D>(
+    () => ({ x: 0, y: 0, width: spec.totalWidthMm, height: spec.totalHeightMm }),
+    [spec.totalWidthMm, spec.totalHeightMm],
+  );
+  const snapTargets = useMemo(() => buildCanvasSnapTargets(geometry, spec), [geometry, spec]);
+
+  const handleSelectImageLayer = useCallback((id: string | null) => {
+    setSelectedLayerId(id);
+    if (id) {
+      setSelectedTextId(null);
+      setSelectedOrnamentId(null);
+      setActiveToolTab('artwork');
+    }
+  }, []);
+
+  const handleSelectText = useCallback((id: string | null) => {
+    setSelectedTextId(id);
+    if (id) {
+      setSelectedLayerId(null);
+      setSelectedOrnamentId(null);
+      setActiveToolTab('text');
+    }
+  }, []);
+
+  const handleSelectOrnament = useCallback((id: string | null) => {
+    setSelectedOrnamentId(id);
+    if (id) {
+      setSelectedLayerId(null);
+      setSelectedTextId(null);
+      setActiveToolTab('designs');
+    }
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedLayerId(null);
+    setSelectedTextId(null);
+    setSelectedOrnamentId(null);
+  }, []);
+
+  const {
+    activeSnapGuides,
+    suppressNextClickRef,
+    toSvgMm,
+    startMoveDrag,
+    startResizeDrag,
+    handleLayerWheel,
+  } = useInteractiveLayers({
+    svgRef,
+    viewBox: canvasBounds,
+    layers: studio.layers,
+    selectedLayerId,
+    snapTargets,
+    snapEnabled,
+    enabled: viewMode === '2d',
+    onChangeLayers: (nextLayers) => {
+      onChangeRef.current({ ...studioRef.current, layers: nextLayers });
+    },
+    onSelectLayer: handleSelectImageLayer,
+  });
+
+  const { elementSnapGuides, startTextDrag, startOrnamentDrag, startOrnamentResize } =
+    useCoverElementsInteraction({
+      studioRef,
+      onChangeRef,
+      toSvgMm,
+      suppressNextClickRef,
+      snapTargets,
+      snapEnabled,
+      enabled: viewMode === '2d',
+      selectedTextId,
+      selectedOrnamentId,
+      onSelectText: handleSelectText,
+      onSelectOrnament: handleSelectOrnament,
+    });
+
+  const actions = useCoverStudioActions({
+    effectiveParams,
+    geometry,
+    spec,
+    studio,
+    studioRef,
+    onChange,
+    onChangeRef,
+    onUpdateParams,
+    onStatusMessage,
+    customFont,
+    setCustomFont,
+    selectedTextId,
+    setSelectedTextId,
+    selectedOrnamentId,
+    setSelectedOrnamentId,
+    setSelectedLayerId,
+    setEyedropperTarget,
+    onSwitchTo2D: () => setViewMode('2d'),
+    onSelectImageLayer: handleSelectImageLayer,
+    onSelectText: handleSelectText,
+    onSelectOrnament: handleSelectOrnament,
+    onClearSelection: handleClearSelection,
+    toSvgMm,
+  });
+
+  const preflight = useMemo(
+    () =>
+      PreflightEngine.evaluate(effectiveParams, geometry, studio, {
+        checkDpi,
+        ignoredIssueIds,
+      }),
+    [effectiveParams, geometry, studio, checkDpi, ignoredIssueIds],
   );
   const maxFontSizePt = CoverStudioModel.maxSpineFontSizePt(geometry.outerWrap.spineRect.width);
   const effectiveFontSizePt = CoverStudioModel.effectiveSpineFontSizePt(
     studio.spineText.fontSizePt,
     geometry.outerWrap.spineRect.width,
   );
-  const activeFontFamily = resolveFontCssFamily(studio.spineText.fontId, customFont);
   const activePreset3D = Book3DModel.matchPreset(book3DAngle);
 
   const selectedLayer = useMemo(
@@ -153,364 +260,72 @@ export function CoverStyler({
     [studio.layers, selectedLayerId],
   );
 
-  const shiftedCutPolygon = useMemo(
-    () =>
-      GeometryPrimitives.translatePolygon(
-        geometry.outerWrap.outerCutPolygon,
-        spec.bleedMm,
-        spec.bleedMm,
-      ),
-    [geometry.outerWrap.outerCutPolygon, spec.bleedMm],
-  );
+  const visibleSnapGuides =
+    elementSnapGuides.length > 0 ? elementSnapGuides : activeSnapGuides;
 
-  const updateStudio = (patch: Partial<CoverStudioState>) => onChange({ ...studio, ...patch });
-  const updateSpineText = (patch: Partial<SpineTypographyConfig>) =>
-    onChange({ ...studio, spineText: { ...studio.spineText, ...patch } });
-  const updateLayer = (id: string, updater: (layer: CoverImageLayer) => CoverImageLayer) => {
-    onChange({
-      ...studio,
-      layers: studio.layers.map((layer) => (layer.id === id ? updater(layer) : layer)),
+  const adjustBlueprintZoom = (delta: number) => {
+    setBlueprintZoom((prev) => roundTo(Math.min(3.5, Math.max(0.5, prev + delta)), 2));
+  };
+
+  const resetBlueprintView = () => {
+    setBlueprintZoom(1);
+    setBlueprintPan({ x: 0, y: 0 });
+  };
+
+  const handleConfirmPdfExport = async (selection: PdfExportSelection) => {
+    if (
+      selection.target === 'outer-blueprint' ||
+      (selection.target === 'cover-styled' && selection.splitMode === 'three-piece')
+    ) {
+      if (onDownloadOuterPdf) {
+        await onDownloadOuterPdf({
+          splitMode: selection.splitMode,
+          printMediaId: selection.printMediaId,
+          tileOverlapMm: selection.tileOverlapMm,
+          includeScaleBar: selection.includeScaleBar,
+        });
+        return;
+      }
+    }
+    await actions.handleExportPrintPdf({
+      includeGuides: selection.includeGuides,
+      printMediaId: selection.printMediaId,
+      dpi: selection.dpi,
+      tileOverlapMm: selection.tileOverlapMm,
+      includeScaleBar: selection.includeScaleBar,
+      splitMode: selection.splitMode,
     });
   };
 
-  // Window-level pointer move/up so dragging or corner-resizing keeps tracking smoothly even outside the SVG
-  useEffect(() => {
-    const onPointerMove = (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (drag.mode === 'none') return;
-      const svgEl = svgRef.current;
-      if (!svgEl) return;
-
-      let xMm: number;
-      let yMm: number;
-      const ctm = typeof svgEl.getScreenCTM === 'function' ? svgEl.getScreenCTM() : null;
-      if (ctm && typeof DOMPoint !== 'undefined') {
-        const svgPt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
-        xMm = svgPt.x;
-        yMm = svgPt.y;
-      } else {
-        const rect = svgEl.getBoundingClientRect();
-        xMm = ((e.clientX - rect.left) / Math.max(1, rect.width)) * spec.totalWidthMm;
-        yMm = ((e.clientY - rect.top) / Math.max(1, rect.height)) * spec.totalHeightMm;
-      }
-
-      suppressNextClickRef.current = true;
-      const currentStudio = studioRef.current;
-      const nextLayers = currentStudio.layers.map((layer) => {
-        if (layer.id !== drag.layerId) return layer;
-        if (drag.mode === 'move') {
-          return CoverImageLayerModel.moveBy(
-            drag.origLayer,
-            xMm - drag.startXMm,
-            yMm - drag.startYMm,
-          );
-        }
-        return CoverImageLayerModel.resizeFromCorner(drag.origLayer, drag.corner, xMm, yMm);
-      });
-      onChangeRef.current({ ...currentStudio, layers: nextLayers });
-    };
-
-    const onPointerEnd = () => {
-      if (dragRef.current.mode !== 'none') {
-        dragRef.current = { mode: 'none' };
-        // Clear click suppression after the immediate click event turn so future clicks are never eaten
-        window.setTimeout(() => {
-          suppressNextClickRef.current = false;
-        }, 0);
-      }
-    };
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerEnd);
-    window.addEventListener('pointercancel', onPointerEnd);
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerEnd);
-      window.removeEventListener('pointercancel', onPointerEnd);
-    };
-  }, [spec.totalWidthMm, spec.totalHeightMm]);
-
-  // Delete selected layer via Backspace/Delete key when focus is not inside a text control
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (viewMode !== '2d' || !selectedLayerId) return;
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      e.preventDefault();
-      const remaining = studio.layers.filter((l) => l.id !== selectedLayerId);
-      onChange({ ...studio, layers: remaining });
-      setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [viewMode, selectedLayerId, studio, onChange]);
-
-  const clientPointToSvgMm = (
-    clientX: number,
-    clientY: number,
-  ): { xMm: number; yMm: number } | null => {
-    const svgEl = svgRef.current;
-    if (!svgEl) return null;
-    const ctm = typeof svgEl.getScreenCTM === 'function' ? svgEl.getScreenCTM() : null;
-    if (ctm && typeof DOMPoint !== 'undefined') {
-      const svgPt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-      return { xMm: svgPt.x, yMm: svgPt.y };
-    }
-    const rect = svgEl.getBoundingClientRect();
-    return {
-      xMm: ((clientX - rect.left) / Math.max(1, rect.width)) * spec.totalWidthMm,
-      yMm: ((clientY - rect.top) / Math.max(1, rect.height)) * spec.totalHeightMm,
-    };
-  };
-
-  const defaultPlacementRectForDrop = (dropPoint?: { xMm: number; yMm: number }): Rect2D => {
-    if (dropPoint) {
-      if (dropPoint.xMm < spec.spineZoneRect.x) return spec.backZoneRect;
-      if (dropPoint.xMm < spec.frontZoneRect.x) return spec.spineZoneRect;
-      return spec.frontZoneRect;
-    }
-    const count = studio.layers.length;
-    if (count === 0) return spec.frontZoneRect;
-    if (count === 1) return spec.backZoneRect;
-    if (count === 2) return spec.spineZoneRect;
-    return {
-      x: spec.totalWidthMm * 0.25,
-      y: spec.totalHeightMm * 0.2,
-      width: spec.totalWidthMm * 0.5,
-      height: spec.totalHeightMm * 0.6,
-    };
-  };
-
-  const handleAddImageFiles = async (
-    files: readonly File[],
-    dropPoint?: { xMm: number; yMm: number },
-  ) => {
-    const validFiles = files.filter(
-      (f) => /^image\/(png|jpeg|webp)$/i.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name),
-    );
-    if (validFiles.length === 0) {
-      onStatusMessage('Please upload PNG, JPG, or WEBP image files.');
-      return;
-    }
-
-    const addedLayers: CoverImageLayer[] = [];
-    for (let i = 0; i < validFiles.length; i++) {
-      const file = validFiles[i];
-      try {
-        const decoded = await readImageFile(file);
-        const baseRect = defaultPlacementRectForDrop(dropPoint);
-        const offset = i * 8;
-        const targetRect = {
-          x: baseRect.x + offset,
-          y: baseRect.y + offset,
-          width: baseRect.width,
-          height: baseRect.height,
-        };
-        const layer = CoverImageLayerModel.createInRect({
-          dataUrl: decoded.dataUrl,
-          fileName: file.name,
-          naturalWidth: decoded.width,
-          naturalHeight: decoded.height,
-          targetRect,
-          clipZone: 'none',
-          mode: 'contain',
-        });
-        addedLayers.push(layer);
-      } catch {
-        onStatusMessage(`Could not read image "${file.name}".`);
-      }
-    }
-
-    if (addedLayers.length > 0) {
-      onChange({
-        ...studio,
-        layers: [...studio.layers, ...addedLayers],
-      });
-      setSelectedLayerId(addedLayers[addedLayers.length - 1].id);
-      onStatusMessage(
-        addedLayers.length === 1
-          ? `Added "${addedLayers[0].fileName}" — drag to move or pull corners to resize`
-          : `Added ${addedLayers.length} artwork images to canvas`,
-      );
-    }
-  };
-
-  const handleCustomFontUpload = async (file: File) => {
-    try {
-      const asset = await loadCustomFontFromFile(file);
-      setCustomFont(asset);
-      updateSpineText({ fontId: 'custom', customFontName: asset.fileName });
-      onStatusMessage(
-        asset.pdfEmbeddable
-          ? `Loaded custom font "${asset.fileName}"`
-          : `Loaded "${asset.fileName}" for preview/PNG (PDF export uses serif fallback for .woff2)`,
-      );
-    } catch (err) {
-      onStatusMessage(err instanceof Error ? err.message : 'Failed to load custom font.');
-    }
-  };
-
-  const applySampledColor = (hex: string, target: Exclude<EyedropperTarget, null>) => {
-    const latest = studioRef.current;
-    if (target === 'spine') {
-      onChangeRef.current({ ...latest, spineBgColor: hex });
-    } else if (target === 'back') {
-      onChangeRef.current({ ...latest, backBgColor: hex });
-    } else {
-      onChangeRef.current({
-        ...latest,
-        spineBgColor: hex,
-        backBgColor: hex,
-        frontBgColor: hex,
-      });
-    }
-    setEyedropperTarget(null);
-    onStatusMessage(`Sampled ${hex.toUpperCase()} from cover`);
-  };
-
-  const sampleColorAtSvgClick = async (
-    clientX: number,
-    clientY: number,
-    target: Exclude<EyedropperTarget, null>,
-  ) => {
-    const pt = clientPointToSvgMm(clientX, clientY);
-    if (!pt) return;
-    const relX = pt.xMm / spec.totalWidthMm;
-    const relY = pt.yMm / spec.totalHeightMm;
-
-    try {
-      const sampleCanvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
-        includeSpineText: false,
-        dpi: 72,
-      });
-      const px = Math.min(sampleCanvas.width - 1, Math.max(0, Math.floor(relX * sampleCanvas.width)));
-      const py = Math.min(sampleCanvas.height - 1, Math.max(0, Math.floor(relY * sampleCanvas.height)));
-      const ctx = sampleCanvas.getContext('2d');
-      if (!ctx) return;
-      const pixel = ctx.getImageData(px, py, 1, 1).data;
-      applySampledColor(rgbToHex(pixel[0], pixel[1], pixel[2]), target);
-    } catch {
-      setEyedropperTarget(null);
-      onStatusMessage('Could not sample color from cover image.');
-    }
-  };
-
-  const handleExportPrintPdf = async () => {
-    setExportingKind('pdf');
-    try {
-      const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont);
-      triggerBytesDownload(bytes, 'outer_cover_print.pdf', 'application/pdf');
-      onStatusMessage('Exported outer_cover_print.pdf (300 DPI + vector spine text)');
-    } catch {
-      onStatusMessage('Failed to generate Print-Ready Roll PDF.');
-    } finally {
-      setExportingKind(null);
-    }
-  };
-
-  const handleExportAffinityPng = async () => {
-    setExportingKind('png');
-    try {
-      const blob = await exportCoverPng300Dpi(geometry, studio, customFont);
-      triggerBlobDownload(blob, 'outer_cover_300dpi.png');
-      onStatusMessage(
-        `Exported outer_cover_300dpi.png (${spec.pixelWidth}×${spec.pixelHeight}px @ 300 DPI)`,
-      );
-    } catch {
-      onStatusMessage('Failed to export 300 DPI PNG.');
-    } finally {
-      setExportingKind(null);
-    }
-  };
-
-  const handleExportAffinitySvg = async () => {
-    setExportingKind('svg');
-    try {
-      let artworkDataUrl: string | undefined;
-      if (studio.layers.length > 0) {
-        const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
-          includeSpineText: false,
-          dpi: PRINT_DPI,
-        });
-        artworkDataUrl = canvas.toDataURL('image/png');
-      }
-      const svg = generateAffinityCoverSvg(geometry, studio, customFont, artworkDataUrl);
-      triggerTextDownload(svg, 'outer_cover_300dpi.svg', 'image/svg+xml;charset=utf-8');
-      onStatusMessage('Exported outer_cover_300dpi.svg (1:1 mm Affinity round-trip)');
-    } catch {
-      onStatusMessage('Failed to export Affinity SVG.');
-    } finally {
-      setExportingKind(null);
-    }
-  };
-
-  const handleCornerSize = Math.max(7.5, spec.totalWidthMm * 0.022);
-
   return (
     <div className="flex flex-col gap-4" data-testid="cover-styler">
-      {/* Edge-to-Edge Cover Workbench Panel connected flush under the Folio Index Tabs */}
+      {/* Edge-to-Edge Unified Outer Case Wrap Workbench connected flush under the Folio Index Tabs */}
       <section
         aria-label="Interactive Cover and Spine Workbench"
         className="overflow-hidden rounded-b-lg rounded-tr-lg border border-border bg-card shadow-xs"
       >
-        {/* Compact Header + 300 DPI Export Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div>
-            <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
-              Interactive Cover &amp; Spine Canvas
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Drop artwork onto the wrap, drag &amp; resize freely, preview in 3D, and export at 300 DPI ({spec.pixelWidth} ×{' '}
-              {spec.pixelHeight} px).
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleExportPrintPdf}
-              disabled={exportingKind !== null}
-              data-testid="studio-export-pdf-btn"
-            >
-              <FileText className="h-4 w-4" aria-hidden="true" />
-              {exportingKind === 'pdf' ? 'Rendering PDF…' : 'Print-Ready PDF (300 DPI)'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleExportAffinityPng}
-              disabled={exportingKind !== null}
-              data-testid="studio-export-png-btn"
-            >
-              <FileImage className="h-4 w-4" aria-hidden="true" />
-              {exportingKind === 'png' ? 'Rendering PNG…' : 'Affinity PNG (300 DPI)'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportAffinitySvg}
-              disabled={exportingKind !== null}
-              data-testid="studio-export-svg-btn"
-            >
-              <FileCode2 className="h-4 w-4" aria-hidden="true" />
-              Affinity SVG (1:1 mm)
-            </Button>
-          </div>
-        </div>
+        <CoverWorkbenchHeader
+          geometry={geometry}
+          spec={spec}
+          unit={effectiveParams.unit}
+          exportingKind={actions.exportingKind}
+          exportingOuterPdf={exportingOuterPdf}
+          onOpenMeasureAndCut={onOpenMeasureAndCut}
+          onExportPrintPdf={() => setPdfDialogTarget('cover-styled')}
+          onExportAffinityPng={() => void actions.handleExportAffinityPng()}
+          onExportAffinitySvg={() => void actions.handleExportAffinitySvg()}
+          onOpenCricutDialog={() => setCricutDialogOpen(true)}
+          onDownloadOuterSvg={onDownloadOuterSvg}
+          onDownloadOuterPdf={
+            onDownloadOuterPdf ? () => setPdfDialogTarget('outer-blueprint') : undefined
+          }
+        />
 
         {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage */}
         <div
           id="studio-mat-viewport"
-          data-testid="studio-canvas-dropzone"
+          data-testid="studio-canvas-stage"
+          data-expanded={isExpanded ? 'true' : 'false'}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDraggingOver(true);
@@ -522,10 +337,10 @@ export function CoverStyler({
             const files = Array.from(e.dataTransfer.files ?? []);
             if (files.length === 0) return;
             const dropPt =
-              viewMode === '2d' ? (clientPointToSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
-            void handleAddImageFiles(files, dropPt);
+              viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
+            void actions.handleAddImageFiles(files, dropPt);
           }}
-          className={`cutting-mat-surface relative flex h-[470px] w-full items-center justify-center overflow-hidden border-y transition-colors sm:h-[510px] ${
+          className={`cutting-mat-surface flex items-center justify-center overflow-hidden transition-colors ${getFullPageStageClass(isExpanded)} ${
             isDraggingOver
               ? 'border-brass-bright ring-2 ring-inset ring-brass-bright/70'
               : eyedropperTarget
@@ -533,7 +348,7 @@ export function CoverStyler({
                 : 'border-border/80'
           }`}
         >
-          {/* Contextual Top Banner (Eyedropper active or helpful status pill) */}
+          {/* Contextual Top Banner (Eyedropper active & Full-Page Exit Pill) */}
           <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
             {eyedropperTarget && (
               <Badge
@@ -545,319 +360,76 @@ export function CoverStyler({
                 Click anywhere on the cover preview to sample color for {eyedropperTarget}
               </Badge>
             )}
+            {isExpanded && (
+              <button
+                type="button"
+                onClick={exitExpanded}
+                onPointerDown={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
+                data-testid="studio-exit-fullscreen-btn"
+                aria-label="Exit full screen canvas"
+                title="Exit full screen (Esc)"
+                className={FULL_PAGE_EXIT_BUTTON_CLASS}
+              >
+                <Minimize2 className="h-3.5 w-3.5 text-brass-bright" aria-hidden="true" />
+                <span>Exit Full Screen</span>
+                <kbd className="rounded border border-[#f6efe2]/25 bg-white/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#f6efe2]/80">
+                  Esc
+                </kbd>
+              </button>
+            )}
           </div>
 
-          {viewMode === '2d' ? (
-            <div className="flex h-full w-full items-center justify-center p-6 pb-16">
-              <svg
-                ref={svgRef}
-                role="img"
-                aria-label="Interactive hardcover outer wrap canvas with draggable images and spine typography"
-                data-testid="studio-preview-svg"
-                viewBox={`0 0 ${spec.totalWidthMm} ${spec.totalHeightMm}`}
-                className={`max-h-full max-w-full select-none drop-shadow-[0_16px_28px_rgba(0,0,0,0.48)] ${
-                  eyedropperTarget ? 'cursor-crosshair' : 'cursor-default'
-                }`}
-                style={{ touchAction: 'none' }}
-                onClick={(e) => {
-                  if (suppressNextClickRef.current) {
-                    suppressNextClickRef.current = false;
-                    return;
-                  }
-                  if (eyedropperTarget) {
-                    void sampleColorAtSvgClick(e.clientX, e.clientY, eyedropperTarget);
-                  } else if (e.target === e.currentTarget) {
-                    setSelectedLayerId(null);
-                  }
-                }}
-                onWheel={(e) => {
-                  if (!selectedLayer) return;
-                  e.preventDefault();
-                  const factor = e.deltaY < 0 ? 1.06 : 0.94;
-                  updateLayer(selectedLayer.id, (layer) =>
-                    CoverImageLayerModel.scaleAroundCenter(layer, factor),
-                  );
-                }}
-              >
-                <title>Outer Cover Styler Interactive Canvas</title>
-                <defs>
-                  <clipPath id="studio-clip-none">
-                    <rect x={0} y={0} width={spec.totalWidthMm} height={spec.totalHeightMm} />
-                  </clipPath>
-                  <clipPath id="studio-clip-back">
-                    <rect
-                      x={spec.backZoneRect.x}
-                      y={spec.backZoneRect.y}
-                      width={spec.backZoneRect.width}
-                      height={spec.backZoneRect.height}
-                    />
-                  </clipPath>
-                  <clipPath id="studio-clip-spine">
-                    <rect
-                      x={spec.spineZoneRect.x}
-                      y={spec.spineZoneRect.y}
-                      width={spec.spineZoneRect.width}
-                      height={spec.spineZoneRect.height}
-                    />
-                  </clipPath>
-                  <clipPath id="studio-clip-front">
-                    <rect
-                      x={spec.frontZoneRect.x}
-                      y={spec.frontZoneRect.y}
-                      width={spec.frontZoneRect.width}
-                      height={spec.frontZoneRect.height}
-                    />
-                  </clipPath>
-                </defs>
-
-                {/* Base Zone Background Fills */}
-                <rect
-                  x={spec.backZoneRect.x}
-                  y={spec.backZoneRect.y}
-                  width={spec.backZoneRect.width}
-                  height={spec.backZoneRect.height}
-                  fill={studio.backBgColor}
-                  data-testid="studio-back-fill"
-                  onClick={(e) => {
-                    if (!eyedropperTarget) {
-                      e.stopPropagation();
-                      setSelectedLayerId(null);
-                    }
-                  }}
-                />
-                <rect
-                  x={spec.spineZoneRect.x}
-                  y={spec.spineZoneRect.y}
-                  width={spec.spineZoneRect.width}
-                  height={spec.spineZoneRect.height}
-                  fill={studio.spineBgColor}
-                  data-testid="studio-spine-fill"
-                  onClick={(e) => {
-                    if (!eyedropperTarget) {
-                      e.stopPropagation();
-                      setSelectedLayerId(null);
-                    }
-                  }}
-                />
-                <rect
-                  x={spec.frontZoneRect.x}
-                  y={spec.frontZoneRect.y}
-                  width={spec.frontZoneRect.width}
-                  height={spec.frontZoneRect.height}
-                  fill={studio.frontBgColor}
-                  data-testid="studio-front-fill"
-                  onClick={(e) => {
-                    if (!eyedropperTarget) {
-                      e.stopPropagation();
-                      setSelectedLayerId(null);
-                    }
-                  }}
-                />
-
-                {/* Free-Form Draggable & Resizable Artwork Layers */}
-                {studio.layers.map((layer, index) => {
-                  const clipId = `studio-clip-${layer.clipZone}`;
-                  return (
-                    <g key={layer.id} clipPath={`url(#${clipId})`}>
-                      <image
-                        href={layer.dataUrl}
-                        x={layer.xMm}
-                        y={layer.yMm}
-                        width={layer.widthMm}
-                        height={layer.heightMm}
-                        preserveAspectRatio="none"
-                        data-testid={`studio-layer-${index}`}
-                        className={
-                          eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
-                        }
-                        onClick={(e) => {
-                          if (eyedropperTarget) return;
-                          e.stopPropagation();
-                          setSelectedLayerId(layer.id);
-                        }}
-                        onPointerDown={(e) => {
-                          if (eyedropperTarget) return;
-                          e.stopPropagation();
-                          setSelectedLayerId(layer.id);
-                          const pt = clientPointToSvgMm(e.clientX, e.clientY);
-                          if (!pt) return;
-                          dragRef.current = {
-                            mode: 'move',
-                            layerId: layer.id,
-                            startXMm: pt.xMm,
-                            startYMm: pt.yMm,
-                            origLayer: layer,
-                          };
-                        }}
-                      />
-                    </g>
-                  );
-                })}
-
-                {/* Spine Typography Overlay */}
-                <g data-testid="studio-spine-typography" pointerEvents="none">
-                  {spinePlacements.map((item, idx) => (
-                    <text
-                      key={`${item.kind}-${idx}`}
-                      x={item.anchorXMm}
-                      y={item.anchorYMm}
-                      fill={studio.spineText.textColor}
-                      fontFamily={activeFontFamily}
-                      fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      transform={`rotate(${item.rotationDegCss} ${item.anchorXMm} ${item.anchorYMm})`}
-                    >
-                      {item.text}
-                    </text>
-                  ))}
-                </g>
-
-                {/* Fold, Board & Cut Guides Overlay */}
-                {showGuides && (
-                  <g pointerEvents="none">
-                    <path
-                      d={GeometryPrimitives.polygonToSvgPath(shiftedCutPolygon, 2)}
-                      fill="none"
-                      stroke="#FF4D3D"
-                      strokeWidth="0.95"
-                      strokeDasharray={
-                        studio.cutLineMode === 'bleed-registration' ? '4 2.5' : undefined
-                      }
-                    />
-                    {[
-                      geometry.outerWrap.backBoardRect,
-                      geometry.outerWrap.spineRect,
-                      geometry.outerWrap.frontBoardRect,
-                    ].map((rect, i) => (
-                      <rect
-                        key={i}
-                        x={rect.x + spec.bleedMm}
-                        y={rect.y + spec.bleedMm}
-                        width={rect.width}
-                        height={rect.height}
-                        fill="none"
-                        stroke="#ffffff"
-                        strokeOpacity="0.68"
-                        strokeWidth="0.7"
-                        strokeDasharray="5 3"
-                      />
-                    ))}
-                    {studio.layers.length === 0 && (
-                      <>
-                        <text
-                          x={
-                            spec.bleedMm +
-                            geometry.outerWrap.backBoardRect.x +
-                            geometry.outerWrap.backBoardRect.width / 2
-                          }
-                          y={spec.totalHeightMm / 2}
-                          fill="#ffffff"
-                          fillOpacity="0.45"
-                          fontSize="7.5"
-                          fontWeight="600"
-                          textAnchor="middle"
-                        >
-                          BACK COVER
-                        </text>
-                        <text
-                          x={
-                            spec.bleedMm +
-                            geometry.outerWrap.frontBoardRect.x +
-                            geometry.outerWrap.frontBoardRect.width / 2
-                          }
-                          y={spec.totalHeightMm / 2}
-                          fill="#ffffff"
-                          fillOpacity="0.45"
-                          fontSize="7.5"
-                          fontWeight="600"
-                          textAnchor="middle"
-                        >
-                          DROP IMAGES ANYWHERE
-                        </text>
-                      </>
-                    )}
-                  </g>
-                )}
-
-                {/* Selection Frame & Corner Resize Handles for Selected Layer */}
-                {selectedLayer && !eyedropperTarget && (
-                  <g data-testid="studio-selection-handles">
-                    {selectedLayer.clipZone !== 'none' &&
-                      (() => {
-                        const clipRect = resolveZoneClipRect(spec, selectedLayer.clipZone);
-                        return (
-                          <rect
-                            x={clipRect.x}
-                            y={clipRect.y}
-                            width={clipRect.width}
-                            height={clipRect.height}
-                            fill="none"
-                            stroke="#38bdf8"
-                            strokeWidth="0.8"
-                            strokeDasharray="3 2"
-                            pointerEvents="none"
-                          />
-                        );
-                      })()}
-                    <rect
-                      x={selectedLayer.xMm}
-                      y={selectedLayer.yMm}
-                      width={selectedLayer.widthMm}
-                      height={selectedLayer.heightMm}
-                      fill="none"
-                      stroke="#dfb96a"
-                      strokeWidth="1.25"
-                      strokeDasharray="4 2"
-                      pointerEvents="none"
-                    />
-                    {(
-                      [
-                        { corner: 'nw' as const, x: selectedLayer.xMm, y: selectedLayer.yMm },
-                        {
-                          corner: 'ne' as const,
-                          x: selectedLayer.xMm + selectedLayer.widthMm,
-                          y: selectedLayer.yMm,
-                        },
-                        {
-                          corner: 'se' as const,
-                          x: selectedLayer.xMm + selectedLayer.widthMm,
-                          y: selectedLayer.yMm + selectedLayer.heightMm,
-                        },
-                        {
-                          corner: 'sw' as const,
-                          x: selectedLayer.xMm,
-                          y: selectedLayer.yMm + selectedLayer.heightMm,
-                        },
-                      ] as const
-                    ).map((handle) => (
-                      <rect
-                        key={handle.corner}
-                        x={handle.x - handleCornerSize / 2}
-                        y={handle.y - handleCornerSize / 2}
-                        width={handleCornerSize}
-                        height={handleCornerSize}
-                        rx={1}
-                        fill="#faf6ee"
-                        stroke="#1e4d44"
-                        strokeWidth="1.1"
-                        style={{ cursor: CORNER_CURSORS[handle.corner] }}
-                        data-testid={`resize-handle-${handle.corner}`}
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          dragRef.current = {
-                            mode: 'resize',
-                            layerId: selectedLayer.id,
-                            corner: handle.corner,
-                            origLayer: selectedLayer,
-                          };
-                        }}
-                      />
-                    ))}
-                  </g>
-                )}
-              </svg>
+          {/* Dropzone visual cue */}
+          {isDraggingOver && (
+            <div className="pointer-events-none absolute inset-4 z-30 flex items-center justify-center rounded-lg border-2 border-dashed border-brass-bright bg-black/45 backdrop-blur-[1px]">
+              <span className="rounded-full border border-brass-bright/60 bg-black/75 px-4 py-1.5 font-serif text-sm font-semibold text-[#faf6ee] shadow-lg">
+                Drop image onto Back Cover, Spine, or Front Cover
+              </span>
             </div>
+          )}
+
+          {viewMode === '2d' ? (
+            <CoverCanvas2D
+              svgRef={svgRef}
+              geometry={geometry}
+              spec={spec}
+              canvasBounds={canvasBounds}
+              studio={studio}
+              customFont={customFont}
+              selectedLayer={selectedLayer}
+              selectedTextId={selectedTextId}
+              selectedOrnamentId={selectedOrnamentId}
+              eyedropperTarget={eyedropperTarget}
+              showGuides={showGuides}
+              showPreflightOverlays={showPreflightOverlays}
+              preflight={preflight}
+              activeIssueId={activeIssueId}
+              visibleSnapGuides={visibleSnapGuides}
+              suppressNextClickRef={suppressNextClickRef}
+              onClearSelection={handleClearSelection}
+              onSampleColorAtClick={(x, y, target) => void actions.sampleColorAtSvgClick(x, y, target)}
+              onSelectImageLayer={handleSelectImageLayer}
+              onStartLayerMove={startMoveDrag}
+              onStartLayerResize={startResizeDrag}
+              onLayerWheel={handleLayerWheel}
+              onSelectText={handleSelectText}
+              onStartTextDrag={startTextDrag}
+              onSelectOrnament={handleSelectOrnament}
+              onStartOrnamentDrag={startOrnamentDrag}
+              onStartOrnamentResize={startOrnamentResize}
+            />
+          ) : viewMode === 'blueprint' ? (
+            <OuterBlueprintCanvas
+              geometry={geometry}
+              splitMode={effectiveParams.splitMode}
+              unit={effectiveParams.unit}
+              zoom={blueprintZoom}
+              onAdjustZoom={adjustBlueprintZoom}
+              pan={blueprintPan}
+              onPanChange={setBlueprintPan}
+              showDimensions={showBlueprintDimensions}
+            />
           ) : (
             <div className="h-full w-full pb-12">
               <Book3DPreview
@@ -865,6 +437,7 @@ export function CoverStyler({
                 studio={studio}
                 customFont={customFont}
                 angle={book3DAngle}
+                isCoverOpen={book3DCoverOpen}
                 onAngleChange={setBook3DAngle}
               />
             </div>
@@ -885,7 +458,18 @@ export function CoverStyler({
                   data-testid="studio-view-2d-btn"
                 >
                   <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-                  2D Flat Wrap
+                  Styled Cover
+                </HudButton>
+                <HudButton
+                  pressed={viewMode === 'blueprint'}
+                  onClick={() => {
+                    setEyedropperTarget(null);
+                    setViewMode('blueprint');
+                  }}
+                  data-testid="studio-view-blueprint-btn"
+                >
+                  <Compass className="h-3.5 w-3.5" aria-hidden="true" />
+                  Blueprint
                 </HudButton>
                 <HudButton
                   pressed={viewMode === '3d'}
@@ -896,14 +480,14 @@ export function CoverStyler({
                   data-testid="studio-view-3d-btn"
                 >
                   <Box className="h-3.5 w-3.5" aria-hidden="true" />
-                  3D Book Preview
+                  3D Book
                 </HudButton>
               </HudGroup>
 
               <HudSeparator />
 
               {viewMode === '2d' ? (
-                <HudGroup label="Canvas guides">
+                <HudGroup label="Canvas overlays">
                   <HudButton
                     pressed={showGuides}
                     onClick={() => setShowGuides((v) => !v)}
@@ -914,23 +498,135 @@ export function CoverStyler({
                     ) : (
                       <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
                     )}
-                    Cut &amp; Fold Guides
+                    Guides
+                  </HudButton>
+                  <HudButton
+                    pressed={snapEnabled}
+                    onClick={() => setSnapEnabled((v) => !v)}
+                    title="Magnetic smart snap guides (hold Alt while dragging to bypass)"
+                    data-testid="studio-snap-btn"
+                  >
+                    <Magnet className="h-3.5 w-3.5" aria-hidden="true" />
+                    Snap
+                  </HudButton>
+                  <HudButton
+                    pressed={showPreflightOverlays}
+                    onClick={() => {
+                      setShowPreflightOverlays((v) => !v);
+                      if (preflight.issues.length > 0) {
+                        setActiveToolTab('preflight');
+                      }
+                    }}
+                    data-testid="studio-preflight-hud-btn"
+                  >
+                    {preflight.status === 'pass' ? (
+                      <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    {preflight.status === 'pass'
+                      ? 'Preflight OK'
+                      : `Preflight (${preflight.errorCount + preflight.warningCount})`}
                   </HudButton>
                 </HudGroup>
-              ) : (
-                <HudGroup label="3D camera angles">
-                  {BOOK_3D_PRESETS.map((preset) => (
+              ) : viewMode === 'blueprint' ? (
+                <>
+                  <HudGroup label="Blueprint overlays">
                     <HudButton
-                      key={preset.id}
-                      pressed={activePreset3D === preset.id}
-                      onClick={() => setBook3DAngle(preset.angle)}
-                      data-testid={`book3d-preset-${preset.id}`}
+                      pressed={showBlueprintDimensions}
+                      onClick={() => setShowBlueprintDimensions((v) => !v)}
+                      title="Show/hide manual-cutting dimension lines, cumulative ruler marks, and 45° miter callout"
+                      data-testid="blueprint-dimensions-btn"
                     >
-                      {preset.label}
+                      <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
+                      Dimensions
                     </HudButton>
-                  ))}
-                </HudGroup>
+                  </HudGroup>
+                  <HudSeparator />
+                  <HudGroup label="Blueprint zoom">
+                    <HudButton
+                      aria-label="Zoom out blueprint"
+                      title="Zoom out"
+                      onClick={() => adjustBlueprintZoom(-0.25)}
+                      className="px-2"
+                    >
+                      <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
+                    </HudButton>
+                    <span className="min-w-11 text-center font-mono text-[11px] text-[#f6efe2]/90">
+                      {Math.round(blueprintZoom * 100)}%
+                    </span>
+                    <HudButton
+                      aria-label="Zoom in blueprint"
+                      title="Zoom in"
+                      onClick={() => adjustBlueprintZoom(0.25)}
+                      className="px-2"
+                    >
+                      <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
+                    </HudButton>
+                    <HudButton
+                      aria-label="Reset blueprint zoom and pan"
+                      title="Reset zoom & pan"
+                      onClick={resetBlueprintView}
+                      className="px-2"
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </HudButton>
+                  </HudGroup>
+                </>
+              ) : (
+                <>
+                  <HudGroup label="3D camera angles">
+                    {BOOK_3D_PRESETS.map((preset) => (
+                      <HudButton
+                        key={preset.id}
+                        pressed={activePreset3D === preset.id}
+                        onClick={() => setBook3DAngle(preset.angle)}
+                        data-testid={`book3d-preset-${preset.id}`}
+                      >
+                        {preset.label}
+                      </HudButton>
+                    ))}
+                  </HudGroup>
+                  <HudSeparator />
+                  <HudGroup label="Book cover state">
+                    <HudButton
+                      pressed={book3DCoverOpen}
+                      onClick={() => {
+                        setBook3DCoverOpen((wasOpen) => {
+                          const nextOpen = !wasOpen;
+                          if (nextOpen) {
+                            setBook3DAngle({ yawDeg: -10, pitchDeg: -8 });
+                          }
+                          return nextOpen;
+                        });
+                      }}
+                      data-testid="book3d-open-cover-btn"
+                      title="Swing open the front cover to peek inside at your styled inner pocket"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                      {book3DCoverOpen ? 'Close Cover' : 'Open Cover'}
+                    </HudButton>
+                  </HudGroup>
+                </>
               )}
+
+              <HudSeparator />
+
+              <HudGroup label="Canvas size">
+                <HudButton
+                  pressed={isExpanded}
+                  onClick={toggleExpanded}
+                  title="Expand canvas to full page (Esc to exit)"
+                  data-testid="studio-fullscreen-btn"
+                >
+                  {isExpanded ? (
+                    <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  {isExpanded ? 'Exit' : 'Full Screen'}
+                </HudButton>
+              </HudGroup>
             </FloatingHudToolbar>
           </div>
         </div>
@@ -940,9 +636,11 @@ export function CoverStyler({
           <span>
             {viewMode === '3d'
               ? 'Drag directly on the hardcover volume (or use Arrow keys) to inspect Front, Spine, and Back proportions.'
-              : selectedLayer
-                ? `Selected "${selectedLayer.fileName}" — drag to position, pull corners or scroll wheel to resize, Backspace to remove.`
-                : 'Drop PNG, JPG, or WEBP artwork anywhere onto the cutting mat or click Add Images below.'}
+              : viewMode === 'blueprint'
+                ? 'Solid Red: 45° Miter Cut Line • Dashed Blue: Board Guides • Brass: Hinge Spacers • Green: Bleed.'
+                : selectedLayer
+                  ? `Selected "${selectedLayer.fileName}" — drag to position, pull corners or scroll wheel to resize, Backspace to remove.`
+                  : 'Drop PNG, JPG, WEBP, or SVG artwork anywhere onto the cutting mat, or add Cover Text & Classic Designs below.'}
           </span>
           <span className="font-mono text-[11px] text-brass">
             {spec.totalWidthMm.toFixed(1)} × {spec.totalHeightMm.toFixed(1)} mm @ 300 DPI
@@ -950,53 +648,144 @@ export function CoverStyler({
         </div>
       </section>
 
-      {/* Decoupled Controls Grid */}
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ArtworkControlsCard
-          studio={studio}
-          selectedLayerId={selectedLayerId}
-          eyedropperTarget={eyedropperTarget}
-          onSelectLayer={setSelectedLayerId}
-          onAddImageFiles={(files) => void handleAddImageFiles(files)}
-          onQuickFitLayer={(id, target: QuickFitTarget) => {
-            const targetRect = resolveQuickFitRect(spec, target);
-            updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect));
-          }}
-          onSetLayerClip={(id, clipZone: LayerClipZone) =>
-            updateLayer(id, (layer) => ({ ...layer, clipZone }))
+      <CoverStudioToolDock
+        activeTab={activeToolTab}
+        onTabChange={setActiveToolTab}
+        studio={studio}
+        customFont={customFont}
+        selectedLayerId={selectedLayerId}
+        selectedTextId={selectedTextId}
+        selectedOrnamentId={selectedOrnamentId}
+        eyedropperTarget={eyedropperTarget}
+        extendingStub={actions.extendingStub}
+        sampledEdgeHex={actions.sampledEdgeHex}
+        maxFontSizePt={maxFontSizePt}
+        effectiveFontSizePt={effectiveFontSizePt}
+        savedPresets={actions.savedPresets}
+        preflight={preflight}
+        showPreflightOverlays={showPreflightOverlays}
+        checkDpi={checkDpi}
+        activeIssueId={activeIssueId}
+        onSelectImageLayer={handleSelectImageLayer}
+        onAddImageFiles={(files) => void actions.handleAddImageFiles(files)}
+        onQuickFitLayer={actions.handleQuickFitLayer}
+        onExtendLayerStub={(id, mode) => void actions.handleExtendLayerStub(id, mode)}
+        onMatchSpineBackToEdge={(hex) => {
+          actions.updateStudio({ spineBgColor: hex, backBgColor: hex, frontBgColor: hex });
+          onStatusMessage(`Matched spine & back color to cover edge (${hex.toUpperCase()})`);
+        }}
+        onSetLayerClip={(id, clipZone) =>
+          actions.updateLayer(id, (layer) => ({ ...layer, clipZone }))
+        }
+        onScaleLayer={(id, factor) =>
+          actions.updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
+        }
+        onToggleLayerFlip={(id, axis) =>
+          actions.updateLayer(id, (layer) =>
+            axis === 'x' ? { ...layer, flipX: !layer.flipX } : { ...layer, flipY: !layer.flipY },
+          )
+        }
+        onReorderLayer={(id, direction) =>
+          onChange({ ...studio, layers: CoverImageLayerModel.reorder(studio.layers, id, direction) })
+        }
+        onDeleteLayer={(id) => {
+          const remaining = studio.layers.filter((l) => l.id !== id);
+          onChange({ ...studio, layers: remaining });
+          if (selectedLayerId === id) {
+            setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
           }
-          onScaleLayer={(id, factor) =>
-            updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
-          }
-          onReorderLayer={(id, direction) =>
-            onChange({
-              ...studio,
-              layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
-            })
-          }
-          onDeleteLayer={(id) => {
-            const remaining = studio.layers.filter((l) => l.id !== id);
-            onChange({ ...studio, layers: remaining });
-            if (selectedLayerId === id) {
-              setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
-            }
-          }}
-          onUpdateStudio={updateStudio}
-          onToggleEyedropper={(target) => {
-            setViewMode('2d');
-            setEyedropperTarget((prev) => (prev === target ? null : target));
-          }}
-        />
+        }}
+        onUpdateStudio={actions.updateStudio}
+        onToggleEyedropper={(target) => {
+          setViewMode('2d');
+          setEyedropperTarget((prev) => (prev === target ? null : target));
+        }}
+        onSelectText={handleSelectText}
+        onAddTextPreset={actions.handleAddTextPreset}
+        onUpdateTextLayer={actions.handleUpdateTextLayer}
+        onQuickAlignText={actions.handleQuickAlignText}
+        onDeleteTextLayer={actions.handleDeleteTextLayer}
+        onCustomFontSelected={(file, textLayerId) =>
+          void actions.handleCustomFontUpload(file, textLayerId)
+        }
+        onSelectOrnament={handleSelectOrnament}
+        onAddOrnament={actions.handleAddOrnament}
+        onImportSvgStamp={(file, zone, color) => void actions.handleImportSvgStamp(file, zone, color)}
+        onUpdateOrnament={actions.handleUpdateOrnament}
+        onScaleOrnament={actions.handleScaleOrnament}
+        onFitOrnamentToBoard={actions.handleFitOrnamentToBoard}
+        onFitOrnamentWithMargin={actions.handleFitOrnamentWithMargin}
+        onCenterOrnament={actions.handleCenterOrnament}
+        onDeleteOrnament={actions.handleDeleteOrnament}
+        onUpdateSpineText={actions.updateSpineText}
+        onSavePreset={actions.handleSaveDesignPreset}
+        onApplyPreset={actions.handleApplyDesignPreset}
+        onDeletePreset={actions.handleDeleteDesignPreset}
+        onExportPresets={actions.handleExportDesignPresets}
+        onImportPresets={(file) => void actions.handleImportDesignPresets(file)}
+        onTogglePreflightOverlays={setShowPreflightOverlays}
+        onToggleCheckDpi={(next) => {
+          setCheckDpi(next);
+          onStatusMessage(next ? '300 DPI print check enabled' : '300 DPI print check paused');
+        }}
+        onHighlightIssue={setActiveIssueId}
+        onApplyQuickFix={actions.handleApplyQuickFix}
+        onIgnoreIssue={(issueId) => {
+          setIgnoredIssueIds((prev) => {
+            const next = new Set(prev);
+            next.add(issueId);
+            return next;
+          });
+          setActiveIssueId((prev) => (prev === issueId ? null : prev));
+        }}
+        onRestoreIgnored={() => {
+          setIgnoredIssueIds(new Set());
+          onStatusMessage('Restored all ignored preflight warnings');
+        }}
+      />
 
-        <SpineTypographyCard
-          spineText={studio.spineText}
-          maxFontSizePt={maxFontSizePt}
-          effectiveFontSizePt={effectiveFontSizePt}
-          customFont={customFont}
-          onUpdateSpineText={updateSpineText}
-          onCustomFontSelected={(file) => void handleCustomFontUpload(file)}
-        />
-      </div>
+      {/* Cricut / Silhouette / ScanNCut HTV & Foil Vector SVG Export Modal */}
+      <CricutExportDialog
+        open={cricutDialogOpen}
+        geometry={geometry}
+        studio={studio}
+        customFont={customFont}
+        unit={effectiveParams.unit}
+        onOpenChange={setCricutDialogOpen}
+        onStatusMessage={onStatusMessage}
+      />
+
+      {/* Unified Print & Export PDF Modal */}
+      <PdfExportDialog
+        open={pdfDialogTarget !== null}
+        target={pdfDialogTarget ?? 'cover-styled'}
+        geometry={geometry}
+        unit={effectiveParams.unit}
+        printMediaId={activePrintMedia}
+        onChangePrintMedia={(mediaId) => {
+          setLocalPrintMedia(mediaId);
+          onUpdateParams?.({ printMedia: mediaId });
+        }}
+        pageSizeId={activePageSize}
+        onChangePageSize={(sizeId) => {
+          setLocalPageSize(sizeId);
+          onUpdateParams?.({ pdfPageSize: sizeId });
+        }}
+        splitMode={activeSplitMode}
+        onChangeSplitMode={(mode) => {
+          setLocalSplitMode(mode);
+          onUpdateParams?.({ splitMode: mode });
+        }}
+        onReduceFlapWidth={
+          onUpdateParams
+            ? (widthMm) => onUpdateParams({ jacketFlapWidthMm: widthMm })
+            : undefined
+        }
+        defaultIncludeGuides={studio.cutLineMode === 'full-cut-miter'}
+        exporting={actions.exportingKind === 'pdf' || exportingOuterPdf}
+        onConfirmExport={handleConfirmPdfExport}
+        onClose={() => setPdfDialogTarget(null)}
+      />
     </div>
   );
 }

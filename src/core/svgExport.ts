@@ -1,16 +1,13 @@
-import { escapeXml } from '@/lib/utils';
+import { escapeXml, fmtMm } from '@/lib/svgFormat';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import { roundTo } from '@/types/units';
+import { getBindingStrategy } from './bindingStyles';
 
 const SPLIT_PANEL_GAP_MM = 12;
 
-function fmt(value: number): string {
-  return String(roundTo(value, 3));
-}
-
 function svgRect(rect: Rect2D, attrs: string): string {
-  return `<rect x="${fmt(rect.x)}" y="${fmt(rect.y)}" width="${fmt(rect.width)}" height="${fmt(rect.height)}" ${attrs} />`;
+  return `<rect x="${fmtMm(rect.x)}" y="${fmtMm(rect.y)}" width="${fmtMm(rect.width)}" height="${fmtMm(rect.height)}" ${attrs} />`;
 }
 
 function renderSinglePieceSvg(geometry: CaseGeometry): string {
@@ -18,27 +15,77 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
   const totalWidth = roundTo(outerWrap.widthMm + bleed * 2, 3);
   const totalHeight = roundTo(outerWrap.heightMm + bleed * 2, 3);
-  const viewBox = `${fmt(-bleed)} ${fmt(-bleed)} ${fmt(totalWidth)} ${fmt(totalHeight)}`;
+  const viewBox = `${fmtMm(-bleed)} ${fmtMm(-bleed)} ${fmtMm(totalWidth)} ${fmtMm(totalHeight)}`;
 
   const cutPath = GeometryPrimitives.polygonToSvgPath(outerWrap.outerCutPolygon, 3);
 
   const bleedGroup =
     bleed > 0
       ? `  <g id="bleed-box" fill="none" stroke="#00AA44" stroke-width="0.35" stroke-dasharray="3 2">
-    ${svgRect(outerWrap.bleedRect, `data-label="Bleed (${fmt(bleed)} mm)"`)}
+    ${svgRect(outerWrap.bleedRect, `data-label="Bleed (${fmtMm(bleed)} mm)"`)}
   </g>`
       : `  <g id="bleed-box" />`;
 
-  const boardGuides = [
-    svgRect(outerWrap.backBoardRect, 'data-label="Back Board"'),
-    svgRect(outerWrap.spineRect, 'data-label="Spine Strip"'),
-    svgRect(outerWrap.frontBoardRect, 'data-label="Front Board"'),
-  ].join('\n    ');
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const { capabilities, panelLabels } = strategy;
+  const hasHinges = cutList.hingeSpacerMm > 0;
+  const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;
 
-  const hingeGuides = [
-    svgRect(outerWrap.leftHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Left Hinge"'),
-    svgRect(outerWrap.rightHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Right Hinge"'),
-  ].join('\n    ');
+  const boardGuides = usesPlacementRects
+    ? [
+        svgRect(outerWrap.backBoardRect, `data-label="${escapeXml(panelLabels.back)}"`),
+        svgRect(outerWrap.spineRect, `data-label="${escapeXml(panelLabels.spine)}"`),
+        svgRect(outerWrap.frontBoardRect, `data-label="${escapeXml(panelLabels.front)}"`),
+      ].join('\n    ')
+    : outerWrap.foldLines
+        .map(
+          (line) =>
+            `<line x1="${fmtMm(line.x1)}" y1="${fmtMm(line.y1)}" x2="${fmtMm(line.x2)}" y2="${fmtMm(line.y2)}"${line.label ? ` data-label="${escapeXml(line.label)}"` : ''} />`,
+        )
+        .join('\n    ');
+
+  const hingeGuides = hasHinges
+    ? [
+        svgRect(outerWrap.leftHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Left Hinge"'),
+        svgRect(outerWrap.rightHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Right Hinge"'),
+      ].join('\n    ')
+    : '';
+
+  const flapGuides =
+    usesPlacementRects && capabilities.hasFlaps && outerWrap.jacketFlapWidthMm > 0
+      ? [
+          svgRect(
+            {
+              x: 0,
+              y: outerWrap.jacketGlueTabHeightMm,
+              width: outerWrap.jacketFlapWidthMm,
+              height: cutList.coverBoards.heightMm,
+            },
+            `stroke-dasharray="2 2" stroke-opacity="0.8" data-label="${escapeXml(panelLabels.leftFlap ?? 'Back Flap')}"`,
+          ),
+          svgRect(
+            {
+              x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
+              y: outerWrap.jacketGlueTabHeightMm,
+              width: outerWrap.jacketFlapWidthMm,
+              height: cutList.coverBoards.heightMm,
+            },
+            `stroke-dasharray="2 2" stroke-opacity="0.8" data-label="${escapeXml(panelLabels.rightFlap ?? 'Front Flap')}"`,
+          ),
+        ].join('\n    ')
+      : '';
+
+  const glueTabGroup =
+    capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
+      ? `  <g id="glue-tabs" fill="#e6dccb" fill-opacity="0.65" stroke="#A67B2E" stroke-width="0.25" stroke-dasharray="2 1.5">
+    ${outerWrap.jacketGlueTabPolygons
+      .map(
+        (poly, idx) =>
+          `<path d="${GeometryPrimitives.polygonToSvgPath(poly, 3)}" data-label="Glue Tab ${idx + 1}" />`,
+      )
+      .join('\n    ')}
+  </g>`
+      : '';
 
   const backCenter = GeometryPrimitives.rectCenter(outerWrap.backBoardRect);
   const spineCenter = GeometryPrimitives.rectCenter(outerWrap.spineRect);
@@ -50,29 +97,64 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
   const spineDim = `${roundTo(cutList.spineStrip.widthMm, 1)} × ${roundTo(cutList.spineStrip.heightMm, 1)} mm`;
   const wrapDim = `${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm`;
 
+  const hingeNotes = hasHinges
+    ? `    <text x="${fmtMm(leftHingeCenter.x)}" y="${fmtMm(leftHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmtMm(leftHingeCenter.x)} ${fmtMm(leftHingeCenter.y)})">HINGE ${fmtMm(cutList.hingeSpacerMm)} mm</text>
+    <text x="${fmtMm(rightHingeCenter.x)}" y="${fmtMm(rightHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmtMm(rightHingeCenter.x)} ${fmtMm(rightHingeCenter.y)})">HINGE ${fmtMm(cutList.hingeSpacerMm)} mm</text>`
+    : '';
+
+  const flapNotes =
+    capabilities.hasFlaps &&
+    outerWrap.jacketFlapWidthMm > 0 &&
+    panelLabels.leftFlap &&
+    panelLabels.rightFlap
+      ? `    <text x="${fmtMm(outerWrap.jacketFlapWidthMm / 2)}" y="${fmtMm(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmtMm(outerWrap.jacketFlapWidthMm / 2)} ${fmtMm(outerWrap.heightMm / 2)})">${escapeXml(panelLabels.leftFlap)} ${fmtMm(outerWrap.jacketFlapWidthMm)} mm</text>
+    <text x="${fmtMm(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)}" y="${fmtMm(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmtMm(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)} ${fmtMm(outerWrap.heightMm / 2)})">${escapeXml(panelLabels.rightFlap)} ${fmtMm(outerWrap.jacketFlapWidthMm)} mm</text>`
+      : '';
+
+  const glueTabNotes =
+    capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
+      ? outerWrap.jacketGlueTabPolygons
+          .map((poly) => {
+            const bbox = GeometryPrimitives.boundingBox(poly);
+            return `    <text x="${fmtMm(bbox.x + bbox.width / 2)}" y="${fmtMm(bbox.y + bbox.height / 2)}" font-size="3.1" font-weight="600" fill="#7A5212">GLUE BACK</text>`;
+          })
+          .join('\n')
+      : '';
+
+  const headerNoteY =
+    outerWrap.turnInMm > 0
+      ? outerWrap.turnInMm / 2
+      : outerWrap.jacketGlueTabHeightMm > 0
+        ? outerWrap.jacketGlueTabHeightMm / 2
+        : 6;
+  const headerNote = escapeXml(strategy.buildExportNote(outerWrap, cutList));
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${fmt(totalWidth)}mm"
-     height="${fmt(totalHeight)}mm"
+     width="${fmtMm(totalWidth)}mm"
+     height="${fmtMm(totalHeight)}mm"
      viewBox="${viewBox}">
   <title>Outer Case Wrap — ${escapeXml(wrapDim)} (1:1 mm)</title>
 ${bleedGroup}
+${glueTabGroup}
   <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
     <path d="${cutPath}" data-label="Outer Case Wrap Cut Polygon" />
   </g>
   <g id="board-guides" fill="none" stroke="#0066FF" stroke-width="0.35" stroke-dasharray="4 2">
     ${boardGuides}
     ${hingeGuides}
+    ${flapGuides}
   </g>
   <g id="dimensions-notes" font-family="sans-serif" fill="#0066FF" text-anchor="middle" dominant-baseline="middle">
-    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y - 4)}" font-size="6" font-weight="600">BACK BOARD</text>
-    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
-    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y - 4)}" font-size="6" font-weight="600">FRONT BOARD</text>
-    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
-    <text x="${fmt(spineCenter.x)}" y="${fmt(spineCenter.y)}" font-size="4.2" font-weight="600" transform="rotate(-90 ${fmt(spineCenter.x)} ${fmt(spineCenter.y)})">SPINE ${escapeXml(spineDim)}</text>
-    <text x="${fmt(leftHingeCenter.x)}" y="${fmt(leftHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmt(leftHingeCenter.x)} ${fmt(leftHingeCenter.y)})">HINGE ${fmt(cutList.hingeSpacerMm)} mm</text>
-    <text x="${fmt(rightHingeCenter.x)}" y="${fmt(rightHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmt(rightHingeCenter.x)} ${fmt(rightHingeCenter.y)})">HINGE ${fmt(cutList.hingeSpacerMm)} mm</text>
-    <text x="${fmt(outerWrap.widthMm / 2)}" y="${fmt(outerWrap.turnInMm / 2)}" font-size="3.6" fill="#444444">Outer Wrap ${escapeXml(wrapDim)} • Turn-In ${fmt(outerWrap.turnInMm)} mm • 45° Miter Clearance ${fmt(outerWrap.miterGapMm)} mm • Scale 1:1 mm</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="6" font-weight="600">${escapeXml(panelLabels.back)}</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y - 4)}" font-size="6" font-weight="600">${escapeXml(panelLabels.front)}</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
+    <text x="${fmtMm(spineCenter.x)}" y="${fmtMm(spineCenter.y)}" font-size="4.2" font-weight="600" transform="rotate(-90 ${fmtMm(spineCenter.x)} ${fmtMm(spineCenter.y)})">${escapeXml(panelLabels.spine)} ${escapeXml(spineDim)}</text>
+${hingeNotes}
+${flapNotes}
+${glueTabNotes}
+    <text x="${fmtMm(outerWrap.widthMm / 2)}" y="${fmtMm(headerNoteY)}" font-size="3.2" fill="#444444">${headerNote}</text>
   </g>
 </svg>
 `;
@@ -93,7 +175,7 @@ function renderThreePieceSvg(geometry: CaseGeometry): string {
   const contentHeight = outerWrap.heightMm;
   const totalWidth = roundTo(contentWidth + bleed * 2, 3);
   const totalHeight = roundTo(contentHeight + bleed * 2, 3);
-  const viewBox = `${fmt(-bleed)} ${fmt(-bleed)} ${fmt(totalWidth)} ${fmt(totalHeight)}`;
+  const viewBox = `${fmtMm(-bleed)} ${fmtMm(-bleed)} ${fmtMm(totalWidth)} ${fmtMm(totalHeight)}`;
 
   const bleedElements =
     bleed > 0
@@ -135,15 +217,15 @@ function renderThreePieceSvg(geometry: CaseGeometry): string {
       const cx = xOffset + panel.widthMm / 2;
       const cy = panel.heightMm / 2;
       const dim = `${roundTo(panel.widthMm, 1)} × ${roundTo(panel.heightMm, 1)} mm`;
-      return `    <text x="${fmt(cx)}" y="${fmt(cy - 4)}" font-size="5" font-weight="600">${escapeXml(panel.label.toUpperCase())}</text>
-    <text x="${fmt(cx)}" y="${fmt(cy + 4)}" font-size="4">${escapeXml(dim)}</text>`;
+      return `    <text x="${fmtMm(cx)}" y="${fmtMm(cy - 4)}" font-size="5" font-weight="600">${escapeXml(panel.label.toUpperCase())}</text>
+    <text x="${fmtMm(cx)}" y="${fmtMm(cy + 4)}" font-size="4">${escapeXml(dim)}</text>`;
     })
     .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${fmt(totalWidth)}mm"
-     height="${fmt(totalHeight)}mm"
+     width="${fmtMm(totalWidth)}mm"
+     height="${fmtMm(totalHeight)}mm"
      viewBox="${viewBox}">
   <title>Outer Case Wrap — 3-Piece Quarter-Bound Split (1:1 mm)</title>
   <g id="bleed-box" fill="none" stroke="#00AA44" stroke-width="0.35" stroke-dasharray="3 2">
@@ -212,15 +294,15 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
   const scoreLines = [
     ...backPocket.scoreLines.map(
       (l) =>
-        `<line x1="${fmt(l.x1 + backX)}" y1="${fmt(l.y1 + piecesTopY)}" x2="${fmt(l.x2 + backX)}" y2="${fmt(l.y2 + piecesTopY)}" />`,
+        `<line x1="${fmtMm(l.x1 + backX)}" y1="${fmtMm(l.y1 + piecesTopY)}" x2="${fmtMm(l.x2 + backX)}" y2="${fmtMm(l.y2 + piecesTopY)}" />`,
     ),
     ...spineLiner.scoreLines.map(
       (l) =>
-        `<line x1="${fmt(l.x1 + linerX)}" y1="${fmt(l.y1 + linerY)}" x2="${fmt(l.x2 + linerX)}" y2="${fmt(l.y2 + linerY)}" />`,
+        `<line x1="${fmtMm(l.x1 + linerX)}" y1="${fmtMm(l.y1 + linerY)}" x2="${fmtMm(l.x2 + linerX)}" y2="${fmtMm(l.y2 + linerY)}" />`,
     ),
     ...frontPocket.scoreLines.map(
       (l) =>
-        `<line x1="${fmt(l.x1 + frontX)}" y1="${fmt(l.y1 + piecesTopY)}" x2="${fmt(l.x2 + frontX)}" y2="${fmt(l.y2 + piecesTopY)}" />`,
+        `<line x1="${fmtMm(l.x1 + frontX)}" y1="${fmtMm(l.y1 + piecesTopY)}" x2="${fmtMm(l.x2 + frontX)}" y2="${fmtMm(l.y2 + piecesTopY)}" />`,
     ),
   ].join('\n    ');
 
@@ -244,9 +326,9 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${fmt(contentW)}mm"
-     height="${fmt(totalH)}mm"
-     viewBox="0 0 ${fmt(contentW)} ${fmt(totalH)}">
+     width="${fmtMm(contentW)}mm"
+     height="${fmtMm(totalH)}mm"
+     viewBox="0 0 ${fmtMm(contentW)} ${fmtMm(totalH)}">
   <title>Inner Pockets &amp; Spine Liner — 1:1 mm Vector Templates</title>
   <g id="glue-flaps" fill="#e6dccb" fill-opacity="0.65" stroke="none">
     ${glueFlapPaths}
@@ -258,19 +340,19 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
     ${scoreLines}
   </g>
   <g id="dimensions-notes" font-family="sans-serif" fill="#222222">
-    <rect x="${fmt(pad)}" y="${fmt(pad)}" width="50" height="50" fill="none" stroke="#222222" stroke-width="0.5" data-label="50x50mm Calibration Square" />
-    <text x="${fmt(pad + 25)}" y="${fmt(pad + 22)}" font-size="4.5" font-weight="600" text-anchor="middle">50 × 50 mm</text>
-    <text x="${fmt(pad + 25)}" y="${fmt(pad + 30)}" font-size="3.4" text-anchor="middle">Verify 1:1 Scale</text>
-    <text x="${fmt(pad + 58)}" y="${fmt(pad + 18)}" font-size="5" font-weight="700">INNER POCKETS &amp; SPINE LINER (1:1 mm)</text>
-    <text x="${fmt(pad + 58)}" y="${fmt(pad + 27)}" font-size="3.8" fill="#555555">Solid Red = Cut • Dashed Blue = Score &amp; Fold • Shaded = Apply Glue Here</text>
-    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">BACK POCKET</text>
-    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
-    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: RIGHT (SPINE)</text>
-    <text x="${fmt(linerCenter.x)}" y="${fmt(linerCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">SPINE LINER</text>
-    <text x="${fmt(linerCenter.x)}" y="${fmt(linerCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(linerDim)}</text>
-    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">FRONT POCKET</text>
-    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
-    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: LEFT (SPINE)</text>
+    <rect x="${fmtMm(pad)}" y="${fmtMm(pad)}" width="50" height="50" fill="none" stroke="#222222" stroke-width="0.5" data-label="50x50mm Calibration Square" />
+    <text x="${fmtMm(pad + 25)}" y="${fmtMm(pad + 22)}" font-size="4.5" font-weight="600" text-anchor="middle">50 × 50 mm</text>
+    <text x="${fmtMm(pad + 25)}" y="${fmtMm(pad + 30)}" font-size="3.4" text-anchor="middle">Verify 1:1 Scale</text>
+    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 18)}" font-size="5" font-weight="700">INNER POCKETS &amp; SPINE LINER (1:1 mm)</text>
+    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 27)}" font-size="3.8" fill="#555555">Solid Red = Cut • Dashed Blue = Score &amp; Fold • Shaded = Apply Glue Here</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">BACK POCKET</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: RIGHT (SPINE)</text>
+    <text x="${fmtMm(linerCenter.x)}" y="${fmtMm(linerCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">SPINE LINER</text>
+    <text x="${fmtMm(linerCenter.x)}" y="${fmtMm(linerCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(linerDim)}</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">FRONT POCKET</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: LEFT (SPINE)</text>
   </g>
 </svg>
 `;

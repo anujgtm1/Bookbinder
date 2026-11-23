@@ -1,90 +1,79 @@
 # Bookbinder Studio
 
-A client-side web application for DIY bookbinders to generate exact **1:1 millimeter-accurate templates** and **300 DPI print-ready wraps** for **removable hardcover slip-cover cases**—designed to house existing paperbacks without damaging or removing their original covers.
+Design and print exact **1:1 mm** removable hardcover cases, flexible-spine covers, 1-piece fold-and-glue slip covers, classic dust jackets, replacement paperback covers, matching inner pockets, and Cricut HTV foil SVGs—all right in your browser. No accounts, no subscriptions, and nothing ever leaves your device.
 
-**Live App (GitHub Pages):** https://anujgtm1.github.io/Bookbinder/
+**[Launch Bookbinder Studio →](https://anujgtm1.github.io/Bookbinder/)**
 
-![Bookbinder Studio — Structural Templates & Cut List](./docs/screenshots/structural-templates.png)
+![Bookbinder Studio — Cover & Spine Styler](./docs/screenshots/cover-styler.png)
 
-## Features
+## What You Can Make
 
-### Phase 1 — Structural Geometry & 1:1 mm Templates
-- **Paperback Presets & Unit Toggle:** Built-in presets (Mass Market, US Trade Digest, US Trade Standard, Manga / B6) or custom dimensions with instant `mm` ↔ `in` switching (stored internally at full millimeter precision).
-- **Exact Chipboard Cut List & 9 mm Hinge Spacer Guide:** Live dimensions for **2× Cover Boards**, **1× Spine Strip**, **Outer Wrap**, an inline SVG gluing reminder diagram, and a **Roll Printer Width & Orientation Evaluator** (checking `13"`–`44"` rolls in both unrotated and 90°-rotated feeds).
-- **Interactive 1:1 Blueprint:** Zoomable, pannable SVG blueprint for both the **Outer Case Wrap** (Single-Piece Continuous or 3-Piece Quarter-Bound Split with exact 45°-mitered corners and optional bleed) and **Inner Pockets & Spine Liner** (with 45°-mitered glue flaps and open-edge callouts).
-- **2 × 2 Structural Export Matrix:**
-  - **Outer Case Wrap:** `.SVG` (1:1 mm Affinity-ready named layers) and `.PDF` (1:1 mm vector print template).
-  - **Inner Pockets & Spine Liner:** `.SVG` (1:1 mm vector cut/score/glue layers) and `.PDF` (auto-paginated/auto-rotated across US Letter, A4, or Tabloid with a `50 × 50 mm` calibration square).
-- **Local Auto-Save & Project JSON:** Automatic `localStorage` persistence plus portable `.json` project export/import.
+- **Rigid 3-Board Hardcover Cases** — Removable slip-in shells with `9 mm` hinge spacers give your favorite paperbacks an heirloom hardcover look with zero glue or damage to the original cover.
+- **Flexible-Spine 2-Board Covers** — Built for thin `3–8 mm` notebooks so your handmade covers open completely flat.
+- **1-Piece Fold-and-Glue Slip Covers** — Zero chipboard required, with 4 wrap-over glue tabs, adjustable `20–65 mm` flap width, and 1-click **Fit Letter**, **Fit A4**, and **Deep (38 mm)** presets (an A6 cover fits on a single home printer sheet).
+- **Classic Dust Jackets** — Publisher-style wrap-around dust jackets with adjustable `20–100 mm` left & right fold-in flaps, **Classic (70 mm)** / **Fit Letter** / **Fit A4** presets, 4 vertical fold lines, and zero glue tabs or chipboard.
+- **Replacement Paperback Covers** — Flush 1-piece cardstock wraps (`Back + Spine + Front`) with 2 spine score folds ready to glue directly onto a paperback textblock spine—no boards, flaps, or inner pockets needed.
 
-### Phase 2 — Interactive Cover & Spine Styler
+## Measure & Cut Blueprint
 
-![Bookbinder Studio — Interactive Cover & Spine Styler](./docs/screenshots/cover-styler.png)
+- **Book Presets & Units** — Enter custom dimensions with a `mm` / `in` toggle, or start from built-in presets for **A6**, **Mass Market**, **Manga B6**, and **US Trade**.
+- **Chipboard Cut Lists & Diagrams** — Get exact board measurements paired with clear visual gluing and folding diagrams.
+- **Paper & Roll Fit Checks** — Instantly see whether your wrap fits **US Letter**, **A4**, **US Legal**, **Tabloid**, or **`13"–44"`** roll printers with live `1 sheet` vs. `2 sheets (tiled)` status badges.
+- **True-Scale `1:1 mm` CAD Blueprint** — Includes manual cutting dimension chains, a cumulative steel-ruler datum strip, **45° corner miter** callouts, and **grain direction arrows** for leather, paper, and bookcloth.
+- **3-Piece Quarter-Bound Split Mode** — Split wider wraps cleanly into separate spine, front, and back pieces for quarter-bound styles or smaller home printers.
 
-- **Free-Form Multi-Image Canvas:** Upload or drag-and-drop as many PNG, JPG, or WEBP images as you like (front art, back art, spine emblems, full-wrap panoramas). Click to select, drag anywhere across the book, pull any of the 4 corner handles (or scroll) to resize proportionally, reorder z-index layers, snap with one-click **Quick Fit** (`Front`, `Spine`, `Back`, `Full Wrap`), and apply optional per-zone clip masks.
-- **Zone Background Colors & Eyedropper:** Pick solid base colors for Back, Spine & Hinges, and Front zones—or click anywhere on your uploaded artwork with the **Eyedropper** to sample an exact matching tone.
-- **Spine Typography:** Separate Title & Author fields, **Inline** vs. **Stacked** layouts, **Top-to-Bottom (US/UK)** vs. **Bottom-to-Top (European)** reading orientations, **Vertical vs. Horizontal Author Writing** (auto-wrapped across the spine tail), 6 bundled offline classic literary fonts (*EB Garamond, Libre Baskerville, Cormorant Garamond, Lora, Inter, Montserrat*), custom `.ttf`/`.otf`/`.woff`/`.woff2` uploader, automatic font-size clamping (`≤ SPINE_W - 4.0 mm` to clear the 9 mm hinges), and a `±2.0 mm` optical horizontal nudge.
-- **Interactive 3D Folded Book Preview:** Toggle right in the cutting-mat HUD between the 2D flat wrap and a draggable CSS 3D hardcover volume rendered at exact `BOARD_W × BOARD_H × SPINE_W` proportions with recessed cream page edges, pressed hinge shadows, live spine typography, and quick camera presets (`Front 3/4`, `Spine`, `Back 3/4`, `Front`).
+## Cover Design Studio
+
+- **Drag-and-Drop Artwork & Color Matching** — Layer `PNG`, `JPG`, `WEBP`, and `SVG` images anywhere on your cover, and sample exact colors with the built-in **eyedropper**.
+- **No-Crop Edge Extensions** — Extend cover artwork smoothly across turn-in pasting stubs using **Edge Smear**, **Soft Mirror**, or **Mirror** modes.
+- **Cover & Spine Typography** — Add draggable Front/Back titles and Spine text with curated literary fonts or your own uploaded `.ttf`, `.otf`, and `.woff` font files.
+- **17 Classic Foil Designs & Custom SVG Stamps** — Dress up your covers with frames, corner flourishes, dividers, emblems, and 6 spine motifs—or import custom vector SVG stamps with **Fill**, **Outline**, and **Thicken** line-weight control.
+- **Safe-Margin Snap Guides & Flip** — Snap magnetically to cover centers and balanced margins, use 1-click **Tight**, **Classic**, **Wide**, and **Center** margin fit presets, and apply **Horizontal & Vertical Flip** to art, ornaments, or text.
+- **Live Print & Paper-Fit Preflight** — Catch coverage gaps, low contrast, optional **DPI** warnings, and paper-fit overflows before wasting paper or vinyl—with **1-click fixes** to switch to a fitting sheet/roll, trim slip-cover flap width to fit a single page, or enable **3-Piece Split**.
+- **Openable 3D Book Preview & Full Screen** — Orbit your folded book, swing open the front cover in live 3D, or jump into 1-click **Full Screen** focus mode (`Esc` to exit).
 
 ![Bookbinder Studio — Interactive 3D Folded Book Preview](./docs/screenshots/book-3d-preview.png)
 
-- **300 DPI Dual Exports:**
-  - **Print-Ready Roll PDF (`outer_cover_print.pdf`):** 300 DPI composited artwork + true embedded vector spine typography + toggle between *Bleed + Outer Corner Registration Marks Only* and *Full Cut & 45° Miter Hairline Guides*.
-  - **Affinity Round-Trip (`outer_cover_300dpi.png` & `outer_cover_300dpi.svg`):** Exact 1:1 mm / 300 DPI flat cover + editable SVG layers for further graphic finishing in Affinity.
+## Reusable Series Design Presets
+
+- **Save Once, Reuse Across a Series** — Save any cover style—colors, fonts, text layout, frames, ornaments, and SVG stamps—for matching book sets.
+- **Automatic Proportional Refitting** — Apply a saved style to books of different heights, widths, or spine thicknesses and watch every element refit cleanly.
+- **Built-In Starter Themes & Sharing** — Includes **4 classic starter series themes**, plus portable `.json` preset export and import for backup or sharing.
+
+## Inner Pockets & Endpapers
+
+- **Mirrored Pockets & Spine Liner** — Auto-generated Front and Back slip-in pocket envelopes with **45° mitered glue flaps** plus a **Spine Reinforcement Liner**.
+- **Styled Endpapers & Seamless Patterns** — Pick from curated endpaper swatches, sync in one click with **Match Cover Color**, place draggable/flippable pocket art, or turn any motif into a 1-click seamless **Tile Pattern**.
+- **Auto-Paginated Printing** — Export **US Letter**, **A4**, **US Legal**, or **Tabloid** PDFs with an optional **`50 × 50 mm` Calibration & Legend** block and **Cut & Fold** lines.
+- **Smart Cover-Style Handling** — Cleanly marked **Built-In** on Fold-and-Glue Slip Covers and **Not Needed** on Classic Dust Jackets & Replacement Paperback Covers so you never print extra pocket sheets.
+
+## Print & Cutting-Machine Exports
+
+- **Unified Print & Export PDF Dialog** — Clicking any PDF button in **Cover Studio**, **Measure & Cut**, or **Inner Pockets** opens a dedicated Export Dialog where you can compare paper sizes live (`US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact 1:1 Size`, or `13"–44"` rolls) with instant **`1 sheet`** vs. **`2 sheets (tiled)`** fit badges, a live sheet-layout preview, and **1-click fixes** whenever a cover exceeds your chosen sheet.
+- **Flexible Multi-Sheet Tiling & Calibration** — Choose between printing on a single larger sheet (e.g., `1× US Legal`) or tiling across `2× US Letter / A4` sheets with configurable overlap (`10 / 15 / 20 mm`), shaded tape-zone guides, blue alignment crosshairs, and an optional **`50 mm` Scale-Check Ruler** bar to verify 100% actual size before cutting.
+- **`300 / 600 DPI` Print-Ready Cover PDFs** — Crisp embedded vector text and ornaments over `300` or `600 DPI` full-bleed artwork, with **Cut, Fold & Glue Guides** or clean **Registration Marks Only**, plus **Single Wrap** or **3-Piece Split** output.
+- **Auto-Paginated Inner Pockets PDFs** — Packs pockets and spine liner across `US Letter`, `A4`, `US Legal`, or `Tabloid` pages with an optional **`50 × 50 mm` calibration square & legend**.
+- **`1:1 mm` Cut-Only SVGs & PDFs** — Exact-scale cutting outlines for hand knives, plotters, or laser cutters.
+- **Affinity Designer Round-Trip SVGs** — Cleanly structured vector SVGs ready for further editing in Affinity Designer.
+- **Cricut, Silhouette & ScanNCut HTV & Foil SVGs** — Export **Spine**, **Front Cover**, **Back Cover**, or **Full Wrap** designs with flattened vector paths, weeding box, corner alignment marks, and an **HTV Mirror** toggle.
+
+## Private & Local-First
+
+- Runs 100% offline in your browser—no accounts, no cloud uploads, and no tracking.
+- Projects auto-save locally and can be backed up or shared anytime as portable `.json` files.
 
 ---
 
-## Quick Start
+## Running Locally & Docs
 
-Requires Node.js 22+ and `pnpm`.
+Want to run Bookbinder Studio locally or explore the technical docs? Install dependencies with [Node.js 22+](https://nodejs.org/) and `pnpm`, then start the dev server:
 
 ```bash
-pnpm install
-pnpm dev
+pnpm install && pnpm dev
 ```
 
-### Scripts
+- **[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)** — Tech stack, module layout, scripts, and testing guide
+- **[`docs/SPEC.md`](docs/SPEC.md)** — Full millimeter geometry formulas & technical specification
+- **[`docs/FEATURE_IDEAS.md`](docs/FEATURE_IDEAS.md)** — Community feature roadmap
 
-| Command | Description |
-| --- | --- |
-| `pnpm dev` | Start local Vite dev server |
-| `pnpm build` | Type-check and build production static bundle to `dist/` |
-| `pnpm typecheck` | Run strict TypeScript checking (`tsc -b --noEmit`) |
-| `pnpm lint` | Run ESLint across the codebase |
-| `pnpm test` | Run Vitest unit and component tests |
-| `pnpm test:coverage` | Run Vitest with v8 coverage report |
-| `pnpm test:e2e` | Run Playwright Chromium end-to-end behavioral tests |
-
----
-
-## Project Architecture
-
-```text
-src/
-├── types/          # Domain types with co-located serialize/deserialize/validate/math models
-├── core/           # Pure 1:1 mm geometry engine, SVG & PDF exporters, storage, theme
-├── studio/         # Decoupled Phase 2 interactive cover/spine compositor & 300 DPI render engine
-└── components/     # shadcn/ui Radix primitives + SidebarControls, CutListCard, BlueprintPreview
-docs/
-├── SPEC.md         # Full technical specification & millimeter geometry formulas
-├── ROADMAP.md      # Completed milestones, next features, and backlog
-├── DEPLOYMENT.md   # GitHub Pages static CI/CD deployment guide
-└── RESEARCH.md     # Affinity Connector research (JS Scripting API & MCP)
-```
-
----
-
-## Documentation
-
-- [Project Specification](./docs/SPEC.md)
-- [Feature Roadmap & Tracker](./docs/ROADMAP.md)
-- [GitHub Pages Deployment Guide](./docs/DEPLOYMENT.md)
-- [Affinity Connector Research](./docs/RESEARCH.md)
-
-## Development Note
-
-This codebase was generated using AI following a **spec-first** workflow: design and geometry requirements are authored and updated in [docs/SPEC.md](./docs/SPEC.md) in standalone spec commits prior to implementation, with every feature backed by Vitest unit tests and Playwright end-to-end behavioral tests.
-
-## License
-
-[MIT](./LICENSE)
+Licensed under [MIT](./LICENSE).

@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
+import paperSpecsData from '@/resources/paperSpecs.json';
 import {
+  BINDING_STYLES,
   BookParametersModel,
   DEFAULT_BOOK_PARAMETERS,
   PAGE_SIZES,
   PAPERBACK_PRESETS,
+  PRIMARY_SHEET_MEDIA_IDS,
+  PRINT_MEDIA_OPTIONS,
+  getPageSizeSpec,
+  getPrintMediaSpec,
+  hasIntegratedFlaps,
+  isBoardlessBinding,
 } from './bookParams';
 
 describe('BookParametersModel', () => {
@@ -23,6 +31,7 @@ describe('BookParametersModel', () => {
     expect(defaults.pocketDepthPct).toBe(72);
     expect(defaults.pocketFlapMm).toBe(12.0);
     expect(defaults.splitMode).toBe('single');
+    expect(defaults.printMedia).toBe('exact-auto');
     expect(defaults.unit).toBe('mm');
   });
 
@@ -54,6 +63,7 @@ describe('BookParametersModel', () => {
 
   it('clamps out-of-range values during deserialization', () => {
     const restored = BookParametersModel.deserialize({
+      bindingStyle: 'flexible-spine',
       pbHeightMm: 9999,
       pbWidthMm: -5,
       pocketDepthPct: 95,
@@ -62,12 +72,36 @@ describe('BookParametersModel', () => {
       unit: 'in',
     });
 
+    expect(restored.bindingStyle).toBe('flexible-spine');
     expect(restored.pbHeightMm).toBe(500);
     expect(restored.pbWidthMm).toBe(50);
     expect(restored.pocketDepthPct).toBe(80);
     expect(restored.splitMode).toBe('three-piece');
     expect(restored.pdfPageSize).toBe('a4');
     expect(restored.unit).toBe('in');
+    expect(restored.jacketFlapWidthMm).toBeUndefined();
+
+    const withFlap = BookParametersModel.deserialize({
+      bindingStyle: 'softcover-jacket',
+      jacketFlapWidthMm: 38,
+    });
+    expect(withFlap.jacketFlapWidthMm).toBe(38);
+
+    expect(
+      BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 12 }).jacketFlapWidthMm,
+    ).toBe(20);
+    expect(
+      BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 90 }).jacketFlapWidthMm,
+    ).toBe(90);
+    expect(
+      BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 140 }).jacketFlapWidthMm,
+    ).toBe(100);
+    expect(BookParametersModel.clampAndNormalize({ printMedia: 'tabloid' }).printMedia).toBe(
+      'tabloid',
+    );
+    expect(
+      BookParametersModel.deserialize({ printMedia: 'not-a-real-media' }).printMedia,
+    ).toBe('exact-auto');
   });
 
   it('falls back to defaults on invalid raw input and round-trips serialization', () => {
@@ -105,6 +139,111 @@ describe('BookParametersModel', () => {
   it('defines exact physical page sizes', () => {
     expect(PAGE_SIZES.letter.widthMm).toBe(215.9);
     expect(PAGE_SIZES.a4.heightMm).toBe(297.0);
+    expect(PAGE_SIZES.legal.widthMm).toBe(215.9);
+    expect(PAGE_SIZES.legal.heightMm).toBe(355.6);
     expect(PAGE_SIZES.tabloid.widthMm).toBe(279.4);
+    expect(PAGE_SIZES.tabloid.heightMm).toBe(431.8);
+    expect(BookParametersModel.deserialize({ pdfPageSize: 'legal' }).pdfPageSize).toBe('legal');
+  });
+
+  it('derives consistent shortLabel, dimensionsLabel, and label for every PRINT_MEDIA_OPTIONS and PAGE_SIZES entry from paperSpecs.json', () => {
+    expect(PRIMARY_SHEET_MEDIA_IDS).toEqual(['letter', 'a4', 'legal', 'tabloid']);
+
+    // Verify exact-auto media spec
+    const exactAuto = getPrintMediaSpec('exact-auto');
+    expect(exactAuto.shortLabel).toBe(paperSpecsData.exactAutoMedia.name);
+    expect(exactAuto.dimensionsLabel).toBe(paperSpecsData.exactAutoMedia.dimensionsLabel);
+    expect(exactAuto.label).toBe(paperSpecsData.exactAutoMedia.label);
+
+    // Verify every desktop sheet across PAGE_SIZES and PRINT_MEDIA_OPTIONS matches paperSpecs.json
+    for (const id of PRIMARY_SHEET_MEDIA_IDS) {
+      const jsonSheet = paperSpecsData.desktopSheets[id];
+      const expectedLabel = `${jsonSheet.name} (${jsonSheet.dimensionsLabel})`;
+
+      const pageSpec = getPageSizeSpec(id);
+      expect(pageSpec).toEqual(PAGE_SIZES[id]);
+      expect(pageSpec.shortLabel).toBe(jsonSheet.name);
+      expect(pageSpec.dimensionsLabel).toBe(jsonSheet.dimensionsLabel);
+      expect(pageSpec.label).toBe(expectedLabel);
+      expect(pageSpec.widthMm).toBe(jsonSheet.shortMm);
+      expect(pageSpec.heightMm).toBe(jsonSheet.longMm);
+
+      const mediaSpec = getPrintMediaSpec(id);
+      expect(mediaSpec.kind).toBe('sheet');
+      expect(mediaSpec.shortLabel).toBe(jsonSheet.name);
+      expect(mediaSpec.dimensionsLabel).toBe(jsonSheet.dimensionsLabel);
+      expect(mediaSpec.label).toBe(expectedLabel);
+      expect(mediaSpec.shortMm).toBe(jsonSheet.shortMm);
+      expect(mediaSpec.longMm).toBe(jsonSheet.longMm);
+    }
+
+    // Verify every wide-format roll in PRINT_MEDIA_OPTIONS matches paperSpecs.json
+    for (const jsonRoll of paperSpecsData.rollWidths) {
+      const rollSpec = getPrintMediaSpec(jsonRoll.id as (typeof PRINT_MEDIA_OPTIONS)[number]['id']);
+      expect(rollSpec.kind).toBe('roll');
+      expect(rollSpec.shortLabel).toBe(jsonRoll.name);
+      expect(rollSpec.dimensionsLabel).toBe(jsonRoll.dimensionsLabel);
+      expect(rollSpec.label).toBe(`${jsonRoll.name} (${jsonRoll.dimensionsLabel})`);
+      expect(rollSpec.rollWidthMm).toBe(jsonRoll.widthMm);
+    }
+
+    // Verify every PRINT_MEDIA_OPTIONS entry has non-empty canonical fields and consistent count
+    expect(PRINT_MEDIA_OPTIONS).toHaveLength(
+      1 + PRIMARY_SHEET_MEDIA_IDS.length + paperSpecsData.rollWidths.length,
+    );
+    for (const opt of PRINT_MEDIA_OPTIONS) {
+      expect(opt.shortLabel.length).toBeGreaterThan(0);
+      expect(opt.dimensionsLabel.length).toBeGreaterThan(0);
+      expect(opt.label.length).toBeGreaterThan(0);
+      if (opt.kind !== 'auto') {
+        expect(opt.label).toBe(`${opt.shortLabel} (${opt.dimensionsLabel})`);
+      }
+    }
+
+    // Verify presets and binding styles derive from paperSpecs.json
+    expect(PAPERBACK_PRESETS).toHaveLength(paperSpecsData.paperbackPresets.length);
+    expect(BINDING_STYLES).toHaveLength(paperSpecsData.bindingStyles.length);
+  });
+
+  it('parses, validates, and classifies dust-jacket and paperback-wrap binding styles', () => {
+    const dustJacket = BookParametersModel.deserialize({
+      bindingStyle: 'dust-jacket',
+      jacketFlapWidthMm: 75,
+      hingeWidthMm: 3,
+      turnInMm: 8,
+      boardThicknessMm: 5,
+      miterFactor: 2.5,
+    });
+    expect(dustJacket.bindingStyle).toBe('dust-jacket');
+    expect(dustJacket.jacketFlapWidthMm).toBe(75);
+    const dustValidation = BookParametersModel.validate(dustJacket);
+    expect(dustValidation.isValid).toBe(true);
+    expect(dustValidation.warnings).toHaveLength(0);
+    expect(dustValidation.errors).toHaveLength(0);
+
+    const pbWrap = BookParametersModel.deserialize({
+      bindingStyle: 'paperback-wrap',
+      hingeWidthMm: 3,
+      turnInMm: 8,
+      boardThicknessMm: 5,
+      miterFactor: 2.5,
+    });
+    expect(pbWrap.bindingStyle).toBe('paperback-wrap');
+    const pbValidation = BookParametersModel.validate(pbWrap);
+    expect(pbValidation.isValid).toBe(true);
+    expect(pbValidation.warnings).toHaveLength(0);
+    expect(pbValidation.errors).toHaveLength(0);
+
+    expect(isBoardlessBinding('rigid-case')).toBe(false);
+    expect(isBoardlessBinding('flexible-spine')).toBe(false);
+    expect(isBoardlessBinding('softcover-jacket')).toBe(true);
+    expect(isBoardlessBinding('dust-jacket')).toBe(true);
+    expect(isBoardlessBinding('paperback-wrap')).toBe(true);
+
+    expect(hasIntegratedFlaps('rigid-case')).toBe(false);
+    expect(hasIntegratedFlaps('flexible-spine')).toBe(false);
+    expect(hasIntegratedFlaps('paperback-wrap')).toBe(false);
+    expect(hasIntegratedFlaps('softcover-jacket')).toBe(true);
+    expect(hasIntegratedFlaps('dust-jacket')).toBe(true);
   });
 });

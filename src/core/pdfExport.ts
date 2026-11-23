@@ -10,6 +10,8 @@ import {
   type SpineLinerGeometry,
 } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
+import { getBindingStrategy } from './bindingStyles';
+import { layoutPdfToPrintMedia, type PdfSheetLayoutOptions } from './pdfSheetLayout';
 
 const PAGE_MARGIN_MM = 7.5;
 const PIECE_GAP_MM = 5.0;
@@ -168,10 +170,17 @@ function packOrderedItems(
   return { pageCount: bins.length, placements };
 }
 
+export interface InnerPdfLayoutOptions {
+  /** Include the 50×50 mm scale verification square & cut/score visual legend block. Defaults to false for tighter sheet packing. */
+  readonly includeLegend?: boolean;
+}
+
 export function planInnerTemplateLayout(
   geometry: CaseGeometry,
   pageSizeId: PageSizeId,
+  options?: InnerPdfLayoutOptions,
 ): InnerPdfLayoutPlan {
+  const includeLegend = options?.includeLegend ?? false;
   const sheet = PAGE_SIZES[pageSizeId];
   const usableW = sheet.widthMm - PAGE_MARGIN_MM * 2;
   const usableH = sheet.heightMm - PAGE_MARGIN_MM * 2;
@@ -194,6 +203,18 @@ export function planInnerTemplateLayout(
     heightMm: geometry.spineLiner.heightMm,
     allowRotate: true,
   };
+
+  if (!includeLegend) {
+    const packed = packOrderedItems([backPocket, frontPocket, spineLiner], usableW, usableH);
+    return {
+      pageSizeId,
+      pageWidthMm: sheet.widthMm,
+      pageHeightMm: sheet.heightMm,
+      pageCount: packed.pageCount,
+      placements: packed.placements,
+    };
+  }
+
   const calibration: PackableItem = {
     kind: 'calibration-legend',
     widthMm: CALIBRATION_BOX_W_MM,
@@ -425,6 +446,7 @@ function renderPocket(
   placement: PlannedPlacement,
   font: PDFFont,
   boldFont: PDFFont,
+  showInteriorLabels = true,
 ): void {
   const cutColor = rgb(0.85, 0.1, 0.1);
   const scoreColor = rgb(0.05, 0.35, 0.85);
@@ -441,6 +463,8 @@ function renderPocket(
     const { a, b } = transformLine(score, placement, pocket.totalHeightMm);
     writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
   }
+
+  if (!showInteriorLabels) return;
 
   const centerLocal = GeometryPrimitives.rectCenter(pocket.faceRect);
   const center = transformPoint(centerLocal, placement, pocket.totalHeightMm);
@@ -472,6 +496,7 @@ function renderSpineLiner(
   placement: PlannedPlacement,
   font: PDFFont,
   boldFont: PDFFont,
+  showInteriorLabels = true,
 ): void {
   const cutColor = rgb(0.85, 0.1, 0.1);
   const scoreColor = rgb(0.05, 0.35, 0.85);
@@ -489,6 +514,8 @@ function renderSpineLiner(
     const { a, b } = transformLine(score, placement, liner.heightMm);
     writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
   }
+
+  if (!showInteriorLabels) return;
 
   const center = transformPoint(
     { x: liner.widthMm / 2, y: liner.heightMm / 2 },
@@ -560,11 +587,27 @@ function renderCalibrationAndLegend(
   writer.drawText(spacerNote, x, legY + 23, boldFont, 6.8, rgb(0.05, 0.35, 0.85));
 }
 
+export interface InnerPdfRenderOptions {
+  /** Optional 300 DPI pre-rendered PNG artwork keyed by inner piece kind */
+  readonly pieceArtworkPng?: Partial<
+    Record<Exclude<InnerPieceKind, 'calibration-legend'>, Uint8Array>
+  >;
+  /** Suppress centered dimension text on styled pieces so printed endpaper artwork stays clean */
+  readonly hideFaceTextOnStyled?: boolean;
+  /** Include the 50×50 mm calibration square & visual legend block. Defaults to false. */
+  readonly includeLegend?: boolean;
+  /** Include red cut lines, dashed blue fold/score lines & glue-flap hatches. Defaults to true. */
+  readonly includeGuides?: boolean;
+}
+
 export async function generateInnerTemplatesPdf(
   geometry: CaseGeometry,
   pageSizeId: PageSizeId,
+  options?: InnerPdfRenderOptions,
 ): Promise<{ readonly bytes: Uint8Array; readonly plan: InnerPdfLayoutPlan }> {
-  const plan = planInnerTemplateLayout(geometry, pageSizeId);
+  const plan = planInnerTemplateLayout(geometry, pageSizeId, {
+    includeLegend: options?.includeLegend,
+  });
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle('Bookbinder — Inner Pockets & Spine Liner (1:1 mm)');
   pdfDoc.setCreator('Bookbinder Studio');
@@ -589,17 +632,39 @@ export async function generateInnerTemplatesPdf(
     });
   }
 
+  const showLabels = !options?.hideFaceTextOnStyled;
+  const showGuides = options?.includeGuides ?? true;
+
   for (const placement of plan.placements) {
-    const writer = new PdfMmWriter(pages[placement.pageIndex], plan.pageHeightMm);
+    const page = pages[placement.pageIndex];
+    const writer = new PdfMmWriter(page, plan.pageHeightMm);
+
+    if (placement.kind !== 'calibration-legend') {
+      const pngBytes = options?.pieceArtworkPng?.[placement.kind];
+      if (pngBytes && pngBytes.byteLength > 0) {
+        const embeddedPng = await pdfDoc.embedPng(pngBytes);
+        page.drawImage(embeddedPng, {
+          x: UnitConverter.mmToPoints(placement.xMm),
+          y: UnitConverter.mmToPoints(plan.pageHeightMm - (placement.yMm + placement.heightMm)),
+          width: UnitConverter.mmToPoints(placement.widthMm),
+          height: UnitConverter.mmToPoints(placement.heightMm),
+        });
+      }
+    }
+
+    if (!showGuides && placement.kind !== 'calibration-legend') {
+      continue;
+    }
+
     switch (placement.kind) {
       case 'back-pocket':
-        renderPocket(writer, geometry.backPocket, placement, font, boldFont);
+        renderPocket(writer, geometry.backPocket, placement, font, boldFont, showLabels);
         break;
       case 'front-pocket':
-        renderPocket(writer, geometry.frontPocket, placement, font, boldFont);
+        renderPocket(writer, geometry.frontPocket, placement, font, boldFont, showLabels);
         break;
       case 'spine-liner':
-        renderSpineLiner(writer, geometry.spineLiner, placement, font, boldFont);
+        renderSpineLiner(writer, geometry.spineLiner, placement, font, boldFont, showLabels);
         break;
       case 'calibration-legend':
         renderCalibrationAndLegend(writer, placement, geometry, font, boldFont);
@@ -618,6 +683,7 @@ export async function generateInnerTemplatesPdf(
 export async function generateOuterWrapPdf(
   geometry: CaseGeometry,
   splitMode: SplitMode,
+  options?: PdfSheetLayoutOptions,
 ): Promise<Uint8Array> {
   const { outerWrap, splitPanels, cutList } = geometry;
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
@@ -700,37 +766,143 @@ export async function generateOuterWrapPdf(
   }
 
   const shiftedCut = GeometryPrimitives.translatePolygon(outerWrap.outerCutPolygon, bleed, bleed);
-  writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const { capabilities, panelLabels } = strategy;
+  const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;
 
-  const boardRects = [
-    { label: 'BACK BOARD', rect: outerWrap.backBoardRect },
-    { label: 'SPINE', rect: outerWrap.spineRect },
-    { label: 'FRONT BOARD', rect: outerWrap.frontBoardRect },
-  ];
-  for (const { label, rect } of boardRects) {
-    writer.drawRect(rect.x + bleed, rect.y + bleed, rect.width, rect.height, {
-      borderColor: guideColor,
-      borderWidthPt: 0.75,
-      dashArray: [5, 2.5],
-    });
-    const c = GeometryPrimitives.rectCenter(rect);
-    const dim = `${roundTo(rect.width, 1)} × ${roundTo(rect.height, 1)} mm`;
-    writer.drawText(label, c.x + bleed - 16, c.y + bleed - 3, boldFont, 8.5, guideColor);
-    if (label !== 'SPINE') {
-      writer.drawText(dim, c.x + bleed - 16, c.y + bleed + 4, font, 7.2, mutedColor);
+  if (capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0) {
+    const tabFoldStyle = { color: guideColor, thicknessPt: 0.65, dashArray: [3.5, 2] };
+    for (const tabPoly of outerWrap.jacketGlueTabPolygons) {
+      const shiftedTab = GeometryPrimitives.translatePolygon(tabPoly, bleed, bleed);
+      writer.drawHatchedPolygon(shiftedTab);
+      const bbox = GeometryPrimitives.boundingBox(shiftedTab);
+      const isTopTab = bbox.y < bleed + outerWrap.heightMm / 2;
+      const foldY = isTopTab ? bbox.y + bbox.height : bbox.y;
+      writer.drawLine({ x: bbox.x, y: foldY }, { x: bbox.x + bbox.width, y: foldY }, tabFoldStyle);
+      writer.drawText(
+        'GLUE',
+        bbox.x + bbox.width / 2 - 5,
+        bbox.y + bbox.height / 2 + 1.5,
+        boldFont,
+        5.5,
+        rgb(0.48, 0.32, 0.08),
+      );
     }
   }
 
-  for (const hinge of [outerWrap.leftHingeRect, outerWrap.rightHingeRect]) {
-    writer.drawRect(hinge.x + bleed, hinge.y + bleed, hinge.width, hinge.height, {
-      borderColor: guideColor,
-      borderWidthPt: 0.5,
-      dashArray: [2, 2],
+  writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
+
+  const drawCenteredLabel = (
+    text: string,
+    centerXMm: number,
+    yMm: number,
+    useFont: PDFFont,
+    sizePt: number,
+    color: ReturnType<typeof rgb>,
+  ) => {
+    const textWidthMm = UnitConverter.pointsToMm(useFont.widthOfTextAtSize(text, sizePt));
+    writer.drawText(text, centerXMm - textWidthMm / 2, yMm, useFont, sizePt, color);
+  };
+
+  if (!usesPlacementRects) {
+    const foldStyle = { color: guideColor, thicknessPt: 0.75, dashArray: [5, 2.5] };
+    for (const line of outerWrap.foldLines) {
+      writer.drawLine(
+        { x: line.x1 + bleed, y: line.y1 + bleed },
+        { x: line.x2 + bleed, y: line.y2 + bleed },
+        foldStyle,
+      );
+    }
+  }
+
+  const boardRects = [
+    { label: panelLabels.back, rect: outerWrap.backBoardRect, isSpine: false },
+    { label: panelLabels.spine, rect: outerWrap.spineRect, isSpine: true },
+    { label: panelLabels.front, rect: outerWrap.frontBoardRect, isSpine: false },
+  ];
+  for (const { label, rect, isSpine } of boardRects) {
+    if (usesPlacementRects) {
+      writer.drawRect(rect.x + bleed, rect.y + bleed, rect.width, rect.height, {
+        borderColor: guideColor,
+        borderWidthPt: 0.75,
+        dashArray: [5, 2.5],
+      });
+    }
+    const c = GeometryPrimitives.rectCenter(rect);
+    const dim = `${roundTo(rect.width, 1)} × ${roundTo(rect.height, 1)} mm`;
+    drawCenteredLabel(label, c.x + bleed, c.y + bleed - 3, boldFont, 8.5, guideColor);
+    if (!isSpine) {
+      drawCenteredLabel(dim, c.x + bleed, c.y + bleed + 4, font, 7.2, mutedColor);
+    }
+  }
+
+  if (
+    capabilities.hasFlaps &&
+    outerWrap.jacketFlapWidthMm > 0 &&
+    panelLabels.leftFlap &&
+    panelLabels.rightFlap
+  ) {
+    const flapCenterY = bleed + outerWrap.heightMm / 2;
+    const flapDim = `${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm`;
+    const leftCenterX = bleed + outerWrap.jacketFlapWidthMm / 2;
+    const rightCenterX = bleed + outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2;
+    drawCenteredLabel(panelLabels.leftFlap, leftCenterX, flapCenterY - 2, boldFont, 7.2, guideColor);
+    drawCenteredLabel(flapDim, leftCenterX, flapCenterY + 4, font, 6.5, mutedColor);
+    drawCenteredLabel(
+      panelLabels.rightFlap,
+      rightCenterX,
+      flapCenterY - 2,
+      boldFont,
+      7.2,
+      guideColor,
+    );
+    drawCenteredLabel(flapDim, rightCenterX, flapCenterY + 4, font, 6.5, mutedColor);
+  }
+
+  if (cutList.hingeSpacerMm > 0) {
+    for (const hinge of [outerWrap.leftHingeRect, outerWrap.rightHingeRect]) {
+      writer.drawRect(hinge.x + bleed, hinge.y + bleed, hinge.width, hinge.height, {
+        borderColor: guideColor,
+        borderWidthPt: 0.5,
+        dashArray: [2, 2],
+      });
+    }
+  }
+
+  const headerNote = strategy.buildExportNote(outerWrap, cutList);
+  const headerX =
+    bleed +
+    (outerWrap.turnInMm > 0
+      ? outerWrap.turnInMm
+      : outerWrap.jacketGlueTabHeightMm > 0
+        ? outerWrap.jacketFlapWidthMm * 2 + 4
+        : outerWrap.jacketFlapWidthMm + 4);
+  const headerY =
+    bleed +
+    (outerWrap.turnInMm > 0
+      ? outerWrap.turnInMm * 0.6
+      : outerWrap.jacketGlueTabHeightMm > 0
+        ? outerWrap.jacketGlueTabHeightMm * 0.65
+        : 6);
+  writer.drawText(
+    headerNote,
+    headerX,
+    headerY,
+    font,
+    capabilities.hasTurnIns ? 7.5 : 6.5,
+    mutedColor,
+  );
+
+  const baseBytes = await pdfDoc.save();
+
+  if (options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)) {
+    return layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
+      ...options,
+      bleedMm: options.bleedMm ?? bleed,
+      documentTitle:
+        options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template (1:1 mm)',
     });
   }
 
-  const headerNote = `Outer Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Hinge Spacer ${roundTo(cutList.hingeSpacerMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`;
-  writer.drawText(headerNote, bleed + outerWrap.turnInMm, bleed + outerWrap.turnInMm * 0.6, font, 7.5, mutedColor);
-
-  return pdfDoc.save();
+  return baseBytes;
 }

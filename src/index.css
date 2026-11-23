@@ -444,6 +444,17 @@
   overflow: hidden;
 }
 
+.book3d-front-hinge {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: left center;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
 .book3d-pages-fore {
   background-color: #f3ede0;
   background-image:
@@ -468,6 +479,23 @@
       transparent 1px,
       transparent 3px
     );
+}
+
+/* Native modal <dialog> scroll containment & backdrop per modern-web-guidance */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+dialog.bindery-modal[open] {
+  display: flex;
+  flex-direction: column;
 }
 
 /* Visually hidden utility per accessibility guide */

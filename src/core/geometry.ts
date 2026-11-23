@@ -1,144 +1,76 @@
-import type { BookParameters } from '@/types/bookParams';
 import {
+  A4_SHEET,
+  PRINT_MEDIA_OPTIONS,
   ROLL_TOTAL_MARGIN_MM,
   STANDARD_ROLL_WIDTHS,
-  type CaseGeometry,
-  type ChipboardCutList,
-  type OuterWrapGeometry,
-  type PocketEnvelopeGeometry,
-  type Polygon2D,
-  type RollFeedOrientation,
-  type RollRecommendation,
-  type SpineLinerGeometry,
-  type SplitWrapPanel,
+  US_LEGAL_SHEET,
+  US_LETTER_SHEET,
+  getPrintMediaSpec,
+} from '@/resources/paperSpecs';
+import type { BookParameters, PrintMediaId } from '@/types/bookParams';
+import type {
+  CaseGeometry,
+  ChipboardCutList,
+  OuterWrapGeometry,
+  PocketEnvelopeGeometry,
+  Polygon2D,
+  PrintMediaFitEvaluation,
+  PrintMediaFitStatus,
+  RollFeedOrientation,
+  RollRecommendation,
+  SpineLinerGeometry,
+  SplitWrapPanel,
 } from '@/types/geometry';
 import { roundTo } from '@/types/units';
+import {
+  buildMiteredRectPolygon,
+  getBindingStrategy,
+  resolveFlapWidthFromConfig,
+} from './bindingStyles';
+
+export type { PrintMediaFitEvaluation, PrintMediaFitStatus };
+export { buildMiteredRectPolygon };
 
 const LINER_OVERLAP_PER_SIDE_MM = 15.0;
 const INNER_VERTICAL_INSET_MM = 1.0; // 1.0 mm inset top & bottom => -2.0 mm height
 const QUARTER_BOUND_LAP_MM = 3.0;
 
-export function calculateChipboardCutList(params: BookParameters): ChipboardCutList {
-  const boardWidthMm = params.pbWidthMm + params.overhangForeEdgeMm;
-  const boardHeightMm = params.pbHeightMm + params.overhangTopBottomMm;
-  const spineWidthMm = params.pbThicknessMm + params.spineAllowanceMm;
-
-  return {
-    coverBoards: {
-      label: 'Cover Boards (Front & Back)',
-      quantity: 2,
-      widthMm: boardWidthMm,
-      heightMm: boardHeightMm,
-    },
-    spineStrip: {
-      label: 'Spine Strip',
-      quantity: 1,
-      widthMm: spineWidthMm,
-      heightMm: boardHeightMm,
-    },
-    boardThicknessMm: params.boardThicknessMm,
-    hingeSpacerMm: params.hingeWidthMm,
-  };
+export function resolveSlipFlapWidthMm(params: BookParameters): number {
+  const strategy = getBindingStrategy(params.bindingStyle);
+  const flapConfig = strategy.flapConfig ?? getBindingStrategy('softcover-jacket').flapConfig!;
+  return resolveFlapWidthFromConfig(params, flapConfig);
 }
 
-export function buildMiteredRectPolygon(
-  widthMm: number,
-  heightMm: number,
-  miterCutLegMm: number,
-  corners: { topLeft: boolean; topRight: boolean; bottomRight: boolean; bottomLeft: boolean },
-): Polygon2D {
-  const leg = Math.max(0, Math.min(miterCutLegMm, widthMm / 2, heightMm / 2));
-  const points: { x: number; y: number }[] = [];
-
-  if (corners.topLeft && leg > 0) {
-    points.push({ x: leg, y: 0 });
-  } else {
-    points.push({ x: 0, y: 0 });
+export function computeMaxFlapWidthForSheet(
+  params: Pick<BookParameters, 'bindingStyle' | 'pbWidthMm' | 'pbThicknessMm'>,
+  printableWidthMm: number,
+): number {
+  const strategy = getBindingStrategy(params.bindingStyle);
+  if (strategy.computeMaxFlapWidthForSheet) {
+    return strategy.computeMaxFlapWidthForSheet(params, printableWidthMm);
   }
+  return getBindingStrategy('softcover-jacket').computeMaxFlapWidthForSheet!(
+    params,
+    printableWidthMm,
+  );
+}
 
-  if (corners.topRight && leg > 0) {
-    points.push({ x: widthMm - leg, y: 0 }, { x: widthMm, y: leg });
-  } else {
-    points.push({ x: widthMm, y: 0 });
-  }
+export function calculateMaxSlipFlapForSheetMm(
+  params: Pick<BookParameters, 'bindingStyle' | 'pbWidthMm' | 'pbThicknessMm'>,
+  sheetLongMm: number,
+): number {
+  return computeMaxFlapWidthForSheet(params, sheetLongMm - ROLL_TOTAL_MARGIN_MM);
+}
 
-  if (corners.bottomRight && leg > 0) {
-    points.push({ x: widthMm, y: heightMm - leg }, { x: widthMm - leg, y: heightMm });
-  } else {
-    points.push({ x: widthMm, y: heightMm });
-  }
-
-  if (corners.bottomLeft && leg > 0) {
-    points.push({ x: leg, y: heightMm }, { x: 0, y: heightMm - leg });
-  } else {
-    points.push({ x: 0, y: heightMm });
-  }
-
-  if (corners.topLeft && leg > 0) {
-    points.push({ x: 0, y: leg });
-  }
-
-  return points;
+export function calculateChipboardCutList(params: BookParameters): ChipboardCutList {
+  return getBindingStrategy(params.bindingStyle).calculateCutList(params);
 }
 
 export function calculateOuterWrap(
   params: BookParameters,
   cutList: ChipboardCutList,
 ): OuterWrapGeometry {
-  const boardW = cutList.coverBoards.widthMm;
-  const boardH = cutList.coverBoards.heightMm;
-  const spineW = cutList.spineStrip.widthMm;
-  const hingeW = params.hingeWidthMm;
-  const turnIn = params.turnInMm;
-
-  const innerWidthMm = boardW * 2 + hingeW * 2 + spineW;
-  const widthMm = innerWidthMm + turnIn * 2;
-  const heightMm = boardH + turnIn * 2;
-
-  const miterGapMm = params.boardThicknessMm * params.miterFactor;
-  const miterCutLegMm = Math.max(
-    0,
-    Math.min(widthMm / 2, heightMm / 2, 2 * turnIn - miterGapMm * Math.SQRT2),
-  );
-
-  const outerCutPolygon = buildMiteredRectPolygon(widthMm, heightMm, miterCutLegMm, {
-    topLeft: true,
-    topRight: true,
-    bottomRight: true,
-    bottomLeft: true,
-  });
-
-  const activeBleed = params.includeBleed ? params.bleedMm : 0;
-  const bleedRect = {
-    x: -activeBleed,
-    y: -activeBleed,
-    width: widthMm + activeBleed * 2,
-    height: heightMm + activeBleed * 2,
-  };
-
-  const backBoardX = turnIn;
-  const leftHingeX = backBoardX + boardW;
-  const spineX = leftHingeX + hingeW;
-  const rightHingeX = spineX + spineW;
-  const frontBoardX = rightHingeX + hingeW;
-
-  return {
-    widthMm,
-    heightMm,
-    innerWidthMm,
-    turnInMm: turnIn,
-    bleedMm: params.bleedMm,
-    includeBleed: params.includeBleed,
-    miterGapMm,
-    miterCutLegMm,
-    outerCutPolygon,
-    bleedRect,
-    backBoardRect: { x: backBoardX, y: turnIn, width: boardW, height: boardH },
-    leftHingeRect: { x: leftHingeX, y: turnIn, width: hingeW, height: boardH },
-    spineRect: { x: spineX, y: turnIn, width: spineW, height: boardH },
-    rightHingeRect: { x: rightHingeX, y: turnIn, width: hingeW, height: boardH },
-    frontBoardRect: { x: frontBoardX, y: turnIn, width: boardW, height: boardH },
-  };
+  return getBindingStrategy(params.bindingStyle).calculateOuterWrap(params, cutList);
 }
 
 export function calculateSplitWrapPanels(
@@ -149,8 +81,8 @@ export function calculateSplitWrapPanels(
   const boardW = cutList.coverBoards.widthMm;
   const boardH = cutList.coverBoards.heightMm;
   const spineW = cutList.spineStrip.widthMm;
-  const hingeW = params.hingeWidthMm;
-  const turnIn = params.turnInMm;
+  const hingeW = cutList.hingeSpacerMm;
+  const turnIn = outerWrap.turnInMm;
   const overlap = Math.min(params.quarterBoundOverlapMm, boardW * 0.4);
   const heightMm = outerWrap.heightMm;
 
@@ -228,10 +160,87 @@ export function calculateSplitWrapPanels(
   return [backPanel, spinePanel, frontPanel];
 }
 
+function fitsDesktopSheet(
+  wrapWidthMm: number,
+  wrapHeightMm: number,
+  sheetShortMm: number,
+  sheetLongMm: number,
+): boolean {
+  const short = Math.min(wrapWidthMm, wrapHeightMm);
+  const long = Math.max(wrapWidthMm, wrapHeightMm);
+  return (
+    short <= sheetShortMm - ROLL_TOTAL_MARGIN_MM &&
+    long <= sheetLongMm - ROLL_TOTAL_MARGIN_MM
+  );
+}
+
 export function evaluateRollWidth(
   wrapWidthMm: number,
   wrapHeightMm: number,
 ): RollRecommendation {
+  // Check standard desktop home-printer sheets first (US Letter and A4)
+  const letterSpec = getPrintMediaSpec('letter');
+  const a4Spec = getPrintMediaSpec('a4');
+  const legalSpec = getPrintMediaSpec('legal');
+  const fitsLetter = fitsDesktopSheet(
+    wrapWidthMm,
+    wrapHeightMm,
+    US_LETTER_SHEET.shortMm,
+    US_LETTER_SHEET.longMm,
+  );
+  const fitsA4 = fitsDesktopSheet(wrapWidthMm, wrapHeightMm, A4_SHEET.shortMm, A4_SHEET.longMm);
+
+  if (fitsLetter || fitsA4) {
+    const orientation: RollFeedOrientation =
+      wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated';
+    const usedWidthMm = Math.min(wrapWidthMm, wrapHeightMm);
+    const printableWidthMm =
+      (fitsLetter ? US_LETTER_SHEET.shortMm : A4_SHEET.shortMm) - ROLL_TOTAL_MARGIN_MM;
+    const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
+    const sheetLabel =
+      fitsLetter && fitsA4
+        ? `1× ${letterSpec.shortLabel} / ${a4Spec.shortLabel} (${letterSpec.dimensionsLabel}) home sheet`
+        : fitsLetter
+          ? `1× ${letterSpec.label} home sheet`
+          : `1× ${a4Spec.label} home sheet`;
+
+    return {
+      fits: true,
+      roll: STANDARD_ROLL_WIDTHS[0],
+      printableWidthMm,
+      orientation,
+      usedWidthMm,
+      spareWidthMm,
+      summary: `Fits on ${sheetLabel} (100% actual size)`,
+    };
+  }
+
+  // Check US Legal home sheet before falling through to wide-format rolls
+  const fitsLegal = fitsDesktopSheet(
+    wrapWidthMm,
+    wrapHeightMm,
+    US_LEGAL_SHEET.shortMm,
+    US_LEGAL_SHEET.longMm,
+  );
+
+  if (fitsLegal) {
+    const orientation: RollFeedOrientation =
+      wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated';
+    const usedWidthMm = Math.min(wrapWidthMm, wrapHeightMm);
+    const printableWidthMm = US_LEGAL_SHEET.shortMm - ROLL_TOTAL_MARGIN_MM;
+    const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
+
+    return {
+      fits: true,
+      roll: STANDARD_ROLL_WIDTHS[0],
+      printableWidthMm,
+      orientation,
+      usedWidthMm,
+      spareWidthMm,
+      summary: `Fits on 1× ${legalSpec.label} home sheet (100% actual size)`,
+    };
+  }
+
   for (const roll of STANDARD_ROLL_WIDTHS) {
     const printableWidthMm = roll.widthMm - ROLL_TOTAL_MARGIN_MM;
     const fitsUnrotated = wrapWidthMm <= printableWidthMm;
@@ -286,7 +295,197 @@ export function evaluateRollWidth(
     orientation: wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated',
     usedWidthMm: minDimension,
     spareWidthMm: roundTo(maxPrintable - minDimension, 1),
-    summary: `Exceeds 44" roll printable width (${maxPrintable} mm); use 3-Piece Split mode`,
+    summary: `Exceeds ${maxRoll.label} roll printable width (${maxPrintable} mm); use 3-Piece Split mode`,
+  };
+}
+
+const FIT_EPS_MM = 1e-6;
+export const TILE_OVERLAP_MM = 10;
+export const MIN_TILE_OVERLAP_MM = 5;
+export const MAX_TILE_OVERLAP_MM = 30;
+
+export function clampTileOverlapMm(overlapMm?: number): number {
+  if (typeof overlapMm !== 'number' || !Number.isFinite(overlapMm)) {
+    return TILE_OVERLAP_MM;
+  }
+  return roundTo(Math.min(MAX_TILE_OVERLAP_MM, Math.max(MIN_TILE_OVERLAP_MM, overlapMm)), 1);
+}
+
+function findSuggestedMediaId(
+  wrapWidthMm: number,
+  wrapHeightMm: number,
+  excludeId?: PrintMediaId,
+): PrintMediaId | null {
+  // 1. Narrowest desktop sheet that fits cleanly on 1 sheet
+  for (const opt of PRINT_MEDIA_OPTIONS) {
+    if (opt.kind !== 'sheet' || opt.id === excludeId || opt.shortMm === null || opt.longMm === null) {
+      continue;
+    }
+    const shortPrintable = opt.shortMm - ROLL_TOTAL_MARGIN_MM + FIT_EPS_MM;
+    const longPrintable = opt.longMm - ROLL_TOTAL_MARGIN_MM + FIT_EPS_MM;
+    const fitsLandscape = wrapWidthMm <= longPrintable && wrapHeightMm <= shortPrintable;
+    const fitsPortrait = wrapWidthMm <= shortPrintable && wrapHeightMm <= longPrintable;
+    if (fitsLandscape || fitsPortrait) {
+      return opt.id;
+    }
+  }
+
+  // 2. Narrowest wide-format roll that fits cleanly
+  const minDim = Math.min(wrapWidthMm, wrapHeightMm);
+  for (const opt of PRINT_MEDIA_OPTIONS) {
+    if (opt.kind !== 'roll' || opt.id === excludeId || opt.rollWidthMm === null) {
+      continue;
+    }
+    const printableWidth = opt.rollWidthMm - ROLL_TOTAL_MARGIN_MM + FIT_EPS_MM;
+    if (minDim <= printableWidth) {
+      return opt.id;
+    }
+  }
+
+  return null;
+}
+
+export function evaluatePrintMediaFit(
+  mediaId: PrintMediaId,
+  wrapWidthMm: number,
+  wrapHeightMm: number,
+  tileOverlapMm: number = TILE_OVERLAP_MM,
+): PrintMediaFitEvaluation {
+  const spec = getPrintMediaSpec(mediaId);
+
+  if (spec.kind === 'auto') {
+    const rollRec = evaluateRollWidth(wrapWidthMm, wrapHeightMm);
+    return {
+      mediaId: 'exact-auto',
+      mediaLabel: spec.shortLabel,
+      status: rollRec.fits ? 'fits-roll' : 'does-not-fit',
+      sheetPageWidthMm: null,
+      sheetPageHeightMm: null,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: null,
+      summary: rollRec.summary,
+    };
+  }
+
+  if (spec.kind === 'roll' && spec.rollWidthMm !== null) {
+    const printableWidthMm = spec.rollWidthMm - ROLL_TOTAL_MARGIN_MM;
+    const minDim = Math.min(wrapWidthMm, wrapHeightMm);
+    if (minDim <= printableWidthMm + FIT_EPS_MM) {
+      const orientationLabel = wrapHeightMm <= wrapWidthMm ? 'rotated 90°' : 'unrotated';
+      const spare = Math.max(0, roundTo(printableWidthMm - minDim, 1));
+      return {
+        mediaId: spec.id,
+        mediaLabel: spec.shortLabel,
+        status: 'fits-roll',
+        sheetPageWidthMm: null,
+        sheetPageHeightMm: null,
+        tilePages: 1,
+        tileOverlapMm: 0,
+        suggestedMediaId: null,
+        summary: `Fits on ${spec.label} (${orientationLabel}) with ${Math.round(spare)} mm spare width`,
+      };
+    }
+
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'does-not-fit',
+      sheetPageWidthMm: null,
+      sheetPageHeightMm: null,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: findSuggestedMediaId(wrapWidthMm, wrapHeightMm, spec.id),
+      summary: `Does not fit on ${spec.label} (${roundTo(minDim, 1)} mm > ${printableWidthMm} mm printable)`,
+    };
+  }
+
+  // Desktop sheet evaluation: 3-state ('fits-1-sheet' | 'fits-2-sheet-tile' | 'does-not-fit')
+  const shortMm = spec.shortMm ?? US_LETTER_SHEET.shortMm;
+  const longMm = spec.longMm ?? US_LETTER_SHEET.longMm;
+  const shortPrintable = shortMm - ROLL_TOTAL_MARGIN_MM;
+  const longPrintable = longMm - ROLL_TOTAL_MARGIN_MM;
+
+  // State 1: Fits on 1 sheet (check Landscape first, then Portrait)
+  if (
+    wrapWidthMm <= longPrintable + FIT_EPS_MM &&
+    wrapHeightMm <= shortPrintable + FIT_EPS_MM
+  ) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-1-sheet',
+      sheetPageWidthMm: longMm,
+      sheetPageHeightMm: shortMm,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: null,
+      summary: `Fits on 1× ${spec.label} (Landscape)`,
+    };
+  }
+
+  if (
+    wrapWidthMm <= shortPrintable + FIT_EPS_MM &&
+    wrapHeightMm <= longPrintable + FIT_EPS_MM
+  ) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-1-sheet',
+      sheetPageWidthMm: shortMm,
+      sheetPageHeightMm: longMm,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: null,
+      summary: `Fits on 1× ${spec.label} (Portrait)`,
+    };
+  }
+
+  // State 2: Horizontal 2-sheet tile with configurable overlap (check Portrait first, then Landscape)
+  const overlapMm = clampTileOverlapMm(tileOverlapMm);
+  const maxTiledPortraitW = shortPrintable * 2 - overlapMm;
+  const maxTiledLandscapeW = longPrintable * 2 - overlapMm;
+  const suggestedMediaId = findSuggestedMediaId(wrapWidthMm, wrapHeightMm, spec.id);
+
+  if (wrapWidthMm <= maxTiledPortraitW + FIT_EPS_MM && wrapHeightMm <= longPrintable + FIT_EPS_MM) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-2-sheet-tile',
+      sheetPageWidthMm: shortMm,
+      sheetPageHeightMm: longMm,
+      tilePages: 2,
+      tileOverlapMm: overlapMm,
+      suggestedMediaId,
+      summary: `2× ${spec.label} tiled (Portrait, ${overlapMm} mm overlap)`,
+    };
+  }
+
+  if (wrapWidthMm <= maxTiledLandscapeW + FIT_EPS_MM && wrapHeightMm <= shortPrintable + FIT_EPS_MM) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-2-sheet-tile',
+      sheetPageWidthMm: longMm,
+      sheetPageHeightMm: shortMm,
+      tilePages: 2,
+      tileOverlapMm: overlapMm,
+      suggestedMediaId,
+      summary: `2× ${spec.label} tiled (Landscape, ${overlapMm} mm overlap)`,
+    };
+  }
+
+  // State 3: Does not fit even as 2 tiled sheets
+  return {
+    mediaId: spec.id,
+    mediaLabel: spec.shortLabel,
+    status: 'does-not-fit',
+    sheetPageWidthMm: null,
+    sheetPageHeightMm: null,
+    tilePages: 1,
+    tileOverlapMm: 0,
+    suggestedMediaId,
+    summary: `Does not fit on ${spec.label} (even as 2 tiled sheets)`,
   };
 }
 
@@ -301,16 +500,24 @@ export function calculateSpineLiner(cutList: ChipboardCutList): SpineLinerGeomet
   const xSpineEnd = xSpineStart + spineW;
   const xRightHingeEnd = xSpineEnd + hingeW;
 
+  const scoreLines =
+    hingeW > 0
+      ? [
+          { x1: xLeftHingeStart, y1: 0, x2: xLeftHingeStart, y2: heightMm, label: 'Back Board / Hinge' },
+          { x1: xSpineStart, y1: 0, x2: xSpineStart, y2: heightMm, label: 'Hinge / Spine' },
+          { x1: xSpineEnd, y1: 0, x2: xSpineEnd, y2: heightMm, label: 'Spine / Hinge' },
+          { x1: xRightHingeEnd, y1: 0, x2: xRightHingeEnd, y2: heightMm, label: 'Hinge / Front Board' },
+        ]
+      : [
+          { x1: xSpineStart, y1: 0, x2: xSpineStart, y2: heightMm, label: 'Back Board / Spine' },
+          { x1: xSpineEnd, y1: 0, x2: xSpineEnd, y2: heightMm, label: 'Spine / Front Board' },
+        ];
+
   return {
     widthMm,
     heightMm,
     boardOverlapMm: LINER_OVERLAP_PER_SIDE_MM,
-    scoreLines: [
-      { x1: xLeftHingeStart, y1: 0, x2: xLeftHingeStart, y2: heightMm, label: 'Back Board / Hinge' },
-      { x1: xSpineStart, y1: 0, x2: xSpineStart, y2: heightMm, label: 'Hinge / Spine' },
-      { x1: xSpineEnd, y1: 0, x2: xSpineEnd, y2: heightMm, label: 'Spine / Hinge' },
-      { x1: xRightHingeEnd, y1: 0, x2: xRightHingeEnd, y2: heightMm, label: 'Hinge / Front Board' },
-    ],
+    scoreLines,
     leftHingeZoneRect: { x: xLeftHingeStart, y: 0, width: hingeW, height: heightMm },
     spineZoneRect: { x: xSpineStart, y: 0, width: spineW, height: heightMm },
     rightHingeZoneRect: { x: xSpineEnd, y: 0, width: hingeW, height: heightMm },
@@ -450,15 +657,22 @@ export function calculateCaseGeometry(params: BookParameters): CaseGeometry {
   const outerWrap = calculateOuterWrap(params, cutList);
   const splitPanels = calculateSplitWrapPanels(params, cutList, outerWrap);
   const rollRecommendation = evaluateRollWidth(outerWrap.widthMm, outerWrap.heightMm);
+  const mediaFit = evaluatePrintMediaFit(
+    params.printMedia ?? 'exact-auto',
+    outerWrap.widthMm,
+    outerWrap.heightMm,
+  );
   const spineLiner = calculateSpineLiner(cutList);
   const frontPocket = calculatePocketEnvelope('front', params, cutList);
   const backPocket = calculatePocketEnvelope('back', params, cutList);
 
   return {
+    bindingStyle: params.bindingStyle ?? 'rigid-case',
     cutList,
     outerWrap,
     splitPanels,
     rollRecommendation,
+    mediaFit,
     spineLiner,
     frontPocket,
     backPocket,

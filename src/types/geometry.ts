@@ -1,4 +1,8 @@
+import { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS } from '@/resources/paperSpecs';
+import type { BindingStyle, PrintMediaId } from './bookParams';
 import { roundTo } from './units';
+
+export { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS };
 
 export interface Point2D {
   readonly x: number;
@@ -112,16 +116,6 @@ export interface RollWidthOption {
   readonly label: string;
 }
 
-export const STANDARD_ROLL_WIDTHS: readonly RollWidthOption[] = [
-  { inches: 13, widthMm: 330, label: '13"' },
-  { inches: 17, widthMm: 432, label: '17"' },
-  { inches: 24, widthMm: 610, label: '24"' },
-  { inches: 36, widthMm: 914, label: '36"' },
-  { inches: 44, widthMm: 1118, label: '44"' },
-] as const;
-
-export const ROLL_TOTAL_MARGIN_MM = 10.0; // 5.0 mm unprintable margin per side
-
 export interface RollRecommendation {
   readonly fits: boolean;
   readonly roll: RollWidthOption | null;
@@ -132,16 +126,46 @@ export interface RollRecommendation {
   readonly summary: string;
 }
 
+export type PrintMediaFitStatus =
+  | 'fits-1-sheet'
+  | 'fits-2-sheet-tile'
+  | 'fits-roll'
+  | 'does-not-fit';
+
+export interface PrintMediaFitEvaluation {
+  readonly mediaId: PrintMediaId;
+  readonly mediaLabel: string;
+  readonly status: PrintMediaFitStatus;
+  /** Concrete PDF page size (mm) when outputting onto a desktop sheet (auto-oriented Portrait or Landscape) */
+  readonly sheetPageWidthMm: number | null;
+  readonly sheetPageHeightMm: number | null;
+  /** For 'fits-2-sheet-tile', number of tiled sheets (2) and overlap width in mm (10 mm) */
+  readonly tilePages: 1 | 2;
+  readonly tileOverlapMm: number;
+  /** Recommended larger PrintMediaId if current media cannot fit on 1 sheet */
+  readonly suggestedMediaId: PrintMediaId | null;
+  readonly summary: string;
+}
+
 export interface OuterWrapGeometry {
+  readonly bindingStyle: BindingStyle;
   readonly widthMm: number;
   readonly heightMm: number;
   readonly innerWidthMm: number;
   readonly turnInMm: number;
+  /** Integrated flap width on each fore-edge when bindingStyle is 'softcover-jacket' or 'dust-jacket' (0 otherwise) */
+  readonly jacketFlapWidthMm: number;
+  /** Top & bottom mitered glue tab height on the integrated flaps when bindingStyle === 'softcover-jacket' (0 otherwise) */
+  readonly jacketGlueTabHeightMm: number;
+  /** 4 trapezoidal glue tab polygons (left-top, right-top, right-bottom, left-bottom) for 1-piece fold-and-glue slip cover */
+  readonly jacketGlueTabPolygons: readonly Polygon2D[];
   readonly bleedMm: number;
   readonly includeBleed: boolean;
   readonly miterGapMm: number;
   readonly miterCutLegMm: number;
   readonly outerCutPolygon: Polygon2D;
+  /** Score / fold guide segments in wrap-local mm coordinates (turn-ins, spine creases, flaps, glue tabs). */
+  readonly foldLines: readonly LineSegment2D[];
   readonly bleedRect: Rect2D;
   readonly backBoardRect: Rect2D;
   readonly leftHingeRect: Rect2D;
@@ -185,10 +209,12 @@ export interface PocketEnvelopeGeometry {
 }
 
 export interface CaseGeometry {
+  readonly bindingStyle: BindingStyle;
   readonly cutList: ChipboardCutList;
   readonly outerWrap: OuterWrapGeometry;
   readonly splitPanels: readonly SplitWrapPanel[];
   readonly rollRecommendation: RollRecommendation;
+  readonly mediaFit: PrintMediaFitEvaluation;
   readonly spineLiner: SpineLinerGeometry;
   readonly frontPocket: PocketEnvelopeGeometry;
   readonly backPocket: PocketEnvelopeGeometry;

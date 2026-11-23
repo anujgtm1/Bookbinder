@@ -1,41 +1,86 @@
+import { BINDING_STYLE_STRATEGIES, getBindingStrategy } from '@/core/bindingStyles';
+import {
+  BINDING_STYLES,
+  PAGE_SIZES,
+  PAPERBACK_PRESETS,
+  PRIMARY_SHEET_MEDIA_IDS,
+  PRINT_MEDIA_OPTIONS,
+  getPageSizeSpec,
+  getPrintMediaSpec,
+} from '@/resources/paperSpecs';
 import { UnitConverter, clampFinite, type UnitSystem } from './units';
 
+export {
+  BINDING_STYLES,
+  PAGE_SIZES,
+  PAPERBACK_PRESETS,
+  PRIMARY_SHEET_MEDIA_IDS,
+  PRINT_MEDIA_OPTIONS,
+  getPageSizeSpec,
+  getPrintMediaSpec,
+};
+
+export type BindingStyle =
+  | 'rigid-case'
+  | 'flexible-spine'
+  | 'softcover-jacket'
+  | 'dust-jacket'
+  | 'paperback-wrap';
+
+export function isBoardlessBinding(style: BindingStyle): boolean {
+  return !getBindingStrategy(style).capabilities.usesChipboard;
+}
+
+export function hasIntegratedFlaps(style: BindingStyle): boolean {
+  return getBindingStrategy(style).capabilities.hasFlaps;
+}
 export type SplitMode = 'single' | 'three-piece';
-export type PageSizeId = 'letter' | 'a4' | 'tabloid';
+export type PageSizeId = 'letter' | 'a4' | 'legal' | 'tabloid';
+export type PrintMediaId =
+  | 'exact-auto'
+  | 'letter'
+  | 'a4'
+  | 'legal'
+  | 'tabloid'
+  | 'roll-13'
+  | 'roll-17'
+  | 'roll-24'
+  | 'roll-36'
+  | 'roll-44';
 export type PaperbackPresetId =
   | 'mass-market'
   | 'us-trade-digest'
   | 'us-trade-standard'
   | 'manga-b6'
+  | 'a6-notebook'
   | 'custom';
+
+export interface PrintMediaSpec {
+  readonly id: PrintMediaId;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly dimensionsLabel: string;
+  readonly kind: 'auto' | 'sheet' | 'roll';
+  readonly shortMm: number | null;
+  readonly longMm: number | null;
+  readonly rollWidthMm: number | null;
+}
+
+export interface BindingStyleOption {
+  readonly id: BindingStyle;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly summary: string;
+}
 
 export interface PageSizeSpec {
   readonly id: PageSizeId;
   readonly label: string;
+  readonly shortLabel: string;
+  readonly dimensionsLabel: string;
   readonly widthMm: number;
   readonly heightMm: number;
 }
-
-export const PAGE_SIZES: Readonly<Record<PageSizeId, PageSizeSpec>> = {
-  letter: {
-    id: 'letter',
-    label: 'US Letter (8.5 × 11")',
-    widthMm: 215.9,
-    heightMm: 279.4,
-  },
-  a4: {
-    id: 'a4',
-    label: 'A4 (210 × 297 mm)',
-    widthMm: 210.0,
-    heightMm: 297.0,
-  },
-  tabloid: {
-    id: 'tabloid',
-    label: 'Tabloid (11 × 17")',
-    widthMm: 279.4,
-    heightMm: 431.8,
-  },
-};
 
 export interface PaperbackPreset {
   readonly id: Exclude<PaperbackPresetId, 'custom'>;
@@ -45,38 +90,9 @@ export interface PaperbackPreset {
   readonly summary: string;
 }
 
-export const PAPERBACK_PRESETS: readonly PaperbackPreset[] = [
-  {
-    id: 'mass-market',
-    label: 'Mass Market Paperback',
-    pbWidthMm: 106.0,
-    pbHeightMm: 174.0,
-    summary: '106 × 174 mm',
-  },
-  {
-    id: 'us-trade-digest',
-    label: 'US Trade Digest',
-    pbWidthMm: 139.7,
-    pbHeightMm: 215.9,
-    summary: '5.5 × 8.5 in',
-  },
-  {
-    id: 'us-trade-standard',
-    label: 'US Trade Standard',
-    pbWidthMm: 152.4,
-    pbHeightMm: 228.6,
-    summary: '6.0 × 9.0 in',
-  },
-  {
-    id: 'manga-b6',
-    label: 'Manga / B6',
-    pbWidthMm: 128.0,
-    pbHeightMm: 182.0,
-    summary: '128 × 182 mm',
-  },
-] as const;
-
 export interface BookParameters {
+  /** Structural binding style (rigid 3-board case, 2-board flexible spine, or 0-board softcover jacket) */
+  bindingStyle: BindingStyle;
   /** Paperback height / length in mm (PB_H) */
   pbHeightMm: number;
   /** Paperback width in mm (PB_W) */
@@ -113,6 +129,10 @@ export interface BookParameters {
   quarterBoundOverlapMm: number;
   /** Sheet size for paginated inner envelopes & liner PDF */
   pdfPageSize: PageSizeId;
+  /** Target output paper sheet or roll width for outer cover Print PDF & paper-fit preflight */
+  printMedia: PrintMediaId;
+  /** Optional custom flap width in mm for softcover-jacket or dust-jacket (undefined = auto default) */
+  jacketFlapWidthMm?: number;
   /** UI display unit (exports remain strictly 1:1 mm) */
   unit: UnitSystem;
 }
@@ -126,7 +146,7 @@ export interface BookParametersValidation {
 export const BOOK_PARAM_BOUNDS = {
   pbHeightMm: { min: 60, max: 500 },
   pbWidthMm: { min: 50, max: 400 },
-  pbThicknessMm: { min: 4, max: 120 },
+  pbThicknessMm: { min: 2, max: 120 },
   boardThicknessMm: { min: 0.5, max: 6 },
   hingeWidthMm: { min: 3, max: 25 },
   overhangTopBottomMm: { min: 0, max: 24 },
@@ -138,9 +158,11 @@ export const BOOK_PARAM_BOUNDS = {
   pocketDepthPct: { min: 65, max: 80 },
   pocketFlapMm: { min: 6, max: 25 },
   quarterBoundOverlapMm: { min: 10, max: 50 },
+  jacketFlapWidthMm: { min: 20, max: 100 },
 } as const;
 
 export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
+  bindingStyle: 'rigid-case',
   pbHeightMm: 216.0,
   pbWidthMm: 140.0,
   pbThicknessMm: 24.0,
@@ -159,15 +181,32 @@ export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
   splitMode: 'single',
   quarterBoundOverlapMm: 20.0,
   pdfPageSize: 'letter',
+  printMedia: 'exact-auto',
   unit: 'mm',
 };
+
+const VALID_PRINT_MEDIA_IDS = new Set<string>(PRINT_MEDIA_OPTIONS.map((o) => o.id));
+
+function parseBindingStyle(value: unknown): BindingStyle {
+  if (typeof value === 'string' && value in BINDING_STYLE_STRATEGIES) {
+    return value as BindingStyle;
+  }
+  return 'rigid-case';
+}
 
 function parseSplitMode(value: unknown): SplitMode {
   return value === 'three-piece' ? 'three-piece' : 'single';
 }
 
 function parsePageSize(value: unknown): PageSizeId {
-  return value === 'a4' || value === 'tabloid' ? value : 'letter';
+  return value === 'a4' || value === 'legal' || value === 'tabloid' ? value : 'letter';
+}
+
+function parsePrintMedia(value: unknown): PrintMediaId {
+  if (typeof value === 'string' && VALID_PRINT_MEDIA_IDS.has(value)) {
+    return value as PrintMediaId;
+  }
+  return DEFAULT_BOOK_PARAMETERS.printMedia;
 }
 
 export const BookParametersModel = {
@@ -194,7 +233,18 @@ export const BookParametersModel = {
         ? boardThicknessMm
         : partial.spineAllowanceMm;
 
+    const jacketFlapWidthMm =
+      typeof partial.jacketFlapWidthMm === 'number' && Number.isFinite(partial.jacketFlapWidthMm)
+        ? clampFinite(
+            partial.jacketFlapWidthMm,
+            b.jacketFlapWidthMm.min,
+            b.jacketFlapWidthMm.min,
+            b.jacketFlapWidthMm.max,
+          )
+        : undefined;
+
     return {
+      bindingStyle: parseBindingStyle(partial.bindingStyle),
       pbHeightMm: clampFinite(partial.pbHeightMm, d.pbHeightMm, b.pbHeightMm.min, b.pbHeightMm.max),
       pbWidthMm: clampFinite(partial.pbWidthMm, d.pbWidthMm, b.pbWidthMm.min, b.pbWidthMm.max),
       pbThicknessMm: clampFinite(
@@ -258,6 +308,8 @@ export const BookParametersModel = {
         b.quarterBoundOverlapMm.max,
       ),
       pdfPageSize: parsePageSize(partial.pdfPageSize),
+      printMedia: parsePrintMedia(partial.printMedia),
+      ...(jacketFlapWidthMm !== undefined ? { jacketFlapWidthMm } : {}),
       unit: UnitConverter.parseUnitSystem(partial.unit, d.unit),
     };
   },
@@ -304,19 +356,24 @@ export const BookParametersModel = {
       errors.push('Paperback dimensions must be positive numbers.');
     }
 
-    const miterGap = params.boardThicknessMm * params.miterFactor;
-    if (miterGap * Math.SQRT2 >= params.turnInMm * 2) {
-      errors.push('Miter clearance exceeds available turn-in width.');
-    }
+    if (!isBoardlessBinding(params.bindingStyle)) {
+      const miterGap = params.boardThicknessMm * params.miterFactor;
+      if (miterGap * Math.SQRT2 >= params.turnInMm * 2) {
+        errors.push('Miter clearance exceeds available turn-in width.');
+      }
 
-    if (params.hingeWidthMm < params.boardThicknessMm * 2.5) {
-      warnings.push(
-        `Hinge width (${params.hingeWidthMm.toFixed(1)} mm) is tight for ${params.boardThicknessMm.toFixed(1)} mm chipboard; 9.0 mm is recommended.`,
-      );
-    }
+      if (
+        params.bindingStyle === 'rigid-case' &&
+        params.hingeWidthMm < params.boardThicknessMm * 2.5
+      ) {
+        warnings.push(
+          `Hinge width (${params.hingeWidthMm.toFixed(1)} mm) is tight for ${params.boardThicknessMm.toFixed(1)} mm chipboard; 9.0 mm is recommended.`,
+        );
+      }
 
-    if (params.turnInMm < 12) {
-      warnings.push('Turn-in margin under 12 mm may reduce glue adhesion on inner boards.');
+      if (params.turnInMm < 12) {
+        warnings.push('Turn-in margin under 12 mm may reduce glue adhesion on inner boards.');
+      }
     }
 
     return {

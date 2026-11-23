@@ -9,6 +9,10 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
   });
 
   test('updates cut list and persists paperback dimensions across reload', async ({ page }) => {
+    // Open Measure & Cut tab to inspect full Chipboard Cut List & 1:1 mm Blueprint
+    await page.getByTestId('nav-measure').click();
+    await expect(page.getByTestId('measure-and-cut-panel')).toBeVisible();
+    await expect(page.getByTestId('outer-blueprint-dimensions')).toBeVisible();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('143.0 × 223.0 mm');
     await expect(page.getByTestId('cut-spine-strip')).toContainText('26.0 × 223.0 mm');
 
@@ -18,14 +22,16 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
 
     await expect(page.getByTestId('cut-cover-boards')).toContainText('153.0 × 223.0 mm');
 
-    // Reload verifies localStorage auto-save
+    // Reload verifies localStorage auto-save (lands on Cover Studio, then open Measure & Cut)
     await page.reload();
+    await page.getByTestId('nav-measure').click();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('153.0 × 223.0 mm');
   });
 
   test('applies presets, converts units mm <-> in, and toggles 3-piece split mode', async ({
     page,
   }) => {
+    await page.getByTestId('nav-measure').click();
     await page.getByTestId('unit-toggle-in').click();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('5.63 × 8.78 in');
 
@@ -36,20 +42,20 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     // Mass Market: 106 x 174 -> Board = 109 x 181 mm
     await expect(page.getByTestId('cut-cover-boards')).toContainText('109.0 × 181.0 mm');
 
-    // Open collapsible settings and enable 3-piece split
+    // Open collapsible settings, enable 3-piece split, and inspect Blueprint CAD mode
     await page.getByTestId('construction-settings-toggle').click();
     await page.getByTestId('split-mode-toggle').click();
     await expect(page.getByTestId('blueprint-split-panels')).toBeVisible();
 
-    // Switch blueprint tab to Inner Pockets & Spine Liner
-    await page.getByTestId('blueprint-tab-inner').click();
+    // Switch physical tab to Inner Pockets
+    await page.getByTestId('nav-pockets').click();
     await expect(page.getByTestId('inner-blueprint-svg')).toBeVisible();
   });
 
-  test('downloads all four 1:1 mm templates from the 2x2 SVG/PDF export matrix', async ({
+  test('downloads all four 1:1 mm structural templates across Outer Case Wrap and Inner Pockets tabs', async ({
     page,
   }) => {
-    // 1. Outer Case Wrap SVG
+    // 1. Outer Case Wrap Cut-Only SVG
     const outerSvgPromise = page.waitForEvent('download');
     await page.getByTestId('download-outer-svg-btn').click();
     const outerSvgDownload = await outerSvgPromise;
@@ -60,13 +66,19 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     expect(outerSvgContent).toContain('id="cut-lines"');
     expect(outerSvgContent).toContain('id="board-guides"');
 
-    // 2. Outer Case Wrap PDF
-    const outerPdfPromise = page.waitForEvent('download');
+    // 2. Outer Case Wrap Cut-Only PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-outer-pdf-btn').click();
+    await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
+    const outerPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
     const outerPdfDownload = await outerPdfPromise;
+    await expect(page.getByTestId('pdf-export-dialog')).toBeHidden();
     expect(outerPdfDownload.suggestedFilename()).toBe('outer_case_wrap.pdf');
     const outerPdfBuffer = await readFile((await outerPdfDownload.path())!);
     expect(outerPdfBuffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+
+    // Switch to Inner Pockets & Liner tab
+    await page.getByTestId('nav-pockets').click();
 
     // 3. Inner Pockets & Spine Liner SVG
     const innerSvgPromise = page.waitForEvent('download');
@@ -78,10 +90,14 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     expect(innerSvgContent).toContain('id="score-lines"');
     expect(innerSvgContent).toContain('width="50" height="50"');
 
-    // 4. Inner Pockets & Spine Liner PDF
-    const innerPdfPromise = page.waitForEvent('download');
+    // 4. Inner Pockets & Spine Liner Plain Cut PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-inner-pdf-btn').click();
+    await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-legend')).toBeVisible();
+    const innerPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
     const innerPdfDownload = await innerPdfPromise;
+    await expect(page.getByTestId('pdf-export-dialog')).toBeHidden();
     expect(innerPdfDownload.suggestedFilename()).toBe('inner_pockets_and_liner.pdf');
     const innerPdfBuffer = await readFile((await innerPdfDownload.path())!);
     expect(innerPdfBuffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
@@ -89,6 +105,9 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
   });
 
   test('exports and re-imports project JSON and persists theme override', async ({ page }) => {
+    // Open Measure & Cut to observe Cut List spine strip changes
+    await page.getByTestId('nav-measure').click();
+
     // Modify thickness to 32 mm, export JSON, reset, then import back
     const thickInput = page.getByTestId('input-pb-thickness');
     await thickInput.fill('32');

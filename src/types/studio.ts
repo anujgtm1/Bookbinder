@@ -1,13 +1,44 @@
+import { parseHexColor } from '@/lib/color';
+import { ENDPAPER_SWATCHES } from '@/resources/palettes';
+import {
+  CoverOrnamentLayerModel,
+  CoverTextLayerModel,
+  type CoverOrnamentLayer,
+  type CoverTextLayer,
+} from './coverElements';
 import {
   CoverImageLayerModel,
   type CoverImageLayer,
 } from './studioLayer';
 import { UnitConverter, clampFinite, roundTo } from './units';
 
+export { ENDPAPER_SWATCHES };
+
 export type SpineLayoutPreset = 'inline' | 'stacked';
 export type SpineOrientation = 'top-to-bottom' | 'bottom-to-top';
 export type AuthorOrientation = 'vertical' | 'horizontal';
 export type CutLineExportMode = 'full-cut-miter' | 'bleed-registration';
+export type PocketImageFitMode = 'cover' | 'contain' | 'tile';
+export type PocketStyleScope = 'faces-only' | 'full-envelope';
+
+export interface PocketStyleConfig {
+  /** Base endpaper fill color for inner pockets and spine liner */
+  backgroundColor: string;
+  /** Free-form draggable & resizable artwork layers positioned in the 1:1 mm Inner Pockets layout */
+  layers: readonly CoverImageLayer[];
+  /** Optional tiled/background custom endpaper picture/pattern (data URL) */
+  imageDataUrl: string | null;
+  imageFileName: string | null;
+  imageNaturalWidth: number;
+  imageNaturalHeight: number;
+  imageFitMode: PocketImageFitMode;
+  /** Relative scale multiplier (0.25 to 2.5) for tile or background pattern sizing */
+  imageScale: number;
+  /** Image blend opacity over backgroundColor (0.1 to 1.0) */
+  imageOpacity: number;
+  /** Whether styling fills only visible pocket faces (leaving white glue flaps) or the full cut envelope */
+  styleScope: PocketStyleScope;
+}
 
 export type CuratedFontId =
   | 'eb-garamond'
@@ -47,21 +78,44 @@ export interface SpineTypographyConfig {
 export interface CoverStudioState {
   /** Free-form stack of uploaded artwork images rendered bottom-to-top */
   layers: readonly CoverImageLayer[];
+  /** Draggable Front/Back/Spine cover text layers (rendered in 2D, 3D, PDF, and Cricut HTV) */
+  textLayers: readonly CoverTextLayer[];
+  /** Parametric classic bookbindery vector ornaments & frames (recolorable & Cricut HTV-ready) */
+  ornaments: readonly CoverOrnamentLayer[];
   frontBgColor: string;
   spineBgColor: string;
   backBgColor: string;
   spineText: SpineTypographyConfig;
   cutLineMode: CutLineExportMode;
+  /** Styling configuration for the Inner Pockets & Spine Liner */
+  pocketStyle: PocketStyleConfig;
 }
 
 export const STUDIO_BOUNDS = {
   fontSizePt: { min: 6, max: 72 },
   opticalNudgeMm: { min: -2.0, max: 2.0 },
   spineSafeMarginMm: 4.0,
+  pocketImageScale: { min: 0.25, max: 2.5 },
+  pocketImageOpacity: { min: 0.1, max: 1.0 },
 } as const;
+
+export const DEFAULT_POCKET_STYLE: Readonly<PocketStyleConfig> = {
+  backgroundColor: '#f4eee1',
+  layers: [],
+  imageDataUrl: null,
+  imageFileName: null,
+  imageNaturalWidth: 0,
+  imageNaturalHeight: 0,
+  imageFitMode: 'cover',
+  imageScale: 1,
+  imageOpacity: 1,
+  styleScope: 'faces-only',
+};
 
 export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
   layers: [],
+  textLayers: [],
+  ornaments: [],
   frontBgColor: '#1f3a52',
   spineBgColor: '#1f3a52',
   backBgColor: '#1f3a52',
@@ -77,14 +131,9 @@ export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
     textColor: '#f5efe2',
     opticalNudgeMm: 0,
   },
-  cutLineMode: 'bleed-registration',
+  cutLineMode: 'full-cut-miter',
+  pocketStyle: { ...DEFAULT_POCKET_STYLE },
 };
-
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-
-function parseHexColor(value: unknown, fallback: string): string {
-  return typeof value === 'string' && HEX_COLOR_RE.test(value) ? value.toLowerCase() : fallback;
-}
 
 function parseFontId(value: unknown): StudioFontId {
   if (value === 'custom') return 'custom';
@@ -99,7 +148,10 @@ export const CoverStudioModel = {
     return {
       ...DEFAULT_COVER_STUDIO_STATE,
       layers: [],
+      textLayers: [],
+      ornaments: [],
       spineText: { ...DEFAULT_COVER_STUDIO_STATE.spineText },
+      pocketStyle: { ...DEFAULT_POCKET_STYLE },
     };
   },
 
@@ -168,7 +220,15 @@ export const CoverStudioModel = {
     return {
       ...state,
       layers: includeImageData ? state.layers.map((layer) => ({ ...layer })) : [],
+      textLayers: (state.textLayers ?? []).map((layer) => ({ ...layer })),
+      ornaments: (state.ornaments ?? []).map((orn) => ({ ...orn })),
       spineText: { ...state.spineText },
+      pocketStyle: {
+        ...state.pocketStyle,
+        layers: includeImageData ? state.pocketStyle.layers.map((layer) => ({ ...layer })) : [],
+        imageDataUrl: includeImageData ? state.pocketStyle.imageDataUrl : null,
+        imageFileName: includeImageData ? state.pocketStyle.imageFileName : null,
+      },
     };
   },
 
@@ -181,6 +241,9 @@ export const CoverStudioModel = {
     const rawSpine = (obj.spineText && typeof obj.spineText === 'object'
       ? obj.spineText
       : {}) as Record<string, unknown>;
+    const rawPocket = (obj.pocketStyle && typeof obj.pocketStyle === 'object'
+      ? obj.pocketStyle
+      : {}) as Record<string, unknown>;
 
     const layers: CoverImageLayer[] = [];
     if (Array.isArray(obj.layers)) {
@@ -190,8 +253,38 @@ export const CoverStudioModel = {
       }
     }
 
+    const textLayers: CoverTextLayer[] = [];
+    if (Array.isArray(obj.textLayers)) {
+      for (const item of obj.textLayers) {
+        const parsed = CoverTextLayerModel.deserialize(item);
+        if (parsed) textLayers.push(parsed);
+      }
+    }
+
+    const ornaments: CoverOrnamentLayer[] = [];
+    if (Array.isArray(obj.ornaments)) {
+      for (const item of obj.ornaments) {
+        const parsed = CoverOrnamentLayerModel.deserialize(item);
+        if (parsed) ornaments.push(parsed);
+      }
+    }
+
+    const pocketLayers: CoverImageLayer[] = [];
+    if (Array.isArray(rawPocket.layers)) {
+      for (const item of rawPocket.layers) {
+        const parsed = CoverImageLayerModel.deserialize(item);
+        if (parsed) pocketLayers.push(parsed);
+      }
+    }
+
+    const rawFitMode = rawPocket.imageFitMode;
+    const imageFitMode: PocketImageFitMode =
+      rawFitMode === 'contain' || rawFitMode === 'tile' ? rawFitMode : 'cover';
+
     return {
       layers,
+      textLayers,
+      ornaments,
       frontBgColor: parseHexColor(obj.frontBgColor, defaults.frontBgColor),
       spineBgColor: parseHexColor(obj.spineBgColor, defaults.spineBgColor),
       backBgColor: parseHexColor(obj.backBgColor, defaults.backBgColor),
@@ -219,7 +312,36 @@ export const CoverStudioModel = {
           STUDIO_BOUNDS.opticalNudgeMm.max,
         ),
       },
-      cutLineMode: obj.cutLineMode === 'full-cut-miter' ? 'full-cut-miter' : 'bleed-registration',
+      cutLineMode: obj.cutLineMode === 'bleed-registration' ? 'bleed-registration' : 'full-cut-miter',
+      pocketStyle: {
+        backgroundColor: parseHexColor(
+          rawPocket.backgroundColor,
+          DEFAULT_POCKET_STYLE.backgroundColor,
+        ),
+        layers: pocketLayers,
+        imageDataUrl:
+          typeof rawPocket.imageDataUrl === 'string' && rawPocket.imageDataUrl.startsWith('data:image/')
+            ? rawPocket.imageDataUrl
+            : null,
+        imageFileName: typeof rawPocket.imageFileName === 'string' ? rawPocket.imageFileName : null,
+        imageNaturalWidth: clampFinite(rawPocket.imageNaturalWidth, 0, 0, 20000),
+        imageNaturalHeight: clampFinite(rawPocket.imageNaturalHeight, 0, 0, 20000),
+        imageFitMode,
+        imageScale: clampFinite(
+          rawPocket.imageScale,
+          DEFAULT_POCKET_STYLE.imageScale,
+          STUDIO_BOUNDS.pocketImageScale.min,
+          STUDIO_BOUNDS.pocketImageScale.max,
+        ),
+        imageOpacity: clampFinite(
+          rawPocket.imageOpacity,
+          DEFAULT_POCKET_STYLE.imageOpacity,
+          STUDIO_BOUNDS.pocketImageOpacity.min,
+          STUDIO_BOUNDS.pocketImageOpacity.max,
+        ),
+        styleScope:
+          rawPocket.styleScope === 'full-envelope' ? 'full-envelope' : 'faces-only',
+      },
     };
   },
 } as const;

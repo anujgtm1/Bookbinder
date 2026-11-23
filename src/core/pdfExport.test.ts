@@ -10,18 +10,36 @@ import {
 } from './pdfExport';
 
 describe('Inner Envelopes & Spine Liner PDF exporter', () => {
-  it('packs default book onto 2 pages on US Letter and A4 with zero clipping', () => {
+  it('omits the legend block by default for tighter packing and includes it on Page 1 when includeLegend is enabled', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
 
-    const letterPlan = planInnerTemplateLayout(geom, 'letter');
-    expect(letterPlan.pageCount).toBe(2);
-    expect(letterPlan.placements).toHaveLength(4);
-    expect(letterPlan.placements.every((p) => !p.clipped)).toBe(true);
-    // Calibration square is placed on Page 1
-    const cal = letterPlan.placements.find((p) => p.kind === 'calibration-legend');
+    // Default (includeLegend = false): only the 3 template pieces are packed
+    const letterCompact = planInnerTemplateLayout(geom, 'letter');
+    expect(letterCompact.placements).toHaveLength(3);
+    expect(letterCompact.placements.some((p) => p.kind === 'calibration-legend')).toBe(false);
+    expect(letterCompact.placements.every((p) => !p.clipped)).toBe(true);
+
+    // Opt-in (includeLegend = true): includes calibration-legend on Page 1
+    const letterWithLegend = planInnerTemplateLayout(geom, 'letter', { includeLegend: true });
+    expect(letterWithLegend.pageCount).toBe(2);
+    expect(letterWithLegend.placements).toHaveLength(4);
+    expect(letterWithLegend.placements.every((p) => !p.clipped)).toBe(true);
+    const cal = letterWithLegend.placements.find((p) => p.kind === 'calibration-legend');
     expect(cal?.pageIndex).toBe(0);
 
-    const a4Plan = planInnerTemplateLayout(geom, 'a4');
+    // Compact A6 / pocket notebook fits on 1 US Letter sheet without legend, vs 2 sheets with legend
+    const a6Geom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 12,
+    });
+    const a6NoLegend = planInnerTemplateLayout(a6Geom, 'letter');
+    const a6WithLegend = planInnerTemplateLayout(a6Geom, 'letter', { includeLegend: true });
+    expect(a6NoLegend.pageCount).toBe(1);
+    expect(a6NoLegend.pageCount).toBeLessThanOrEqual(a6WithLegend.pageCount);
+
+    const a4Plan = planInnerTemplateLayout(geom, 'a4', { includeLegend: true });
     expect(a4Plan.pageCount).toBe(2);
     expect(a4Plan.placements.every((p) => !p.clipped)).toBe(true);
   });
@@ -80,5 +98,116 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     const splitBytes = await generateOuterWrapPdf(geom, 'three-piece');
     const splitDoc = await PDFDocument.load(splitBytes);
     expect(splitDoc.getPageCount()).toBe(3);
+
+    // 1-Piece Fold-and-Glue Slip Cover for A6 (5 mm spine, no bleed) -> exact 266.4 x 170.0 mm page
+    const a6SoftGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      includeBleed: false,
+    });
+    const softBytes = await generateOuterWrapPdf(a6SoftGeom, 'single');
+    const softDoc = await PDFDocument.load(softBytes);
+    expect(softDoc.getPageCount()).toBe(1);
+    const softSize = softDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(softSize.width)).toBeCloseTo(266.4, 1);
+    expect(UnitConverter.pointsToMm(softSize.height)).toBeCloseTo(170.0, 1);
+  });
+
+  it('supports printMediaId sheet centering (US Legal) and 2-sheet tiling (US Letter) on generateOuterWrapPdf and legal page size on generateInnerTemplatesPdf', async () => {
+    // A6 slip cover with 52.5 mm flaps -> outerWrap = 323 x 170 mm
+    const a6DeepFlapGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      jacketFlapWidthMm: 52.5,
+      includeBleed: false,
+    });
+
+    // 1. US Legal -> 1 centered Landscape sheet (355.6 x 215.9 mm)
+    const legalBytes = await generateOuterWrapPdf(a6DeepFlapGeom, 'single', {
+      printMediaId: 'legal',
+      includeScaleBar: true,
+    });
+    const legalDoc = await PDFDocument.load(legalBytes);
+    expect(legalDoc.getPageCount()).toBe(1);
+    const legalSize = legalDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(legalSize.width)).toBeCloseTo(355.6, 2);
+    expect(UnitConverter.pointsToMm(legalSize.height)).toBeCloseTo(215.9, 2);
+
+    // 2. US Letter -> 2 tiled Portrait sheets (215.9 x 279.4 mm)
+    const letterTiledBytes = await generateOuterWrapPdf(a6DeepFlapGeom, 'single', {
+      printMediaId: 'letter',
+      tileOverlapMm: 15,
+    });
+    const letterTiledDoc = await PDFDocument.load(letterTiledBytes);
+    expect(letterTiledDoc.getPageCount()).toBe(2);
+    for (const idx of [0, 1]) {
+      const sz = letterTiledDoc.getPage(idx).getSize();
+      expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(215.9, 2);
+      expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(279.4, 2);
+    }
+
+    // 3. Inner templates PDF on US Legal (215.9 x 355.6 mm)
+    const defaultGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const { bytes: innerLegalBytes, plan: innerLegalPlan } = await generateInnerTemplatesPdf(
+      defaultGeom,
+      'legal',
+    );
+    const innerLegalDoc = await PDFDocument.load(innerLegalBytes);
+    expect(innerLegalDoc.getPageCount()).toBe(innerLegalPlan.pageCount);
+    const firstLegalPage = innerLegalDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(firstLegalPage.width)).toBeCloseTo(PAGE_SIZES.legal.widthMm, 2);
+    expect(UnitConverter.pointsToMm(firstLegalPage.height)).toBeCloseTo(
+      PAGE_SIZES.legal.heightMm,
+      2,
+    );
+  });
+
+  it('generates exact 1:1 mm Outer Wrap PDFs for paperback-wrap and dust-jacket binding styles', async () => {
+    const pbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      includeBleed: false,
+    });
+    const pbBytes = await generateOuterWrapPdf(pbGeom, 'single');
+    const pbDoc = await PDFDocument.load(pbBytes);
+    expect(pbDoc.getPageCount()).toBe(1);
+    const pbSize = pbDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(pbSize.width)).toBeCloseTo(220, 2);
+    expect(UnitConverter.pointsToMm(pbSize.height)).toBeCloseTo(148, 2);
+
+    // Centered on 1× US Letter Landscape
+    const pbLetterBytes = await generateOuterWrapPdf(pbGeom, 'single', {
+      printMediaId: 'letter',
+    });
+    const pbLetterDoc = await PDFDocument.load(pbLetterBytes);
+    expect(pbLetterDoc.getPageCount()).toBe(1);
+    const pbLetterSize = pbLetterDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(pbLetterSize.width)).toBeCloseTo(279.4, 2);
+    expect(UnitConverter.pointsToMm(pbLetterSize.height)).toBeCloseTo(215.9, 2);
+
+    const djGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 50,
+      includeBleed: false,
+    });
+    const djBytes = await generateOuterWrapPdf(djGeom, 'single');
+    const djDoc = await PDFDocument.load(djBytes);
+    expect(djDoc.getPageCount()).toBe(1);
+    const djSize = djDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(djSize.width)).toBeCloseTo(323.5, 2);
+    expect(UnitConverter.pointsToMm(djSize.height)).toBeCloseTo(148, 2);
   });
 });

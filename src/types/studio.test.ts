@@ -103,4 +103,31 @@ describe('CoverStudioModel', () => {
     expect(CoverStudioModel.deserialize(null)).toEqual(DEFAULT_COVER_STUDIO_STATE);
     expect(CoverStudioModel.deserialize('invalid')).toEqual(DEFAULT_COVER_STUDIO_STATE);
   });
+
+  it('serializes, deserializes, clamps, and quota-strips pocketStyle settings', () => {
+    const parsed = CoverStudioModel.deserialize({
+      pocketStyle: {
+        backgroundColor: '#1E4D44',
+        imageDataUrl: 'data:image/png;base64,POCKET',
+        imageFileName: 'marbled.png',
+        imageNaturalWidth: 1200,
+        imageNaturalHeight: 1200,
+        imageFitMode: 'tile',
+        imageScale: 9,
+        imageOpacity: 0.01,
+        styleScope: 'full-envelope',
+      },
+    });
+
+    expect(parsed.pocketStyle.backgroundColor).toBe('#1e4d44');
+    expect(parsed.pocketStyle.imageDataUrl).toBe('data:image/png;base64,POCKET');
+    expect(parsed.pocketStyle.imageFitMode).toBe('tile');
+    expect(parsed.pocketStyle.imageScale).toBe(2.5);
+    expect(parsed.pocketStyle.imageOpacity).toBe(0.1);
+    expect(parsed.pocketStyle.styleScope).toBe('full-envelope');
+
+    const stripped = CoverStudioModel.serialize(parsed, { includeImageData: false });
+    expect(stripped.pocketStyle.imageDataUrl).toBeNull();
+    expect(stripped.pocketStyle.backgroundColor).toBe('#1e4d44');
+  });
 });
