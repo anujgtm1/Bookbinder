@@ -45,6 +45,13 @@ export function CricutExportDialog({
 
   const hasSpineText =
     studio.spineText.title.trim().length > 0 || studio.spineText.author.trim().length > 0;
+  const hasFrontDesign =
+    (studio.textLayers ?? []).some((t) => t.zone === 'front' && t.text.trim().length > 0) ||
+    (studio.ornaments ?? []).some((o) => o.zone === 'front');
+  const hasAnyDesign =
+    hasSpineText ||
+    (studio.textLayers ?? []).some((t) => t.text.trim().length > 0) ||
+    (studio.ornaments ?? []).length > 0;
 
   const [options, setOptions] = useState<CricutExportOptions>(DEFAULT_CRICUT_EXPORT_OPTIONS);
   const [preview, setPreview] = useState<CricutExportResult | null>(null);
@@ -56,10 +63,15 @@ export function CricutExportDialog({
     if (!dialog) return;
 
     if (open) {
+      const smartScope: CricutCanvasScope = hasSpineText
+        ? 'spine-only'
+        : hasFrontDesign
+          ? 'front-cover'
+          : 'full-wrap';
       setOptions((prev) => ({
         ...prev,
-        scope: hasSpineText ? 'spine-only' : 'full-wrap',
-        includeOuterCutOutline: !hasSpineText,
+        scope: smartScope,
+        includeOuterCutOutline: smartScope === 'full-wrap',
       }));
       if (!dialog.open) {
         if (typeof dialog.showModal === 'function') {
@@ -75,7 +87,7 @@ export function CricutExportDialog({
         dialog.removeAttribute('open');
       }
     }
-  }, [open, hasSpineText]);
+  }, [open, hasSpineText, hasFrontDesign]);
 
   // Safari fallback for closedby="any" light dismiss (requires both press & release outside dialog rect)
   useEffect(() => {
@@ -319,6 +331,26 @@ export function CricutExportDialog({
                 <Button
                   type="button"
                   size="sm"
+                  variant={options.scope === 'front-cover' ? 'default' : 'outline'}
+                  aria-pressed={options.scope === 'front-cover'}
+                  data-testid="cricut-scope-front"
+                  onClick={() => handleScopeChange('front-cover')}
+                >
+                  Front Cover
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={options.scope === 'back-cover' ? 'default' : 'outline'}
+                  aria-pressed={options.scope === 'back-cover'}
+                  data-testid="cricut-scope-back"
+                  onClick={() => handleScopeChange('back-cover')}
+                >
+                  Back Cover
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
                   variant={options.scope === 'full-wrap' ? 'default' : 'outline'}
                   aria-pressed={options.scope === 'full-wrap'}
                   data-testid="cricut-scope-fullwrap"
@@ -330,21 +362,25 @@ export function CricutExportDialog({
               <p className="text-[11px] text-muted-foreground">
                 {options.scope === 'spine-only'
                   ? 'Compact mat sized to your spine — saves HTV and fits Cricut Joy.'
-                  : 'Full 1:1 mm wrap alignment across Back, Spine, and Front boards.'}
+                  : options.scope === 'front-cover'
+                    ? 'Exact Front Cover board area with front title, author, frames & emblems.'
+                    : options.scope === 'back-cover'
+                      ? 'Exact Back Cover board area with back blurb, colophon & ornaments.'
+                      : 'Full 1:1 mm wrap alignment across Back, Spine, and Front boards.'}
               </p>
             </div>
 
-            {!hasSpineText && (
+            {!hasAnyDesign && (
               <p className="rounded-md border border-amber-600/35 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-800 dark:text-amber-300">
-                Add a Spine Title or Author in Spine Typography to export outlined HTV lettering — or
-                export the alignment &amp; outer cut outline for bookcloth.
+                Add Spine Typography, Front/Back Cover Text, or a Classic Design ornament to export
+                outlined HTV cut paths — or export the alignment &amp; outer cut outline for bookcloth.
               </p>
             )}
 
             <div className="kettle-stitch-divider space-y-3 pt-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-0.5">
-                  <Label htmlFor="cricut-lettering-switch">Spine Lettering (Vector Paths)</Label>
+                  <Label htmlFor="cricut-lettering-switch">Cover &amp; Spine Lettering</Label>
                   <p className="text-[11px] text-muted-foreground">
                     Converts active font glyphs into compound cut curves.
                   </p>
@@ -354,6 +390,21 @@ export function CricutExportDialog({
                   data-testid="cricut-lettering-switch"
                   checked={options.includeLettering}
                   onCheckedChange={(v) => updateOption('includeLettering', v)}
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="cricut-ornaments-switch">Classic Ornaments &amp; Frames</Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Includes borders, corner flourishes, dividers &amp; spine bands.
+                  </p>
+                </div>
+                <Switch
+                  id="cricut-ornaments-switch"
+                  data-testid="cricut-ornaments-switch"
+                  checked={options.includeOrnaments ?? true}
+                  onCheckedChange={(v) => updateOption('includeOrnaments', v)}
                 />
               </div>
 

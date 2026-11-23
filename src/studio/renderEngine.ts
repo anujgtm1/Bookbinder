@@ -1,15 +1,17 @@
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont } from 'pdf-lib';
 import { escapeXml } from '@/lib/utils';
+import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import {
   GeometryPrimitives,
   type CaseGeometry,
   type Point2D,
   type Rect2D,
 } from '@/types/geometry';
-import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
+import { CoverStudioModel, type CoverStudioState, type StudioFontId } from '@/types/studio';
 import type { LayerClipZone, QuickFitTarget } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
+import { buildOrnamentCompoundPath } from './classicOrnaments';
 import {
   getCuratedFont,
   loadCuratedFontBytes,
@@ -215,6 +217,37 @@ export function computeSpineTextPlacements(
   return placements;
 }
 
+export interface CoverTextLinePlacement {
+  readonly text: string;
+  readonly anchorXMm: number;
+  readonly anchorYMm: number;
+  readonly fontSizePt: number;
+  readonly letterSpacingEm: number;
+  readonly align: CoverTextLayer['align'];
+  readonly color: string;
+  readonly fontId: StudioFontId;
+}
+
+/** Computes exact multi-line millimeter anchors for a draggable CoverTextLayer. */
+export function computeCoverTextLinePlacements(
+  layer: CoverTextLayer,
+): readonly CoverTextLinePlacement[] {
+  const lines = CoverTextLayerModel.displayLines(layer);
+  const stepMm = UnitConverter.pointsToMm(layer.fontSizePt) * layer.lineHeight;
+  const firstY = layer.yMm - ((lines.length - 1) * stepMm) / 2;
+
+  return lines.map((line, idx) => ({
+    text: line,
+    anchorXMm: layer.xMm,
+    anchorYMm: roundTo(firstY + idx * stepMm, 2),
+    fontSizePt: layer.fontSizePt,
+    letterSpacingEm: layer.letterSpacingEm,
+    align: layer.align,
+    color: layer.color,
+    fontId: layer.fontId,
+  }));
+}
+
 function loadHtmlImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -292,8 +325,42 @@ export async function renderCoverArtworkCanvas(
     ctx.restore();
   }
 
-  // 3. Optional rasterized spine typography (used for 300 DPI PNG export)
+  // 3. Optional rasterized classic ornaments, cover text layers & spine typography (used for 300 DPI PNG export)
   if (options.includeSpineText) {
+    // 3a. Classic Bookbindery Vector Ornaments
+    for (const orn of studio.ornaments ?? []) {
+      const compoundD = buildOrnamentCompoundPath(orn);
+      if (!compoundD || typeof Path2D === 'undefined') continue;
+      ctx.save();
+      ctx.scale(pxPerMm, pxPerMm);
+      ctx.fillStyle = orn.color;
+      ctx.fill(new Path2D(compoundD));
+      ctx.restore();
+    }
+
+    // 3b. Draggable Front / Back / Spine Cover Text Layers
+    for (const textLayer of studio.textLayers ?? []) {
+      const fontFamily = resolveFontCssFamily(textLayer.fontId, customFont);
+      const lineItems = computeCoverTextLinePlacements(textLayer);
+      ctx.fillStyle = textLayer.color;
+      ctx.textAlign = textLayer.align;
+      ctx.textBaseline = 'middle';
+
+      for (const item of lineItems) {
+        if (!item.text.trim()) continue;
+        const fontSizePx = (item.fontSizePt / 72) * dpi;
+        ctx.save();
+        ctx.font = `400 ${fontSizePx}px ${fontFamily}`;
+        if ('letterSpacing' in ctx) {
+          (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing =
+            `${item.letterSpacingEm}em`;
+        }
+        ctx.fillText(item.text, toPx(item.anchorXMm), toPx(item.anchorYMm));
+        ctx.restore();
+      }
+    }
+
+    // 3c. Dedicated Spine Typography
     const placements = computeSpineTextPlacements(geometry, studio);
     const fontFamily = resolveFontCssFamily(studio.spineText.fontId, customFont);
     ctx.fillStyle = studio.spineText.textColor;
@@ -338,35 +405,42 @@ async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> 
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-async function embedStudioFontInPdf(
+async function embedFontByIdInPdf(
   pdfDoc: PDFDocument,
-  studio: CoverStudioState,
+  fontId: StudioFontId,
   customFont: CustomFontAsset | null,
+  cache: Map<StudioFontId, PDFFont>,
 ): Promise<PDFFont> {
+  const existing = cache.get(fontId);
+  if (existing) return existing;
+
   pdfDoc.registerFontkit(fontkit);
 
   try {
-    if (studio.spineText.fontId === 'custom' && customFont?.pdfEmbeddable) {
-      return await pdfDoc.embedFont(customFont.bytes);
+    if (fontId === 'custom' && customFont?.pdfEmbeddable) {
+      const embedded = await pdfDoc.embedFont(customFont.bytes);
+      cache.set(fontId, embedded);
+      return embedded;
     }
 
-    const curatedId =
-      studio.spineText.fontId === 'custom' ? 'eb-garamond' : studio.spineText.fontId;
+    const curatedId = fontId === 'custom' ? 'eb-garamond' : fontId;
     const curatedBytes = await loadCuratedFontBytes(curatedId);
     if (curatedBytes) {
-      return await pdfDoc.embedFont(curatedBytes);
+      const embedded = await pdfDoc.embedFont(curatedBytes);
+      cache.set(fontId, embedded);
+      return embedded;
     }
   } catch {
     // Graceful fallback below if font bytes cannot be embedded
   }
 
   const fallbackSpec =
-    studio.spineText.fontId === 'custom'
-      ? getCuratedFont('eb-garamond')
-      : getCuratedFont(studio.spineText.fontId);
-  return pdfDoc.embedFont(
+    fontId === 'custom' ? getCuratedFont('eb-garamond') : getCuratedFont(fontId);
+  const fallback = await pdfDoc.embedFont(
     fallbackSpec.category === 'sans-serif' ? StandardFonts.Helvetica : StandardFonts.TimesRoman,
   );
+  cache.set(fontId, fallback);
+  return fallback;
 }
 
 /**
@@ -424,10 +498,85 @@ export async function generatePrintReadyRollPdf(
     }
   }
 
-  // 2. True Vector Spine Typography
+  // 2a. True Vector Classic Bookbindery Ornaments (crisp at any scale, never rasterized)
+  const mmToPt = UnitConverter.mmToPoints(1);
+  for (const orn of studio.ornaments ?? []) {
+    const compoundD = buildOrnamentCompoundPath(orn);
+    if (!compoundD) continue;
+    const oc = hexToRgb01(orn.color);
+    page.drawSvgPath(compoundD, {
+      x: 0,
+      y: pageH,
+      scale: mmToPt,
+      color: rgb(oc.r, oc.g, oc.b),
+    });
+  }
+
+  // 2b. True Vector Cover Text Layers (Front / Back / Spine)
+  const fontCache = new Map<StudioFontId, PDFFont>();
+  for (const textLayer of studio.textLayers ?? []) {
+    const lineItems = computeCoverTextLinePlacements(textLayer);
+    const pdfFont = await embedFontByIdInPdf(pdfDoc, textLayer.fontId, customFont, fontCache);
+    const tc = hexToRgb01(textLayer.color);
+    const textColor = rgb(tc.r, tc.g, tc.b);
+
+    for (const item of lineItems) {
+      if (!item.text.trim()) continue;
+      const trackingPt = item.letterSpacingEm * item.fontSizePt;
+      const chars = Array.from(item.text);
+      const totalWidthPt =
+        Math.abs(trackingPt) > 0.05 && chars.length > 1
+          ? chars.reduce(
+              (acc, ch, i) =>
+                acc + pdfFont.widthOfTextAtSize(ch, item.fontSizePt) + (i < chars.length - 1 ? trackingPt : 0),
+              0,
+            )
+          : pdfFont.widthOfTextAtSize(item.text, item.fontSizePt);
+      const textHeightPt = pdfFont.heightAtSize(item.fontSizePt, { descender: false });
+      const anchorXPt = toPdfX(item.anchorXMm);
+      const anchorYPt = toPdfY(item.anchorYMm);
+
+      const startXPt =
+        item.align === 'left'
+          ? anchorXPt
+          : item.align === 'right'
+            ? anchorXPt - totalWidthPt
+            : anchorXPt - totalWidthPt / 2;
+      const baseYPt = anchorYPt - textHeightPt * 0.36;
+
+      if (Math.abs(trackingPt) > 0.05 && chars.length > 1) {
+        let cursorX = startXPt;
+        for (const ch of chars) {
+          page.drawText(ch, {
+            x: cursorX,
+            y: baseYPt,
+            size: item.fontSizePt,
+            font: pdfFont,
+            color: textColor,
+          });
+          cursorX += pdfFont.widthOfTextAtSize(ch, item.fontSizePt) + trackingPt;
+        }
+      } else {
+        page.drawText(item.text, {
+          x: startXPt,
+          y: baseYPt,
+          size: item.fontSizePt,
+          font: pdfFont,
+          color: textColor,
+        });
+      }
+    }
+  }
+
+  // 2c. True Vector Spine Typography
   const textPlacements = computeSpineTextPlacements(geometry, studio);
   if (textPlacements.length > 0) {
-    const pdfFont = await embedStudioFontInPdf(pdfDoc, studio, customFont);
+    const pdfFont = await embedFontByIdInPdf(
+      pdfDoc,
+      studio.spineText.fontId,
+      customFont,
+      fontCache,
+    );
     const tc = hexToRgb01(studio.spineText.textColor);
     const textColor = rgb(tc.r, tc.g, tc.b);
 
@@ -650,6 +799,31 @@ export function generateAffinityCoverSvg(
     <rect x="${fmt(spec.spineZoneRect.x)}" y="0" width="${fmt(spec.spineZoneRect.width)}" height="${fmt(spec.totalHeightMm)}" fill="${studio.spineBgColor}" />
     <rect x="${fmt(spec.frontZoneRect.x)}" y="0" width="${fmt(spec.frontZoneRect.width)}" height="${fmt(spec.totalHeightMm)}" fill="${studio.frontBgColor}" />`;
 
+  const ornamentNodes = (studio.ornaments ?? [])
+    .map((orn) => {
+      const d = buildOrnamentCompoundPath(orn);
+      return d ? `    <path d="${d}" fill="${escapeXml(orn.color)}" />` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  const coverTextNodes = (studio.textLayers ?? [])
+    .flatMap((layer) => {
+      const layerFont = escapeXml(resolveFontCssFamily(layer.fontId, customFont));
+      const anchor = layer.align === 'left' ? 'start' : layer.align === 'right' ? 'end' : 'middle';
+      return computeCoverTextLinePlacements(layer)
+        .filter((item) => item.text.trim().length > 0)
+        .map((item) => {
+          const fontSizeMm = UnitConverter.pointsToMm(item.fontSizePt);
+          const trackingAttr =
+            Math.abs(item.letterSpacingEm) > 0.001
+              ? ` letter-spacing="${fmt(item.letterSpacingEm)}em"`
+              : '';
+          return `    <text x="${fmt(item.anchorXMm)}" y="${fmt(item.anchorYMm)}" font-family="${layerFont}" font-size="${fmt(fontSizeMm)}"${trackingAttr} fill="${escapeXml(item.color)}" text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(item.text)}</text>`;
+        });
+    })
+    .join('\n');
+
   const textNodes = textPlacements
     .map((item) => {
       const fontSizeMm = UnitConverter.pointsToMm(item.fontSizePt);
@@ -676,6 +850,12 @@ export function generateAffinityCoverSvg(
   <title>Composed Outer Cover — Affinity Round-Trip (1:1 mm, 300 DPI)</title>
   <g id="artwork-layer">
 ${artworkLayer}
+  </g>
+  <g id="classic-ornaments">
+${ornamentNodes}
+  </g>
+  <g id="cover-typography">
+${coverTextNodes}
   </g>
   <g id="spine-typography">
 ${textNodes}

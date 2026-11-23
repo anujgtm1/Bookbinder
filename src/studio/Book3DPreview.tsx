@@ -7,9 +7,11 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
+import { buildOrnamentCompoundPath } from './classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
 import { computeInnerPocketsLayout } from './pocketRenderEngine';
 import {
+  computeCoverTextLinePlacements,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   type SpineTextPlacement,
@@ -31,6 +33,7 @@ interface CoverFaceSvgProps {
   readonly viewRect: Rect2D;
   readonly spec: StudioCanvasSpec;
   readonly studio: CoverStudioState;
+  readonly customFont: CustomFontAsset | null;
   readonly spinePlacements: readonly SpineTextPlacement[];
   readonly fontFamily: string;
   readonly showSpineText?: boolean;
@@ -42,6 +45,7 @@ function CoverFaceSvg({
   viewRect,
   spec,
   studio,
+  customFont,
   spinePlacements,
   fontFamily,
   showSpineText = false,
@@ -129,6 +133,37 @@ function CoverFaceSvg({
           />
         </g>
       ))}
+
+      {/* Classic Bookbindery Vector Ornaments */}
+      {(studio.ornaments ?? []).map((orn) => {
+        const d = buildOrnamentCompoundPath(orn);
+        return d ? <path key={orn.id} d={d} fill={orn.color} /> : null;
+      })}
+
+      {/* Draggable Cover Text Layers (Front / Back / Spine) */}
+      {(studio.textLayers ?? []).map((layer) => {
+        const layerFamily = resolveFontCssFamily(layer.fontId, customFont);
+        const anchor = layer.align === 'left' ? 'start' : layer.align === 'right' ? 'end' : 'middle';
+        return (
+          <g key={layer.id}>
+            {computeCoverTextLinePlacements(layer).map((item, idx) => (
+              <text
+                key={`${layer.id}-${idx}`}
+                x={item.anchorXMm}
+                y={item.anchorYMm}
+                fill={item.color}
+                fontFamily={layerFamily}
+                fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
+                letterSpacing={`${item.letterSpacingEm}em`}
+                textAnchor={anchor}
+                dominantBaseline="middle"
+              >
+                {item.text}
+              </text>
+            ))}
+          </g>
+        );
+      })}
 
       {showSpineText && (
         <g data-testid="book3d-spine-typography">
@@ -477,6 +512,7 @@ export function Book3DPreview({
               viewRect={frontViewRect}
               spec={spec}
               studio={studio}
+              customFont={customFont}
               spinePlacements={spinePlacements}
               fontFamily={activeFontFamily}
             />
@@ -568,6 +604,7 @@ export function Book3DPreview({
             viewRect={backViewRect}
             spec={spec}
             studio={studio}
+            customFont={customFont}
             spinePlacements={spinePlacements}
             fontFamily={activeFontFamily}
           />
@@ -618,6 +655,7 @@ export function Book3DPreview({
             viewRect={spineViewRect}
             spec={spec}
             studio={studio}
+            customFont={customFont}
             spinePlacements={spinePlacements}
             fontFamily={activeFontFamily}
             showSpineText

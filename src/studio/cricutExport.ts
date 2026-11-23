@@ -1,18 +1,26 @@
 import fontkit from '@pdf-lib/fontkit';
+import type { CoverTextLayer } from '@/types/coverElements';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
-import type { CoverStudioState, CuratedFontId } from '@/types/studio';
+import type { CoverStudioState, CuratedFontId, StudioFontId } from '@/types/studio';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
+import { buildOrnamentCompoundPath } from './classicOrnaments';
 import { loadCuratedFontBytes, type CustomFontAsset } from './fonts';
-import { computeSpineTextPlacements, computeStudioCanvasSpec } from './renderEngine';
+import {
+  computeCoverTextLinePlacements,
+  computeSpineTextPlacements,
+  computeStudioCanvasSpec,
+} from './renderEngine';
 
-export type CricutCanvasScope = 'spine-only' | 'full-wrap';
+export type CricutCanvasScope = 'spine-only' | 'front-cover' | 'back-cover' | 'full-wrap';
 
 export interface CricutExportOptions {
-  /** 'spine-only' exports a compact SPINE_W × BOARD_H mat (fits Cricut Joy); 'full-wrap' exports full WRAP_W × WRAP_H */
+  /** 'spine-only', 'front-cover', 'back-cover', or 'full-wrap' */
   readonly scope: CricutCanvasScope;
-  /** Convert spine title & author lettering to flattened vector <path> outlines (zero <text> tags) */
+  /** Convert spine & cover text layers to flattened vector <path> outlines (zero <text> tags) */
   readonly includeLettering: boolean;
-  /** Add tight +4 mm cut box around lettering for effortless HTV weeding */
+  /** Include parametric classic bookbindery vector ornaments in the cut paths (default true) */
+  readonly includeOrnaments?: boolean;
+  /** Add tight +4 mm cut box around lettering & ornaments for effortless HTV weeding */
   readonly includeWeedingBox: boolean;
   /** Add exact corner L-bracket registration ticks to align iron-on HTV onto wrapped bookcloth */
   readonly includeRegistrationMarks: boolean;
@@ -25,6 +33,7 @@ export interface CricutExportOptions {
 export const DEFAULT_CRICUT_EXPORT_OPTIONS: Readonly<CricutExportOptions> = {
   scope: 'spine-only',
   includeLettering: true,
+  includeOrnaments: true,
   includeWeedingBox: true,
   includeRegistrationMarks: true,
   includeOuterCutOutline: false,
@@ -91,22 +100,29 @@ function slugifyTitle(title: string): string {
  * Loads font bytes for fontkit glyph outlining (prefers uploaded .ttf/.otf/.woff custom font,
  * otherwise loads the active bundled curated .woff font).
  */
-export async function resolveOutlineFontBytes(
-  studio: CoverStudioState,
+async function resolveFontBytesById(
+  fontId: StudioFontId,
   customFont: CustomFontAsset | null,
   overrideBytes?: Uint8Array | null,
 ): Promise<Uint8Array | null> {
   if (overrideBytes && overrideBytes.byteLength > 0) {
     return overrideBytes;
   }
-  if (studio.spineText.fontId === 'custom' && customFont && customFont.pdfEmbeddable) {
+  if (fontId === 'custom' && customFont && customFont.pdfEmbeddable) {
     return customFont.bytes;
   }
-  const curatedId: CuratedFontId =
-    studio.spineText.fontId === 'custom' ? 'eb-garamond' : studio.spineText.fontId;
+  const curatedId: CuratedFontId = fontId === 'custom' ? 'eb-garamond' : fontId;
   const loaded = await loadCuratedFontBytes(curatedId);
   if (loaded) return loaded;
   return loadCuratedFontBytes('eb-garamond');
+}
+
+export async function resolveOutlineFontBytes(
+  studio: CoverStudioState,
+  customFont: CustomFontAsset | null,
+  overrideBytes?: Uint8Array | null,
+): Promise<Uint8Array | null> {
+  return resolveFontBytesById(studio.spineText.fontId, customFont, overrideBytes);
 }
 
 interface BakedLetteringPaths {
@@ -114,21 +130,25 @@ interface BakedLetteringPaths {
   readonly bounds: Rect2D | null;
 }
 
-/**
- * Bakes all spine typography placements into a single flattened compound SVG path string
- * in exact absolute millimeter coordinates (zero <text> tags, zero SVG transform attributes).
- */
-export function bakeSpineLetteringToPaths(
-  geometry: CaseGeometry,
-  studio: CoverStudioState,
+interface GlyphRunPlacement {
+  readonly text: string;
+  readonly anchorXMm: number;
+  readonly anchorYMm: number;
+  readonly fontSizePt: number;
+  readonly rotationDegCss: number;
+  readonly align: 'left' | 'center' | 'right';
+  readonly letterSpacingEm: number;
+}
+
+function bakeGlyphRunsToPaths(
+  runs: readonly GlyphRunPlacement[],
   fontBytes: Uint8Array,
   originXMm: number,
   originYMm: number,
   canvasWidthMm: number,
   mirrorX: boolean,
 ): BakedLetteringPaths {
-  const placements = computeSpineTextPlacements(geometry, studio);
-  if (placements.length === 0) {
+  if (runs.length === 0) {
     return { compoundD: '', bounds: null };
   }
 
@@ -154,9 +174,20 @@ export function bakeSpineLetteringToPaths(
     if (y > maxY) maxY = y;
   };
 
-  for (const placement of placements) {
+  for (const placement of runs) {
+    if (!placement.text.trim()) continue;
     const run = font.layout(placement.text);
-    const totalAdvance = run.positions.reduce((sum, p) => sum + p.xAdvance, 0);
+    const trackingUnits = placement.letterSpacingEm * upem;
+    const glyphCount = run.glyphs.length;
+    const totalAdvance =
+      run.positions.reduce((sum, p) => sum + p.xAdvance, 0) +
+      Math.max(0, glyphCount - 1) * trackingUnits;
+    const alignOffsetUnits =
+      placement.align === 'left'
+        ? 0
+        : placement.align === 'right'
+          ? totalAdvance
+          : totalAdvance / 2;
     const scale = UnitConverter.pointsToMm(placement.fontSizePt) / upem;
 
     const rad = (placement.rotationDegCss * Math.PI) / 180;
@@ -166,13 +197,13 @@ export function bakeSpineLetteringToPaths(
     const anchorY = placement.anchorYMm - originYMm;
 
     let cursorX = 0;
-    for (let i = 0; i < run.glyphs.length; i++) {
+    for (let i = 0; i < glyphCount; i++) {
       const glyph = run.glyphs[i];
       const pos = run.positions[i];
       const cmds = glyph.path?.commands ?? [];
 
       const mapPt = (fx: number, fy: number): { readonly x: number; readonly y: number } => {
-        const lx = (cursorX + pos.xOffset + fx - totalAdvance / 2) * scale;
+        const lx = (cursorX + pos.xOffset + fx - alignOffsetUnits) * scale;
         const ly = -(pos.yOffset + fy - verticalCenterFontUnits) * scale;
         const rx = lx * cos - ly * sin;
         const ry = lx * sin + ly * cos;
@@ -217,7 +248,7 @@ export function bakeSpineLetteringToPaths(
         }
       }
 
-      cursorX += pos.xAdvance;
+      cursorX += pos.xAdvance + trackingUnits;
     }
   }
 
@@ -234,6 +265,76 @@ export function bakeSpineLetteringToPaths(
       height: Math.max(0.5, maxY - minY),
     },
   };
+}
+
+/**
+ * Bakes all spine typography placements into a single flattened compound SVG path string
+ * in exact absolute millimeter coordinates (zero <text> tags, zero SVG transform attributes).
+ */
+export function bakeSpineLetteringToPaths(
+  geometry: CaseGeometry,
+  studio: CoverStudioState,
+  fontBytes: Uint8Array,
+  originXMm: number,
+  originYMm: number,
+  canvasWidthMm: number,
+  mirrorX: boolean,
+): BakedLetteringPaths {
+  const placements = computeSpineTextPlacements(geometry, studio);
+  return bakeGlyphRunsToPaths(
+    placements.map((p) => ({
+      text: p.text,
+      anchorXMm: p.anchorXMm,
+      anchorYMm: p.anchorYMm,
+      fontSizePt: p.fontSizePt,
+      rotationDegCss: p.rotationDegCss,
+      align: 'center' as const,
+      letterSpacingEm: 0,
+    })),
+    fontBytes,
+    originXMm,
+    originYMm,
+    canvasWidthMm,
+    mirrorX,
+  );
+}
+
+/** Bakes a draggable CoverTextLayer (Front / Back / Spine) into flattened 1:1 mm Bezier cut paths. */
+export function bakeCoverTextLayerToPaths(
+  layer: CoverTextLayer,
+  fontBytes: Uint8Array,
+  originXMm: number,
+  originYMm: number,
+  canvasWidthMm: number,
+  mirrorX: boolean,
+): BakedLetteringPaths {
+  const lineItems = computeCoverTextLinePlacements(layer);
+  return bakeGlyphRunsToPaths(
+    lineItems.map((item) => ({
+      text: item.text,
+      anchorXMm: item.anchorXMm,
+      anchorYMm: item.anchorYMm,
+      fontSizePt: item.fontSizePt,
+      rotationDegCss: 0,
+      align: item.align,
+      letterSpacingEm: item.letterSpacingEm,
+    })),
+    fontBytes,
+    originXMm,
+    originYMm,
+    canvasWidthMm,
+    mirrorX,
+  );
+}
+
+function mergeBounds(a: Rect2D | null, b: Rect2D | null): Rect2D | null {
+  if (!a) return b;
+  if (!b) return a;
+  const x1 = Math.min(a.x, b.x);
+  const y1 = Math.min(a.y, b.y);
+  const x2 = Math.max(a.x + a.width, b.x + b.width);
+  const y2 = Math.max(a.y + a.height, b.y + b.height);
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
 /** Builds crisp closed L-bracket corner registration marks as filled polygons (no stroke ambiguity in Cricut). */
@@ -295,47 +396,117 @@ export async function generateCricutHtvSvg(
   const spec = computeStudioCanvasSpec(geometry, PRINT_DPI);
   const bleed = spec.bleedMm;
 
-  const isSpineOnly = options.scope === 'spine-only';
-  const spinePadX = 6;
-  const spinePadY = 6;
+  const isFullWrap = options.scope === 'full-wrap';
+  const matPad = 6;
+  const scopeRect: Rect2D =
+    options.scope === 'spine-only'
+      ? outerWrap.spineRect
+      : options.scope === 'front-cover'
+        ? outerWrap.frontBoardRect
+        : options.scope === 'back-cover'
+          ? outerWrap.backBoardRect
+          : { x: 0, y: 0, width: outerWrap.widthMm, height: outerWrap.heightMm };
 
   // Origin in studio canvas coordinates (which include bleed offset)
-  const originXMm = isSpineOnly ? outerWrap.spineRect.x + bleed - spinePadX : bleed;
-  const originYMm = isSpineOnly ? outerWrap.spineRect.y + bleed - spinePadY : bleed;
+  const originXMm = isFullWrap ? bleed : scopeRect.x + bleed - matPad;
+  const originYMm = isFullWrap ? bleed : scopeRect.y + bleed - matPad;
 
-  const widthMm = roundTo(
-    isSpineOnly ? outerWrap.spineRect.width + spinePadX * 2 : outerWrap.widthMm,
-    2,
-  );
-  const heightMm = roundTo(
-    isSpineOnly ? outerWrap.spineRect.height + spinePadY * 2 : outerWrap.heightMm,
-    2,
-  );
+  const widthMm = roundTo(isFullWrap ? outerWrap.widthMm : scopeRect.width + matPad * 2, 2);
+  const heightMm = roundTo(isFullWrap ? outerWrap.heightMm : scopeRect.height + matPad * 2, 2);
 
-  let letteringD = '';
-  let letteringBounds: Rect2D | null = null;
+  const matchesScopeZone = (zone: 'front' | 'back' | 'spine'): boolean => {
+    if (isFullWrap) return true;
+    if (options.scope === 'spine-only') return zone === 'spine';
+    if (options.scope === 'front-cover') return zone === 'front';
+    return zone === 'back';
+  };
+
+  const letteringParts: string[] = [];
+  let designBounds: Rect2D | null = null;
+  const fontBytesCache = new Map<StudioFontId, Uint8Array | null>();
+
+  const loadFontCached = async (fontId: StudioFontId): Promise<Uint8Array | null> => {
+    if (fontBytesCache.has(fontId)) {
+      return fontBytesCache.get(fontId) ?? null;
+    }
+    const bytes = await resolveFontBytesById(fontId, customFont, overrideFontBytes);
+    fontBytesCache.set(fontId, bytes);
+    return bytes;
+  };
 
   if (options.includeLettering) {
-    const fontBytes = await resolveOutlineFontBytes(studio, customFont, overrideFontBytes);
-    if (fontBytes) {
-      const baked = bakeSpineLetteringToPaths(
-        geometry,
-        studio,
-        fontBytes,
+    // 1. Dedicated Spine Typography (included in spine-only & full-wrap)
+    if (options.scope === 'spine-only' || isFullWrap) {
+      const spineFontBytes = await loadFontCached(studio.spineText.fontId);
+      if (spineFontBytes) {
+        const baked = bakeSpineLetteringToPaths(
+          geometry,
+          studio,
+          spineFontBytes,
+          originXMm,
+          originYMm,
+          widthMm,
+          options.mirrorForHtv,
+        );
+        if (baked.compoundD) {
+          letteringParts.push(baked.compoundD);
+          designBounds = mergeBounds(designBounds, baked.bounds);
+        }
+      }
+    }
+
+    // 2. Draggable Front / Back / Spine Cover Text Layers
+    for (const layer of studio.textLayers ?? []) {
+      if (!matchesScopeZone(layer.zone)) continue;
+      const layerFontBytes = await loadFontCached(layer.fontId);
+      if (!layerFontBytes) continue;
+      const baked = bakeCoverTextLayerToPaths(
+        layer,
+        layerFontBytes,
         originXMm,
         originYMm,
         widthMm,
         options.mirrorForHtv,
       );
-      letteringD = baked.compoundD;
-      letteringBounds = baked.bounds;
+      if (baked.compoundD) {
+        letteringParts.push(baked.compoundD);
+        designBounds = mergeBounds(designBounds, baked.bounds);
+      }
     }
   }
+
+  const letteringD = letteringParts.join(' ');
+
+  // 3. Classic Bookbindery Vector Ornaments
+  const includeOrnaments = options.includeOrnaments ?? true;
+  const ornamentParts: string[] = [];
+  if (includeOrnaments) {
+    for (const orn of studio.ornaments ?? []) {
+      if (!matchesScopeZone(orn.zone)) continue;
+      const d = buildOrnamentCompoundPath(orn, {
+        originXMm,
+        originYMm,
+        canvasWidthMm: widthMm,
+        mirrorX: options.mirrorForHtv,
+      });
+      if (!d) continue;
+      ornamentParts.push(d);
+      const rawX = orn.xMm - originXMm;
+      const ornX = options.mirrorForHtv ? widthMm - (rawX + orn.widthMm) : rawX;
+      designBounds = mergeBounds(designBounds, {
+        x: ornX,
+        y: orn.yMm - originYMm,
+        width: orn.widthMm,
+        height: orn.heightMm,
+      });
+    }
+  }
+  const ornamentsD = ornamentParts.join(' ');
 
   const pathElements: string[] = [];
 
   // 1. Optional Outer Case Wrap Cut Outline (separate vermilion cut layer for bookcloth/paper cutting)
-  if (!isSpineOnly && options.includeOuterCutOutline) {
+  if (isFullWrap && options.includeOuterCutOutline) {
     const poly = options.mirrorForHtv
       ? outerWrap.outerCutPolygon.map((pt) => ({ x: widthMm - pt.x, y: pt.y }))
       : outerWrap.outerCutPolygon;
@@ -347,29 +518,29 @@ export async function generateCricutHtvSvg(
 
   // 2. Optional Alignment Corner Registration L-Brackets (separate brass/amber layer)
   if (options.includeRegistrationMarks) {
-    const targetRects: Rect2D[] = isSpineOnly
-      ? [
+    const targetRects: Rect2D[] = isFullWrap
+      ? [outerWrap.backBoardRect, outerWrap.spineRect, outerWrap.frontBoardRect]
+      : [
           {
-            x: spinePadX,
-            y: spinePadY,
-            width: outerWrap.spineRect.width,
-            height: outerWrap.spineRect.height,
+            x: matPad,
+            y: matPad,
+            width: scopeRect.width,
+            height: scopeRect.height,
           },
-        ]
-      : [outerWrap.backBoardRect, outerWrap.spineRect, outerWrap.frontBoardRect];
+        ];
     const regD = buildCornerBracketsPath(targetRects, widthMm, options.mirrorForHtv);
     pathElements.push(
       `  <path id="alignment-registration-marks" d="${regD}" fill="#B48327" fill-rule="nonzero" />`,
     );
   }
 
-  // 3. Optional HTV Weeding Box (+4 mm around baked lettering bounds, separate blue cut layer)
-  if (options.includeWeedingBox && letteringBounds) {
+  // 3. Optional HTV Weeding Box (+4 mm around baked lettering + ornament bounds, separate blue cut layer)
+  if (options.includeWeedingBox && designBounds) {
     const pad = 4.0;
-    const wx = Math.max(0.5, letteringBounds.x - pad);
-    const wy = Math.max(0.5, letteringBounds.y - pad);
-    const wx2 = Math.min(widthMm - 0.5, letteringBounds.x + letteringBounds.width + pad);
-    const wy2 = Math.min(heightMm - 0.5, letteringBounds.y + letteringBounds.height + pad);
+    const wx = Math.max(0.5, designBounds.x - pad);
+    const wy = Math.max(0.5, designBounds.y - pad);
+    const wx2 = Math.min(widthMm - 0.5, designBounds.x + designBounds.width + pad);
+    const wy2 = Math.min(heightMm - 0.5, designBounds.y + designBounds.height + pad);
     if (wx2 > wx + 2 && wy2 > wy + 2) {
       const weedD = buildRectStrokePath({
         x: wx,
@@ -383,7 +554,14 @@ export async function generateCricutHtvSvg(
     }
   }
 
-  // 4. Outlined Compound Vector Spine Lettering (solid lampblack fill — Cricut Basic Cut / HTV)
+  // 4. Classic Bookbindery Vector Ornaments (separate foil/HTV cut path)
+  if (ornamentsD) {
+    pathElements.push(
+      `  <path id="classic-ornaments" d="${ornamentsD}" fill="#222222" fill-rule="nonzero" />`,
+    );
+  }
+
+  // 5. Outlined Compound Vector Lettering (solid lampblack fill — Cricut Basic Cut / HTV)
   if (letteringD) {
     pathElements.push(
       `  <path id="spine-lettering" d="${letteringD}" fill="#111111" fill-rule="nonzero" />`,
@@ -406,8 +584,16 @@ ${pathElements.join('\n')}
   const fitsStandard12x12 = widthMm <= 292 && heightMm <= 292;
   const fitsLarge12x24 = minSide <= 292 && maxSide <= 596;
 
-  const baseSlug = slugifyTitle(studio.spineText.title);
-  const scopeSlug = isSpineOnly ? 'spine' : 'fullwrap';
+  const firstFrontText = (studio.textLayers ?? []).find((t) => t.zone === 'front')?.text ?? '';
+  const baseSlug = slugifyTitle(studio.spineText.title || firstFrontText);
+  const scopeSlug =
+    options.scope === 'spine-only'
+      ? 'spine'
+      : options.scope === 'front-cover'
+        ? 'front'
+        : options.scope === 'back-cover'
+          ? 'back'
+          : 'fullwrap';
   const mirrorSlug = options.mirrorForHtv ? '_mirrored' : '';
   const fileName = `${baseSlug}_cricut_htv_${scopeSlug}${mirrorSlug}.svg`;
 
@@ -416,7 +602,7 @@ ${pathElements.join('\n')}
     widthMm,
     heightMm,
     pathCount: pathElements.length,
-    hasLettering: Boolean(letteringD),
+    hasLettering: Boolean(letteringD || ornamentsD),
     fitsCricutJoy,
     fitsStandard12x12,
     fitsLarge12x24,
