@@ -1,6 +1,6 @@
 # Bookbinder Studio
 
-Design and print exact **1:1 mm** removable hardcover cases, flexible-spine covers, 1-piece fold-and-glue slip covers, matching inner pockets, and Cricut HTV foil SVGs—all right in your browser. No accounts, no subscriptions, and nothing ever leaves your device.
+Design and print exact **1:1 mm** removable hardcover cases, flexible-spine covers, 1-piece fold-and-glue slip covers, classic dust jackets, replacement paperback covers, matching inner pockets, and Cricut HTV foil SVGs—all right in your browser. No accounts, no subscriptions, and nothing ever leaves your device.
 
 **[Launch Bookbinder Studio →](https://anujgtm1.github.io/Bookbinder/)**
 
@@ -10,7 +10,9 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 
 - **Rigid 3-Board Hardcover Cases** — Removable slip-in shells with `9 mm` hinge spacers give your favorite paperbacks an heirloom hardcover look with zero glue or damage to the original cover.
 - **Flexible-Spine 2-Board Covers** — Built for thin `3–8 mm` notebooks so your handmade covers open completely flat.
-- **1-Piece Fold-and-Glue Slip Covers** — Zero chipboard required, with 4 wrap-over glue tabs, adjustable `20–65 mm` flap width, and 1-click **Fit Letter**, **Fit A4**, and **Deep** presets (an A6 cover fits on a single home printer sheet).
+- **1-Piece Fold-and-Glue Slip Covers** — Zero chipboard required, with 4 wrap-over glue tabs, adjustable `20–65 mm` flap width, and 1-click **Fit Letter**, **Fit A4**, and **Deep (38 mm)** presets (an A6 cover fits on a single home printer sheet).
+- **Classic Dust Jackets** — Publisher-style wrap-around dust jackets with adjustable `20–100 mm` left & right fold-in flaps, **Classic (70 mm)** / **Fit Letter** / **Fit A4** presets, 4 vertical fold lines, and zero glue tabs or chipboard.
+- **Replacement Paperback Covers** — Flush 1-piece cardstock wraps (`Back + Spine + Front`) with 2 spine score folds ready to glue directly onto a paperback textblock spine—no boards, flaps, or inner pockets needed.
 
 ## Measure & Cut Blueprint
 
@@ -43,7 +45,7 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 - **Mirrored Pockets & Spine Liner** — Auto-generated Front and Back slip-in pocket envelopes with **45° mitered glue flaps** plus a **Spine Reinforcement Liner**.
 - **Styled Endpapers & Seamless Patterns** — Pick from curated endpaper swatches, sync in one click with **Match Cover Color**, place draggable/flippable pocket art, or turn any motif into a 1-click seamless **Tile Pattern**.
 - **Auto-Paginated Printing** — Export **US Letter**, **A4**, **US Legal**, or **Tabloid** PDFs with an optional **`50 × 50 mm` Calibration & Legend** block and **Cut & Fold** lines.
-- **Smart Slip-Cover Handling** — Cleanly marked **Built-In** on 1-piece Fold-and-Glue Slip Covers so you never print extra pocket sheets.
+- **Smart Cover-Style Handling** — Cleanly marked **Built-In** on Fold-and-Glue Slip Covers and **Not Needed** on Classic Dust Jackets & Replacement Paperback Covers so you never print extra pocket sheets.
 
 ## Print & Cutting-Machine Exports
 
