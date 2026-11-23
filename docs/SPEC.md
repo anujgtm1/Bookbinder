@@ -245,6 +245,12 @@ src/
   - Draggable with magnetic snap guides (including **Safe-Margin Snap Lines** `FRONT MARGIN` / `BACK MARGIN` inset evenly inside Front & Back covers during both drag and 4-corner resize so designs stop cleanly inside a balanced border instead of running flush to the raw edge), 4-corner resizable directly on the 2D canvas, 1-click **Margin Fit Presets** (`Tight 6 mm` · `Classic 12 mm` · `Wide 18 mm` + `Center`), recolorable to any foil/ink hex color, and exported cleanly to 300 DPI Print PDF, 3D Preview, Affinity SVG, and **Cricut / HTV SVG** as flattened cuttable vector paths.
 - **SVG Artwork Uploads:** Image uploaders on both Outer Cover and Inner Pockets accept `.svg` (`image/svg+xml`) alongside `PNG`, `JPG`, and `WEBP`.
 
+### 7.8 Reusable Series Design Presets (`src/types/designPreset.ts`, `src/core/presetStorage.ts`, `src/studio/DesignPresetsCard.tsx`)
+- Lets bookbinders save any cover styling setup (background cloth colors, inner endpaper color, spine typography styling, Cover Text blocks, and Classic Ornaments / Custom SVG Stamps) as a reusable **Design Preset** and apply it across multiple books of completely different dimensions (e.g., matching a full multi-volume series or A6 journal set):
+  - **Dimension-Independent Proportional Coordinates:** Captures every text layer and ornament in normalized `0..1` ratios relative to its target board (`front`, `back`, `spine`). Applying a preset to a new book size automatically scales and positions frames, corner flourishes, dividers, spine bands, and cover titles cleanly to the new `BOARD_W × BOARD_H × SPINE_W` while preserving the current book's existing spine title & author text.
+  - **Starter Series Themes + Unlimited Custom Presets:** Ships with 4 built-in classic bookbindery themes (*Classic Clothbound Gold*, *Art Deco Midnight*, *Botanical Field Journal*, *Celestial Oxblood*) alongside user-saved presets persisted in `localStorage` with `.json` export/import backup support.
+  - Accessible 1 click away via the **`Presets`** tab in the Cover Studio Tool Dock.
+
 ---
 
 ## 8. Recommended Tech Stack (Local Build)
