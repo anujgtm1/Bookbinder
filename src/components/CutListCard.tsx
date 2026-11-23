@@ -11,7 +11,7 @@ export interface CutListCardProps {
 }
 
 export function CutListCard({ geometry, unit, className }: CutListCardProps) {
-  const { cutList, outerWrap, rollRecommendation, bindingStyle } = geometry;
+  const { cutList, outerWrap, rollRecommendation, mediaFit, bindingStyle } = geometry;
   const isFlexible = bindingStyle === 'flexible-spine';
   const isSoftcover = bindingStyle === 'softcover-jacket';
   const spacerLabel = isFlexible
@@ -19,6 +19,18 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
     : `${roundTo(cutList.hingeSpacerMm, 1)} mm`;
   const flapLabel = `${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm`;
   const tabLabel = `${roundTo(outerWrap.jacketGlueTabHeightMm, 1)} mm`;
+  const fitBadgeVariant =
+    mediaFit.mediaId === 'exact-auto'
+      ? rollRecommendation.fits
+        ? 'success'
+        : 'warning'
+      : mediaFit.status === 'does-not-fit'
+        ? 'destructive'
+        : mediaFit.status === 'fits-2-sheet-tile'
+          ? 'warning'
+          : 'success';
+  const fitBadgeSummary =
+    mediaFit.mediaId === 'exact-auto' ? rollRecommendation.summary : mediaFit.summary;
 
   return (
     <section
@@ -34,12 +46,13 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
             : 'Chipboard Cut List & Roll Sizing'}
         </h2>
         <Badge
-          variant={rollRecommendation.fits ? 'success' : 'warning'}
+          variant={fitBadgeVariant}
           data-testid="roll-recommendation-badge"
+          data-fit-status={mediaFit.status}
           className="rounded-full px-2.5"
         >
           <Printer className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>{rollRecommendation.summary}</span>
+          <span>{fitBadgeSummary}</span>
         </Badge>
       </div>
 

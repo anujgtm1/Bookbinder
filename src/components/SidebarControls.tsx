@@ -28,10 +28,13 @@ import {
   BookParametersModel,
   PAGE_SIZES,
   PAPERBACK_PRESETS,
+  PRINT_MEDIA_OPTIONS,
+  getPrintMediaSpec,
   type BindingStyle,
   type BookParameters,
   type PageSizeId,
   type PaperbackPresetId,
+  type PrintMediaId,
 } from '@/types/bookParams';
 import { UnitConverter, type UnitSystem } from '@/types/units';
 
@@ -340,6 +343,38 @@ export function SidebarControls({
           onCommitMm={(pbThicknessMm) => update({ pbThicknessMm })}
         />
       </fieldset>
+
+      {/* Target Print Media Selector */}
+      <div className="space-y-1.5">
+        <Label htmlFor="print-media">Target Print Media</Label>
+        <Select
+          value={params.printMedia}
+          onValueChange={(val) => update({ printMedia: val as PrintMediaId })}
+        >
+          <SelectTrigger id="print-media" data-testid="print-media-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PRINT_MEDIA_OPTIONS.map((media) => (
+              <SelectItem key={media.id} value={media.id}>
+                {media.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          {(() => {
+            const spec = getPrintMediaSpec(params.printMedia);
+            if (spec.kind === 'auto') {
+              return 'Exports exact 1:1 mm wrap size; choose a sheet size to center or auto-tile.';
+            }
+            if (spec.kind === 'sheet') {
+              return 'Print PDF centers on 1 sheet or auto-tiles across 2 sheets with a 10 mm overlap.';
+            }
+            return 'Exports exact 1:1 mm roll PDF and checks fit against your selected roll width.';
+          })()}
+        </p>
+      </div>
 
       <div className="kettle-stitch-divider" role="separator" />
 

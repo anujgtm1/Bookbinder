@@ -51,7 +51,11 @@ import {
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
-import { BookParametersModel, type BookParameters } from '@/types/bookParams';
+import {
+  BookParametersModel,
+  getPrintMediaSpec,
+  type BookParameters,
+} from '@/types/bookParams';
 import {
   CoverOrnamentLayerModel,
   CoverTextLayerModel,
@@ -895,6 +899,16 @@ export function CoverStyler({
         });
         onStatusMessage('Applied compact pocket proportions (1.5 mm board, 14 mm turn-ins)');
         break;
+      case 'set-print-media': {
+        const mediaSpec = getPrintMediaSpec(fix.printMedia);
+        onUpdateParams?.({ printMedia: fix.printMedia });
+        onStatusMessage(`Switched Target Print Media to ${mediaSpec.shortLabel}`);
+        break;
+      }
+      case 'set-jacket-flap-width':
+        onUpdateParams?.({ jacketFlapWidthMm: fix.flapWidthMm });
+        onStatusMessage(`Adjusted slip flap width to ${fix.flapWidthMm} mm to fit on 1 sheet`);
+        break;
     }
   };
 
@@ -1045,9 +1059,22 @@ export function CoverStyler({
   const handleExportPrintPdf = async () => {
     setExportingKind('pdf');
     try {
-      const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont);
+      const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
+        printMedia: effectiveParams.printMedia,
+      });
       triggerBytesDownload(bytes, 'outer_cover_print.pdf', 'application/pdf');
-      onStatusMessage('Exported outer_cover_print.pdf (300 DPI + vector spine text)');
+      const fit = geometry.mediaFit;
+      if (fit.status === 'fits-1-sheet') {
+        onStatusMessage(
+          `Exported outer_cover_print.pdf (100% actual size, centered on 1× ${fit.mediaLabel})`,
+        );
+      } else if (fit.status === 'fits-2-sheet-tile') {
+        onStatusMessage(
+          `Exported outer_cover_print.pdf (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap)`,
+        );
+      } else {
+        onStatusMessage('Exported outer_cover_print.pdf (300 DPI + vector spine text)');
+      }
     } catch {
       onStatusMessage('Failed to generate Print-Ready Roll PDF.');
     } finally {
@@ -1119,17 +1146,28 @@ export function CoverStyler({
               <button
                 type="button"
                 data-testid="studio-roll-badge"
+                data-fit-status={geometry.mediaFit.status}
                 onClick={onOpenMeasureAndCut}
                 disabled={!onOpenMeasureAndCut}
                 title="Open Measure & Cut tab for full chipboard cut list and 1:1 mm cutting blueprint"
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-                  geometry.rollRecommendation.fits
-                    ? 'border-emerald-700/30 bg-emerald-600/12 text-emerald-900 hover:bg-emerald-600/20 dark:text-emerald-300'
-                    : 'border-amber-700/35 bg-amber-500/14 text-amber-900 hover:bg-amber-500/24 dark:text-amber-300'
+                  geometry.mediaFit.mediaId === 'exact-auto'
+                    ? geometry.rollRecommendation.fits
+                      ? 'border-emerald-700/30 bg-emerald-600/12 text-emerald-900 hover:bg-emerald-600/20 dark:text-emerald-300'
+                      : 'border-amber-700/35 bg-amber-500/14 text-amber-900 hover:bg-amber-500/24 dark:text-amber-300'
+                    : geometry.mediaFit.status === 'does-not-fit'
+                      ? 'border-destructive/40 bg-destructive/12 text-destructive hover:bg-destructive/20'
+                      : geometry.mediaFit.status === 'fits-2-sheet-tile'
+                        ? 'border-amber-700/35 bg-amber-500/14 text-amber-900 hover:bg-amber-500/24 dark:text-amber-300'
+                        : 'border-emerald-700/30 bg-emerald-600/12 text-emerald-900 hover:bg-emerald-600/20 dark:text-emerald-300'
                 } ${onOpenMeasureAndCut ? 'cursor-pointer' : 'cursor-default'}`}
               >
                 <Printer className="h-3 w-3 shrink-0" aria-hidden="true" />
-                <span>{geometry.rollRecommendation.summary}</span>
+                <span>
+                  {geometry.mediaFit.mediaId === 'exact-auto'
+                    ? geometry.rollRecommendation.summary
+                    : geometry.mediaFit.summary}
+                </span>
                 <span aria-hidden="true" className="opacity-55">
                   ·
                 </span>
