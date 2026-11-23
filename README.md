@@ -25,6 +25,8 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 - **True-Scale `1:1 mm` CAD Blueprint** — Manual cutting dimension chains, a cumulative steel-ruler datum strip, **45° corner miter** callouts, and **grain direction arrows** for leather, paper, and bookcloth.
 - **3-Piece Quarter-Bound Split Mode** — Split wider hardcover wraps cleanly into separate spine, front, and back pieces for quarter-bound styles or smaller home printers.
 
+![Bookbinder Studio — Measure & Cut Chipboard Cut List and 1:1 mm CAD Blueprint](./docs/screenshots/structural-templates.png)
+
 ## Cover Design Studio
 
 - **Drag-and-Drop Artwork & Zone-Aware Fit** — Layer `PNG`, `JPG`, `WEBP`, and `SVG` images anywhere on your cover, sample exact colors with the built-in **eyedropper**, and use **Fit Front** / **Fit Back** (automatically framing the visible cover face without spilling onto tuck flaps or glue tabs) or **Fit Full Wrap**.
@@ -50,6 +52,8 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 - **Auto-Paginated Printing** — Export **US Letter (`8.5 × 11"`)**, **A4 (`210 × 297 mm`)**, **US Legal (`8.5 × 14"`)**, or **Tabloid (`11 × 17"`)** PDFs with an optional **`50 × 50 mm` Calibration & Legend** block and **Cut & Fold** lines.
 - **Smart Cover-Style Handling** — Cleanly marked **Built-In** on Fold-and-Glue Slip Covers and **Not Needed** on Classic Dust Jackets & Replacement Paperback Covers so you never print extra pocket sheets.
 
+![Bookbinder Studio — Inner Slip-In Pockets & Seamless Tiled Endpapers](./docs/screenshots/inner-pockets.png)
+
 ## Print & Cutting-Machine Exports
 
 - **Unified Print & Export PDF Dialog** — Clicking any PDF button in **Cover Studio**, **Measure & Cut**, or **Inner Pockets** opens a dedicated Export Dialog where you can compare paper sizes live (`US Letter (8.5 × 11")`, `A4 (210 × 297 mm)`, `US Legal (8.5 × 14")`, `Tabloid (11 × 17")`, `Exact 1:1 Size`, or `13"–44"` rolls) with instant **`1 sheet`** vs. **`2 sheets (tiled)`** fit badges, a live sheet-layout preview, and **1-click fixes** whenever a cover exceeds your chosen sheet.
@@ -59,6 +63,10 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 - **Cricut, Silhouette & ScanNCut HTV & Foil SVGs** — Preview vector cut paths on a crisp high-contrast carrier mat (readable in Dark & Light themes), export **Spine**, **Front Cover**, **Back Cover**, or **Full Wrap** designs with flattened glyph paths (zero `<text>` tags), weeding box, corner alignment marks, **HTV Mirror**, and **Split Mats by Foil Color** so Design Space separates multi-color foil designs automatically.
 - **Auto-Paginated Inner Pockets PDFs** — Packs pockets and spine liner across `US Letter`, `A4`, `US Legal`, or `Tabloid` pages with an optional **`50 × 50 mm` calibration square & legend**.
 - **`1:1 mm` Cut-Only SVGs, PDFs & Affinity Round-Trip SVGs** — Exact-scale cutting outlines for hand knives, plotters, or laser cutters, plus cleanly layered SVGs ready for further editing in Affinity Designer.
+
+![Bookbinder Studio — Unified Print & Export PDF Dialog with Live Tiling Preview](./docs/screenshots/pdf-export-dialog.png)
+
+![Bookbinder Studio — Cricut & Silhouette HTV Foil SVG Export Dialog](./docs/screenshots/cricut-htv-dialog.png)
 
 ## Private & Local-First
 
