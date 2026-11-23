@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CoverOrnamentLayerModel,
   CoverTextLayerModel,
+  rotateOrnament90,
   type CoverOrnamentLayer,
 } from './coverElements';
 import { CoverStudioModel } from './studio';
@@ -55,6 +56,7 @@ describe('CoverTextLayerModel & CoverOrnamentLayerModel', () => {
       }),
       flipX: true,
       flipY: true,
+      rotationDeg: 90 as const,
     };
     const orn: CoverOrnamentLayer = {
       ...CoverOrnamentLayerModel.createForZone(
@@ -64,6 +66,7 @@ describe('CoverTextLayerModel & CoverOrnamentLayerModel', () => {
         '#d9b566',
       ),
       flipX: true,
+      rotationDeg: 270,
     };
     const state = {
       ...CoverStudioModel.createDefault(),
@@ -78,10 +81,33 @@ describe('CoverTextLayerModel & CoverOrnamentLayerModel', () => {
     expect(restored.textLayers[0].fontId).toBe('cormorant-garamond');
     expect(restored.textLayers[0].flipX).toBe(true);
     expect(restored.textLayers[0].flipY).toBe(true);
+    expect(restored.textLayers[0].rotationDeg).toBe(90);
     expect(restored.ornaments).toHaveLength(1);
     expect(restored.ornaments[0].presetId).toBe('frame-art-deco');
     expect(restored.ornaments[0].flipX).toBe(true);
     expect(restored.ornaments[0].flipY).toBeUndefined();
+    expect(restored.ornaments[0].rotationDeg).toBe(270);
+
+    // rotateOrnament90 swaps width/height around center and cycles 0 -> 90 -> 180 -> 270 -> 0
+    const divider = CoverOrnamentLayerModel.createForZone('divider-fleuron-leaf', frontBoard, 'front');
+    const origCx = divider.xMm + divider.widthMm / 2;
+    const origCy = divider.yMm + divider.heightMm / 2;
+    const r90 = rotateOrnament90(divider);
+    expect(r90.rotationDeg).toBe(90);
+    expect(r90.widthMm).toBeCloseTo(divider.heightMm, 2);
+    expect(r90.heightMm).toBeCloseTo(divider.widthMm, 2);
+    expect(r90.xMm + r90.widthMm / 2).toBeCloseTo(origCx, 1);
+    expect(r90.yMm + r90.heightMm / 2).toBeCloseTo(origCy, 1);
+
+    const r180 = rotateOrnament90(r90);
+    expect(r180.rotationDeg).toBe(180);
+    expect(r180.widthMm).toBeCloseTo(divider.widthMm, 2);
+    const r270 = rotateOrnament90(r180);
+    expect(r270.rotationDeg).toBe(270);
+    const r0 = rotateOrnament90(r270);
+    expect(r0.rotationDeg).toBe(0);
+    expect(r0.widthMm).toBeCloseTo(divider.widthMm, 2);
+    expect(r0.heightMm).toBeCloseTo(divider.heightMm, 2);
   });
 
   it('fits frames/corners to exact inset margins and preserves aspect ratio for emblems & custom SVG stamps', () => {

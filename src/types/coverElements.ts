@@ -1,7 +1,12 @@
 import { parseHexColor } from '@/lib/color';
 import type { Rect2D } from './geometry';
 import type { CuratedFontId, StudioFontId } from './studio';
-import type { ResizeCorner } from './studioLayer';
+import {
+  nextQuarterTurn,
+  normalizeQuarterTurn,
+  type QuarterTurnDeg,
+  type ResizeCorner,
+} from './studioLayer';
 import { UnitConverter, clampFinite, roundTo } from './units';
 
 export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
@@ -81,6 +86,8 @@ export interface CoverTextLayer {
   readonly uppercase?: boolean;
   readonly flipX?: boolean;
   readonly flipY?: boolean;
+  /** Clockwise quarter-turn rotation around text anchor (0, 90, 180, or 270 degrees) */
+  readonly rotationDeg?: QuarterTurnDeg;
 }
 
 export interface CoverOrnamentLayer {
@@ -103,6 +110,28 @@ export interface CoverOrnamentLayer {
   readonly customSvgRenderMode?: CustomSvgRenderMode;
   readonly flipX?: boolean;
   readonly flipY?: boolean;
+  /** Clockwise quarter-turn rotation baked around ornament center (0, 90, 180, or 270 degrees) */
+  readonly rotationDeg?: QuarterTurnDeg;
+}
+
+/**
+ * Rotates a classic ornament or custom SVG stamp 90° clockwise around its center,
+ * swapping widthMm and heightMm so bounding box, resize handles, and snap guides stay tight.
+ */
+export function rotateOrnament90(orn: CoverOrnamentLayer): CoverOrnamentLayer {
+  const nextRot = nextQuarterTurn(orn.rotationDeg);
+  const cx = orn.xMm + orn.widthMm / 2;
+  const cy = orn.yMm + orn.heightMm / 2;
+  const nextW = orn.heightMm;
+  const nextH = orn.widthMm;
+  return {
+    ...orn,
+    xMm: roundTo(cx - nextW / 2, 3),
+    yMm: roundTo(cy - nextH / 2, 3),
+    widthMm: nextW,
+    heightMm: nextH,
+    rotationDeg: nextRot,
+  };
 }
 
 export const COVER_TEXT_BOUNDS = {
@@ -306,6 +335,7 @@ export const CoverTextLayerModel = {
       uppercase: obj.uppercase === true ? true : undefined,
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
+      rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
     };
   },
 } as const;
@@ -536,12 +566,16 @@ export const CoverOrnamentLayerModel = {
       };
     }
 
+    const isQuarterTurn =
+      layer.rotationDeg === 90 || layer.rotationDeg === 270;
     const rawAspect =
       layer.presetId === 'custom-svg' &&
       layer.customSvgViewBox &&
       layer.customSvgViewBox.width > 0 &&
       layer.customSvgViewBox.height > 0
-        ? layer.customSvgViewBox.width / layer.customSvgViewBox.height
+        ? isQuarterTurn
+          ? layer.customSvgViewBox.height / layer.customSvgViewBox.width
+          : layer.customSvgViewBox.width / layer.customSvgViewBox.height
         : layer.widthMm / Math.max(0.1, layer.heightMm);
     const aspect = Math.max(0.1, Number.isFinite(rawAspect) ? rawAspect : 1);
 
@@ -579,6 +613,10 @@ export const CoverOrnamentLayerModel = {
       xMm: roundTo(targetBoardRectMm.x + (targetBoardRectMm.width - layer.widthMm) / 2, 2),
       yMm: roundTo(targetBoardRectMm.y + (targetBoardRectMm.height - layer.heightMm) / 2, 2),
     };
+  },
+
+  rotate90(layer: CoverOrnamentLayer): CoverOrnamentLayer {
+    return rotateOrnament90(layer);
   },
 
   deserialize(raw: unknown): CoverOrnamentLayer | null {
@@ -644,6 +682,7 @@ export const CoverOrnamentLayerModel = {
       customSvgRenderMode,
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
+      rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
     };
   },
 } as const;
