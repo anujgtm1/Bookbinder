@@ -155,6 +155,7 @@ src/
     - Click any image to select it (showing selection frame and 4 corner resize handles).
     - **Drag anywhere** across the wrap to position freely in millimeter coordinates.
     - **Drag corner handles** (or use mouse wheel / scale slider) to resize proportionally.
+    - **Magnetic Smart Snap Guides (`src/studio/snapGuides.ts`):** While dragging or corner-resizing cover artwork, layers gently snap within `3.5 mm` to Front/Back board edges & centers, Spine edges & centerline, Turn-In cut boundaries, and Bleed edges—illuminating live golden-brass alignment guidelines and target badges on the canvas (toggleable via Floating HUD `Snap` or bypassed on the fly while holding `Alt`).
   - **Layer Stack & Quick-Fit Helpers:**
     - Reorder layers (bring forward / send backward), remove individual layers, or reset.
     - One-click **Quick Fit** presets for the selected layer (`Fit Front`, `Fit Spine`, `Fit Back`, `Fit Full Wrap`) plus an optional **Clip to Zone** mask (`None`, `Front`, `Spine`, `Back`) for crisp edges at board/spine seams.
