@@ -1,3 +1,4 @@
+import type { BindingStyle } from './bookParams';
 import { roundTo } from './units';
 
 export interface Point2D {
@@ -133,10 +134,13 @@ export interface RollRecommendation {
 }
 
 export interface OuterWrapGeometry {
+  readonly bindingStyle: BindingStyle;
   readonly widthMm: number;
   readonly heightMm: number;
   readonly innerWidthMm: number;
   readonly turnInMm: number;
+  /** Integrated slip-in tuck flap width on each fore-edge when bindingStyle === 'softcover-jacket' (0 otherwise) */
+  readonly jacketFlapWidthMm: number;
   readonly bleedMm: number;
   readonly includeBleed: boolean;
   readonly miterGapMm: number;
@@ -185,6 +189,7 @@ export interface PocketEnvelopeGeometry {
 }
 
 export interface CaseGeometry {
+  readonly bindingStyle: BindingStyle;
   readonly cutList: ChipboardCutList;
   readonly outerWrap: OuterWrapGeometry;
   readonly splitPanels: readonly SplitWrapPanel[];

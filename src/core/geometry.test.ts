@@ -152,4 +152,57 @@ describe('calculateCaseGeometry', () => {
     expect(front.cutPolygon).toHaveLength(6);
     expect(spine.cutPolygon).toHaveLength(4);
   });
+
+  it('computes 2-board flexible-spine geometry (no rigid spine strip, unified cloth spine gap) for a 5 mm A6 notebook', () => {
+    const a6Flex = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'flexible-spine' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      boardThicknessMm: 1.5,
+      overhangForeEdgeMm: 1.5,
+      overhangTopBottomMm: 3,
+      turnInMm: 14,
+    };
+
+    const geom = calculateCaseGeometry(a6Flex);
+    expect(geom.bindingStyle).toBe('flexible-spine');
+    expect(geom.cutList.coverBoards.quantity).toBe(2);
+    expect(geom.cutList.spineStrip.quantity).toBe(0);
+    // Flexible spine channel = 5 + 2*1.5 + 2 = 10 mm; hinge spacer = 0
+    expect(geom.cutList.spineStrip.widthMm).toBeCloseTo(10.0, 4);
+    expect(geom.cutList.hingeSpacerMm).toBe(0);
+    expect(geom.outerWrap.leftHingeRect.width).toBe(0);
+    expect(geom.outerWrap.rightHingeRect.width).toBe(0);
+    // Wrap width = (106.5 * 2 + 10) + 14 * 2 = 251 mm
+    expect(geom.outerWrap.widthMm).toBeCloseTo(251.0, 4);
+    expect(geom.spineLiner.scoreLines).toHaveLength(2);
+  });
+
+  it('computes 0-board softcover slip-in jacket geometry with integrated tuck flaps and rectangular cut outline', () => {
+    const a6Soft = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      overhangForeEdgeMm: 0,
+      overhangTopBottomMm: 2,
+    };
+
+    const geom = calculateCaseGeometry(a6Soft);
+    expect(geom.bindingStyle).toBe('softcover-jacket');
+    expect(geom.cutList.coverBoards.quantity).toBe(0);
+    expect(geom.cutList.spineStrip.quantity).toBe(0);
+    expect(geom.cutList.boardThicknessMm).toBe(0);
+    expect(geom.outerWrap.turnInMm).toBe(0);
+    expect(geom.outerWrap.miterCutLegMm).toBe(0);
+    expect(geom.outerWrap.outerCutPolygon).toHaveLength(4);
+    // Flap = roundTo(105 * 0.42, 1) = 44.1 mm; spine = 6 mm
+    expect(geom.outerWrap.jacketFlapWidthMm).toBeCloseTo(44.1, 2);
+    expect(geom.outerWrap.spineRect.width).toBeCloseTo(6.0, 2);
+    expect(geom.outerWrap.widthMm).toBeCloseTo(44.1 * 2 + 105 * 2 + 6, 2);
+    expect(geom.outerWrap.heightMm).toBeCloseTo(150, 2);
+  });
 });

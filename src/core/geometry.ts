@@ -19,10 +19,52 @@ const INNER_VERTICAL_INSET_MM = 1.0; // 1.0 mm inset top & bottom => -2.0 mm hei
 const QUARTER_BOUND_LAP_MM = 3.0;
 
 export function calculateChipboardCutList(params: BookParameters): ChipboardCutList {
+  const style = params.bindingStyle ?? 'rigid-case';
   const boardWidthMm = params.pbWidthMm + params.overhangForeEdgeMm;
   const boardHeightMm = params.pbHeightMm + params.overhangTopBottomMm;
-  const spineWidthMm = params.pbThicknessMm + params.spineAllowanceMm;
 
+  if (style === 'softcover-jacket') {
+    const softSpineWidthMm = roundTo(params.pbThicknessMm + 1.0, 2);
+    return {
+      coverBoards: {
+        label: 'Cover Panels (No Chipboard)',
+        quantity: 0,
+        widthMm: boardWidthMm,
+        heightMm: boardHeightMm,
+      },
+      spineStrip: {
+        label: 'Softcover Spine (No Chipboard)',
+        quantity: 0,
+        widthMm: softSpineWidthMm,
+        heightMm: boardHeightMm,
+      },
+      boardThicknessMm: 0,
+      hingeSpacerMm: 0,
+    };
+  }
+
+  if (style === 'flexible-spine') {
+    // Unified flexible cloth spine channel: text block thickness + 2x board wrap thickness + 2 mm opening ease
+    const flexSpineWidthMm = roundTo(params.pbThicknessMm + params.boardThicknessMm * 2 + 2.0, 2);
+    return {
+      coverBoards: {
+        label: 'Cover Boards (Front & Back)',
+        quantity: 2,
+        widthMm: boardWidthMm,
+        heightMm: boardHeightMm,
+      },
+      spineStrip: {
+        label: 'Flexible Cloth Spine (No Rigid Strip)',
+        quantity: 0,
+        widthMm: flexSpineWidthMm,
+        heightMm: boardHeightMm,
+      },
+      boardThicknessMm: params.boardThicknessMm,
+      hingeSpacerMm: 0,
+    };
+  }
+
+  const spineWidthMm = params.pbThicknessMm + params.spineAllowanceMm;
   return {
     coverBoards: {
       label: 'Cover Boards (Front & Back)',
@@ -85,27 +127,32 @@ export function calculateOuterWrap(
   params: BookParameters,
   cutList: ChipboardCutList,
 ): OuterWrapGeometry {
+  const style = params.bindingStyle ?? 'rigid-case';
   const boardW = cutList.coverBoards.widthMm;
   const boardH = cutList.coverBoards.heightMm;
   const spineW = cutList.spineStrip.widthMm;
-  const hingeW = params.hingeWidthMm;
-  const turnIn = params.turnInMm;
+  const hingeW = cutList.hingeSpacerMm;
+  const isSoftcover = style === 'softcover-jacket';
+  const jacketFlapWidthMm = isSoftcover
+    ? roundTo(Math.min(55, Math.max(25, params.pbWidthMm * 0.42)), 1)
+    : 0;
+  const turnIn = isSoftcover ? 0 : params.turnInMm;
+  const sideMargin = isSoftcover ? jacketFlapWidthMm : turnIn;
 
   const innerWidthMm = boardW * 2 + hingeW * 2 + spineW;
-  const widthMm = innerWidthMm + turnIn * 2;
+  const widthMm = innerWidthMm + sideMargin * 2;
   const heightMm = boardH + turnIn * 2;
 
-  const miterGapMm = params.boardThicknessMm * params.miterFactor;
-  const miterCutLegMm = Math.max(
-    0,
-    Math.min(widthMm / 2, heightMm / 2, 2 * turnIn - miterGapMm * Math.SQRT2),
-  );
+  const miterGapMm = isSoftcover ? 0 : params.boardThicknessMm * params.miterFactor;
+  const miterCutLegMm = isSoftcover
+    ? 0
+    : Math.max(0, Math.min(widthMm / 2, heightMm / 2, 2 * turnIn - miterGapMm * Math.SQRT2));
 
   const outerCutPolygon = buildMiteredRectPolygon(widthMm, heightMm, miterCutLegMm, {
-    topLeft: true,
-    topRight: true,
-    bottomRight: true,
-    bottomLeft: true,
+    topLeft: !isSoftcover,
+    topRight: !isSoftcover,
+    bottomRight: !isSoftcover,
+    bottomLeft: !isSoftcover,
   });
 
   const activeBleed = params.includeBleed ? params.bleedMm : 0;
@@ -116,17 +163,19 @@ export function calculateOuterWrap(
     height: heightMm + activeBleed * 2,
   };
 
-  const backBoardX = turnIn;
+  const backBoardX = sideMargin;
   const leftHingeX = backBoardX + boardW;
   const spineX = leftHingeX + hingeW;
   const rightHingeX = spineX + spineW;
   const frontBoardX = rightHingeX + hingeW;
 
   return {
+    bindingStyle: style,
     widthMm,
     heightMm,
     innerWidthMm,
     turnInMm: turnIn,
+    jacketFlapWidthMm,
     bleedMm: params.bleedMm,
     includeBleed: params.includeBleed,
     miterGapMm,
@@ -149,8 +198,8 @@ export function calculateSplitWrapPanels(
   const boardW = cutList.coverBoards.widthMm;
   const boardH = cutList.coverBoards.heightMm;
   const spineW = cutList.spineStrip.widthMm;
-  const hingeW = params.hingeWidthMm;
-  const turnIn = params.turnInMm;
+  const hingeW = cutList.hingeSpacerMm;
+  const turnIn = outerWrap.turnInMm;
   const overlap = Math.min(params.quarterBoundOverlapMm, boardW * 0.4);
   const heightMm = outerWrap.heightMm;
 
@@ -301,16 +350,24 @@ export function calculateSpineLiner(cutList: ChipboardCutList): SpineLinerGeomet
   const xSpineEnd = xSpineStart + spineW;
   const xRightHingeEnd = xSpineEnd + hingeW;
 
+  const scoreLines =
+    hingeW > 0
+      ? [
+          { x1: xLeftHingeStart, y1: 0, x2: xLeftHingeStart, y2: heightMm, label: 'Back Board / Hinge' },
+          { x1: xSpineStart, y1: 0, x2: xSpineStart, y2: heightMm, label: 'Hinge / Spine' },
+          { x1: xSpineEnd, y1: 0, x2: xSpineEnd, y2: heightMm, label: 'Spine / Hinge' },
+          { x1: xRightHingeEnd, y1: 0, x2: xRightHingeEnd, y2: heightMm, label: 'Hinge / Front Board' },
+        ]
+      : [
+          { x1: xSpineStart, y1: 0, x2: xSpineStart, y2: heightMm, label: 'Back Board / Spine' },
+          { x1: xSpineEnd, y1: 0, x2: xSpineEnd, y2: heightMm, label: 'Spine / Front Board' },
+        ];
+
   return {
     widthMm,
     heightMm,
     boardOverlapMm: LINER_OVERLAP_PER_SIDE_MM,
-    scoreLines: [
-      { x1: xLeftHingeStart, y1: 0, x2: xLeftHingeStart, y2: heightMm, label: 'Back Board / Hinge' },
-      { x1: xSpineStart, y1: 0, x2: xSpineStart, y2: heightMm, label: 'Hinge / Spine' },
-      { x1: xSpineEnd, y1: 0, x2: xSpineEnd, y2: heightMm, label: 'Spine / Hinge' },
-      { x1: xRightHingeEnd, y1: 0, x2: xRightHingeEnd, y2: heightMm, label: 'Hinge / Front Board' },
-    ],
+    scoreLines,
     leftHingeZoneRect: { x: xLeftHingeStart, y: 0, width: hingeW, height: heightMm },
     spineZoneRect: { x: xSpineStart, y: 0, width: spineW, height: heightMm },
     rightHingeZoneRect: { x: xSpineEnd, y: 0, width: hingeW, height: heightMm },
@@ -455,6 +512,7 @@ export function calculateCaseGeometry(params: BookParameters): CaseGeometry {
   const backPocket = calculatePocketEnvelope('back', params, cutList);
 
   return {
+    bindingStyle: params.bindingStyle ?? 'rigid-case',
     cutList,
     outerWrap,
     splitPanels,

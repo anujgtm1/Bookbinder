@@ -1,5 +1,6 @@
 import { UnitConverter, clampFinite, type UnitSystem } from './units';
 
+export type BindingStyle = 'rigid-case' | 'flexible-spine' | 'softcover-jacket';
 export type SplitMode = 'single' | 'three-piece';
 export type PageSizeId = 'letter' | 'a4' | 'tabloid';
 export type PaperbackPresetId =
@@ -7,7 +8,36 @@ export type PaperbackPresetId =
   | 'us-trade-digest'
   | 'us-trade-standard'
   | 'manga-b6'
+  | 'a6-notebook'
   | 'custom';
+
+export interface BindingStyleOption {
+  readonly id: BindingStyle;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly summary: string;
+}
+
+export const BINDING_STYLES: readonly BindingStyleOption[] = [
+  {
+    id: 'rigid-case',
+    label: 'Rigid 3-Board Hardcover',
+    shortLabel: 'Rigid Case',
+    summary: '2 cover boards + rigid spine strip (best ≥ 8 mm)',
+  },
+  {
+    id: 'flexible-spine',
+    label: 'Flexible Spine (No Spine Board)',
+    shortLabel: 'Flexible Spine',
+    summary: '2 cover boards + cloth spine gap (best 3–8 mm)',
+  },
+  {
+    id: 'softcover-jacket',
+    label: 'Softcover Slip-In Jacket (0-Board)',
+    shortLabel: 'Softcover Jacket',
+    summary: 'Single heavy sheet with integrated tuck flaps (2–8 mm)',
+  },
+] as const;
 
 export interface PageSizeSpec {
   readonly id: PageSizeId;
@@ -74,9 +104,18 @@ export const PAPERBACK_PRESETS: readonly PaperbackPreset[] = [
     pbHeightMm: 182.0,
     summary: '128 × 182 mm',
   },
+  {
+    id: 'a6-notebook',
+    label: 'A6 Pocket Notebook',
+    pbWidthMm: 105.0,
+    pbHeightMm: 148.0,
+    summary: '105 × 148 mm',
+  },
 ] as const;
 
 export interface BookParameters {
+  /** Structural binding style (rigid 3-board case, 2-board flexible spine, or 0-board softcover jacket) */
+  bindingStyle: BindingStyle;
   /** Paperback height / length in mm (PB_H) */
   pbHeightMm: number;
   /** Paperback width in mm (PB_W) */
@@ -126,7 +165,7 @@ export interface BookParametersValidation {
 export const BOOK_PARAM_BOUNDS = {
   pbHeightMm: { min: 60, max: 500 },
   pbWidthMm: { min: 50, max: 400 },
-  pbThicknessMm: { min: 4, max: 120 },
+  pbThicknessMm: { min: 2, max: 120 },
   boardThicknessMm: { min: 0.5, max: 6 },
   hingeWidthMm: { min: 3, max: 25 },
   overhangTopBottomMm: { min: 0, max: 24 },
@@ -141,6 +180,7 @@ export const BOOK_PARAM_BOUNDS = {
 } as const;
 
 export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
+  bindingStyle: 'rigid-case',
   pbHeightMm: 216.0,
   pbWidthMm: 140.0,
   pbThicknessMm: 24.0,
@@ -161,6 +201,13 @@ export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
   pdfPageSize: 'letter',
   unit: 'mm',
 };
+
+function parseBindingStyle(value: unknown): BindingStyle {
+  if (value === 'flexible-spine' || value === 'softcover-jacket') {
+    return value;
+  }
+  return 'rigid-case';
+}
 
 function parseSplitMode(value: unknown): SplitMode {
   return value === 'three-piece' ? 'three-piece' : 'single';
@@ -195,6 +242,7 @@ export const BookParametersModel = {
         : partial.spineAllowanceMm;
 
     return {
+      bindingStyle: parseBindingStyle(partial.bindingStyle),
       pbHeightMm: clampFinite(partial.pbHeightMm, d.pbHeightMm, b.pbHeightMm.min, b.pbHeightMm.max),
       pbWidthMm: clampFinite(partial.pbWidthMm, d.pbWidthMm, b.pbWidthMm.min, b.pbWidthMm.max),
       pbThicknessMm: clampFinite(
@@ -304,19 +352,24 @@ export const BookParametersModel = {
       errors.push('Paperback dimensions must be positive numbers.');
     }
 
-    const miterGap = params.boardThicknessMm * params.miterFactor;
-    if (miterGap * Math.SQRT2 >= params.turnInMm * 2) {
-      errors.push('Miter clearance exceeds available turn-in width.');
-    }
+    if (params.bindingStyle !== 'softcover-jacket') {
+      const miterGap = params.boardThicknessMm * params.miterFactor;
+      if (miterGap * Math.SQRT2 >= params.turnInMm * 2) {
+        errors.push('Miter clearance exceeds available turn-in width.');
+      }
 
-    if (params.hingeWidthMm < params.boardThicknessMm * 2.5) {
-      warnings.push(
-        `Hinge width (${params.hingeWidthMm.toFixed(1)} mm) is tight for ${params.boardThicknessMm.toFixed(1)} mm chipboard; 9.0 mm is recommended.`,
-      );
-    }
+      if (
+        params.bindingStyle === 'rigid-case' &&
+        params.hingeWidthMm < params.boardThicknessMm * 2.5
+      ) {
+        warnings.push(
+          `Hinge width (${params.hingeWidthMm.toFixed(1)} mm) is tight for ${params.boardThicknessMm.toFixed(1)} mm chipboard; 9.0 mm is recommended.`,
+        );
+      }
 
-    if (params.turnInMm < 12) {
-      warnings.push('Turn-in margin under 12 mm may reduce glue adhesion on inner boards.');
+      if (params.turnInMm < 12) {
+        warnings.push('Turn-in margin under 12 mm may reduce glue adhesion on inner boards.');
+      }
     }
 
     return {

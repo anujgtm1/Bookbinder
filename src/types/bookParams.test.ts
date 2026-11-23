@@ -54,6 +54,7 @@ describe('BookParametersModel', () => {
 
   it('clamps out-of-range values during deserialization', () => {
     const restored = BookParametersModel.deserialize({
+      bindingStyle: 'flexible-spine',
       pbHeightMm: 9999,
       pbWidthMm: -5,
       pocketDepthPct: 95,
@@ -62,6 +63,7 @@ describe('BookParametersModel', () => {
       unit: 'in',
     });
 
+    expect(restored.bindingStyle).toBe('flexible-spine');
     expect(restored.pbHeightMm).toBe(500);
     expect(restored.pbWidthMm).toBe(50);
     expect(restored.pocketDepthPct).toBe(80);
