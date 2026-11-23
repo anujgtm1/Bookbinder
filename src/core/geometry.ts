@@ -422,10 +422,10 @@ export function evaluateRollWidth(
     const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
     const sheetLabel =
       fitsLetter && fitsA4
-        ? '1× US Letter / A4 home sheet'
+        ? '1× US Letter / A4 (8.5×11") home sheet'
         : fitsLetter
-          ? '1× US Letter home sheet'
-          : '1× A4 home sheet';
+          ? '1× US Letter (8.5×11") home sheet'
+          : '1× A4 (210×297 mm) home sheet';
 
     return {
       fits: true,
@@ -460,7 +460,7 @@ export function evaluateRollWidth(
       orientation,
       usedWidthMm,
       spareWidthMm,
-      summary: 'Fits on 1× US Legal home sheet (100% actual size)',
+      summary: 'Fits on 1× US Legal (8.5×14") home sheet (100% actual size)',
     };
   }
 
