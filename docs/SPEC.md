@@ -142,8 +142,7 @@ src/
 ### 6.2 Inner Envelopes & Spine Liner Exports (`inner_pockets_and_liner.pdf` & `inner_pockets_and_liner.svg`)
 - **PDF (`inner_pockets_and_liner.pdf`):** Generated client-side via `pdf-lib` in exact millimeter coordinates (`1 mm = 2.83465 pt`).
   - **Auto-Pagination & Rotation:** Automatically arranges Front Pocket, Back Pocket, and Spine Liner across 1 or 2 pages depending on selected sheet size (`Letter`, `A4`, or `Tabloid`), automatically rotating pieces 90° if needed to prevent clipping.
-  - **Calibration Square:** Includes a `50.0 mm × 50.0 mm` verification square on Page 1 labeled *"Verify 50mm × 50mm — Print at 100% / Actual Size"*.
-  - **Visual Legend:** Solid lines = Cut; Dashed lines = Score & Fold; Shaded/hatched tabs = Apply Glue Here.
+  - **Optional Calibration Square & Visual Legend (Off by Default):** Users can toggle **`Print Legend`** on when exporting either Styled or Cut PDF to include the `50.0 mm × 50.0 mm` scale verification square (*"Verify 50mm × 50mm — Print at 100% / Actual Size"*) and cut/score/glue visual legend on Page 1. Keeping it off by default maximizes printable piece density per sheet.
 - **SVG (`inner_pockets_and_liner.svg`):** Exact `1:1` physical millimeter vector layout of Back Pocket, Spine Liner, Front Pocket, and `50 × 50 mm` calibration square organized into named `<g id="...">` groups (`glue-flaps`, `cut-lines`, `score-lines`, `dimensions-notes`) for Affinity or electronic cutting machines.
 
 ---
