@@ -660,9 +660,32 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('cover-text-flip-h-btn').click();
     await expect(page.getByTestId('cover-text-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
 
-    // 2. Switch to Classic Designs tool dock tab, add a Double Rule Frame, Spine Botanical Vine, and custom vector SVG stamp
+    // 2. Switch to Classic Designs tool dock tab, add a Double Rule Frame, test 1-click Margin Fit Presets, Spine Botanical Vine, and custom vector SVG stamp
     await page.getByTestId('studio-tool-designs').click();
     await page.getByTestId('add-ornament-frame-double-rule').click();
+    await expect(page.getByTestId('studio-ornament-0')).toBeVisible();
+
+    // 1-Click Snap to Margin presets (Wide 18 mm -> Tight 6 mm -> Classic 12 mm) visibly update inset & dimensions
+    const frameHitRect = page.getByTestId('studio-ornament-0').locator('rect').first();
+    await page.getByTestId('ornament-fit-wide').click();
+    const wideX = Number(await frameHitRect.getAttribute('x'));
+    const wideW = Number(await frameHitRect.getAttribute('width'));
+    const wideH = Number(await frameHitRect.getAttribute('height'));
+
+    await page.getByTestId('ornament-fit-tight').click();
+    const tightX = Number(await frameHitRect.getAttribute('x'));
+    const tightW = Number(await frameHitRect.getAttribute('width'));
+    const tightH = Number(await frameHitRect.getAttribute('height'));
+
+    expect(tightW).toBeGreaterThan(wideW + 20);
+    expect(tightH).toBeGreaterThan(wideH + 20);
+    expect(tightX).toBeLessThan(wideX - 10);
+
+    await page.getByTestId('ornament-fit-classic').click();
+    const classicW = Number(await frameHitRect.getAttribute('width'));
+    expect(classicW).toBeGreaterThan(wideW + 8);
+    expect(classicW).toBeLessThan(tightW - 8);
+
     await page.getByTestId('ornament-cat-spine').click();
     await page.getByTestId('add-ornament-spine-botanical-vine').click();
 
