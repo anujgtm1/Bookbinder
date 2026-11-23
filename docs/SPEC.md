@@ -122,14 +122,9 @@ src/
   - **Spec & Cut List Strip (`CutListCard.tsx`):**
     - Displays exact dimensions for **2× Cover Boards**, **1× Spine Strip**, **Outer Wrap**, and the **Roll Printer Size & Orientation Badge**.
     - Includes a clean inline **SVG Assembly Diagram** visually reminding the user to place their **`9 mm` spacer** between the spine strip and front/back boards during gluing.
-  - **Folder-Style Paper Index Tabs:** `Structural Templates` and `Cover & Spine Styler` attach directly to the top edge of the workbench panel.
-- **Interactive Blueprint Preview (`BlueprintPreview.tsx`):**
-  - Full-bleed cutting-mat `1:1` proportional SVG viewport with a **Floating Bottom-Center HUD Toolbar** (`role="toolbar"` with roving keyboard navigation) for sheet switching (`Outer Case Wrap` / `Inner Pockets & Spine Liner`) and zoom/reset controls:
-    - Outer Case Wrap: Solid Red (`#FF0000`) 45°-mitered cut polygon, Dashed Blue (`#0066FF`) board/spine placement boxes, Dashed Green (`#00AA44`) optional bleed box.
-    - Inner Spine Liner & Front/Back Pocket Envelopes with dashed score lines and labeled open edges.
-  - **2 × 2 Structural Export Matrix:**
-    - **Outer Case Wrap:** `.SVG` (Affinity `1:1` mm layers) and `.PDF` (`1:1` mm vector print template, single-piece or 3-piece split)
-    - **Inner Pockets & Spine Liner:** `.SVG` (`1:1` mm vector cut/score/glue layers) and `.PDF` (`1:1` mm auto-paginated sheet PDF)
+  - **Folder-Style Paper Index Tabs (Unified Physical-Part Workbench):**
+    - **Tab 1 — `Outer Case Wrap`:** Unifies structural blueprint inspection and interactive cover/spine styling on one full-bleed cutting-mat canvas. The Floating HUD switches seamlessly between **`Styled Cover`** (interactive multi-image drag/resize/eyedropper, spine typography, red Preflight overlays), **`Blueprint`** (pure `1:1` mm structural CAD outer wrap with 45° miters, blue board guides, brass `9 mm` hinges, 3-piece split panels, zoom/pan), and **`3D Book`** (rotatable CSS 3D hardcover volume). Exports both **300 DPI Styled** (`Print PDF`, `PNG`, `Affinity SVG`) and **1:1 mm Cut-Only** (`Cut SVG`, `Cut PDF`) files.
+    - **Tab 2 — `Inner Pockets & Liner`:** Full-bleed cutting-mat canvas for the mirrored Front/Back slip-in pockets and Spine Reinforcement Liner. The Floating HUD switches between **`Styled Pockets`** and **`Blueprint`** (zoomable/pannable `1:1` mm cut/score/glue-flap view). Supports styling pockets with an endpaper base color picker (+ **Match Cover Color** sync & archival swatches) and an optional custom artwork/pattern upload (PNG/JPG/WEBP with `Cover`, `Contain`, or `Tile` fit, scale, and opacity), exporting **Styled Print-Ready Pockets PDF** alongside **Plain Cut PDF** and **Cut SVG (`1:1` mm)**.
 
 ---
 
