@@ -8,6 +8,34 @@ export type SpineLayoutPreset = 'inline' | 'stacked';
 export type SpineOrientation = 'top-to-bottom' | 'bottom-to-top';
 export type AuthorOrientation = 'vertical' | 'horizontal';
 export type CutLineExportMode = 'full-cut-miter' | 'bleed-registration';
+export type PocketImageFitMode = 'cover' | 'contain' | 'tile';
+export type PocketStyleScope = 'faces-only' | 'full-envelope';
+
+export interface PocketStyleConfig {
+  /** Base endpaper fill color for inner pockets and spine liner */
+  backgroundColor: string;
+  /** Optional custom endpaper picture/pattern (data URL) */
+  imageDataUrl: string | null;
+  imageFileName: string | null;
+  imageNaturalWidth: number;
+  imageNaturalHeight: number;
+  imageFitMode: PocketImageFitMode;
+  /** Relative scale multiplier (0.25 to 2.5) for tile or artwork sizing */
+  imageScale: number;
+  /** Image blend opacity over backgroundColor (0.1 to 1.0) */
+  imageOpacity: number;
+  /** Whether styling fills only visible pocket faces (leaving white glue flaps) or the full cut envelope */
+  styleScope: PocketStyleScope;
+}
+
+export const ENDPAPER_SWATCHES: readonly { readonly label: string; readonly hex: string }[] = [
+  { label: 'Archival Cream', hex: '#f4eee1' },
+  { label: 'Kraft Linen', hex: '#d8cab2' },
+  { label: 'Bindery Spruce', hex: '#1e4d44' },
+  { label: 'Oxford Navy', hex: '#1f3a52' },
+  { label: 'Oxblood Cloth', hex: '#6e2828' },
+  { label: 'Antique Sage', hex: '#4f6d5c' },
+] as const;
 
 export type CuratedFontId =
   | 'eb-garamond'
@@ -52,13 +80,29 @@ export interface CoverStudioState {
   backBgColor: string;
   spineText: SpineTypographyConfig;
   cutLineMode: CutLineExportMode;
+  /** Styling configuration for the Inner Pockets & Spine Liner */
+  pocketStyle: PocketStyleConfig;
 }
 
 export const STUDIO_BOUNDS = {
   fontSizePt: { min: 6, max: 72 },
   opticalNudgeMm: { min: -2.0, max: 2.0 },
   spineSafeMarginMm: 4.0,
+  pocketImageScale: { min: 0.25, max: 2.5 },
+  pocketImageOpacity: { min: 0.1, max: 1.0 },
 } as const;
+
+export const DEFAULT_POCKET_STYLE: Readonly<PocketStyleConfig> = {
+  backgroundColor: '#f4eee1',
+  imageDataUrl: null,
+  imageFileName: null,
+  imageNaturalWidth: 0,
+  imageNaturalHeight: 0,
+  imageFitMode: 'cover',
+  imageScale: 1,
+  imageOpacity: 1,
+  styleScope: 'faces-only',
+};
 
 export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
   layers: [],
@@ -78,6 +122,7 @@ export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
     opticalNudgeMm: 0,
   },
   cutLineMode: 'bleed-registration',
+  pocketStyle: { ...DEFAULT_POCKET_STYLE },
 };
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -100,6 +145,7 @@ export const CoverStudioModel = {
       ...DEFAULT_COVER_STUDIO_STATE,
       layers: [],
       spineText: { ...DEFAULT_COVER_STUDIO_STATE.spineText },
+      pocketStyle: { ...DEFAULT_POCKET_STYLE },
     };
   },
 
@@ -169,6 +215,11 @@ export const CoverStudioModel = {
       ...state,
       layers: includeImageData ? state.layers.map((layer) => ({ ...layer })) : [],
       spineText: { ...state.spineText },
+      pocketStyle: {
+        ...state.pocketStyle,
+        imageDataUrl: includeImageData ? state.pocketStyle.imageDataUrl : null,
+        imageFileName: includeImageData ? state.pocketStyle.imageFileName : null,
+      },
     };
   },
 
@@ -181,6 +232,9 @@ export const CoverStudioModel = {
     const rawSpine = (obj.spineText && typeof obj.spineText === 'object'
       ? obj.spineText
       : {}) as Record<string, unknown>;
+    const rawPocket = (obj.pocketStyle && typeof obj.pocketStyle === 'object'
+      ? obj.pocketStyle
+      : {}) as Record<string, unknown>;
 
     const layers: CoverImageLayer[] = [];
     if (Array.isArray(obj.layers)) {
@@ -189,6 +243,10 @@ export const CoverStudioModel = {
         if (parsed) layers.push(parsed);
       }
     }
+
+    const rawFitMode = rawPocket.imageFitMode;
+    const imageFitMode: PocketImageFitMode =
+      rawFitMode === 'contain' || rawFitMode === 'tile' ? rawFitMode : 'cover';
 
     return {
       layers,
@@ -220,6 +278,34 @@ export const CoverStudioModel = {
         ),
       },
       cutLineMode: obj.cutLineMode === 'full-cut-miter' ? 'full-cut-miter' : 'bleed-registration',
+      pocketStyle: {
+        backgroundColor: parseHexColor(
+          rawPocket.backgroundColor,
+          DEFAULT_POCKET_STYLE.backgroundColor,
+        ),
+        imageDataUrl:
+          typeof rawPocket.imageDataUrl === 'string' && rawPocket.imageDataUrl.startsWith('data:image/')
+            ? rawPocket.imageDataUrl
+            : null,
+        imageFileName: typeof rawPocket.imageFileName === 'string' ? rawPocket.imageFileName : null,
+        imageNaturalWidth: clampFinite(rawPocket.imageNaturalWidth, 0, 0, 20000),
+        imageNaturalHeight: clampFinite(rawPocket.imageNaturalHeight, 0, 0, 20000),
+        imageFitMode,
+        imageScale: clampFinite(
+          rawPocket.imageScale,
+          DEFAULT_POCKET_STYLE.imageScale,
+          STUDIO_BOUNDS.pocketImageScale.min,
+          STUDIO_BOUNDS.pocketImageScale.max,
+        ),
+        imageOpacity: clampFinite(
+          rawPocket.imageOpacity,
+          DEFAULT_POCKET_STYLE.imageOpacity,
+          STUDIO_BOUNDS.pocketImageOpacity.min,
+          STUDIO_BOUNDS.pocketImageOpacity.max,
+        ),
+        styleScope:
+          rawPocket.styleScope === 'full-envelope' ? 'full-envelope' : 'faces-only',
+      },
     };
   },
 } as const;

@@ -516,11 +516,11 @@ export const PreflightEngine = {
         const lines = CoverStudioModel.splitHorizontalAuthorLines(studio.spineText.author);
         const horizPt = CoverStudioModel.horizontalAuthorFontSizePt(
           lines,
-          geometry.outerWrap.spineRect.width,
           CoverStudioModel.effectiveSpineFontSizePt(
             studio.spineText.fontSizePt,
             geometry.outerWrap.spineRect.width,
           ),
+          geometry.outerWrap.spineRect.width,
         );
         if (horizPt < 6.5) {
           issues.push({
