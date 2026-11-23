@@ -83,4 +83,85 @@ describe('CoverTextLayerModel & CoverOrnamentLayerModel', () => {
     expect(restored.ornaments[0].flipX).toBe(true);
     expect(restored.ornaments[0].flipY).toBeUndefined();
   });
+
+  it('fits frames/corners to exact inset margins and preserves aspect ratio for emblems & custom SVG stamps', () => {
+    const frame: CoverOrnamentLayer = {
+      ...CoverOrnamentLayerModel.createForZone('frame-double-rule', frontBoard, 'front', '#d9b566'),
+      strokeWidthMm: 1.15,
+      flipX: true,
+      flipY: true,
+    };
+
+    const tightFrame = CoverOrnamentLayerModel.fitInsideBoardWithMargin(frame, frontBoard, 6);
+    expect(tightFrame.xMm).toBeCloseTo(frontBoard.x + 6, 2);
+    expect(tightFrame.yMm).toBeCloseTo(frontBoard.y + 6, 2);
+    expect(tightFrame.widthMm).toBeCloseTo(frontBoard.width - 12, 2);
+    expect(tightFrame.heightMm).toBeCloseTo(frontBoard.height - 12, 2);
+    expect(tightFrame.id).toBe(frame.id);
+    expect(tightFrame.color).toBe('#d9b566');
+    expect(tightFrame.strokeWidthMm).toBe(1.15);
+    expect(tightFrame.flipX).toBe(true);
+    expect(tightFrame.flipY).toBe(true);
+
+    const wideFrame = CoverOrnamentLayerModel.fitInsideBoardWithMargin(frame, frontBoard, 18);
+    expect(wideFrame.xMm).toBeCloseTo(frontBoard.x + 18, 2);
+    expect(wideFrame.yMm).toBeCloseTo(frontBoard.y + 18, 2);
+    expect(wideFrame.widthMm).toBeCloseTo(frontBoard.width - 36, 2);
+    expect(wideFrame.heightMm).toBeCloseTo(frontBoard.height - 36, 2);
+
+    // Custom non-square SVG stamp (2:1 aspect ratio) must preserve exact aspect ratio centered in inset rect
+    const customSvg: CoverOrnamentLayer = {
+      ...CoverOrnamentLayerModel.createCustomSvg({
+        name: 'crest-banner',
+        paths: ['M 0 0 L 200 0 L 200 100 L 0 100 Z'],
+        viewBoxWidth: 200,
+        viewBoxHeight: 100,
+        renderMode: 'fill-and-stroke',
+        targetBoardRectMm: frontBoard,
+        zone: 'front',
+        color: '#f5efe2',
+      }),
+      flipX: true,
+    };
+    const fittedSvg = CoverOrnamentLayerModel.fitInsideBoardWithMargin(customSvg, frontBoard, 12);
+    const expectedWidth = frontBoard.width - 24; // 119 mm
+    const expectedHeight = expectedWidth / 2; // 59.5 mm (2:1 preserved)
+    expect(fittedSvg.widthMm).toBeCloseTo(expectedWidth, 1);
+    expect(fittedSvg.heightMm).toBeCloseTo(expectedHeight, 1);
+    expect(fittedSvg.widthMm / fittedSvg.heightMm).toBeCloseTo(2, 2);
+    expect(fittedSvg.xMm + fittedSvg.widthMm / 2).toBeCloseTo(
+      frontBoard.x + frontBoard.width / 2,
+      1,
+    );
+    expect(fittedSvg.yMm + fittedSvg.heightMm / 2).toBeCloseTo(
+      frontBoard.y + frontBoard.height / 2,
+      1,
+    );
+    expect(fittedSvg.customSvgName).toBe('crest-banner');
+    expect(fittedSvg.customSvgPaths).toEqual(customSvg.customSvgPaths);
+    expect(fittedSvg.customSvgViewBox).toEqual({ width: 200, height: 100 });
+    expect(fittedSvg.customSvgRenderMode).toBe('fill-and-stroke');
+    expect(fittedSvg.flipX).toBe(true);
+
+    // Square emblem stays square inside inset rect
+    const emblem = CoverOrnamentLayerModel.createForZone('emblem-compass-rose', frontBoard, 'front');
+    const fittedEmblem = CoverOrnamentLayerModel.fitInsideBoardWithMargin(emblem, frontBoard, 18);
+    expect(fittedEmblem.widthMm).toBeCloseTo(fittedEmblem.heightMm, 2);
+    expect(fittedEmblem.widthMm).toBeCloseTo(frontBoard.width - 36, 1);
+
+    // centerInBoard centers xMm/yMm cleanly without altering widthMm/heightMm
+    const offsetEmblem: CoverOrnamentLayer = {
+      ...emblem,
+      xMm: frontBoard.x + 5,
+      yMm: frontBoard.y + 8,
+    };
+    const centered = CoverOrnamentLayerModel.centerInBoard(offsetEmblem, frontBoard);
+    expect(centered.widthMm).toBe(offsetEmblem.widthMm);
+    expect(centered.heightMm).toBe(offsetEmblem.heightMm);
+    expect(centered.xMm + centered.widthMm / 2).toBeCloseTo(frontBoard.x + frontBoard.width / 2, 1);
+    expect(centered.yMm + centered.heightMm / 2).toBeCloseTo(
+      frontBoard.y + frontBoard.height / 2,
+      1,
+    );
+  });
 });

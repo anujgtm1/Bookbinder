@@ -479,6 +479,96 @@ export const CoverOrnamentLayerModel = {
     };
   },
 
+  fitInsideBoardWithMargin(
+    layer: CoverOrnamentLayer,
+    targetBoardRectMm: Rect2D,
+    marginMm: number,
+  ): CoverOrnamentLayer {
+    const safeMargin = Math.max(0, Number.isFinite(marginMm) ? marginMm : 0);
+    const m = Math.min(safeMargin, targetBoardRectMm.width * 0.35, targetBoardRectMm.height * 0.35);
+    const usable: Rect2D = {
+      x: targetBoardRectMm.x + m,
+      y: targetBoardRectMm.y + m,
+      width: Math.max(COVER_ORNAMENT_BOUNDS.minSizeMm, targetBoardRectMm.width - m * 2),
+      height: Math.max(COVER_ORNAMENT_BOUNDS.minSizeMm, targetBoardRectMm.height - m * 2),
+    };
+
+    const fillsInsetBox =
+      layer.presetId.startsWith('frame-') ||
+      layer.presetId.startsWith('corners-') ||
+      layer.presetId.startsWith('spine-');
+
+    if (fillsInsetBox) {
+      return {
+        ...layer,
+        xMm: roundTo(usable.x, 2),
+        yMm: roundTo(usable.y, 2),
+        widthMm: roundTo(
+          clampFinite(
+            usable.width,
+            usable.width,
+            COVER_ORNAMENT_BOUNDS.minSizeMm,
+            COVER_ORNAMENT_BOUNDS.maxSizeMm,
+          ),
+          2,
+        ),
+        heightMm: roundTo(
+          clampFinite(
+            usable.height,
+            usable.height,
+            COVER_ORNAMENT_BOUNDS.minSizeMm,
+            COVER_ORNAMENT_BOUNDS.maxSizeMm,
+          ),
+          2,
+        ),
+      };
+    }
+
+    const rawAspect =
+      layer.presetId === 'custom-svg' &&
+      layer.customSvgViewBox &&
+      layer.customSvgViewBox.width > 0 &&
+      layer.customSvgViewBox.height > 0
+        ? layer.customSvgViewBox.width / layer.customSvgViewBox.height
+        : layer.widthMm / Math.max(0.1, layer.heightMm);
+    const aspect = Math.max(0.1, Number.isFinite(rawAspect) ? rawAspect : 1);
+
+    let widthMm = usable.width;
+    let heightMm = widthMm / aspect;
+    if (heightMm > usable.height) {
+      heightMm = usable.height;
+      widthMm = heightMm * aspect;
+    }
+    widthMm = clampFinite(
+      widthMm,
+      usable.width,
+      COVER_ORNAMENT_BOUNDS.minSizeMm,
+      COVER_ORNAMENT_BOUNDS.maxSizeMm,
+    );
+    heightMm = clampFinite(
+      heightMm,
+      usable.height,
+      COVER_ORNAMENT_BOUNDS.minSizeMm,
+      COVER_ORNAMENT_BOUNDS.maxSizeMm,
+    );
+
+    return {
+      ...layer,
+      xMm: roundTo(usable.x + (usable.width - widthMm) / 2, 2),
+      yMm: roundTo(usable.y + (usable.height - heightMm) / 2, 2),
+      widthMm: roundTo(widthMm, 2),
+      heightMm: roundTo(heightMm, 2),
+    };
+  },
+
+  centerInBoard(layer: CoverOrnamentLayer, targetBoardRectMm: Rect2D): CoverOrnamentLayer {
+    return {
+      ...layer,
+      xMm: roundTo(targetBoardRectMm.x + (targetBoardRectMm.width - layer.widthMm) / 2, 2),
+      yMm: roundTo(targetBoardRectMm.y + (targetBoardRectMm.height - layer.heightMm) / 2, 2),
+    };
+  },
+
   deserialize(raw: unknown): CoverOrnamentLayer | null {
     if (!raw || typeof raw !== 'object') return null;
     const obj = raw as Record<string, unknown>;

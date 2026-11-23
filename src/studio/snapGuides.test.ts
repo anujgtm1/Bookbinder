@@ -4,7 +4,12 @@ import { BookParametersModel } from '@/types/bookParams';
 import { CoverImageLayerModel } from '@/types/studioLayer';
 import { PRINT_DPI } from '@/types/units';
 import { computeStudioCanvasSpec } from './renderEngine';
-import { buildCanvasSnapTargets, snapLayerMove, snapLayerResize } from './snapGuides';
+import {
+  buildCanvasSnapTargets,
+  computeCoverSafeMarginMm,
+  snapLayerMove,
+  snapLayerResize,
+} from './snapGuides';
 
 describe('snapGuides', () => {
   it('snaps a moving layer magnetically to Front Board hinge, Spine Center, and Board Top', () => {
@@ -81,5 +86,43 @@ describe('snapGuides', () => {
     const res = snapLayerResize(orig, 'se', frontRight - 1.5, 118, targets, 3.5);
     expect(res.layer.xMm + res.layer.widthMm).toBeCloseTo(frontRight, 1);
     expect(res.guides.some((g) => g.axis === 'x' && g.label === 'FRONT EDGE')).toBe(true);
+  });
+
+  it('computes proportional cover safe margins and includes FRONT/BACK/TOP/BOTTOM MARGIN snap targets', () => {
+    expect(computeCoverSafeMarginMm(107, 152)).toBeCloseTo(9.1, 1);
+    expect(computeCoverSafeMarginMm(143, 223)).toBeCloseTo(12.2, 1);
+    expect(computeCoverSafeMarginMm(60, 90)).toBe(7);
+    expect(computeCoverSafeMarginMm(240, 320)).toBe(14);
+
+    const geom = calculateCaseGeometry(BookParametersModel.createDefault());
+    const spec = computeStudioCanvasSpec(geom, PRINT_DPI);
+    const targets = buildCanvasSnapTargets(geom, spec);
+
+    const b = spec.bleedMm;
+    const front = geom.outerWrap.frontBoardRect;
+    const back = geom.outerWrap.backBoardRect;
+    const margin = computeCoverSafeMarginMm(front.width, front.height);
+
+    const frontMargins = targets.vertical.filter((t) => t.label === 'FRONT MARGIN');
+    expect(frontMargins).toHaveLength(2);
+    expect(frontMargins.map((t) => t.positionMm)).toEqual([
+      expect.closeTo(b + front.x + margin, 1),
+      expect.closeTo(b + front.x + front.width - margin, 1),
+    ]);
+    expect(frontMargins.every((t) => t.kind === 'board')).toBe(true);
+
+    const backMargins = targets.vertical.filter((t) => t.label === 'BACK MARGIN');
+    expect(backMargins).toHaveLength(2);
+    expect(backMargins.map((t) => t.positionMm)).toEqual([
+      expect.closeTo(b + back.x + margin, 1),
+      expect.closeTo(b + back.x + back.width - margin, 1),
+    ]);
+
+    const topMargin = targets.horizontal.find((t) => t.label === 'TOP MARGIN');
+    const bottomMargin = targets.horizontal.find((t) => t.label === 'BOTTOM MARGIN');
+    expect(topMargin?.positionMm).toBeCloseTo(b + front.y + margin, 1);
+    expect(bottomMargin?.positionMm).toBeCloseTo(b + front.y + front.height - margin, 1);
+    expect(topMargin?.kind).toBe('board');
+    expect(bottomMargin?.kind).toBe('board');
   });
 });

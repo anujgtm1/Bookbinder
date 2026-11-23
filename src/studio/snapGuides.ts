@@ -47,8 +47,17 @@ function dedupeTargets(lines: readonly SnapTargetLine[]): SnapTargetLine[] {
 }
 
 /**
+ * Computes a proportional safe inset margin (in mm) for a cover board
+ * (clamped to 7–14 mm; e.g. ~9.0 mm on A6, ~12.2 mm on 5.5×8.5").
+ */
+export function computeCoverSafeMarginMm(boardWidthMm: number, boardHeightMm: number): number {
+  return roundTo(Math.min(14, Math.max(7, Math.min(boardWidthMm, boardHeightMm) * 0.085)), 1);
+}
+
+/**
  * Builds the magnetic alignment target lines for the Outer Case Wrap canvas:
- * Front/Back board edges & centers, Spine edges & centerline, Turn-In cut lines, and Bleed boundaries.
+ * Front/Back board edges & centers, Spine edges & centerline, Turn-In cut lines,
+ * Bleed boundaries, and proportional safe-margin inset guides.
  */
 export function buildCanvasSnapTargets(
   geometry: CaseGeometry,
@@ -58,6 +67,7 @@ export function buildCanvasSnapTargets(
   const back = geometry.outerWrap.backBoardRect;
   const spine = geometry.outerWrap.spineRect;
   const front = geometry.outerWrap.frontBoardRect;
+  const margin = computeCoverSafeMarginMm(front.width, front.height);
 
   const verticalRaw: SnapTargetLine[] = [
     // Centers first so centerlines win priority if overlapping
@@ -87,6 +97,22 @@ export function buildCanvasSnapTargets(
           },
         ]
       : []),
+
+    // Safe-margin inset guides (appended last so center & board edges retain priority)
+    { axis: 'x', positionMm: b + front.x + margin, label: 'FRONT MARGIN', kind: 'board' },
+    {
+      axis: 'x',
+      positionMm: b + front.x + front.width - margin,
+      label: 'FRONT MARGIN',
+      kind: 'board',
+    },
+    { axis: 'x', positionMm: b + back.x + margin, label: 'BACK MARGIN', kind: 'board' },
+    {
+      axis: 'x',
+      positionMm: b + back.x + back.width - margin,
+      label: 'BACK MARGIN',
+      kind: 'board',
+    },
   ];
 
   const horizontalRaw: SnapTargetLine[] = [
@@ -106,6 +132,15 @@ export function buildCanvasSnapTargets(
           },
         ]
       : []),
+
+    // Safe-margin inset guides
+    { axis: 'y', positionMm: b + front.y + margin, label: 'TOP MARGIN', kind: 'board' },
+    {
+      axis: 'y',
+      positionMm: b + front.y + front.height - margin,
+      label: 'BOTTOM MARGIN',
+      kind: 'board',
+    },
   ];
 
   return {
