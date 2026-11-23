@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { evaluateFlapDepth, getBindingStrategy } from '@/core/bindingStyles';
 import { calculateMaxSlipFlapForSheetMm, resolveSlipFlapWidthMm } from '@/core/geometry';
 import { A4_SHEET, ROLL_TOTAL_MARGIN_MM, US_LETTER_SHEET } from '@/resources/paperSpecs';
 import {
@@ -132,7 +132,7 @@ export function SidebarControls({
   const activePreset = BookParametersModel.detectPreset(params);
   const validation = BookParametersModel.validate(params);
   const effectiveFlapMm = resolveSlipFlapWidthMm(params);
-  const flapCoverPct = Math.round((effectiveFlapMm / Math.max(1, params.pbWidthMm)) * 100);
+  const flapDepthEval = evaluateFlapDepth(params.bindingStyle, params.pbWidthMm, effectiveFlapMm);
   const computeFlapForSheet = (sheetLongMm: number) =>
     strategy.computeMaxFlapWidthForSheet
       ? strategy.computeMaxFlapWidthForSheet(params, sheetLongMm - ROLL_TOTAL_MARGIN_MM)
@@ -222,20 +222,25 @@ export function SidebarControls({
       </div>
 
       {/* Adjustable Flap Width Controls (Flap-equipped cover styles: Slip Cover & Classic Dust Jacket) */}
-      {capabilities.hasFlaps && flapConfig && (
+      {capabilities.hasFlaps && flapConfig && flapDepthEval && (
         <div
           data-testid="softcover-flap-controls"
           className="space-y-2 rounded-md border border-border/80 bg-secondary/35 p-2.5"
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
             <Label htmlFor="jacket-flap-width-slider">{flapConfig.label}</Label>
-            <span
-              className="font-mono text-[11px] text-foreground"
-              data-testid="jacket-flap-width-value"
-            >
-              {UnitConverter.format(effectiveFlapMm, params.unit)}{' '}
-              <span className="text-muted-foreground">({flapCoverPct}% of cover)</span>
-            </span>
+            <div className="flex items-baseline gap-1.5 font-mono text-[11px]">
+              <span className="text-foreground" data-testid="jacket-flap-width-value">
+                {UnitConverter.format(effectiveFlapMm, params.unit)}{' '}
+                <span className="text-muted-foreground">({flapDepthEval.coverWidthPct}%)</span>
+              </span>
+              <span
+                className="text-[10px] text-muted-foreground"
+                data-testid="flap-recommended-min"
+              >
+                Rec. ≥ {UnitConverter.format(flapDepthEval.minRecommendedMm, params.unit)}
+              </span>
+            </div>
           </div>
           <input
             id="jacket-flap-width-slider"
@@ -254,6 +259,38 @@ export function SidebarControls({
             }}
             className="h-2 w-full accent-primary cursor-pointer"
           />
+          {flapDepthEval.isTooShallow ? (
+            <div
+              role="status"
+              data-testid="flap-shallow-warning"
+              className="space-y-1.5 rounded-md border border-amber-600/35 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-900 dark:text-amber-200"
+            >
+              <p className="flex items-start gap-1.5">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>
+                  Flap is narrower than recommended ({flapDepthEval.coverWidthPct}% of page width;
+                  aim for ≥ {UnitConverter.format(flapDepthEval.minRecommendedMm, params.unit)} so
+                  the cover doesn&apos;t slip out).
+                </span>
+              </p>
+              <button
+                type="button"
+                data-testid="flap-set-recommended-btn"
+                onClick={() => update({ jacketFlapWidthMm: flapDepthEval.minRecommendedMm })}
+                className="inline-flex cursor-pointer items-center rounded border border-amber-700/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] font-medium text-amber-950 transition-colors hover:bg-amber-500/25 dark:border-amber-400/40 dark:text-amber-100 dark:hover:bg-amber-500/30"
+              >
+                Use {UnitConverter.format(flapDepthEval.minRecommendedMm, params.unit)}
+              </button>
+            </div>
+          ) : (
+            <p
+              data-testid="flap-depth-ok"
+              className="text-[11px] leading-snug text-muted-foreground"
+            >
+              {flapDepthEval.coverWidthPct}% of page width • meets ≥{' '}
+              {UnitConverter.format(flapDepthEval.minRecommendedMm, params.unit)} recommendation.
+            </p>
+          )}
           <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"

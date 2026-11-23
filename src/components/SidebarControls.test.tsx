@@ -223,4 +223,88 @@ describe('SidebarControls', () => {
     expect(screen.queryByTestId('pdf-page-size-select')).not.toBeInTheDocument();
     expect(screen.getByTestId('bleed-toggle')).toBeInTheDocument();
   });
+
+  it('shows live inline shallow-flap warning with 1-click recommended fix for softcover-jacket and dust-jacket', async () => {
+    const user = userEvent.setup();
+    let latest: BookParameters = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 140,
+      jacketFlapWidthMm: 24,
+    };
+    const onChange = vi.fn((next: BookParameters) => {
+      latest = next;
+    });
+
+    const { rerender } = render(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+
+    // 1. Softcover slip cover: 24 mm < 35.0 mm recommended -> shows warning & Use 35.0 mm button
+    expect(screen.getByTestId('flap-recommended-min')).toHaveTextContent('Rec. ≥ 35.0 mm');
+    const slipWarning = screen.getByTestId('flap-shallow-warning');
+    expect(slipWarning).toHaveTextContent('17% of page width');
+    expect(slipWarning).toHaveTextContent('≥ 35.0 mm');
+    expect(screen.queryByTestId('flap-depth-ok')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('flap-set-recommended-btn'));
+    expect(latest.jacketFlapWidthMm).toBe(35);
+
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('flap-shallow-warning')).not.toBeInTheDocument();
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('25% of page width');
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('meets ≥ 35.0 mm recommendation');
+
+    // 2. Classic dust jacket: 140 mm width with 35 mm flap -> below 53.2 mm recommendation
+    latest = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 140,
+      jacketFlapWidthMm: 35,
+    };
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('flap-recommended-min')).toHaveTextContent('Rec. ≥ 53.2 mm');
+    const djWarning = screen.getByTestId('flap-shallow-warning');
+    expect(djWarning).toHaveTextContent('25% of page width');
+    expect(djWarning).toHaveTextContent('≥ 53.2 mm');
+
+    await user.click(screen.getByTestId('flap-set-recommended-btn'));
+    expect(latest.jacketFlapWidthMm).toBe(53.2);
+
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('flap-shallow-warning')).not.toBeInTheDocument();
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('38% of page width');
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('meets ≥ 53.2 mm recommendation');
+  });
 });

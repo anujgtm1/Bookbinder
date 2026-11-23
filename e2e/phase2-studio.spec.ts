@@ -1361,4 +1361,47 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const djPdf = await PDFDocument.load(await readFile((await djPdfDownload.path())!));
     expect(djPdf.getPageCount()).toBe(1);
   });
+
+  test('warns inline and in Preflight when Dust Jacket flaps are too shallow for page width, and resolves via 1-click quick fixes', async ({
+    page,
+  }) => {
+    // 1. Default Trade Digest (140 mm wide) -> switch to Classic Dust Jacket (default 70 mm flaps >= 53.2 mm rec.)
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Classic Dust Jacket/i }).click();
+
+    await expect(page.getByTestId('flap-depth-ok')).toBeVisible();
+    await expect(page.getByTestId('flap-shallow-warning')).toBeHidden();
+
+    // 2. Narrow flaps to 25 mm -> inline amber warning + Preflight flap-too-shallow issue + canvas flap highlights
+    const flapSlider = page.getByTestId('slider-jacket-flap-width');
+    await flapSlider.fill('25');
+
+    const shallowWarning = page.getByTestId('flap-shallow-warning');
+    await expect(shallowWarning).toBeVisible();
+    await expect(shallowWarning).toContainText('53.2 mm');
+    await expect(page.getByTestId('studio-preflight-overlays')).toBeVisible();
+
+    await page.getByTestId('studio-tool-preflight').click();
+    const preflightIssue = page.getByTestId('preflight-issue-flap-too-shallow');
+    await expect(preflightIssue).toBeVisible();
+    await expect(preflightIssue).toContainText('53.2 mm');
+
+    // 3. Resolve via Preflight 1-click quick fix -> clears both Preflight issue and inline slider warning
+    await page.getByTestId('preflight-fix-flap-too-shallow').click();
+    await expect(preflightIssue).toBeHidden();
+    await expect(shallowWarning).toBeHidden();
+    await expect(page.getByTestId('flap-depth-ok')).toBeVisible();
+    await expect(page.getByTestId('jacket-flap-width-value')).toContainText('53.2 mm');
+
+    // 4. Narrow flaps again to 25 mm and resolve via inline slider button ("Use 53.2 mm")
+    await flapSlider.fill('25');
+    await expect(shallowWarning).toBeVisible();
+    await expect(preflightIssue).toBeVisible();
+
+    await page.getByTestId('flap-set-recommended-btn').click();
+    await expect(shallowWarning).toBeHidden();
+    await expect(preflightIssue).toBeHidden();
+    await expect(page.getByTestId('flap-depth-ok')).toBeVisible();
+    await expect(page.getByTestId('jacket-flap-width-value')).toContainText('53.2 mm');
+  });
 });
