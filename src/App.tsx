@@ -29,6 +29,7 @@ const CoverStyler = lazy(async () => {
 export function App() {
   const [project, setProject] = useState<BookbinderProject>(() => loadProjectFromStorage());
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('templates');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [exportingTarget, setExportingTarget] = useState<'outer-pdf' | 'inner-pdf' | null>(null);
 
@@ -149,52 +150,60 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Header statusMessage={statusMessage} />
+      <Header
+        statusMessage={statusMessage}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((open) => !open)}
+      />
 
       <main
         id="main-workspace"
         tabIndex={-1}
-        className="mx-auto grid max-w-[1520px] grid-cols-1 gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[310px_1fr]"
+        className={`mx-auto grid max-w-[1680px] grid-cols-1 gap-4 px-3 py-4 sm:px-5 ${
+          sidebarOpen ? 'lg:grid-cols-[310px_minmax(0,1fr)]' : 'lg:grid-cols-1'
+        }`}
       >
-        <SidebarControls
-          params={project.parameters}
-          onChange={handleParamsChange}
-          onExportJson={handleExportJson}
-          onImportJson={handleImportJson}
-          onResetDefaults={handleResetDefaults}
-        />
+        {sidebarOpen && (
+          <SidebarControls
+            params={project.parameters}
+            onChange={handleParamsChange}
+            onExportJson={handleExportJson}
+            onImportJson={handleImportJson}
+            onResetDefaults={handleResetDefaults}
+          />
+        )}
 
-        <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-4">
           <CutListCard geometry={geometry} unit={project.parameters.unit} />
 
-          {/* Workspace mode tabs co-located directly with the swappable panel */}
+          {/* Folder-style Paper Index Tabs anchored directly onto the top edge of the workbench */}
           <Tabs
             value={activeTab}
             onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
             className="flex flex-col"
           >
-            <div className="flex items-center justify-between gap-3">
-              <TabsList className="h-10 border border-border/80 bg-secondary/70 p-1">
+            <div className="flex flex-wrap items-end justify-between gap-2 px-1">
+              <TabsList className="h-auto gap-1.5 rounded-none bg-transparent p-0">
                 <TabsTrigger
                   value="templates"
                   data-testid="nav-templates"
-                  className="px-4 py-1.5 text-sm"
+                  className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
                 >
-                  <Layers className="h-4 w-4" aria-hidden="true" />
+                  <Layers className="h-4 w-4 text-brass" aria-hidden="true" />
                   Structural Templates
                 </TabsTrigger>
                 <TabsTrigger
                   value="studio"
                   data-testid="nav-studio"
-                  className="px-4 py-1.5 text-sm"
+                  className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
                 >
-                  <Palette className="h-4 w-4" aria-hidden="true" />
+                  <Palette className="h-4 w-4 text-brass" aria-hidden="true" />
                   Cover &amp; Spine Styler
                 </TabsTrigger>
               </TabsList>
             </div>
 
-            <TabsContent value="templates" className="mt-3">
+            <TabsContent value="templates" className="mt-0">
               <BlueprintPreview
                 geometry={geometry}
                 splitMode={project.parameters.splitMode}
@@ -208,10 +217,10 @@ export function App() {
               />
             </TabsContent>
 
-            <TabsContent value="studio" className="mt-3">
+            <TabsContent value="studio" className="mt-0">
               <Suspense
                 fallback={
-                  <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+                  <div className="rounded-b-lg rounded-tr-lg border border-border bg-card p-10 text-center text-sm text-muted-foreground">
                     Loading Cover &amp; Spine Styler…
                   </div>
                 }

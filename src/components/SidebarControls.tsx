@@ -19,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -136,18 +135,19 @@ export function SidebarControls({
 
   return (
     <aside
+      id="book-spec-rail"
       aria-label="Case Dimensions and Settings"
-      className="flex flex-col gap-4 rounded-lg border border-border bg-card p-4 shadow-xs"
+      className="flex flex-col gap-4 rounded-lg border border-border border-t-2 border-t-brass-bright/75 bg-card p-4 shadow-xs lg:sticky lg:top-[58px] lg:max-h-[calc(100vh-74px)] lg:overflow-y-auto"
     >
-      {/* Unit System Toggle */}
+      {/* Folio Rail Title & Unit System Toggle */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Display Units
+        <span className="font-serif text-sm font-semibold tracking-tight text-foreground">
+          Book Specifications
         </span>
         <div
           role="group"
           aria-label="Unit system"
-          className="inline-flex rounded-md border border-input bg-muted p-0.5"
+          className="inline-flex rounded-full border border-input bg-muted/80 p-0.5"
         >
           {(['mm', 'in'] as const).map((unitOption) => {
             const active = params.unit === unitOption;
@@ -158,9 +158,9 @@ export function SidebarControls({
                 aria-pressed={active}
                 data-testid={`unit-toggle-${unitOption}`}
                 onClick={() => update({ unit: unitOption })}
-                className={`min-w-11 rounded-sm px-2.5 py-1 font-mono text-xs font-medium transition-colors cursor-pointer ${
+                className={`min-w-10 rounded-full px-2.5 py-0.5 font-mono text-xs font-medium transition-colors cursor-pointer ${
                   active
-                    ? 'bg-card text-foreground shadow-xs'
+                    ? 'bg-primary text-primary-foreground shadow-xs'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -223,7 +223,7 @@ export function SidebarControls({
         />
       </fieldset>
 
-      <Separator />
+      <div className="kettle-stitch-divider" role="separator" />
 
       {/* Collapsible Construction & Hinge Settings */}
       <Collapsible open={constructionOpen} onOpenChange={setConstructionOpen}>
@@ -414,7 +414,7 @@ export function SidebarControls({
         </CollapsibleContent>
       </Collapsible>
 
-      <Separator />
+      <div className="kettle-stitch-divider" role="separator" />
 
       {/* PDF Page Size Selector */}
       <div className="space-y-1.5">
@@ -451,7 +451,7 @@ export function SidebarControls({
         </div>
       )}
 
-      <Separator />
+      <div className="kettle-stitch-divider" role="separator" />
 
       {/* Project JSON Save / Load / Reset */}
       <div className="space-y-2">

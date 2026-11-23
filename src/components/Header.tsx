@@ -1,4 +1,4 @@
-import { BookOpen, Moon, Sun } from 'lucide-react';
+import { BookOpen, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,9 +15,11 @@ import {
 
 export interface HeaderProps {
   readonly statusMessage: string | null;
+  readonly sidebarOpen?: boolean;
+  readonly onToggleSidebar?: () => void;
 }
 
-export function Header({ statusMessage }: HeaderProps) {
+export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: HeaderProps) {
   const [override, setOverride] = useState<ColorSchemeOverride>(() => readStoredColorScheme());
   const [systemScheme, setSystemScheme] = useState<ResolvedColorScheme>(() =>
     getSystemColorScheme(),
@@ -64,18 +66,38 @@ export function Header({ statusMessage }: HeaderProps) {
         Skip to workspace
       </a>
 
-      <div className="mx-auto flex max-w-[1520px] flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+      <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-3 px-3 py-2 sm:px-5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
-            <BookOpen className="h-5 w-5" aria-hidden="true" />
+          {onToggleSidebar && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              onClick={onToggleSidebar}
+              aria-expanded={sidebarOpen}
+              aria-controls="book-spec-rail"
+              aria-label={sidebarOpen ? 'Collapse book dimensions rail' : 'Expand book dimensions rail'}
+              title={sidebarOpen ? 'Hide Book Spec Rail' : 'Show Book Spec Rail'}
+              data-testid="toggle-sidebar-btn"
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+              )}
+            </Button>
+          )}
+
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-mat text-brass-bright ring-1 ring-brass-bright/45 shadow-xs">
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
           </div>
-          <div>
-            <h1 className="font-serif text-lg font-semibold leading-tight text-foreground sm:text-xl">
+          <div className="flex items-baseline gap-2.5">
+            <h1 className="font-serif text-lg font-semibold leading-none tracking-tight text-foreground sm:text-xl">
               Bookbinder Studio
             </h1>
-            <p className="text-[11px] text-muted-foreground">
-              1:1 Millimeter Hardcover Slip-Cover Case &amp; Pocket Generator
-            </p>
+            <span className="hidden text-[11px] font-medium tracking-wide text-muted-foreground md:inline">
+              1:1 mm Hardcover Case &amp; Pocket Workbench
+            </span>
           </div>
         </div>
 
@@ -84,16 +106,18 @@ export function Header({ statusMessage }: HeaderProps) {
             role="status"
             aria-live="polite"
             data-testid="status-message"
-            className="hidden max-w-72 truncate text-xs text-muted-foreground sm:block"
+            className="hidden max-w-72 truncate rounded-full border border-border/80 bg-secondary/70 px-2.5 py-1 text-[11px] text-muted-foreground sm:block"
           >
             {statusMessage ?? 'Auto-saved locally'}
           </div>
           <Button
             variant="outline"
             size="icon"
+            className="h-8 w-8"
             onClick={handleToggleTheme}
             data-testid="theme-toggle-btn"
             aria-label={resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            title={resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           >
             {resolved === 'dark' ? (
               <Sun className="h-4 w-4" aria-hidden="true" />
