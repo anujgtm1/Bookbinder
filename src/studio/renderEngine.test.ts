@@ -48,6 +48,56 @@ describe('studio renderEngine', () => {
     expect(resolveQuickFitRect(spec, 'fullWrap')).toEqual(spec.fullWrapRect);
   });
 
+  it('scopes Fit Front/Back and clip masks to the visible cover face (excluding tuck flaps & glue tabs) on slip covers and dust jackets', () => {
+    // 1. Fold-and-Glue Slip Cover (A6 with 38 mm flaps & 10 mm glue tabs)
+    const slipGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      jacketFlapWidthMm: 38,
+    });
+    const slipSpec = computeStudioCanvasSpec(slipGeom, 300);
+    const { outerWrap: slipWrap } = slipGeom;
+
+    // Background zone bands still span the entire sheet (including flaps)
+    expect(
+      slipSpec.backZoneRect.width + slipSpec.spineZoneRect.width + slipSpec.frontZoneRect.width,
+    ).toBeCloseTo(slipSpec.totalWidthMm, 5);
+    expect(slipSpec.frontZoneRect.width).toBeGreaterThan(slipWrap.frontBoardRect.width + 30);
+
+    // Quick-fit and clip rects exclude the 38 mm tuck flaps and 10 mm top/bottom glue tabs
+    const slipFront = resolveQuickFitRect(slipSpec, 'front');
+    expect(slipFront).toEqual(resolveZoneClipRect(slipSpec, 'front'));
+    expect(slipFront.x).toBeCloseTo(slipSpec.bleedMm + slipWrap.frontBoardRect.x, 4);
+    expect(slipFront.y).toBeCloseTo(slipSpec.bleedMm + slipWrap.frontBoardRect.y, 4);
+    expect(slipFront.width).toBeCloseTo(slipWrap.frontBoardRect.width, 4);
+    expect(slipFront.height).toBeCloseTo(slipWrap.frontBoardRect.height, 4);
+
+    const slipBack = resolveQuickFitRect(slipSpec, 'back');
+    expect(slipBack).toEqual(resolveZoneClipRect(slipSpec, 'back'));
+    expect(slipBack.x).toBeCloseTo(slipSpec.bleedMm + slipWrap.backBoardRect.x, 4);
+    expect(slipBack.y).toBeCloseTo(slipSpec.bleedMm + slipWrap.backBoardRect.y, 4);
+    expect(slipBack.width).toBeCloseTo(slipWrap.backBoardRect.width, 4);
+    expect(slipBack.height).toBeCloseTo(slipWrap.backBoardRect.height, 4);
+
+    // 2. Classic Dust Jacket (Trade Digest with 70 mm flaps, flush top/bottom + bleed)
+    const djGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      jacketFlapWidthMm: 70,
+    });
+    const djSpec = computeStudioCanvasSpec(djGeom, 300);
+    const { outerWrap: djWrap } = djGeom;
+
+    const djFront = resolveQuickFitRect(djSpec, 'front');
+    expect(djFront.x).toBeCloseTo(djSpec.bleedMm + djWrap.frontBoardRect.x, 4);
+    expect(djFront.y).toBe(0);
+    expect(djFront.width).toBeCloseTo(djWrap.frontBoardRect.width, 4);
+    expect(djFront.height).toBeCloseTo(djSpec.totalHeightMm, 4);
+  });
+
   it('computes inline and stacked spine typography placements with font clamping and optical nudge', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const base = CoverStudioModel.createDefault();

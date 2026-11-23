@@ -570,4 +570,32 @@ describe('PreflightEngine', () => {
     );
     expect(fixedDjReport.issues.some((i) => i.id === 'flap-too-shallow')).toBe(false);
   });
+
+  it('produces zero front-turnin-gap or board-gap issues when a front cover image is fitted to frontArtworkRect on a slip cover', () => {
+    const slipParams = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      jacketFlapWidthMm: 38,
+    });
+    const slipGeom = calculateCaseGeometry(slipParams);
+    const slipSpec = computeStudioCanvasSpec(slipGeom, 300);
+    const frontLayer = CoverImageLayerModel.createInRect({
+      fileName: 'a6-front.png',
+      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      naturalWidth: 1600,
+      naturalHeight: 2200,
+      targetRect: slipSpec.frontArtworkRect,
+      clipZone: 'front',
+    });
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      layers: [frontLayer],
+    };
+    const report = PreflightEngine.evaluate(slipParams, slipGeom, studio);
+    expect(report.issues.some((i) => i.id === 'front-board-gap')).toBe(false);
+    expect(report.issues.some((i) => i.id === 'front-turnin-gap')).toBe(false);
+  });
 });

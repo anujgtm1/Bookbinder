@@ -144,26 +144,26 @@ export function CoverCanvas2D({
           </clipPath>
           <clipPath id="studio-clip-back">
             <rect
-              x={spec.backZoneRect.x}
-              y={spec.backZoneRect.y}
-              width={spec.backZoneRect.width}
-              height={spec.backZoneRect.height}
+              x={spec.backArtworkRect.x}
+              y={spec.backArtworkRect.y}
+              width={spec.backArtworkRect.width}
+              height={spec.backArtworkRect.height}
             />
           </clipPath>
           <clipPath id="studio-clip-spine">
             <rect
-              x={spec.spineZoneRect.x}
-              y={spec.spineZoneRect.y}
-              width={spec.spineZoneRect.width}
-              height={spec.spineZoneRect.height}
+              x={spec.spineArtworkRect.x}
+              y={spec.spineArtworkRect.y}
+              width={spec.spineArtworkRect.width}
+              height={spec.spineArtworkRect.height}
             />
           </clipPath>
           <clipPath id="studio-clip-front">
             <rect
-              x={spec.frontZoneRect.x}
-              y={spec.frontZoneRect.y}
-              width={spec.frontZoneRect.width}
-              height={spec.frontZoneRect.height}
+              x={spec.frontArtworkRect.x}
+              y={spec.frontArtworkRect.y}
+              width={spec.frontArtworkRect.width}
+              height={spec.frontArtworkRect.height}
             />
           </clipPath>
           <pattern

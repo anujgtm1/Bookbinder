@@ -448,8 +448,8 @@ export const PreflightEngine = {
       }
     };
 
-    auditCoverZone('front', frontBoardCanvasRect, spec.frontZoneRect, ['top', 'bottom', 'right']);
-    auditCoverZone('back', backBoardCanvasRect, spec.backZoneRect, ['top', 'bottom', 'left']);
+    auditCoverZone('front', frontBoardCanvasRect, spec.frontArtworkRect, ['top', 'bottom', 'right']);
+    auditCoverZone('back', backBoardCanvasRect, spec.backArtworkRect, ['top', 'bottom', 'left']);
 
     // 3. Spine typography contrast, clamping & clearance checks
     const hasSpineText =
