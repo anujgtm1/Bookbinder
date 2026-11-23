@@ -29,6 +29,10 @@ A client-side web application for DIY bookbinders to generate exact **1:1 millim
 
 ![Bookbinder Studio — Interactive 3D Folded Book Preview](./docs/screenshots/book-3d-preview.png)
 
+- **Stylable Inner Pockets & Spine Liner:** Style your slip-in pocket envelopes and spine liner with an endpaper base color picker, **Match Cover Color** sync, archival paper swatches, and optional custom endpaper pictures/patterns (`Cover`, `Contain`, or `Tile` with scale & opacity) — exporting a **Styled Pockets PDF** alongside plain `1:1 mm` Cut PDF & SVG templates.
+
+![Bookbinder Studio — Styled Inner Pockets & Spine Liner](./docs/screenshots/inner-pockets.png)
+
 - **300 DPI Dual Exports:**
   - **Print-Ready Roll PDF (`outer_cover_print.pdf`):** 300 DPI composited artwork + true embedded vector spine typography + toggle between *Bleed + Outer Corner Registration Marks Only* and *Full Cut & 45° Miter Hairline Guides*.
   - **Affinity Round-Trip (`outer_cover_300dpi.png` & `outer_cover_300dpi.svg`):** Exact 1:1 mm / 300 DPI flat cover + editable SVG layers for further graphic finishing in Affinity.
