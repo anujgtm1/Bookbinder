@@ -187,6 +187,18 @@ export function OuterBlueprintCanvas({
             Outer Case Wrap Blueprint —{' '}
             {UnitConverter.formatDimensions(outerWrap.widthMm, outerWrap.heightMm, unit)}
           </title>
+          <defs>
+            <pattern
+              id="outer-glue-hatch"
+              width="5"
+              height="5"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width="5" height="5" fill="#C59B48" fillOpacity="0.16" />
+              <line x1="0" y1="0" x2="0" y2="5" stroke="#A67B2E" strokeWidth="0.9" strokeOpacity="0.6" />
+            </pattern>
+          </defs>
 
           {splitMode === 'single' ? (
             <g>
@@ -303,58 +315,71 @@ export function OuterBlueprintCanvas({
                   );
                 })}
 
-              {/* Integrated Slip-In Tuck Flaps for Softcover Jacket */}
+              {/* Integrated Slip-In Pocket Flaps & 4 Mitered Glue Tabs for 1-Piece Fold-and-Glue Slip Cover */}
               {outerWrap.bindingStyle === 'softcover-jacket' &&
-                outerWrap.jacketFlapWidthMm > 0 &&
-                [
-                  {
-                    label: 'BACK TUCK FLAP',
-                    rect: {
-                      x: 0,
-                      y: 0,
-                      width: outerWrap.jacketFlapWidthMm,
-                      height: outerWrap.heightMm,
-                    },
-                  },
-                  {
-                    label: 'FRONT TUCK FLAP',
-                    rect: {
-                      x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
-                      y: 0,
-                      width: outerWrap.jacketFlapWidthMm,
-                      height: outerWrap.heightMm,
-                    },
-                  },
-                ].map(({ label, rect }) => {
-                  const c = GeometryPrimitives.rectCenter(rect);
-                  return (
-                    <g key={label}>
-                      <rect
-                        x={rect.x}
-                        y={rect.y}
-                        width={rect.width}
-                        height={rect.height}
-                        fill="#C59B48"
-                        fillOpacity="0.16"
+                outerWrap.jacketFlapWidthMm > 0 && (
+                  <g data-testid="blueprint-softcover-flaps-and-tabs">
+                    {outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => (
+                      <path
+                        key={`glue-tab-${idx}`}
+                        d={GeometryPrimitives.polygonToSvgPath(tabPoly, 2)}
+                        fill="url(#outer-glue-hatch)"
                         stroke="#A67B2E"
-                        strokeWidth="0.7"
-                        strokeDasharray="3 2"
+                        strokeWidth="0.65"
+                        strokeDasharray="2.5 1.8"
                       />
-                      <text
-                        x={c.x}
-                        y={c.y}
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        fontSize="5.2"
-                        fontWeight="700"
-                        fill="#8A6019"
-                        transform={`rotate(-90 ${c.x} ${c.y})`}
-                      >
-                        {label} ({roundTo(outerWrap.jacketFlapWidthMm, 1)} mm)
-                      </text>
-                    </g>
-                  );
-                })}
+                    ))}
+                    {[
+                      {
+                        label: 'BACK FLAP',
+                        rect: {
+                          x: 0,
+                          y: outerWrap.jacketGlueTabHeightMm,
+                          width: outerWrap.jacketFlapWidthMm,
+                          height: cutList.coverBoards.heightMm,
+                        },
+                      },
+                      {
+                        label: 'FRONT FLAP',
+                        rect: {
+                          x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
+                          y: outerWrap.jacketGlueTabHeightMm,
+                          width: outerWrap.jacketFlapWidthMm,
+                          height: cutList.coverBoards.heightMm,
+                        },
+                      },
+                    ].map(({ label, rect }) => {
+                      const c = GeometryPrimitives.rectCenter(rect);
+                      return (
+                        <g key={label}>
+                          <rect
+                            x={rect.x}
+                            y={rect.y}
+                            width={rect.width}
+                            height={rect.height}
+                            fill="#C59B48"
+                            fillOpacity="0.14"
+                            stroke="#A67B2E"
+                            strokeWidth="0.7"
+                            strokeDasharray="3 2"
+                          />
+                          <text
+                            x={c.x}
+                            y={c.y}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="5"
+                            fontWeight="700"
+                            fill="#8A6019"
+                            transform={`rotate(-90 ${c.x} ${c.y})`}
+                          >
+                            {label} ({roundTo(outerWrap.jacketFlapWidthMm, 1)} mm)
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                )}
 
               {/* Manual-Cutting CAD Dimension Lines, Cumulative Ruler, Miter Callout & Grain Arrow */}
               {showDimensions && (
@@ -398,44 +423,53 @@ export function OuterBlueprintCanvas({
                     emphasized
                   />
 
-                  {/* Right Vertical Breakdown Chain (Top Turn-In | Board Height | Bottom Turn-In) */}
-                  {outerWrap.turnInMm > 0.2 ? (
-                    <>
-                      <VerticalDimLine
-                        y1={0}
-                        y2={outerWrap.turnInMm}
-                        x={outerWrap.widthMm + 11 + bleedPad}
-                        anchorX={outerWrap.widthMm}
-                        label={UnitConverter.formatValue(outerWrap.turnInMm, unit)}
-                        fontSize={4.2}
-                      />
-                      <VerticalDimLine
-                        y1={outerWrap.turnInMm}
-                        y2={outerWrap.heightMm - outerWrap.turnInMm}
-                        x={outerWrap.widthMm + 11 + bleedPad}
-                        anchorX={outerWrap.widthMm}
-                        label={UnitConverter.format(cutList.coverBoards.heightMm, unit)}
-                        fontSize={4.4}
-                      />
-                      <VerticalDimLine
-                        y1={outerWrap.heightMm - outerWrap.turnInMm}
-                        y2={outerWrap.heightMm}
-                        x={outerWrap.widthMm + 11 + bleedPad}
-                        anchorX={outerWrap.widthMm}
-                        label={UnitConverter.formatValue(outerWrap.turnInMm, unit)}
-                        fontSize={4.2}
-                      />
-                    </>
-                  ) : (
-                    <VerticalDimLine
-                      y1={0}
-                      y2={outerWrap.heightMm}
-                      x={outerWrap.widthMm + 11 + bleedPad}
-                      anchorX={outerWrap.widthMm}
-                      label={UnitConverter.format(outerWrap.heightMm, unit)}
-                      fontSize={4.4}
-                    />
-                  )}
+                  {/* Right Vertical Breakdown Chain (Top Margin | Cover/Board Height | Bottom Margin) */}
+                  {(() => {
+                    const vMargin =
+                      outerWrap.bindingStyle === 'softcover-jacket'
+                        ? outerWrap.jacketGlueTabHeightMm
+                        : outerWrap.turnInMm;
+                    if (vMargin <= 0.2) {
+                      return (
+                        <VerticalDimLine
+                          y1={0}
+                          y2={outerWrap.heightMm}
+                          x={outerWrap.widthMm + 11 + bleedPad}
+                          anchorX={outerWrap.widthMm}
+                          label={UnitConverter.format(outerWrap.heightMm, unit)}
+                          fontSize={4.4}
+                        />
+                      );
+                    }
+                    return (
+                      <>
+                        <VerticalDimLine
+                          y1={0}
+                          y2={vMargin}
+                          x={outerWrap.widthMm + 11 + bleedPad}
+                          anchorX={outerWrap.widthMm}
+                          label={UnitConverter.formatValue(vMargin, unit)}
+                          fontSize={4.2}
+                        />
+                        <VerticalDimLine
+                          y1={vMargin}
+                          y2={outerWrap.heightMm - vMargin}
+                          x={outerWrap.widthMm + 11 + bleedPad}
+                          anchorX={outerWrap.widthMm}
+                          label={UnitConverter.format(cutList.coverBoards.heightMm, unit)}
+                          fontSize={4.4}
+                        />
+                        <VerticalDimLine
+                          y1={outerWrap.heightMm - vMargin}
+                          y2={outerWrap.heightMm}
+                          x={outerWrap.widthMm + 11 + bleedPad}
+                          anchorX={outerWrap.widthMm}
+                          label={UnitConverter.formatValue(vMargin, unit)}
+                          fontSize={4.2}
+                        />
+                      </>
+                    );
+                  })()}
 
                   {/* Cumulative Steel-Ruler Datum Strip from 0 along bottom edge */}
                   <CumulativeRulerStrip

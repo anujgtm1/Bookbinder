@@ -180,15 +180,13 @@ describe('calculateCaseGeometry', () => {
     expect(geom.spineLiner.scoreLines).toHaveLength(2);
   });
 
-  it('computes 0-board softcover slip-in jacket geometry with integrated tuck flaps and rectangular cut outline', () => {
+  it('computes 0-board 1-piece fold-and-glue slip cover with 4 mitered flap glue tabs fitting 1× US Letter / A4 on A6', () => {
     const a6Soft = {
       ...DEFAULT_BOOK_PARAMETERS,
       bindingStyle: 'softcover-jacket' as const,
       pbWidthMm: 105,
       pbHeightMm: 148,
       pbThicknessMm: 5,
-      overhangForeEdgeMm: 0,
-      overhangTopBottomMm: 2,
     };
 
     const geom = calculateCaseGeometry(a6Soft);
@@ -198,11 +196,22 @@ describe('calculateCaseGeometry', () => {
     expect(geom.cutList.boardThicknessMm).toBe(0);
     expect(geom.outerWrap.turnInMm).toBe(0);
     expect(geom.outerWrap.miterCutLegMm).toBe(0);
-    expect(geom.outerWrap.outerCutPolygon).toHaveLength(4);
-    // Flap = roundTo(105 * 0.42, 1) = 44.1 mm; spine = 6 mm
-    expect(geom.outerWrap.jacketFlapWidthMm).toBeCloseTo(44.1, 2);
+    // 16-vertex clockwise outline with 4 mitered top & bottom flap glue tabs
+    expect(geom.outerWrap.outerCutPolygon).toHaveLength(16);
+    expect(geom.outerWrap.jacketGlueTabHeightMm).toBeCloseTo(10.0, 2);
+    expect(geom.outerWrap.jacketGlueTabPolygons).toHaveLength(4);
+    // Snug slip ease: cover panel = 106 × 150 mm, spine = 6 mm, flap = roundTo(105 * 0.23, 1) = 24.2 mm
+    expect(geom.outerWrap.jacketFlapWidthMm).toBeCloseTo(24.2, 2);
     expect(geom.outerWrap.spineRect.width).toBeCloseTo(6.0, 2);
-    expect(geom.outerWrap.widthMm).toBeCloseTo(44.1 * 2 + 105 * 2 + 6, 2);
-    expect(geom.outerWrap.heightMm).toBeCloseTo(150, 2);
+    expect(geom.outerWrap.backBoardRect.y).toBeCloseTo(10.0, 2);
+    expect(geom.outerWrap.widthMm).toBeCloseTo(24.2 * 2 + 106 * 2 + 6, 2); // 266.4 mm <= 269.4 mm US Letter printable
+    expect(geom.outerWrap.heightMm).toBeCloseTo(170.0, 2); // 150 + 2*10 <= 205.9 mm US Letter printable
+    expect(geom.rollRecommendation.fits).toBe(true);
+    expect(geom.rollRecommendation.summary).toContain('US Letter / A4');
+
+    // A slightly wider sheet (276 x 170 mm) fits A4 (287 mm printable) but not US Letter (269.4 mm)
+    const a4Only = evaluateRollWidth(276, 170);
+    expect(a4Only.fits).toBe(true);
+    expect(a4Only.summary).toContain('1× A4 home sheet');
   });
 });

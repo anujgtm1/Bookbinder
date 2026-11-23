@@ -98,5 +98,21 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     const splitBytes = await generateOuterWrapPdf(geom, 'three-piece');
     const splitDoc = await PDFDocument.load(splitBytes);
     expect(splitDoc.getPageCount()).toBe(3);
+
+    // 1-Piece Fold-and-Glue Slip Cover for A6 (5 mm spine, no bleed) -> exact 266.4 x 170.0 mm page
+    const a6SoftGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      includeBleed: false,
+    });
+    const softBytes = await generateOuterWrapPdf(a6SoftGeom, 'single');
+    const softDoc = await PDFDocument.load(softBytes);
+    expect(softDoc.getPageCount()).toBe(1);
+    const softSize = softDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(softSize.width)).toBeCloseTo(266.4, 1);
+    expect(UnitConverter.pointsToMm(softSize.height)).toBeCloseTo(170.0, 1);
   });
 });

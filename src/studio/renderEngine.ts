@@ -496,6 +496,7 @@ export async function generatePrintReadyRollPdf(
 
     const w = outerWrap.widthMm;
     const h = outerWrap.heightMm;
+    const isSoftcover = outerWrap.bindingStyle === 'softcover-jacket';
 
     // Horizontal top & bottom turn-in fold lines (hardcover styles)
     if (outerWrap.turnInMm > 0.2) {
@@ -505,7 +506,22 @@ export async function generatePrintReadyRollPdf(
       drawFoldLine(bleed, botFoldY, bleed + w, botFoldY);
     }
 
+    // Horizontal glue-tab fold lines on left & right flaps (1-piece fold-and-glue slip cover)
+    if (isSoftcover && outerWrap.jacketGlueTabHeightMm > 0.2 && outerWrap.jacketFlapWidthMm > 0.2) {
+      const flapW = outerWrap.jacketFlapWidthMm;
+      const tabTopY = bleed + outerWrap.jacketGlueTabHeightMm;
+      const tabBotY = bleed + h - outerWrap.jacketGlueTabHeightMm;
+      // Left (Back) flap top & bottom glue tab folds
+      drawFoldLine(bleed, tabTopY, bleed + flapW, tabTopY);
+      drawFoldLine(bleed, tabBotY, bleed + flapW, tabBotY);
+      // Right (Front) flap top & bottom glue tab folds
+      drawFoldLine(bleed + w - flapW, tabTopY, bleed + w, tabTopY);
+      drawFoldLine(bleed + w - flapW, tabBotY, bleed + w, tabBotY);
+    }
+
     // Deduplicated vertical fold / score X positions (fore-edge turn-ins/flaps, board edges & spine hinges)
+    const verticalStartY = isSoftcover ? bleed + outerWrap.jacketGlueTabHeightMm : bleed;
+    const verticalEndY = isSoftcover ? bleed + h - outerWrap.jacketGlueTabHeightMm : bleed + h;
     const rawVerticalXs = [
       outerWrap.backBoardRect.x,
       outerWrap.backBoardRect.x + outerWrap.backBoardRect.width,
@@ -522,7 +538,7 @@ export async function generatePrintReadyRollPdf(
       }
     }
     for (const vx of uniqueVerticalXs) {
-      drawFoldLine(bleed + vx, bleed, bleed + vx, bleed + h);
+      drawFoldLine(bleed + vx, verticalStartY, bleed + vx, verticalEndY);
     }
   } else {
     // Bleed + Outer Corner Registration Marks Only (outside the trimmed wrap boundary)

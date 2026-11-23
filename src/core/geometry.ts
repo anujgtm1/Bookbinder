@@ -17,6 +17,11 @@ import { roundTo } from '@/types/units';
 const LINER_OVERLAP_PER_SIDE_MM = 15.0;
 const INNER_VERTICAL_INSET_MM = 1.0; // 1.0 mm inset top & bottom => -2.0 mm height
 const QUARTER_BOUND_LAP_MM = 3.0;
+const SOFTCOVER_GLUE_TAB_H_MM = 10.0;
+const US_LETTER_SHORT_MM = 215.9;
+const US_LETTER_LONG_MM = 279.4;
+const A4_SHORT_MM = 210.0;
+const A4_LONG_MM = 297.0;
 
 export function calculateChipboardCutList(params: BookParameters): ChipboardCutList {
   const style = params.bindingStyle ?? 'rigid-case';
@@ -24,19 +29,22 @@ export function calculateChipboardCutList(params: BookParameters): ChipboardCutL
   const boardHeightMm = params.pbHeightMm + params.overhangTopBottomMm;
 
   if (style === 'softcover-jacket') {
+    // 0-board 1-piece fold-and-glue slip cover wraps directly around the notebook with snug slip ease (no rigid board overhang)
+    const coverPanelWidthMm = roundTo(params.pbWidthMm + 1.0, 2);
+    const coverPanelHeightMm = roundTo(params.pbHeightMm + 2.0, 2);
     const softSpineWidthMm = roundTo(params.pbThicknessMm + 1.0, 2);
     return {
       coverBoards: {
         label: 'Cover Panels (No Chipboard)',
         quantity: 0,
-        widthMm: boardWidthMm,
-        heightMm: boardHeightMm,
+        widthMm: coverPanelWidthMm,
+        heightMm: coverPanelHeightMm,
       },
       spineStrip: {
         label: 'Softcover Spine (No Chipboard)',
         quantity: 0,
         widthMm: softSpineWidthMm,
-        heightMm: boardHeightMm,
+        heightMm: coverPanelHeightMm,
       },
       boardThicknessMm: 0,
       hingeSpacerMm: 0,
@@ -134,26 +142,94 @@ export function calculateOuterWrap(
   const hingeW = cutList.hingeSpacerMm;
   const isSoftcover = style === 'softcover-jacket';
   const jacketFlapWidthMm = isSoftcover
-    ? roundTo(Math.min(55, Math.max(25, params.pbWidthMm * 0.42)), 1)
+    ? roundTo(Math.min(48, Math.max(24, params.pbWidthMm * 0.23)), 1)
     : 0;
+  const jacketGlueTabHeightMm = isSoftcover ? SOFTCOVER_GLUE_TAB_H_MM : 0;
   const turnIn = isSoftcover ? 0 : params.turnInMm;
   const sideMargin = isSoftcover ? jacketFlapWidthMm : turnIn;
+  const verticalMargin = isSoftcover ? jacketGlueTabHeightMm : turnIn;
 
   const innerWidthMm = boardW * 2 + hingeW * 2 + spineW;
-  const widthMm = innerWidthMm + sideMargin * 2;
-  const heightMm = boardH + turnIn * 2;
+  const widthMm = roundTo(innerWidthMm + sideMargin * 2, 3);
+  const heightMm = roundTo(boardH + verticalMargin * 2, 3);
 
   const miterGapMm = isSoftcover ? 0 : params.boardThicknessMm * params.miterFactor;
   const miterCutLegMm = isSoftcover
     ? 0
     : Math.max(0, Math.min(widthMm / 2, heightMm / 2, 2 * turnIn - miterGapMm * Math.SQRT2));
 
-  const outerCutPolygon = buildMiteredRectPolygon(widthMm, heightMm, miterCutLegMm, {
-    topLeft: !isSoftcover,
-    topRight: !isSoftcover,
-    bottomRight: !isSoftcover,
-    bottomLeft: !isSoftcover,
-  });
+  let outerCutPolygon: Polygon2D;
+  let jacketGlueTabPolygons: readonly Polygon2D[] = [];
+
+  if (isSoftcover) {
+    const x0 = 0;
+    const x1 = jacketFlapWidthMm;
+    const x2 = roundTo(jacketFlapWidthMm + innerWidthMm, 3);
+    const x3 = widthMm;
+    const y0 = 0;
+    const y1 = jacketGlueTabHeightMm;
+    const y2 = roundTo(jacketGlueTabHeightMm + boardH, 3);
+    const y3 = heightMm;
+    const m = roundTo(Math.min(jacketGlueTabHeightMm, jacketFlapWidthMm * 0.35), 2);
+
+    // 16-vertex clockwise 1-piece fold-and-glue slip cover outline with 4 mitered flap glue tabs
+    outerCutPolygon = [
+      { x: x0, y: y1 },
+      { x: x0 + m, y: y0 },
+      { x: x1 - m, y: y0 },
+      { x: x1, y: y1 },
+      { x: x2, y: y1 },
+      { x: x2 + m, y: y0 },
+      { x: x3 - m, y: y0 },
+      { x: x3, y: y1 },
+      { x: x3, y: y2 },
+      { x: x3 - m, y: y3 },
+      { x: x2 + m, y: y3 },
+      { x: x2, y: y2 },
+      { x: x1, y: y2 },
+      { x: x1 - m, y: y3 },
+      { x: x0 + m, y: y3 },
+      { x: x0, y: y2 },
+    ];
+
+    jacketGlueTabPolygons = [
+      // Left (Back) Top Glue Tab
+      [
+        { x: x0, y: y1 },
+        { x: x0 + m, y: y0 },
+        { x: x1 - m, y: y0 },
+        { x: x1, y: y1 },
+      ],
+      // Right (Front) Top Glue Tab
+      [
+        { x: x2, y: y1 },
+        { x: x2 + m, y: y0 },
+        { x: x3 - m, y: y0 },
+        { x: x3, y: y1 },
+      ],
+      // Right (Front) Bottom Glue Tab
+      [
+        { x: x2, y: y2 },
+        { x: x3, y: y2 },
+        { x: x3 - m, y: y3 },
+        { x: x2 + m, y: y3 },
+      ],
+      // Left (Back) Bottom Glue Tab
+      [
+        { x: x0, y: y2 },
+        { x: x1, y: y2 },
+        { x: x1 - m, y: y3 },
+        { x: x0 + m, y: y3 },
+      ],
+    ];
+  } else {
+    outerCutPolygon = buildMiteredRectPolygon(widthMm, heightMm, miterCutLegMm, {
+      topLeft: true,
+      topRight: true,
+      bottomRight: true,
+      bottomLeft: true,
+    });
+  }
 
   const activeBleed = params.includeBleed ? params.bleedMm : 0;
   const bleedRect = {
@@ -176,17 +252,19 @@ export function calculateOuterWrap(
     innerWidthMm,
     turnInMm: turnIn,
     jacketFlapWidthMm,
+    jacketGlueTabHeightMm,
+    jacketGlueTabPolygons,
     bleedMm: params.bleedMm,
     includeBleed: params.includeBleed,
     miterGapMm,
     miterCutLegMm,
     outerCutPolygon,
     bleedRect,
-    backBoardRect: { x: backBoardX, y: turnIn, width: boardW, height: boardH },
-    leftHingeRect: { x: leftHingeX, y: turnIn, width: hingeW, height: boardH },
-    spineRect: { x: spineX, y: turnIn, width: spineW, height: boardH },
-    rightHingeRect: { x: rightHingeX, y: turnIn, width: hingeW, height: boardH },
-    frontBoardRect: { x: frontBoardX, y: turnIn, width: boardW, height: boardH },
+    backBoardRect: { x: backBoardX, y: verticalMargin, width: boardW, height: boardH },
+    leftHingeRect: { x: leftHingeX, y: verticalMargin, width: hingeW, height: boardH },
+    spineRect: { x: spineX, y: verticalMargin, width: spineW, height: boardH },
+    rightHingeRect: { x: rightHingeX, y: verticalMargin, width: hingeW, height: boardH },
+    frontBoardRect: { x: frontBoardX, y: verticalMargin, width: boardW, height: boardH },
   };
 }
 
@@ -277,10 +355,57 @@ export function calculateSplitWrapPanels(
   return [backPanel, spinePanel, frontPanel];
 }
 
+function fitsDesktopSheet(
+  wrapWidthMm: number,
+  wrapHeightMm: number,
+  sheetShortMm: number,
+  sheetLongMm: number,
+): boolean {
+  const short = Math.min(wrapWidthMm, wrapHeightMm);
+  const long = Math.max(wrapWidthMm, wrapHeightMm);
+  return (
+    short <= sheetShortMm - ROLL_TOTAL_MARGIN_MM &&
+    long <= sheetLongMm - ROLL_TOTAL_MARGIN_MM
+  );
+}
+
 export function evaluateRollWidth(
   wrapWidthMm: number,
   wrapHeightMm: number,
 ): RollRecommendation {
+  // Check standard desktop home-printer sheets first (US Letter 8.5×11" and A4)
+  const fitsLetter = fitsDesktopSheet(
+    wrapWidthMm,
+    wrapHeightMm,
+    US_LETTER_SHORT_MM,
+    US_LETTER_LONG_MM,
+  );
+  const fitsA4 = fitsDesktopSheet(wrapWidthMm, wrapHeightMm, A4_SHORT_MM, A4_LONG_MM);
+
+  if (fitsLetter || fitsA4) {
+    const orientation: RollFeedOrientation =
+      wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated';
+    const usedWidthMm = Math.min(wrapWidthMm, wrapHeightMm);
+    const printableWidthMm = (fitsLetter ? US_LETTER_SHORT_MM : A4_SHORT_MM) - ROLL_TOTAL_MARGIN_MM;
+    const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
+    const sheetLabel =
+      fitsLetter && fitsA4
+        ? '1× US Letter / A4 home sheet'
+        : fitsLetter
+          ? '1× US Letter home sheet'
+          : '1× A4 home sheet';
+
+    return {
+      fits: true,
+      roll: STANDARD_ROLL_WIDTHS[0],
+      printableWidthMm,
+      orientation,
+      usedWidthMm,
+      spareWidthMm,
+      summary: `Fits on ${sheetLabel} (100% actual size)`,
+    };
+  }
+
   for (const roll of STANDARD_ROLL_WIDTHS) {
     const printableWidthMm = roll.widthMm - ROLL_TOTAL_MARGIN_MM;
     const fitsUnrotated = wrapWidthMm <= printableWidthMm;

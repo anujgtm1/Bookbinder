@@ -139,8 +139,12 @@ export interface OuterWrapGeometry {
   readonly heightMm: number;
   readonly innerWidthMm: number;
   readonly turnInMm: number;
-  /** Integrated slip-in tuck flap width on each fore-edge when bindingStyle === 'softcover-jacket' (0 otherwise) */
+  /** Integrated slip-in pocket flap width on each fore-edge when bindingStyle === 'softcover-jacket' (0 otherwise) */
   readonly jacketFlapWidthMm: number;
+  /** Top & bottom mitered glue tab height on the integrated flaps when bindingStyle === 'softcover-jacket' (0 otherwise) */
+  readonly jacketGlueTabHeightMm: number;
+  /** 4 trapezoidal glue tab polygons (left-top, right-top, right-bottom, left-bottom) for 1-piece fold-and-glue slip cover */
+  readonly jacketGlueTabPolygons: readonly Polygon2D[];
   readonly bleedMm: number;
   readonly includeBleed: boolean;
   readonly miterGapMm: number;

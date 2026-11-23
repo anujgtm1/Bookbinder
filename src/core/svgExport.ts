@@ -50,19 +50,36 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
     isSoftcover && outerWrap.jacketFlapWidthMm > 0
       ? [
           svgRect(
-            { x: 0, y: 0, width: outerWrap.jacketFlapWidthMm, height: outerWrap.heightMm },
+            {
+              x: 0,
+              y: outerWrap.jacketGlueTabHeightMm,
+              width: outerWrap.jacketFlapWidthMm,
+              height: cutList.coverBoards.heightMm,
+            },
             'stroke-dasharray="2 2" stroke-opacity="0.8" data-label="Back Tuck Flap"',
           ),
           svgRect(
             {
               x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
-              y: 0,
+              y: outerWrap.jacketGlueTabHeightMm,
               width: outerWrap.jacketFlapWidthMm,
-              height: outerWrap.heightMm,
+              height: cutList.coverBoards.heightMm,
             },
             'stroke-dasharray="2 2" stroke-opacity="0.8" data-label="Front Tuck Flap"',
           ),
         ].join('\n    ')
+      : '';
+
+  const glueTabGroup =
+    isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0
+      ? `  <g id="glue-tabs" fill="#e6dccb" fill-opacity="0.65" stroke="#A67B2E" stroke-width="0.25" stroke-dasharray="2 1.5">
+    ${outerWrap.jacketGlueTabPolygons
+      .map(
+        (poly, idx) =>
+          `<path d="${GeometryPrimitives.polygonToSvgPath(poly, 3)}" data-label="Glue Tab ${idx + 1}" />`,
+      )
+      .join('\n    ')}
+  </g>`
       : '';
 
   const backCenter = GeometryPrimitives.rectCenter(outerWrap.backBoardRect);
@@ -86,9 +103,9 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
     <text x="${fmt(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)}" y="${fmt(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmt(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)} ${fmt(outerWrap.heightMm / 2)})">TUCK FLAP ${fmt(outerWrap.jacketFlapWidthMm)} mm</text>`
       : '';
 
-  const headerNoteY = isSoftcover ? 6 : outerWrap.turnInMm / 2;
+  const headerNoteY = isSoftcover ? outerWrap.jacketGlueTabHeightMm / 2 : outerWrap.turnInMm / 2;
   const headerNote = isSoftcover
-    ? `Softcover Jacket ${escapeXml(wrapDim)} • Slip-In Tuck Flaps ${fmt(outerWrap.jacketFlapWidthMm)} mm • Scale 1:1 mm`
+    ? `Fold-and-Glue Slip Cover ${escapeXml(wrapDim)} • Flaps ${fmt(outerWrap.jacketFlapWidthMm)} mm + Glue Tabs ${fmt(outerWrap.jacketGlueTabHeightMm)} mm • Scale 1:1 mm`
     : isFlexible
       ? `Flexible-Spine Wrap ${escapeXml(wrapDim)} • Cloth Spine Gap ${fmt(cutList.spineStrip.widthMm)} mm • Turn-In ${fmt(outerWrap.turnInMm)} mm • Scale 1:1 mm`
       : `Outer Wrap ${escapeXml(wrapDim)} • Turn-In ${fmt(outerWrap.turnInMm)} mm • 45° Miter Clearance ${fmt(outerWrap.miterGapMm)} mm • Scale 1:1 mm`;
@@ -100,6 +117,7 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
      viewBox="${viewBox}">
   <title>Outer Case Wrap — ${escapeXml(wrapDim)} (1:1 mm)</title>
 ${bleedGroup}
+${glueTabGroup}
   <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
     <path d="${cutPath}" data-label="Outer Case Wrap Cut Polygon" />
   </g>

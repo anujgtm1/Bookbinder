@@ -79,8 +79,10 @@ describe('generateOuterWrapSvg', () => {
       pbThicknessMm: 5,
     });
     const softSvg = generateOuterWrapSvg(softGeom, 'single');
-    expect(softSvg).toContain('Softcover Jacket');
-    expect(softSvg).toContain('TUCK FLAP 44.1 mm');
+    expect(softSvg).toContain('Fold-and-Glue Slip Cover');
+    expect(softSvg).toContain('<g id="glue-tabs"');
+    expect(softSvg).toContain('TUCK FLAP 24.2 mm');
+    expect(softSvg).toContain('Glue Tabs 10 mm');
     expect(softSvg).toContain('BACK COVER');
     expect(softSvg).not.toContain('HINGE 0 mm');
     expect(softSvg).not.toContain('Turn-In 0 mm');

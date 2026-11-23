@@ -16,6 +16,7 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
     ? `${roundTo(cutList.spineStrip.widthMm, 1)} mm`
     : `${roundTo(cutList.hingeSpacerMm, 1)} mm`;
   const flapLabel = `${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm`;
+  const tabLabel = `${roundTo(outerWrap.jacketGlueTabHeightMm, 1)} mm`;
 
   return (
     <section
@@ -26,7 +27,9 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5">
         <h2 className="flex items-center gap-2 font-serif text-base font-semibold tracking-tight text-foreground">
           <Scissors className="h-4 w-4 text-brass" aria-hidden="true" />
-          {isSoftcover ? 'Softcover Jacket Cut Sheet & Roll Sizing' : 'Chipboard Cut List & Roll Sizing'}
+          {isSoftcover
+            ? 'Fold-and-Glue Slip Cover & Sheet Sizing'
+            : 'Chipboard Cut List & Roll Sizing'}
         </h2>
         <Badge
           variant={rollRecommendation.fits ? 'success' : 'warning'}
@@ -106,7 +109,7 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
             </p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {isSoftcover
-                ? `Score & fold ${flapLabel} flaps inward`
+                ? `Fold ${tabLabel} glue tabs & ${flapLabel} flaps inward`
                 : `Turn-in ${UnitConverter.format(outerWrap.turnInMm, unit)} • 45° miters`}
             </p>
           </div>
@@ -118,14 +121,14 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
             <span className="flex items-center gap-1">
               <Ruler className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
               {isSoftcover
-                ? 'Slip-In Jacket Fold Guide'
+                ? '1-Piece Fold & Glue Guide'
                 : isFlexible
                   ? 'Flexible Spine Assembly'
                   : 'Gluing Spacer Guide'}
             </span>
             <span className="font-mono text-[11px] text-brass">
               {isSoftcover
-                ? `${flapLabel} Flaps`
+                ? `${flapLabel} Flaps + 4 Tabs`
                 : isFlexible
                   ? `${spacerLabel} Gap`
                   : `${spacerLabel} Hinge`}
@@ -136,19 +139,26 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
               role="img"
               viewBox="0 0 320 66"
               className="h-14 w-full"
-              aria-label={`Softcover jacket diagram showing ${flapLabel} Back Flap, Back Cover, Spine, Front Cover, and ${flapLabel} Front Flap`}
+              aria-label={`Fold-and-glue slip cover diagram showing ${flapLabel} Back Flap with mitered glue tabs, Back Cover, Spine, Front Cover, and ${flapLabel} Front Flap with mitered glue tabs`}
             >
-              <title>Fold left and right slip-in tuck flaps inward along score lines</title>
-              <rect x="6" y="10" width="38" height="46" rx="1.5" fill="var(--brass-bright)" fillOpacity="0.22" stroke="var(--brass)" strokeWidth="1.2" strokeDasharray="3 2" />
-              <text x="25" y="36" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="var(--brass)">Flap</text>
-              <rect x="44" y="10" width="104" height="46" fill="currentColor" fillOpacity="0.08" stroke="currentColor" strokeOpacity="0.5" />
-              <text x="96" y="36" textAnchor="middle" fontSize="9.5" fontWeight="600" fill="currentColor">Back</text>
-              <rect x="148" y="10" width="24" height="46" fill="var(--brass-bright)" fillOpacity="0.14" stroke="var(--brass)" strokeWidth="1" strokeDasharray="3 2" />
+              <title>Cut outline, fold 4 mitered glue tabs and 2 side flaps inward, and glue shut</title>
+              {/* Left top & bottom mitered glue tabs */}
+              <polygon points="8,13 15,5 39,5 46,13" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              <polygon points="8,53 46,53 39,61 15,61" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              {/* Right top & bottom mitered glue tabs */}
+              <polygon points="274,13 281,5 305,5 312,13" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              <polygon points="274,53 312,53 305,61 281,61" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              {/* Left & Right pocket flaps */}
+              <rect x="8" y="13" width="38" height="40" fill="var(--brass-bright)" fillOpacity="0.18" stroke="var(--brass)" strokeWidth="1.1" strokeDasharray="3 2" />
+              <text x="27" y="36" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="var(--brass)">Flap</text>
+              <rect x="46" y="13" width="102" height="40" fill="currentColor" fillOpacity="0.08" stroke="currentColor" strokeOpacity="0.5" />
+              <text x="97" y="36" textAnchor="middle" fontSize="9.5" fontWeight="600" fill="currentColor">Back</text>
+              <rect x="148" y="13" width="24" height="40" fill="var(--brass-bright)" fillOpacity="0.14" stroke="var(--brass)" strokeWidth="1" strokeDasharray="3 2" />
               <text x="160" y="36" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="currentColor" transform="rotate(-90 160 36)">Spine</text>
-              <rect x="172" y="10" width="104" height="46" fill="currentColor" fillOpacity="0.08" stroke="currentColor" strokeOpacity="0.5" />
-              <text x="224" y="36" textAnchor="middle" fontSize="9.5" fontWeight="600" fill="currentColor">Front</text>
-              <rect x="276" y="10" width="38" height="46" rx="1.5" fill="var(--brass-bright)" fillOpacity="0.22" stroke="var(--brass)" strokeWidth="1.2" strokeDasharray="3 2" />
-              <text x="295" y="36" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="var(--brass)">Flap</text>
+              <rect x="172" y="13" width="102" height="40" fill="currentColor" fillOpacity="0.08" stroke="currentColor" strokeOpacity="0.5" />
+              <text x="223" y="36" textAnchor="middle" fontSize="9.5" fontWeight="600" fill="currentColor">Front</text>
+              <rect x="274" y="13" width="38" height="40" fill="var(--brass-bright)" fillOpacity="0.18" stroke="var(--brass)" strokeWidth="1.1" strokeDasharray="3 2" />
+              <text x="293" y="36" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="var(--brass)">Flap</text>
             </svg>
           ) : isFlexible ? (
             <svg
@@ -310,8 +320,9 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
           <figcaption className="text-[11px] text-muted-foreground">
             {isSoftcover ? (
               <>
-                Score &amp; fold the <strong className="text-foreground">{flapLabel}</strong> side
-                flaps inward to slip over your notebook covers.
+                Cut 1 outline, fold the <strong className="text-foreground">4 glue tabs</strong> &amp;{' '}
+                <strong className="text-foreground">{flapLabel}</strong> flaps inward, and glue shut —
+                no separate pockets needed.
               </>
             ) : isFlexible ? (
               <>

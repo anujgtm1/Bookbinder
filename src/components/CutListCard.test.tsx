@@ -46,5 +46,7 @@ describe('CutListCard', () => {
     rerender(<CutListCard geometry={softGeom} unit="mm" />);
     expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('0-Board Softcover');
     expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('Tuck Flaps');
+    expect(screen.getByTestId('roll-recommendation-badge')).toHaveTextContent('US Letter / A4');
+    expect(screen.getByTestId('cut-list-card')).toHaveTextContent('4 glue tabs');
   });
 });

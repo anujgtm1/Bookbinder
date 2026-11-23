@@ -502,11 +502,17 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('cut-spine-strip')).toContainText('Qty 0');
     await expect(page.getByTestId('cut-spine-strip')).toContainText('Cloth Gap');
 
-    // Switch to 0-Board Softcover Slip-In Jacket via sidebar selector
+    // Switch to 0-Board 1-Piece Fold-and-Glue Slip Cover via sidebar selector
     await page.getByTestId('binding-style-select').click();
-    await page.getByRole('option', { name: /Softcover Slip-In Jacket/i }).click();
+    await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('0-Board Softcover');
     await expect(page.getByTestId('cut-spine-strip')).toContainText('Tuck Flaps');
+    await expect(page.getByTestId('roll-recommendation-badge')).toContainText('US Letter / A4');
+
+    // Verify Blueprint renders the 4 mitered flap glue tabs cleanly
+    await page.getByTestId('studio-view-blueprint-btn').click();
+    await expect(page.getByTestId('blueprint-softcover-flaps-and-tabs')).toBeVisible();
+    await page.getByTestId('studio-view-2d-btn').click();
 
     // Switch back to Flexible Spine to style Inner Pockets with Tile Pattern & peek inside 3D Book
     await page.getByTestId('binding-style-select').click();

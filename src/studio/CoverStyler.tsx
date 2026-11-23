@@ -801,6 +801,16 @@ export function CoverStyler({
                     <rect width="6" height="6" fill="rgba(249, 115, 22, 0.20)" />
                     <line x1="0" y1="0" x2="0" y2="6" stroke="#f97316" strokeWidth="1.4" />
                   </pattern>
+                  <pattern
+                    id="studio-glue-tab-hatch"
+                    width="5"
+                    height="5"
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <rect width="5" height="5" fill="rgba(197, 155, 72, 0.22)" />
+                    <line x1="0" y1="0" x2="0" y2="5" stroke="#facc15" strokeWidth="0.9" strokeOpacity="0.7" />
+                  </pattern>
                   <filter id="brass-snap-glow" x="-20%" y="-20%" width="140%" height="140%">
                     <feDropShadow dx="0" dy="0" stdDeviation="1.4" floodColor="#facc15" floodOpacity="0.9" />
                   </filter>
@@ -903,6 +913,20 @@ export function CoverStyler({
                 {/* Fold, Board & Cut Guides Overlay */}
                 {showGuides && (
                   <g pointerEvents="none">
+                    {geometry.outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => (
+                      <path
+                        key={`studio-glue-tab-${idx}`}
+                        d={GeometryPrimitives.polygonToSvgPath(
+                          GeometryPrimitives.translatePolygon(tabPoly, spec.bleedMm, spec.bleedMm),
+                          2,
+                        )}
+                        fill="url(#studio-glue-tab-hatch)"
+                        stroke="#facc15"
+                        strokeOpacity="0.8"
+                        strokeWidth="0.65"
+                        strokeDasharray="3 2"
+                      />
+                    ))}
                     <path
                       d={GeometryPrimitives.polygonToSvgPath(shiftedCutPolygon, 2)}
                       fill="none"

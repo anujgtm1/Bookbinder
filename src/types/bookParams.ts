@@ -33,9 +33,9 @@ export const BINDING_STYLES: readonly BindingStyleOption[] = [
   },
   {
     id: 'softcover-jacket',
-    label: 'Softcover Slip-In Jacket (0-Board)',
-    shortLabel: 'Softcover Jacket',
-    summary: 'Single heavy sheet with integrated tuck flaps (2–8 mm)',
+    label: 'Fold-and-Glue Slip Cover (0-Board, 1 Sheet)',
+    shortLabel: 'Slip Cover',
+    summary: '1-piece printable cover with 4 mitered glue tabs — no separate pockets (fits Letter/A4 on A6)',
   },
 ] as const;
 
