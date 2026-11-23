@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { deflateSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
+import { PDFDocument } from 'pdf-lib';
 
 /** Creates a minimal valid solid-color RGBA PNG buffer (no external deps needed). */
 function createSolidPngBuffer(width: number, height: number, r: number, g: number, b: number): Buffer {
@@ -876,5 +877,54 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(a6FrameWidth).toBeGreaterThan(70);
     expect(a6FrameWidth).toBeLessThan(100);
     expect(a6FrameWidth).toBeLessThan(tradeFrameWidth - 20);
+  });
+
+  test('evaluates Target Print Media (2-sheet tiled PDF export on US Letter, overflow error & 1-click Quick Fix)', async ({
+    page,
+  }) => {
+    // 1. Select US Letter on default Trade Digest hardcover (366 x 259 mm -> fits as 2 Portrait tiled sheets)
+    await page.getByTestId('print-media-select').click();
+    await page.getByRole('option', { name: /US Letter/i }).click();
+
+    await expect(page.getByTestId('studio-roll-badge')).toContainText('2× US Letter tiled');
+
+    // Preflight shows print-media-tiled-2-pages warning with 1-click Switch to Tabloid fix
+    await page.getByTestId('studio-tool-preflight').click();
+    const tiledIssue = page.getByTestId('preflight-issue-print-media-tiled-2-pages');
+    await expect(tiledIssue).toBeVisible();
+    await expect(tiledIssue).toContainText('2 tiled pages');
+
+    // Export Print PDF and verify it produces a 2-page US Letter Portrait PDF (215.9 x 279.4 mm)
+    const pdfPromise = page.waitForEvent('download');
+    await page.getByTestId('studio-export-pdf-btn').click();
+    const pdfDownload = await pdfPromise;
+    expect(pdfDownload.suggestedFilename()).toBe('outer_cover_print.pdf');
+    const pdfBytes = await readFile((await pdfDownload.path())!);
+    const loadedPdf = await PDFDocument.load(pdfBytes);
+    expect(loadedPdf.getPageCount()).toBe(2);
+    const page0Size = loadedPdf.getPage(0).getSize();
+    expect(Math.round((page0Size.width * 25.4) / 72)).toBe(216);
+    expect(Math.round((page0Size.height * 25.4) / 72)).toBe(279);
+
+    // 2. Resize to an oversized book (height 275 mm -> wrap height 318 mm > US Letter printable) -> print-media-overflow error
+    await page.getByTestId('input-pb-height').fill('275');
+    await page.getByTestId('input-pb-width').fill('190');
+
+    const overflowIssue = page.getByTestId('preflight-issue-print-media-overflow');
+    await expect(overflowIssue).toBeVisible();
+    await expect(overflowIssue).toContainText('does not fit on US Letter');
+    await expect(page.getByTestId('studio-roll-badge')).toHaveAttribute(
+      'data-fit-status',
+      'does-not-fit',
+    );
+
+    // Click the 1-click Quick Fix ("Switch to 13" Roll") -> resolves overflow cleanly!
+    await page.getByTestId('preflight-fix-print-media-overflow').click();
+    await expect(overflowIssue).toBeHidden();
+    await expect(page.getByTestId('studio-roll-badge')).toContainText('13" Roll');
+    await expect(page.getByTestId('studio-roll-badge')).toHaveAttribute(
+      'data-fit-status',
+      'fits-roll',
+    );
   });
 });
