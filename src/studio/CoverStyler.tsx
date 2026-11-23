@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Box,
   Compass,
   Eye,
@@ -126,6 +127,7 @@ export function CoverStyler({
   const [blueprintZoom, setBlueprintZoom] = useState(1);
   const [blueprintPan, setBlueprintPan] = useState({ x: 0, y: 0 });
   const [book3DAngle, setBook3DAngle] = useState<Book3DCameraAngle>(DEFAULT_BOOK_3D_ANGLE);
+  const [book3DCoverOpen, setBook3DCoverOpen] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => studio.layers[studio.layers.length - 1]?.id ?? null,
   );
@@ -1031,6 +1033,7 @@ export function CoverStyler({
                 studio={studio}
                 customFont={customFont}
                 angle={book3DAngle}
+                isCoverOpen={book3DCoverOpen}
                 onAngleChange={setBook3DAngle}
               />
             </div>
@@ -1148,18 +1151,40 @@ export function CoverStyler({
                   </HudButton>
                 </HudGroup>
               ) : (
-                <HudGroup label="3D camera angles">
-                  {BOOK_3D_PRESETS.map((preset) => (
+                <>
+                  <HudGroup label="3D camera angles">
+                    {BOOK_3D_PRESETS.map((preset) => (
+                      <HudButton
+                        key={preset.id}
+                        pressed={activePreset3D === preset.id}
+                        onClick={() => setBook3DAngle(preset.angle)}
+                        data-testid={`book3d-preset-${preset.id}`}
+                      >
+                        {preset.label}
+                      </HudButton>
+                    ))}
+                  </HudGroup>
+                  <HudSeparator />
+                  <HudGroup label="Book cover state">
                     <HudButton
-                      key={preset.id}
-                      pressed={activePreset3D === preset.id}
-                      onClick={() => setBook3DAngle(preset.angle)}
-                      data-testid={`book3d-preset-${preset.id}`}
+                      pressed={book3DCoverOpen}
+                      onClick={() => {
+                        setBook3DCoverOpen((wasOpen) => {
+                          const nextOpen = !wasOpen;
+                          if (nextOpen) {
+                            setBook3DAngle({ yawDeg: -10, pitchDeg: -8 });
+                          }
+                          return nextOpen;
+                        });
+                      }}
+                      data-testid="book3d-open-cover-btn"
+                      title="Swing open the front cover to peek inside at your styled inner pocket"
                     >
-                      {preset.label}
+                      <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                      {book3DCoverOpen ? 'Close Cover' : 'Open Cover'}
                     </HudButton>
-                  ))}
-                </HudGroup>
+                  </HudGroup>
+                </>
               )}
             </FloatingHudToolbar>
           </div>

@@ -8,6 +8,7 @@ import {
   type Book3DCameraAngle,
 } from './book3d';
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
+import { computeInnerPocketsLayout } from './pocketRenderEngine';
 import {
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
@@ -20,6 +21,7 @@ export interface Book3DPreviewProps {
   readonly studio: CoverStudioState;
   readonly customFont: CustomFontAsset | null;
   readonly angle?: Book3DCameraAngle;
+  readonly isCoverOpen?: boolean;
   readonly onAngleChange?: (next: Book3DCameraAngle) => void;
 }
 
@@ -152,14 +154,152 @@ function CoverFaceSvg({
 }
 
 /**
+ * Renders the inside of the swung-open front cover showing the live styled Inner Front Pocket
+ * (endpaper color, positioned layers, and tiled patterns) — or the integrated tuck flap for Softcover Jacket.
+ */
+function InnerFrontPocketSvg({
+  prefix,
+  geometry,
+  studio,
+}: {
+  readonly prefix: string;
+  readonly geometry: CaseGeometry;
+  readonly studio: CoverStudioState;
+}) {
+  const layout = useMemo(() => computeInnerPocketsLayout(geometry), [geometry]);
+  const { pocketStyle } = studio;
+  const pocketLayers = pocketStyle.layers ?? [];
+  const boardW = geometry.cutList.coverBoards.widthMm;
+  const boardH = geometry.cutList.coverBoards.heightMm;
+  const isSoftcover = geometry.bindingStyle === 'softcover-jacket';
+  const pocketFace = layout.frontFaceRect;
+  const clipId = `${prefix}-inside-pocket-clip`;
+
+  // Pocket/flap is anchored to the outer fore-edge (left side when viewing the opened inside front board)
+  const pocketWidthMm = isSoftcover
+    ? geometry.outerWrap.jacketFlapWidthMm
+    : geometry.frontPocket.pocketWidthMm;
+  const pocketHeightMm = isSoftcover ? boardH : geometry.frontPocket.pocketHeightMm;
+  const insetY = (boardH - pocketHeightMm) / 2;
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox={`0 0 ${boardW} ${boardH}`}
+      preserveAspectRatio="none"
+      className="block h-full w-full select-none"
+    >
+      <defs>
+        <clipPath id={clipId}>
+          <rect x={0} y={insetY} width={pocketWidthMm} height={pocketHeightMm} />
+        </clipPath>
+        {pocketLayers
+          .filter((layer) => layer.tiled)
+          .map((layer) => {
+            const tileW = Math.max(8, layer.widthMm);
+            const tileH = Math.max(8, layer.heightMm);
+            return (
+              <pattern
+                key={`inside-tile-${layer.id}`}
+                id={`${prefix}-inside-tile-${layer.id}`}
+                x={layer.xMm - pocketFace.x}
+                y={layer.yMm - pocketFace.y + insetY}
+                width={tileW}
+                height={tileH}
+                patternUnits="userSpaceOnUse"
+              >
+                <image
+                  href={layer.dataUrl}
+                  x={0}
+                  y={0}
+                  width={tileW}
+                  height={tileH}
+                  preserveAspectRatio="none"
+                />
+              </pattern>
+            );
+          })}
+      </defs>
+
+      {/* Turned-in outer wrap rim / inner board backing */}
+      <rect x={0} y={0} width={boardW} height={boardH} fill={studio.frontBgColor} />
+      <rect
+        x={Math.min(10, boardW * 0.08)}
+        y={Math.min(10, boardH * 0.06)}
+        width={Math.max(10, boardW - Math.min(20, boardW * 0.16))}
+        height={Math.max(10, boardH - Math.min(20, boardH * 0.12))}
+        fill="#f6f0e4"
+        fillOpacity={isSoftcover ? 0.96 : 0.92}
+      />
+
+      {/* Styled Slip-In Pocket Envelope (or integrated softcover tuck flap) */}
+      <g clipPath={`url(#${clipId})`}>
+        <rect
+          x={0}
+          y={insetY}
+          width={pocketWidthMm}
+          height={pocketHeightMm}
+          fill={isSoftcover ? studio.frontBgColor : pocketStyle.backgroundColor}
+        />
+        {!isSoftcover && pocketLayers.length > 0 && (
+          <g opacity={pocketStyle.imageOpacity}>
+            {pocketLayers.map((layer) =>
+              layer.tiled ? (
+                <rect
+                  key={layer.id}
+                  x={0}
+                  y={insetY}
+                  width={pocketWidthMm}
+                  height={pocketHeightMm}
+                  fill={`url(#${prefix}-inside-tile-${layer.id})`}
+                />
+              ) : (
+                <image
+                  key={layer.id}
+                  href={layer.dataUrl}
+                  x={layer.xMm - pocketFace.x}
+                  y={layer.yMm - pocketFace.y + insetY}
+                  width={layer.widthMm}
+                  height={layer.heightMm}
+                  preserveAspectRatio="none"
+                />
+              ),
+            )}
+          </g>
+        )}
+      </g>
+
+      {/* Subtle shadow & crisp edge along the open slip-in pocket lip */}
+      <line
+        x1={pocketWidthMm}
+        y1={insetY}
+        x2={pocketWidthMm}
+        y2={insetY + pocketHeightMm}
+        stroke="rgba(35, 31, 27, 0.35)"
+        strokeWidth="1.2"
+      />
+      <rect
+        x={pocketWidthMm}
+        y={insetY}
+        width={3.5}
+        height={pocketHeightMm}
+        fill="rgba(0, 0, 0, 0.08)"
+      />
+    </svg>
+  );
+}
+
+/**
  * Interactive CSS 3D folded hardcover book mockup rendered at exact physical
- * BOARD_W × BOARD_H × SPINE_W proportions with live front, spine, and back artwork.
+ * BOARD_W × BOARD_H × SPINE_W proportions with live front, spine, and back artwork
+ * plus an openable front cover revealing the live styled inner pocket.
  */
 export function Book3DPreview({
   geometry,
   studio,
   customFont,
   angle: controlledAngle,
+  isCoverOpen = false,
   onAngleChange,
 }: Book3DPreviewProps) {
   const uniquePrefix = useId().replace(/:/g, '');
@@ -253,6 +393,9 @@ export function Book3DPreview({
   const halfDepth = dims.depthPx / 2;
   const halfWidth = dims.widthPx / 2;
   const halfHeight = dims.heightPx / 2;
+  const isFlexibleSpine = geometry.bindingStyle === 'flexible-spine';
+  const isSoftcover = geometry.bindingStyle === 'softcover-jacket';
+  const coverOpenAngleDeg = isCoverOpen ? -122 : 0;
 
   return (
     <div
@@ -314,52 +457,102 @@ export function Book3DPreview({
           transform: `rotateX(${angle.pitchDeg}deg) rotateY(${angle.yawDeg}deg)`,
         }}
       >
-        {/* Front Cover Outer Face */}
+        {/* Hinged Front Cover Assembly (swings open smoothly to reveal live Inner Front Pocket) */}
         <div
-          data-testid="book3d-front-face"
-          className="book3d-face rounded-r-[3px] shadow-md"
+          data-testid="book3d-front-hinge"
+          data-open={isCoverOpen ? 'true' : 'false'}
+          className="book3d-front-hinge"
           style={{
-            transform: `translateZ(${halfDepth}px)`,
+            transform: `translateZ(${halfDepth}px) rotateY(${coverOpenAngleDeg}deg)`,
           }}
         >
-          <CoverFaceSvg
-            faceId="front"
-            prefix={uniquePrefix}
-            viewRect={frontViewRect}
-            spec={spec}
-            studio={studio}
-            spinePlacements={spinePlacements}
-            fontFamily={activeFontFamily}
-          />
-          {/* Pressed bookbinding hinge groove along left spine edge */}
+          {/* Front Cover Outer Face */}
           <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-0 w-3.5"
-            style={{
-              background:
-                'linear-gradient(90deg, rgba(0,0,0,0.22) 0%, rgba(255,255,255,0.14) 36%, rgba(0,0,0,0.20) 56%, transparent 100%)',
-            }}
-          />
-          {/* Subtle top-left paper specular sheen */}
+            data-testid="book3d-front-face"
+            className="book3d-face rounded-r-[3px] shadow-md"
+          >
+            <CoverFaceSvg
+              faceId="front"
+              prefix={uniquePrefix}
+              viewRect={frontViewRect}
+              spec={spec}
+              studio={studio}
+              spinePlacements={spinePlacements}
+              fontFamily={activeFontFamily}
+            />
+            {/* Pressed bookbinding hinge groove along left spine edge (omitted on softcover) */}
+            {!isSoftcover && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-0 w-3.5"
+                style={{
+                  background: isFlexibleSpine
+                    ? 'linear-gradient(90deg, rgba(0,0,0,0.16) 0%, rgba(255,255,255,0.08) 45%, transparent 100%)'
+                    : 'linear-gradient(90deg, rgba(0,0,0,0.22) 0%, rgba(255,255,255,0.14) 36%, rgba(0,0,0,0.20) 56%, transparent 100%)',
+                }}
+              />
+            )}
+            {/* Subtle top-left paper specular sheen */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(135deg, rgba(255,255,255,0.09) 0%, transparent 44%, rgba(0,0,0,0.12) 100%)',
+              }}
+            />
+          </div>
+
+          {/* Front Cover Inside Face — Live Styled Inner Front Pocket */}
           <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
+            data-testid="book3d-inner-pocket-face"
+            className="book3d-face rounded-l-[3px]"
             style={{
-              background:
-                'linear-gradient(135deg, rgba(255,255,255,0.09) 0%, transparent 44%, rgba(0,0,0,0.12) 100%)',
+              transform: `rotateY(180deg) translateZ(${Math.max(0.8, dims.boardThicknessPx)}px)`,
             }}
-          />
+          >
+            <InnerFrontPocketSvg prefix={uniquePrefix} geometry={geometry} studio={studio} />
+            {/* Subtle inner hinge fold shadow */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-0 w-4"
+              style={{
+                background: 'linear-gradient(270deg, rgba(0,0,0,0.18), transparent)',
+              }}
+            />
+          </div>
         </div>
 
-        {/* Front Cover Inside Endpaper Lip (mirrors styled inner pocket endpaper color) */}
+        {/* First Cream Page of Text Block (revealed when the front cover swings open) */}
         <div
           aria-hidden="true"
-          className="book3d-face rounded-l-[3px]"
+          data-testid="book3d-first-page"
+          className="book3d-face flex flex-col items-center justify-center px-4 text-center"
           style={{
-            backgroundColor: studio.pocketStyle.backgroundColor,
-            transform: `rotateY(180deg) translateZ(${-(halfDepth - dims.boardThicknessPx)}px)`,
+            width: `${dims.pageWidthPx}px`,
+            height: `${dims.pageHeightPx}px`,
+            left: 0,
+            top: `${dims.pageInsetPx}px`,
+            backgroundColor: '#f6f0e3',
+            backgroundImage:
+              'linear-gradient(90deg, rgba(35,31,27,0.14) 0%, rgba(35,31,27,0.03) 12%, transparent 24%)',
+            transform: `translateZ(${halfDepth - dims.boardThicknessPx - 0.6}px)`,
           }}
-        />
+        >
+          {studio.spineText.title.trim() && (
+            <span
+              className="line-clamp-3 font-serif text-xs tracking-wide text-[#3b3329]/75"
+              style={{ fontFamily: activeFontFamily }}
+            >
+              {studio.spineText.title}
+            </span>
+          )}
+          {studio.spineText.author.trim() && (
+            <span className="mt-1 text-[9px] uppercase tracking-widest text-[#3b3329]/50">
+              {studio.spineText.author}
+            </span>
+          )}
+        </div>
 
         {/* Back Cover Outer Face */}
         <div
@@ -410,7 +603,7 @@ export function Book3DPreview({
         {/* Spine Face (left edge) */}
         <div
           data-testid="book3d-spine-face"
-          className="book3d-face"
+          className={`book3d-face ${isFlexibleSpine ? 'rounded-y-[2px]' : ''}`}
           style={{
             width: `${dims.depthPx}px`,
             height: `${dims.heightPx}px`,
@@ -429,13 +622,14 @@ export function Book3DPreview({
             fontFamily={activeFontFamily}
             showSpineText
           />
-          {/* Subtle cylindrical bookcloth spine lighting */}
+          {/* Subtle cylindrical bookcloth spine lighting (deeper curve for Flexible Spine) */}
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
             style={{
-              background:
-                'linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(255,255,255,0.14) 22%, rgba(255,255,255,0.03) 56%, rgba(0,0,0,0.26) 100%)',
+              background: isFlexibleSpine
+                ? 'linear-gradient(90deg, rgba(0,0,0,0.34) 0%, rgba(255,255,255,0.18) 28%, rgba(255,255,255,0.06) 52%, rgba(0,0,0,0.34) 100%)'
+                : 'linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(255,255,255,0.14) 22%, rgba(255,255,255,0.03) 56%, rgba(0,0,0,0.26) 100%)',
             }}
           />
         </div>

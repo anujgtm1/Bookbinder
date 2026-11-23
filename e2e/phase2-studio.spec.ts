@@ -486,4 +486,51 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(resizedW).toBeGreaterThanOrEqual(210);
     expect(resizedH).toBeGreaterThanOrEqual(315);
   });
+
+  test('recommends Flexible Spine for a 5 mm A6 notebook, supports Softcover Jacket, Pocket Tile Pattern, and Openable 3D Book Cover', async ({
+    page,
+  }) => {
+    // 1. Choose A6 Pocket Notebook preset + 5 mm spine thickness
+    await page.getByTestId('preset-select').click();
+    await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
+    await page.getByTestId('input-pb-thickness').fill('5');
+
+    // Preflight recommends Flexible Spine for thin (<8 mm) notebook -> one-click switch
+    await expect(page.getByTestId('preflight-issue-thin-book-rigid-spine')).toBeVisible();
+    await page.getByTestId('preflight-fix-thin-book-rigid-spine').click();
+
+    await expect(page.getByTestId('cut-spine-strip')).toContainText('Qty 0');
+    await expect(page.getByTestId('cut-spine-strip')).toContainText('Cloth Gap');
+
+    // Switch to 0-Board Softcover Slip-In Jacket via sidebar selector
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Softcover Slip-In Jacket/i }).click();
+    await expect(page.getByTestId('cut-cover-boards')).toContainText('0-Board Softcover');
+    await expect(page.getByTestId('cut-spine-strip')).toContainText('Tuck Flaps');
+
+    // Switch back to Flexible Spine to style Inner Pockets with Tile Pattern & peek inside 3D Book
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Flexible Spine/i }).click();
+
+    await page.getByTestId('nav-pockets').click();
+    const swatchPng = createSolidPngBuffer(64, 64, 195, 155, 72);
+    await page.getByTestId('pocket-upload-image-input').setInputFiles({
+      name: 'marbled-swatch.png',
+      mimeType: 'image/png',
+      buffer: swatchPng,
+    });
+    await page.getByTestId('pocket-tile-toggle-btn').click();
+    await expect(page.getByTestId('pocket-tile-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('pocket-layer-0')).toHaveAttribute('data-tiled', 'true');
+
+    // 2. Switch back to Outer Cover -> 3D Book Preview -> Open Cover to peek inside at the styled pocket
+    await page.getByTestId('nav-outer').click();
+    await page.getByTestId('studio-view-3d-btn').click();
+    await expect(page.getByTestId('book3d-front-hinge')).toHaveAttribute('data-open', 'false');
+
+    await page.getByTestId('book3d-open-cover-btn').click();
+    await expect(page.getByTestId('book3d-open-cover-btn')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('book3d-front-hinge')).toHaveAttribute('data-open', 'true');
+    await expect(page.getByTestId('book3d-inner-pocket-face')).toBeVisible();
+  });
 });
