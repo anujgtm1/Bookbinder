@@ -25,6 +25,10 @@ export interface CoverImageLayer {
   readonly stubExtensionSide?: 'front' | 'back';
   /** When true (Inner Pockets), repeats this layer seamlessly as an endpaper tile pattern */
   readonly tiled?: boolean;
+  /** Flip artwork horizontally around its center */
+  readonly flipX?: boolean;
+  /** Flip artwork vertically around its center */
+  readonly flipY?: boolean;
 }
 
 export const LAYER_MIN_SIZE_MM = 12;
@@ -113,6 +117,8 @@ export const CoverImageLayerModel = {
       stubExtensionMode: layer.stubExtensionMode,
       stubExtensionSide: layer.stubExtensionSide,
       tiled: layer.tiled,
+      flipX: layer.flipX,
+      flipY: layer.flipY,
     };
   },
 
@@ -260,6 +266,8 @@ export const CoverImageLayerModel = {
           ? obj.stubExtensionSide
           : undefined,
       tiled: obj.tiled === true ? true : undefined,
+      flipX: obj.flipX === true ? true : undefined,
+      flipY: obj.flipY === true ? true : undefined,
     };
   },
 } as const;

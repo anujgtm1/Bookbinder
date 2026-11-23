@@ -100,8 +100,19 @@ describe('CoverImageLayerModel', () => {
       widthMm: 100,
       heightMm: 160,
       clipZone: 'front',
+      flipX: true,
+      flipY: false,
     });
     expect(valid?.clipZone).toBe('front');
+    expect(valid?.flipX).toBe(true);
+    expect(valid?.flipY).toBeUndefined();
+    const fitted = CoverImageLayerModel.fitToRect(
+      { ...valid!, flipY: true },
+      sampleRect,
+      'back',
+    );
+    expect(fitted.flipX).toBe(true);
+    expect(fitted.flipY).toBe(true);
     expect(CoverImageLayerModel.deserialize({ dataUrl: 'javascript:alert(1)' })).toBeNull();
     expect(CoverImageLayerModel.deserialize(null)).toBeNull();
   });

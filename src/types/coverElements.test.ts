@@ -48,16 +48,23 @@ describe('CoverTextLayerModel & CoverOrnamentLayerModel', () => {
   });
 
   it('round-trips textLayers and ornaments cleanly through CoverStudioModel serialize/deserialize', () => {
-    const title = CoverTextLayerModel.createPreset('front-title', frontBoard, {
-      color: '#d9b566',
-      fontId: 'cormorant-garamond',
-    });
-    const orn: CoverOrnamentLayer = CoverOrnamentLayerModel.createForZone(
-      'frame-art-deco',
-      frontBoard,
-      'front',
-      '#d9b566',
-    );
+    const title = {
+      ...CoverTextLayerModel.createPreset('front-title', frontBoard, {
+        color: '#d9b566',
+        fontId: 'cormorant-garamond',
+      }),
+      flipX: true,
+      flipY: true,
+    };
+    const orn: CoverOrnamentLayer = {
+      ...CoverOrnamentLayerModel.createForZone(
+        'frame-art-deco',
+        frontBoard,
+        'front',
+        '#d9b566',
+      ),
+      flipX: true,
+    };
     const state = {
       ...CoverStudioModel.createDefault(),
       textLayers: [title],
@@ -69,7 +76,11 @@ describe('CoverTextLayerModel & CoverOrnamentLayerModel', () => {
     expect(restored.textLayers).toHaveLength(1);
     expect(restored.textLayers[0].text).toBe('BOOK TITLE');
     expect(restored.textLayers[0].fontId).toBe('cormorant-garamond');
+    expect(restored.textLayers[0].flipX).toBe(true);
+    expect(restored.textLayers[0].flipY).toBe(true);
     expect(restored.ornaments).toHaveLength(1);
     expect(restored.ornaments[0].presetId).toBe('frame-art-deco');
+    expect(restored.ornaments[0].flipX).toBe(true);
+    expect(restored.ornaments[0].flipY).toBeUndefined();
   });
 });

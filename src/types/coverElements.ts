@@ -78,6 +78,8 @@ export interface CoverTextLayer {
   readonly align: TextAlign;
   readonly color: string;
   readonly uppercase?: boolean;
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
 }
 
 export interface CoverOrnamentLayer {
@@ -98,6 +100,8 @@ export interface CoverOrnamentLayer {
   readonly customSvgPaths?: readonly string[];
   readonly customSvgViewBox?: { readonly width: number; readonly height: number };
   readonly customSvgRenderMode?: CustomSvgRenderMode;
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
 }
 
 export const COVER_TEXT_BOUNDS = {
@@ -288,6 +292,8 @@ export const CoverTextLayerModel = {
       align: parseAlign(obj.align),
       color: parseHex(obj.color, '#f5efe2'),
       uppercase: obj.uppercase === true ? true : undefined,
+      flipX: obj.flipX === true ? true : undefined,
+      flipY: obj.flipY === true ? true : undefined,
     };
   },
 } as const;
@@ -534,6 +540,8 @@ export const CoverOrnamentLayerModel = {
       customSvgPaths,
       customSvgViewBox,
       customSvgRenderMode,
+      flipX: obj.flipX === true ? true : undefined,
+      flipY: obj.flipY === true ? true : undefined,
     };
   },
 } as const;
