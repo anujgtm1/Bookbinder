@@ -211,7 +211,13 @@ export function CoverStyler({
     };
 
     const onPointerEnd = () => {
-      dragRef.current = { mode: 'none' };
+      if (dragRef.current.mode !== 'none') {
+        dragRef.current = { mode: 'none' };
+        // Clear click suppression after the immediate click event turn so future clicks are never eaten
+        window.setTimeout(() => {
+          suppressNextClickRef.current = false;
+        }, 0);
+      }
     };
 
     window.addEventListener('pointermove', onPointerMove);

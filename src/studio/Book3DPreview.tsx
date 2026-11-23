@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
@@ -169,9 +169,14 @@ export function Book3DPreview({
   const [isDragging, setIsDragging] = useState(false);
 
   const angle = controlledAngle ?? uncontrolledAngle;
+  const onAngleChangeRef = useRef(onAngleChange);
+  useEffect(() => {
+    onAngleChangeRef.current = onAngleChange;
+  }, [onAngleChange]);
+
   const setAngle = (next: Book3DCameraAngle) => {
-    if (onAngleChange) {
-      onAngleChange(next);
+    if (onAngleChangeRef.current) {
+      onAngleChangeRef.current(next);
     } else {
       setUncontrolledAngle(next);
     }
@@ -188,6 +193,35 @@ export function Book3DPreview({
     startY: 0,
     origAngle: DEFAULT_BOOK_3D_ANGLE,
   });
+
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      if (!dragStartRef.current.active) return;
+      const next = Book3DModel.orbitByPointerDelta(
+        dragStartRef.current.origAngle,
+        e.clientX - dragStartRef.current.startX,
+        e.clientY - dragStartRef.current.startY,
+      );
+      if (onAngleChangeRef.current) {
+        onAngleChangeRef.current(next);
+      } else {
+        setUncontrolledAngle(next);
+      }
+    };
+    const onPointerEnd = () => {
+      if (!dragStartRef.current.active) return;
+      dragStartRef.current.active = false;
+      setIsDragging(false);
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerEnd);
+    window.addEventListener('pointercancel', onPointerEnd);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerEnd);
+      window.removeEventListener('pointercancel', onPointerEnd);
+    };
+  }, []);
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
   const spinePlacements = useMemo(
@@ -231,7 +265,6 @@ export function Book3DPreview({
       }`}
       style={{ touchAction: 'none' }}
       onPointerDown={(e) => {
-        e.currentTarget.setPointerCapture?.(e.pointerId);
         setIsDragging(true);
         dragStartRef.current = {
           active: true,
@@ -239,23 +272,6 @@ export function Book3DPreview({
           startY: e.clientY,
           origAngle: angle,
         };
-      }}
-      onPointerMove={(e) => {
-        if (!dragStartRef.current.active) return;
-        const next = Book3DModel.orbitByPointerDelta(
-          dragStartRef.current.origAngle,
-          e.clientX - dragStartRef.current.startX,
-          e.clientY - dragStartRef.current.startY,
-        );
-        setAngle(next);
-      }}
-      onPointerUp={() => {
-        dragStartRef.current.active = false;
-        setIsDragging(false);
-      }}
-      onPointerCancel={() => {
-        dragStartRef.current.active = false;
-        setIsDragging(false);
       }}
       onKeyDown={(e) => {
         if (e.key === 'ArrowRight') {

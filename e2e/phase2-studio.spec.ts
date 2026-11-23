@@ -208,4 +208,44 @@ test.describe('Phase 2 — Interactive Cover & Spine Styler', () => {
     expect(svgText).toContain('id="spine-typography"');
     expect(svgText).toContain('Piranesi');
   });
+
+  test('toggles collapsible book spec rail and interactive 3D folded book preview with angle presets and orbit', async ({
+    page,
+  }) => {
+    // Collapse and re-expand the Book Spec rail in the Folio Workbench
+    const toggleRailBtn = page.getByTestId('toggle-sidebar-btn');
+    await expect(page.getByTestId('input-pb-width')).toBeVisible();
+    await toggleRailBtn.click();
+    await expect(page.getByTestId('input-pb-width')).toBeHidden();
+    await toggleRailBtn.click();
+    await expect(page.getByTestId('input-pb-width')).toBeVisible();
+
+    // Populate spine title & author, then switch to 3D Book Preview via the Floating HUD
+    await page.getByTestId('studio-spine-title-input').fill('Twenty Thousand Leagues');
+    await page.getByTestId('studio-spine-author-input').fill('Jules Verne');
+    await page.getByTestId('author-orientation-horizontal').click();
+
+    await page.getByTestId('studio-view-3d-btn').click();
+    const stage = page.getByTestId('book3d-stage');
+    await expect(stage).toBeVisible();
+    await expect(page.getByTestId('book3d-spine-typography')).toContainText('Twenty Thousand Leagues');
+
+    // Switch 3D camera presets
+    await page.getByTestId('book3d-preset-spine').click();
+    await expect(page.getByTestId('book3d-preset-spine')).toHaveAttribute('aria-pressed', 'true');
+    const transformAtSpine = await page.getByTestId('book3d-volume').getAttribute('style');
+    expect(transformAtSpine).toContain('rotateY(86deg)');
+
+    // Orbit the 3D volume interactively via pointer drag
+    await stage.scrollIntoViewIfNeeded();
+    const box = await stage.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 - 80, box!.y + box!.height / 2 - 20, { steps: 5 });
+    await page.mouse.up();
+
+    const transformAfterDrag = await page.getByTestId('book3d-volume').getAttribute('style');
+    expect(transformAfterDrag).not.toBe(transformAtSpine);
+  });
 });
