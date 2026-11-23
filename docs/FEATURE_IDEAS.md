@@ -6,32 +6,26 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ## Tier 1 — High-Impact Wins for Hobby Binders (Biggest Audience Appeal)
 
-### 1. Cricut / Silhouette / ScanNCut HTV & Foil SVG Export
-- **Why binders ask for it:** A huge slice of r/bookbinding wraps boards in plain bookcloth and cuts **Heat Transfer Vinyl (HTV)** or **foil iron-on** titles/borders on a Cricut or Silhouette.
-- **What it would do:**
-  - Export a clean **cut-only monochrome vector SVG** (`cover_htv_cut.svg`) containing **outlined text paths** (no `<text>` tags that break in Cricut Design Space) + optional board-edge registration ticks so vinyl lands dead-center on the cloth.
-  - Include a one-click **`Mirror Horizontally (for HTV Iron-On)`** toggle right in the export popover so users never waste a sheet of foil by forgetting to mirror.
+### 1. [Shipped] Cricut / Silhouette / ScanNCut HTV & Foil SVG Export
+- **Implemented in:** `src/studio/cricutExport.ts`, `src/studio/CricutExportDialog.tsx`, `src/components/PdfExportDialog.tsx`.
+- Includes flattened `1:1 mm` glyph & ornament paths (zero `<text>` tags), 4 cut scopes (`Spine`, `Front`, `Back`, `Full Wrap`), weeding box, corner alignment marks, HTV Mirror toggle, always-light carrier mat preview, **Split Mats by Foil Color**, and the **Hybrid Printed Base + HTV Foil** workflow (`Base Only (For HTV)` PDF with `3 mm` outer alignment ticks + 1-click handoff).
 
-### 2. Grain Direction Arrows on Every Blueprint & Print Sheet
-- **Why binders ask for it:** *"Grain direction parallel to the spine"* is universally called the **#1 beginner mistake** in bookbinding (wrong grain makes covers bow like potato chips once PVA dries).
-- **What it would do:**
-  - Add subtle, toggleable **`↕ GRAIN DIRECTION (PARALLEL TO SPINE)`** double-headed arrows onto the Outer Blueprint, Cut PDF, Cut SVG, Inner Pockets, and Spine Liner (rotating automatically when a piece is rotated 90° for pagination!).
-  - Adds authentic bindery credibility with almost zero UI clutter.
+### 2. [Shipped] Grain Direction Arrows on Every Blueprint & Print Sheet
+- **Implemented in:** `src/components/OuterBlueprintCanvas.tsx`, `src/studio/pockets/PocketBlueprintDimensions.tsx`, `src/core/svgExport.ts`, `src/core/pdfExport.ts`.
+- Renders `↕ GRAIN DIRECTION` arrows parallel to the spine across outer blueprints, inner pockets, and spine liners (rotating automatically with 90° sheet pagination).
 
-### 3. Front & Back Cover Typography + Classic Clothbound Frames
-- **Why binders ask for it:** Many rebinders make *"Penguin Clothbound Classics"* or minimalist cloth-and-foil editions where they don't upload a full raster image — they just want crisp title/author lettering, decorative corner ornaments, or a double hairline rule frame centered on the Front Cover and Spine.
-- **What it would do:**
-  - Extend our existing `SpineTypographyCard` typography engine to optionally place **Front Cover Title / Subtitle / Author** and **Back Cover Blurb / Colophon** text + selectable vintage double-rule border frames (using the same curated & custom `.ttf`/`.otf` fonts and vector PDF embedding).
+### 3. [Shipped] Front & Back Cover Typography + Classic Clothbound Frames
+- **Implemented in:** `src/studio/CoverTextCard.tsx`, `src/studio/ClassicDesignsCard.tsx`, `src/studio/ornaments/`, `src/resources/ornaments/`, `src/studio/svgStampParser.ts`, `src/studio/DesignPresetsCard.tsx`.
+- Includes generic `+ Text` with inline list renaming synced `1:1` with the cover, Front/Back presets, custom `.ttf`/`.otf`/`.woff` font upload, 17 classic foil frames/corners/dividers/emblems/spine motifs, custom SVG stamp import (`Fill` / `Outline` / `Fill + Thicken`), Safe-Margin Snap Guides + Fit presets, Flip H/V, and Reusable Series Design Presets.
 
 ### 4. Permanent Glue-In Endpapers Option (Alongside Removable Slip-In Pockets)
 - **Why binders ask for it:** Bookbinder started with removable slip-in pockets (awesome for non-destructive paperback cases!), while traditional paperback-to-hardcover rebinders rip off the paperback cover and glue **folded endpapers** (`pastedown + flyleaf`, double width `2 × PB_W × PB_H` with a center fold score line) directly onto the text block and boards.
 - **What it would do:**
   - Add an **Interior Style** toggle on the Inner tab: **`Removable Slip-In Pockets`** vs. **`Folded Glue-In Endpapers (Traditional Rebind)`** — letting traditional rebinders use the exact same drag-and-drop / Tile Pattern studio to print 1:1 mm marbled or illustrated folded endpaper sheets!
 
-### 5. Dust Jacket Generator Mode
-- **Why binders ask for it:** Many hobbyists keep their hardcover cloth simple/clean and print an illustrated **paper dust jacket** on a home or copy-shop printer.
-- **What it would do:**
-  - Reuse our new `Softcover Slip-In Jacket` geometry with one crucial physical tweak: dust jackets wrap *over* an already-cased hardcover (`width = BOARD_W + 2 mm` fold clearance, `height = BOARD_H + 1 mm`, `spine = SPINE_W + 2 × BOARD_T + 2 mm`, and wider `65–85 mm` front/back blurb flaps).
+### 5. [Shipped] Dust Jacket Generator Mode (+ Replacement Paperback Cover)
+- **Implemented in:** `src/core/bindingStyles.ts` (`dust-jacket` and `paperback-wrap` strategies), `src/components/SidebarControls.tsx`, `src/studio/preflight.ts`.
+- Classic Dust Jacket wraps over an existing cover with `+1.0 mm` fore-edge ease, `+1.5 mm` spine ease, flush height, 4 vertical score folds, zero glue tabs, adjustable `20–100 mm` flaps, and smart flap-depth recommendations (`≥ 45%` / `45 mm` floor). Also shipped **Replacement Paperback Cover** (flush 1-piece cardstock wrap with 2 spine score folds).
 
 ---
 
@@ -61,10 +55,9 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ## Tier 3 — Home-Printer & Bench Ergonomics
 
-### 10. Tiled Poster Print Mode (Letter / A4 Desktop Printers)
-- **Why binders ask for it:** Many home binders don't own a 13"+ roll printer and don't always want a 3-piece quarter-bound split — sometimes they want to print a full-bleed continuous cover across **2 overlapping Letter/A4 sheets** (or test-fit a full-size paper template at home before paying a print shop).
-- **What it would do:**
-  - Add a **`Tiled 2-Sheet Print PDF (Letter / A4)`** option that splits the outer wrap cleanly with a `10 mm` glue/tape overlap strip and crosshair registration marks.
+### 10. [Shipped] Tiled Poster Print Mode (Letter / A4 Desktop Printers)
+- **Implemented in:** `src/core/pdfSheetLayout.ts`, `src/components/PdfExportDialog.tsx`, `src/components/PdfSheetPreviewSvg.tsx`.
+- Unified Print & Export PDF Dialog compares `US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact 1:1`, and `13"–44"` rolls with live `1 sheet` vs. `2 sheets (tiled)` fit badges, configurable `10 / 15 / 20 mm` overlap + alignment crosshairs, and an optional `50 mm` Scale-Check Ruler bar.
 
 ### 11. Printable "Bench Recipe Card" & Step-by-Step Cut Checklist
 - **Why binders ask for it:** At the cutting mat, people don't want to keep unlocking their phone with gluey fingers to check `143 × 223 mm` or `9 mm` spacer dimensions.
