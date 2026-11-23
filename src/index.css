@@ -303,6 +303,15 @@
   background-size: 20px 20px;
 }
 
+/* Always-light Cricut / Silhouette vinyl carrier-sheet preview mat so dark #111/#222 SVG cut paths stay crisp in Dark Mode */
+.cricut-mat-surface {
+  background-color: #f8f6f0;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
 /* Bookbinding kettle-stitch dashed section rule */
 .kettle-stitch-divider {
   border-block-start: 1px dashed var(--border);

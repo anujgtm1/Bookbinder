@@ -227,7 +227,10 @@ export function CricutExportDialog({
       <div className="grid gap-5 overflow-y-auto p-5 md:grid-cols-[1.1fr_1fr]">
         {/* Left: Live Vector Cut Mat Preview */}
         <div className="flex flex-col gap-3">
-          <div className="drafting-surface relative flex h-72 items-center justify-center rounded-lg border border-border p-4">
+          <div
+            data-testid="cricut-preview-mat"
+            className="cricut-mat-surface relative flex h-72 items-center justify-center rounded-lg border border-border p-4 shadow-inner"
+          >
             {previewDataUri ? (
               <img
                 src={previewDataUri}
@@ -236,7 +239,7 @@ export function CricutExportDialog({
                 className="max-h-full max-w-full object-contain drop-shadow-xs"
               />
             ) : (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-slate-600">
                 {generating ? 'Outlining font paths…' : 'Preparing vector cut preview…'}
               </span>
             )}

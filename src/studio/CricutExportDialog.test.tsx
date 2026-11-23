@@ -47,6 +47,7 @@ describe('CricutExportDialog', () => {
       await waitFor(() => {
         expect(screen.getByTestId('cricut-svg-preview-img')).toBeInTheDocument();
       });
+      expect(screen.getByTestId('cricut-preview-mat')).toHaveClass('cricut-mat-surface');
 
       // Switch scope to Full Cover Wrap -> outer cut switch appears
       await user.click(screen.getByTestId('cricut-scope-fullwrap'));
