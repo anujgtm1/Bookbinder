@@ -2,7 +2,7 @@
 
 Design and print exact **1:1 mm** removable hardcover cases, flexible-spine covers, 1-piece fold-and-glue slip covers, classic dust jackets, replacement paperback covers, matching inner pockets, and Cricut HTV foil SVGs—all right in your browser. No accounts, no subscriptions, and nothing ever leaves your device.
 
-**[Launch Bookbinder Studio →](https://anujgtm1.github.io/Bookbinder/)**
+**[Launch Bookbinder Studio →](https://anujgtm.com/Bookbinder/)**
 
 ![Bookbinder Studio — Cover & Spine Styler](./docs/screenshots/cover-styler.png)
 

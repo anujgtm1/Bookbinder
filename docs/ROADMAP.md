@@ -1,7 +1,7 @@
 # Bookbinder Studio — Feature Roadmap & Tracker
 
 Living tracker for completed features, active milestones, and upcoming work.
-Live app: **[https://anujgtm1.github.io/Bookbinder/](https://anujgtm1.github.io/Bookbinder/)**
+Live app: **[https://anujgtm.com/Bookbinder/](https://anujgtm.com/Bookbinder/)**
 Related docs: [SPEC.md](./SPEC.md) · [DEVELOPMENT.md](./DEVELOPMENT.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [FEATURE_IDEAS.md](./FEATURE_IDEAS.md) · [RESEARCH.md](./RESEARCH.md)
 
 ---
@@ -37,7 +37,7 @@ Related docs: [SPEC.md](./SPEC.md) · [DEVELOPMENT.md](./DEVELOPMENT.md) · [DEP
 - [x] **Cricut / Silhouette / ScanNCut HTV & Hybrid Printed Base Workflow (`src/studio/cricutExport.ts`, `src/studio/CricutExportDialog.tsx`):**
   - Flattened `1:1 mm` glyph & ornament paths (zero `<text>` tags or `transform` attributes), 4 cut scopes, weeding box, registration marks, HTV Mirror, always-light high-contrast carrier mat preview, **Split Mats by Foil Color**, and **Base Only (For HTV)** Print PDF (`outer_cover_base_for_htv.pdf`) with `3 mm` outer alignment ticks + 1-click handoff from the Cricut dialog.
 - [x] **Modular Architecture Refactor:** Decomposed `CoverStyler`, `InnerPocketsStudio`, `CoverElementsCard`, and `renderEngine` into cohesive `src/lib/`, `src/resources/`, `src/studio/exporters/`, `src/studio/ornaments/`, `src/studio/pockets/`, and `src/studio/hooks/` modules.
-- [x] **GitHub Pages CI/CD & Live Deployment:** `.github/workflows/ci.yml` + `.github/workflows/deploy.yml` live at **[https://anujgtm1.github.io/Bookbinder/](https://anujgtm1.github.io/Bookbinder/)**.
+- [x] **GitHub Pages CI/CD & Live Deployment:** `.github/workflows/ci.yml` + `.github/workflows/deploy.yml` live at **[https://anujgtm.com/Bookbinder/](https://anujgtm.com/Bookbinder/)**.
 - [x] **Automated Test Suite:** **44 Vitest test files / 190 unit & component tests** + **30 Playwright Chromium E2E tests** covering every major user workflow and real PDF/SVG downloads.
 
 ---
