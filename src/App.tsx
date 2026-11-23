@@ -1,8 +1,10 @@
-import { BookMarked, FolderOpen } from 'lucide-react';
+import { BookMarked, CheckCircle2, FolderOpen, Ruler } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { CutListCard } from '@/components/CutListCard';
 import { Header } from '@/components/Header';
+import { MeasureAndCutPanel } from '@/components/MeasureAndCutPanel';
 import { SidebarControls } from '@/components/SidebarControls';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { generateInnerTemplatesPdf, generateOuterWrapPdf } from '@/core/pdfExport';
@@ -20,7 +22,7 @@ import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 
-type WorkspaceTab = 'outer' | 'pockets';
+type WorkspaceTab = 'measure' | 'outer' | 'pockets';
 
 export function App() {
   const [project, setProject] = useState<BookbinderProject>(() => loadProjectFromStorage());
@@ -41,7 +43,16 @@ export function App() {
     }
   }, [project]);
 
+  const isSoftcoverJacket = project.parameters.bindingStyle === 'softcover-jacket';
+
   const handleParamsChange = (parameters: BookParameters) => {
+    if (
+      parameters.bindingStyle === 'softcover-jacket' &&
+      project.parameters.bindingStyle !== 'softcover-jacket' &&
+      activeTab === 'pockets'
+    ) {
+      setActiveTab('outer');
+    }
     setProject((prev) => ({
       ...prev,
       updatedAt: new Date().toISOString(),
@@ -171,9 +182,7 @@ export function App() {
         )}
 
         <div className="flex min-w-0 flex-col gap-4">
-          <CutListCard geometry={geometry} unit={project.parameters.unit} />
-
-          {/* Unified Physical-Part Folder Index Tabs: Outer Case Wrap & Inner Pockets & Liner */}
+          {/* 3-Tab Hybrid Folio Workbench: Measure & Cut, Cover Studio, Inner Pockets */}
           <Tabs
             value={activeTab}
             onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
@@ -182,23 +191,54 @@ export function App() {
             <div className="flex flex-wrap items-end justify-between gap-2 px-1">
               <TabsList className="h-auto gap-1.5 rounded-none bg-transparent p-0">
                 <TabsTrigger
+                  value="measure"
+                  data-testid="nav-measure"
+                  className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
+                >
+                  <Ruler className="h-4 w-4 text-brass" aria-hidden="true" />
+                  Measure &amp; Cut
+                </TabsTrigger>
+                <TabsTrigger
                   value="outer"
                   data-testid="nav-outer"
                   className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
                 >
                   <BookMarked className="h-4 w-4 text-brass" aria-hidden="true" />
-                  Outer Case Wrap
+                  Cover Studio
                 </TabsTrigger>
                 <TabsTrigger
                   value="pockets"
                   data-testid="nav-pockets"
                   className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
                 >
-                  <FolderOpen className="h-4 w-4 text-brass" aria-hidden="true" />
-                  Inner Pockets &amp; Liner
+                  <FolderOpen
+                    className={`h-4 w-4 text-brass ${isSoftcoverJacket ? 'opacity-60' : ''}`}
+                    aria-hidden="true"
+                  />
+                  <span className={isSoftcoverJacket ? 'opacity-65' : undefined}>Inner Pockets</span>
+                  {isSoftcoverJacket && (
+                    <Badge
+                      variant="outline"
+                      data-testid="pockets-builtin-badge"
+                      className="ml-0.5 h-4 px-1.5 font-mono text-[10px]"
+                    >
+                      Built-In
+                    </Badge>
+                  )}
                 </TabsTrigger>
               </TabsList>
             </div>
+
+            <TabsContent value="measure" className="mt-0">
+              <MeasureAndCutPanel
+                geometry={geometry}
+                splitMode={project.parameters.splitMode}
+                unit={project.parameters.unit}
+                exportingOuterPdf={exportingTarget === 'outer-pdf'}
+                onDownloadOuterSvg={handleDownloadOuterSvg}
+                onDownloadOuterPdf={handleDownloadOuterPdf}
+              />
+            </TabsContent>
 
             <TabsContent value="outer" className="mt-0">
               <CoverStyler
@@ -214,25 +254,79 @@ export function App() {
                 }
                 onDownloadOuterSvg={handleDownloadOuterSvg}
                 onDownloadOuterPdf={handleDownloadOuterPdf}
+                onOpenMeasureAndCut={() => setActiveTab('measure')}
                 onStatusMessage={setStatusMessage}
               />
             </TabsContent>
 
             <TabsContent value="pockets" className="mt-0">
-              <InnerPocketsStudio
-                geometry={geometry}
-                pocketStyle={project.studio.pocketStyle}
-                coverMatchColor={project.studio.spineBgColor}
-                pdfPageSize={project.parameters.pdfPageSize}
-                unit={project.parameters.unit}
-                exportingInnerPdf={exportingTarget === 'inner-pdf'}
-                onChangePocketStyle={(pocketStyle) =>
-                  handleStudioChange({ ...project.studio, pocketStyle })
-                }
-                onDownloadInnerSvg={handleDownloadInnerSvg}
-                onDownloadInnerPdf={handleDownloadInnerPdf}
-                onStatusMessage={setStatusMessage}
-              />
+              {isSoftcoverJacket ? (
+                <section
+                  aria-label="Built-In Inner Pockets Notice"
+                  data-testid="pockets-not-needed-notice"
+                  className="rounded-b-lg rounded-tr-lg border border-border bg-card p-6 shadow-xs sm:p-8"
+                >
+                  <div className="mx-auto flex max-w-xl flex-col items-center text-center">
+                    <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full border border-emerald-700/30 bg-emerald-600/12 text-emerald-800 dark:text-emerald-300">
+                      <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <Badge variant="outline" className="mb-2 font-mono text-[10px] uppercase">
+                      Built-In Slip-In Pockets
+                    </Badge>
+                    <h2 className="font-serif text-lg font-semibold tracking-tight text-foreground">
+                      Inner Pockets Are Already Included
+                    </h2>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                      Separate Inner Pockets &amp; Spine Liner are not needed for the 1-Piece
+                      Fold-and-Glue Slip Cover — your slip-in pockets and 4 wrap-over glue tabs are
+                      already built into the Cover Studio sheet.
+                    </p>
+                    <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
+                      <Button
+                        type="button"
+                        variant="default"
+                        size="sm"
+                        data-testid="pockets-return-studio-btn"
+                        onClick={() => setActiveTab('outer')}
+                      >
+                        <BookMarked className="h-4 w-4" aria-hidden="true" />
+                        Return to Cover Studio
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-testid="pockets-switch-flexible-btn"
+                        onClick={() =>
+                          handleParamsChange(
+                            BookParametersModel.clampAndNormalize({
+                              ...project.parameters,
+                              bindingStyle: 'flexible-spine',
+                            }),
+                          )
+                        }
+                      >
+                        Switch to Flexible Spine
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <InnerPocketsStudio
+                  geometry={geometry}
+                  pocketStyle={project.studio.pocketStyle}
+                  coverMatchColor={project.studio.spineBgColor}
+                  pdfPageSize={project.parameters.pdfPageSize}
+                  unit={project.parameters.unit}
+                  exportingInnerPdf={exportingTarget === 'inner-pdf'}
+                  onChangePocketStyle={(pocketStyle) =>
+                    handleStudioChange({ ...project.studio, pocketStyle })
+                  }
+                  onDownloadInnerSvg={handleDownloadInnerSvg}
+                  onDownloadInnerPdf={handleDownloadInnerPdf}
+                  onStatusMessage={setStatusMessage}
+                />
+              )}
             </TabsContent>
           </Tabs>
         </div>
