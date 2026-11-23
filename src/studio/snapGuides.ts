@@ -1,4 +1,4 @@
-import type { CaseGeometry } from '@/types/geometry';
+import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import {
   CoverImageLayerModel,
   type CoverImageLayer,
@@ -106,6 +106,54 @@ export function buildCanvasSnapTargets(
           },
         ]
       : []),
+  ];
+
+  return {
+    vertical: dedupeTargets(verticalRaw),
+    horizontal: dedupeTargets(horizontalRaw),
+  };
+}
+
+export interface InnerPocketSnapLayout {
+  readonly backFaceRect: Rect2D;
+  readonly backFullRect: Rect2D;
+  readonly linerRect: Rect2D;
+  readonly frontFaceRect: Rect2D;
+  readonly frontFullRect: Rect2D;
+}
+
+/**
+ * Builds magnetic alignment target lines for the Inner Pockets & Spine Liner canvas:
+ * Back Pocket, Spine Liner, and Front Pocket face edges, centers, and outer cut limits.
+ */
+export function buildInnerPocketSnapTargets(layout: InnerPocketSnapLayout): CanvasSnapTargets {
+  const { backFaceRect, backFullRect, linerRect, frontFaceRect, frontFullRect } = layout;
+
+  const verticalRaw: SnapTargetLine[] = [
+    // Centers first for priority
+    { axis: 'x', positionMm: backFaceRect.x + backFaceRect.width / 2, label: 'BACK CENTER', kind: 'center' },
+    { axis: 'x', positionMm: linerRect.x + linerRect.width / 2, label: 'LINER CENTER', kind: 'center' },
+    { axis: 'x', positionMm: frontFaceRect.x + frontFaceRect.width / 2, label: 'FRONT CENTER', kind: 'center' },
+
+    // Face & fold edges
+    { axis: 'x', positionMm: backFaceRect.x, label: 'BACK FOLD', kind: 'board' },
+    { axis: 'x', positionMm: backFaceRect.x + backFaceRect.width, label: 'BACK OPEN', kind: 'board' },
+    { axis: 'x', positionMm: linerRect.x, label: 'LINER LEFT', kind: 'board' },
+    { axis: 'x', positionMm: linerRect.x + linerRect.width, label: 'LINER RIGHT', kind: 'board' },
+    { axis: 'x', positionMm: frontFaceRect.x, label: 'FRONT OPEN', kind: 'board' },
+    { axis: 'x', positionMm: frontFaceRect.x + frontFaceRect.width, label: 'FRONT FOLD', kind: 'board' },
+
+    // Outer cut boundaries
+    { axis: 'x', positionMm: backFullRect.x, label: 'BACK CUT', kind: 'cut' },
+    { axis: 'x', positionMm: frontFullRect.x + frontFullRect.width, label: 'FRONT CUT', kind: 'cut' },
+  ];
+
+  const horizontalRaw: SnapTargetLine[] = [
+    { axis: 'y', positionMm: frontFaceRect.y + frontFaceRect.height / 2, label: 'CENTERLINE', kind: 'center' },
+    { axis: 'y', positionMm: frontFaceRect.y, label: 'FACE TOP', kind: 'board' },
+    { axis: 'y', positionMm: frontFaceRect.y + frontFaceRect.height, label: 'FACE BOTTOM', kind: 'board' },
+    { axis: 'y', positionMm: frontFullRect.y, label: 'TOP CUT', kind: 'cut' },
+    { axis: 'y', positionMm: frontFullRect.y + frontFullRect.height, label: 'BOTTOM CUT', kind: 'cut' },
   ];
 
   return {

@@ -42,12 +42,12 @@ import {
   type CoverImageLayer,
   type LayerClipZone,
   type QuickFitTarget,
-  type ResizeCorner,
   type StubExtensionMode,
 } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
+import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
 import {
@@ -77,12 +77,12 @@ import {
   resolveQuickFitRect,
   resolveZoneClipRect,
 } from './renderEngine';
+import { buildCanvasSnapTargets } from './snapGuides';
 import {
-  buildCanvasSnapTargets,
-  snapLayerMove,
-  snapLayerResize,
-  type ActiveSnapGuide,
-} from './snapGuides';
+  isSupportedImageFile,
+  readImageFile,
+  useInteractiveLayers,
+} from './useInteractiveLayers';
 
 export interface CoverStylerProps {
   readonly params?: BookParameters;
@@ -98,29 +98,6 @@ export interface CoverStylerProps {
 
 type StudioViewMode = '2d' | 'blueprint' | '3d';
 
-type DragInteraction =
-  | { readonly mode: 'none' }
-  | {
-      readonly mode: 'move';
-      readonly layerId: string;
-      readonly startXMm: number;
-      readonly startYMm: number;
-      readonly origLayer: CoverImageLayer;
-    }
-  | {
-      readonly mode: 'resize';
-      readonly layerId: string;
-      readonly corner: ResizeCorner;
-      readonly origLayer: CoverImageLayer;
-    };
-
-const CORNER_CURSORS: Readonly<Record<ResizeCorner, string>> = {
-  nw: 'nwse-resize',
-  se: 'nwse-resize',
-  ne: 'nesw-resize',
-  sw: 'nesw-resize',
-};
-
 function rgbToHex(r: number, g: number, b: number): string {
   return (
     '#' +
@@ -128,21 +105,6 @@ function rgbToHex(r: number, g: number, b: number): string {
       .map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, '0'))
       .join('')
   );
-}
-
-function readImageFile(file: File): Promise<{ dataUrl: string; width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result);
-      const img = new Image();
-      img.onload = () => resolve({ dataUrl, width: img.naturalWidth, height: img.naturalHeight });
-      img.onerror = () => reject(new Error('Unsupported or unreadable image file.'));
-      img.src = dataUrl;
-    };
-    reader.onerror = () => reject(new Error('Could not read image file.'));
-    reader.readAsDataURL(file);
-  });
 }
 
 export function CoverStyler({
@@ -171,7 +133,6 @@ export function CoverStyler({
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
-  const [activeSnapGuides, setActiveSnapGuides] = useState<readonly ActiveSnapGuide[]>([]);
   const [showPreflightOverlays, setShowPreflightOverlays] = useState(true);
   const [checkDpi, setCheckDpi] = useState(true);
   const [ignoredIssueIds, setIgnoredIssueIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -182,8 +143,6 @@ export function CoverStyler({
   const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<DragInteraction>({ mode: 'none' });
-  const suppressNextClickRef = useRef(false);
   const studioRef = useRef(studio);
   const onChangeRef = useRef(onChange);
   useEffect(() => {
@@ -192,13 +151,32 @@ export function CoverStyler({
   }, [studio, onChange]);
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
+  const canvasBounds = useMemo<Rect2D>(
+    () => ({ x: 0, y: 0, width: spec.totalWidthMm, height: spec.totalHeightMm }),
+    [spec.totalWidthMm, spec.totalHeightMm],
+  );
   const snapTargets = useMemo(() => buildCanvasSnapTargets(geometry, spec), [geometry, spec]);
-  const snapTargetsRef = useRef(snapTargets);
-  const snapEnabledRef = useRef(snapEnabled);
-  useEffect(() => {
-    snapTargetsRef.current = snapTargets;
-    snapEnabledRef.current = snapEnabled;
-  }, [snapTargets, snapEnabled]);
+
+  const {
+    activeSnapGuides,
+    suppressNextClickRef,
+    toSvgMm,
+    startMoveDrag,
+    startResizeDrag,
+    handleLayerWheel,
+  } = useInteractiveLayers({
+    svgRef,
+    viewBox: canvasBounds,
+    layers: studio.layers,
+    selectedLayerId,
+    snapTargets,
+    snapEnabled,
+    enabled: viewMode === '2d',
+    onChangeLayers: (nextLayers) => {
+      onChangeRef.current({ ...studioRef.current, layers: nextLayers });
+    },
+    onSelectLayer: setSelectedLayerId,
+  });
   const preflight = useMemo(
     () =>
       PreflightEngine.evaluate(effectiveParams, geometry, studio, {
@@ -352,124 +330,6 @@ export function CoverStyler({
     }
   };
 
-  // Window-level pointer move/up so dragging or corner-resizing keeps tracking smoothly even outside the SVG
-  useEffect(() => {
-    const onPointerMove = (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (drag.mode === 'none') return;
-      const svgEl = svgRef.current;
-      if (!svgEl) return;
-
-      let xMm: number;
-      let yMm: number;
-      const ctm = typeof svgEl.getScreenCTM === 'function' ? svgEl.getScreenCTM() : null;
-      if (ctm && typeof DOMPoint !== 'undefined') {
-        const svgPt = new DOMPoint(e.clientX, e.clientY).matrixTransform(ctm.inverse());
-        xMm = svgPt.x;
-        yMm = svgPt.y;
-      } else {
-        const rect = svgEl.getBoundingClientRect();
-        xMm = ((e.clientX - rect.left) / Math.max(1, rect.width)) * spec.totalWidthMm;
-        yMm = ((e.clientY - rect.top) / Math.max(1, rect.height)) * spec.totalHeightMm;
-      }
-
-      suppressNextClickRef.current = true;
-      const useSnap = snapEnabledRef.current && !e.altKey;
-      const currentStudio = studioRef.current;
-      let latestGuides: readonly ActiveSnapGuide[] = [];
-      const nextLayers = currentStudio.layers.map((layer) => {
-        if (layer.id !== drag.layerId) return layer;
-        if (drag.mode === 'move') {
-          const moved = CoverImageLayerModel.moveBy(
-            drag.origLayer,
-            xMm - drag.startXMm,
-            yMm - drag.startYMm,
-          );
-          if (!useSnap) return moved;
-          const snapped = snapLayerMove(moved, snapTargetsRef.current);
-          latestGuides = snapped.guides;
-          return snapped.layer;
-        }
-        if (!useSnap) {
-          return CoverImageLayerModel.resizeFromCorner(drag.origLayer, drag.corner, xMm, yMm);
-        }
-        const snapped = snapLayerResize(
-          drag.origLayer,
-          drag.corner,
-          xMm,
-          yMm,
-          snapTargetsRef.current,
-        );
-        latestGuides = snapped.guides;
-        return snapped.layer;
-      });
-      setActiveSnapGuides(latestGuides);
-      onChangeRef.current({ ...currentStudio, layers: nextLayers });
-    };
-
-    const onPointerEnd = () => {
-      if (dragRef.current.mode !== 'none') {
-        dragRef.current = { mode: 'none' };
-        setActiveSnapGuides([]);
-        // Clear click suppression after the immediate click event turn so future clicks are never eaten
-        window.setTimeout(() => {
-          suppressNextClickRef.current = false;
-        }, 0);
-      }
-    };
-
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerEnd);
-    window.addEventListener('pointercancel', onPointerEnd);
-    return () => {
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerEnd);
-      window.removeEventListener('pointercancel', onPointerEnd);
-    };
-  }, [spec.totalWidthMm, spec.totalHeightMm]);
-
-  // Delete selected layer via Backspace/Delete key when focus is not inside a text control
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (viewMode !== '2d' || !selectedLayerId) return;
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      e.preventDefault();
-      const remaining = studio.layers.filter((l) => l.id !== selectedLayerId);
-      onChange({ ...studio, layers: remaining });
-      setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [viewMode, selectedLayerId, studio, onChange]);
-
-  const clientPointToSvgMm = (
-    clientX: number,
-    clientY: number,
-  ): { xMm: number; yMm: number } | null => {
-    const svgEl = svgRef.current;
-    if (!svgEl) return null;
-    const ctm = typeof svgEl.getScreenCTM === 'function' ? svgEl.getScreenCTM() : null;
-    if (ctm && typeof DOMPoint !== 'undefined') {
-      const svgPt = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
-      return { xMm: svgPt.x, yMm: svgPt.y };
-    }
-    const rect = svgEl.getBoundingClientRect();
-    return {
-      xMm: ((clientX - rect.left) / Math.max(1, rect.width)) * spec.totalWidthMm,
-      yMm: ((clientY - rect.top) / Math.max(1, rect.height)) * spec.totalHeightMm,
-    };
-  };
-
   const defaultPlacementRectForDrop = (dropPoint?: { xMm: number; yMm: number }): Rect2D => {
     if (dropPoint) {
       if (dropPoint.xMm < spec.spineZoneRect.x) return spec.backZoneRect;
@@ -492,9 +352,7 @@ export function CoverStyler({
     files: readonly File[],
     dropPoint?: { xMm: number; yMm: number },
   ) => {
-    const validFiles = files.filter(
-      (f) => /^image\/(png|jpeg|webp)$/i.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name),
-    );
+    const validFiles = files.filter(isSupportedImageFile);
     if (validFiles.length === 0) {
       onStatusMessage('Please upload PNG, JPG, or WEBP image files.');
       return;
@@ -580,7 +438,7 @@ export function CoverStyler({
     clientY: number,
     target: Exclude<EyedropperTarget, null>,
   ) => {
-    const pt = clientPointToSvgMm(clientX, clientY);
+    const pt = toSvgMm(clientX, clientY);
     if (!pt) return;
     const relX = pt.xMm / spec.totalWidthMm;
     const relY = pt.yMm / spec.totalHeightMm;
@@ -769,7 +627,7 @@ export function CoverStyler({
             const files = Array.from(e.dataTransfer.files ?? []);
             if (files.length === 0) return;
             const dropPt =
-              viewMode === '2d' ? (clientPointToSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
+              viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
             void handleAddImageFiles(files, dropPt);
           }}
           className={`cutting-mat-surface relative flex h-[470px] w-full items-center justify-center overflow-hidden border-y transition-colors sm:h-[510px] ${
@@ -820,10 +678,7 @@ export function CoverStyler({
                 onWheel={(e) => {
                   if (!selectedLayer) return;
                   e.preventDefault();
-                  const factor = e.deltaY < 0 ? 1.06 : 0.94;
-                  updateLayer(selectedLayer.id, (layer) =>
-                    CoverImageLayerModel.scaleAroundCenter(layer, factor),
-                  );
+                  handleLayerWheel(selectedLayer, e.deltaY);
                 }}
               >
                 <title>Outer Cover Styler Interactive Canvas</title>
@@ -948,16 +803,7 @@ export function CoverStyler({
                         onPointerDown={(e) => {
                           if (eyedropperTarget) return;
                           e.stopPropagation();
-                          setSelectedLayerId(layer.id);
-                          const pt = clientPointToSvgMm(e.clientX, e.clientY);
-                          if (!pt) return;
-                          dragRef.current = {
-                            mode: 'move',
-                            layerId: layer.id,
-                            startXMm: pt.xMm,
-                            startYMm: pt.yMm,
-                            origLayer: layer,
-                          };
+                          startMoveDrag(layer, e.clientX, e.clientY);
                         }}
                       />
                     </g>
@@ -1124,189 +970,19 @@ export function CoverStyler({
                     </g>
                   )}
 
-                {/* Glowing Brass Magnetic Smart Snap Guides (live during drag/resize) */}
-                {activeSnapGuides.length > 0 && (
-                  <g
-                    data-testid="studio-snap-guides"
-                    pointerEvents="none"
-                    filter="url(#brass-snap-glow)"
-                  >
-                    {activeSnapGuides.map((guide, idx) => {
-                      const isCenter = guide.kind === 'center';
-                      if (guide.axis === 'x') {
-                        const labelX = Math.min(
-                          spec.totalWidthMm - 24,
-                          Math.max(24, guide.positionMm),
-                        );
-                        return (
-                          <g key={`snap-x-${idx}`} data-testid="snap-guide-line">
-                            <line
-                              x1={guide.positionMm}
-                              y1={0}
-                              x2={guide.positionMm}
-                              y2={spec.totalHeightMm}
-                              stroke="#fde047"
-                              strokeWidth={isCenter ? '1.25' : '1.05'}
-                              strokeDasharray={isCenter ? '5 2.5' : undefined}
-                            />
-                            <rect
-                              x={labelX - 20}
-                              y={5}
-                              width={40}
-                              height={7.5}
-                              rx={2}
-                              fill="#1c1917"
-                              fillOpacity="0.92"
-                              stroke="#facc15"
-                              strokeWidth="0.5"
-                            />
-                            <text
-                              x={labelX}
-                              y={9.1}
-                              fill="#fef08a"
-                              fontSize="4.2"
-                              fontWeight="700"
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                            >
-                              {guide.label}
-                            </text>
-                          </g>
-                        );
-                      }
-                      const labelY = Math.min(
-                        spec.totalHeightMm - 10,
-                        Math.max(10, guide.positionMm),
-                      );
-                      return (
-                        <g key={`snap-y-${idx}`} data-testid="snap-guide-line">
-                          <line
-                            x1={0}
-                            y1={guide.positionMm}
-                            x2={spec.totalWidthMm}
-                            y2={guide.positionMm}
-                            stroke="#fde047"
-                            strokeWidth={isCenter ? '1.25' : '1.05'}
-                            strokeDasharray={isCenter ? '5 2.5' : undefined}
-                          />
-                          <rect
-                            x={5}
-                            y={labelY - 3.75}
-                            width={38}
-                            height={7.5}
-                            rx={2}
-                            fill="#1c1917"
-                            fillOpacity="0.92"
-                            stroke="#facc15"
-                            strokeWidth="0.5"
-                          />
-                          <text
-                            x={24}
-                            y={labelY + 0.35}
-                            fill="#fef08a"
-                            fontSize="4.2"
-                            fontWeight="700"
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                          >
-                            {guide.label}
-                          </text>
-                        </g>
-                      );
-                    })}
-                    {/* Intersection brass diamond marker when both X and Y snap simultaneously */}
-                    {(() => {
-                      const xG = activeSnapGuides.find((g) => g.axis === 'x');
-                      const yG = activeSnapGuides.find((g) => g.axis === 'y');
-                      if (!xG || !yG) return null;
-                      return (
-                        <polygon
-                          points={`${xG.positionMm},${yG.positionMm - 3.2} ${xG.positionMm + 3.2},${yG.positionMm} ${xG.positionMm},${yG.positionMm + 3.2} ${xG.positionMm - 3.2},${yG.positionMm}`}
-                          fill="#fef08a"
-                          stroke="#1c1917"
-                          strokeWidth="0.6"
-                        />
-                      );
-                    })()}
-                  </g>
-                )}
-
-                {/* Selection Frame & Corner Resize Handles for Selected Layer */}
-                {selectedLayer && !eyedropperTarget && (
-                  <g data-testid="studio-selection-handles">
-                    {selectedLayer.clipZone !== 'none' &&
-                      (() => {
-                        const clipRect = resolveZoneClipRect(spec, selectedLayer.clipZone);
-                        return (
-                          <rect
-                            x={clipRect.x}
-                            y={clipRect.y}
-                            width={clipRect.width}
-                            height={clipRect.height}
-                            fill="none"
-                            stroke="#38bdf8"
-                            strokeWidth="0.8"
-                            strokeDasharray="3 2"
-                            pointerEvents="none"
-                          />
-                        );
-                      })()}
-                    <rect
-                      x={selectedLayer.xMm}
-                      y={selectedLayer.yMm}
-                      width={selectedLayer.widthMm}
-                      height={selectedLayer.heightMm}
-                      fill="none"
-                      stroke="#dfb96a"
-                      strokeWidth="1.25"
-                      strokeDasharray="4 2"
-                      pointerEvents="none"
-                    />
-                    {(
-                      [
-                        { corner: 'nw' as const, x: selectedLayer.xMm, y: selectedLayer.yMm },
-                        {
-                          corner: 'ne' as const,
-                          x: selectedLayer.xMm + selectedLayer.widthMm,
-                          y: selectedLayer.yMm,
-                        },
-                        {
-                          corner: 'se' as const,
-                          x: selectedLayer.xMm + selectedLayer.widthMm,
-                          y: selectedLayer.yMm + selectedLayer.heightMm,
-                        },
-                        {
-                          corner: 'sw' as const,
-                          x: selectedLayer.xMm,
-                          y: selectedLayer.yMm + selectedLayer.heightMm,
-                        },
-                      ] as const
-                    ).map((handle) => (
-                      <rect
-                        key={handle.corner}
-                        x={handle.x - handleCornerSize / 2}
-                        y={handle.y - handleCornerSize / 2}
-                        width={handleCornerSize}
-                        height={handleCornerSize}
-                        rx={1}
-                        fill="#faf6ee"
-                        stroke="#1e4d44"
-                        strokeWidth="1.1"
-                        style={{ cursor: CORNER_CURSORS[handle.corner] }}
-                        data-testid={`resize-handle-${handle.corner}`}
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          dragRef.current = {
-                            mode: 'resize',
-                            layerId: selectedLayer.id,
-                            corner: handle.corner,
-                            origLayer: selectedLayer,
-                          };
-                        }}
-                      />
-                    ))}
-                  </g>
-                )}
+                <LayerSelectionOverlay
+                  canvasBounds={canvasBounds}
+                  activeSnapGuides={activeSnapGuides}
+                  selectedLayer={selectedLayer}
+                  clipBoundaryRect={
+                    selectedLayer && selectedLayer.clipZone !== 'none'
+                      ? resolveZoneClipRect(spec, selectedLayer.clipZone)
+                      : null
+                  }
+                  hideSelection={Boolean(eyedropperTarget)}
+                  handleCornerSizeMm={handleCornerSize}
+                  onStartResize={startResizeDrag}
+                />
               </svg>
             </div>
           ) : viewMode === 'blueprint' ? (
