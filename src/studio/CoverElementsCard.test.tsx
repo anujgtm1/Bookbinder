@@ -45,8 +45,17 @@ describe('CoverElementsCard', () => {
       />,
     );
 
+    fireEvent.click(screen.getByTestId('add-cover-text-btn'));
+    expect(onAddTextPreset).toHaveBeenCalledWith('text');
+
     fireEvent.click(screen.getByTestId('add-front-title-btn'));
     expect(onAddTextPreset).toHaveBeenCalledWith('front-title');
+
+    // Inline rename directly in the text layer list stays 1:1 with the layer text
+    const inlineInput = screen.getByTestId('cover-text-inline-input-0') as HTMLInputElement;
+    expect(inlineInput.value).toBe('BOOK TITLE');
+    fireEvent.change(inlineInput, { target: { value: 'FIELD NOTES' } });
+    expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { text: 'FIELD NOTES' });
 
     fireEvent.change(screen.getByTestId('cover-text-textarea'), {
       target: { value: 'THE ODYSSEY' },

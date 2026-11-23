@@ -525,14 +525,14 @@ export function useCoverStudioActions({
 
   const defaultPlacementRectForDrop = (dropPoint?: { xMm: number; yMm: number }): Rect2D => {
     if (dropPoint) {
-      if (dropPoint.xMm < spec.spineZoneRect.x) return spec.backZoneRect;
-      if (dropPoint.xMm < spec.frontZoneRect.x) return spec.spineZoneRect;
-      return spec.frontZoneRect;
+      if (dropPoint.xMm < spec.spineZoneRect.x) return spec.backArtworkRect;
+      if (dropPoint.xMm < spec.frontZoneRect.x) return spec.spineArtworkRect;
+      return spec.frontArtworkRect;
     }
     const count = studio.layers.length;
-    if (count === 0) return spec.frontZoneRect;
-    if (count === 1) return spec.backZoneRect;
-    if (count === 2) return spec.spineZoneRect;
+    if (count === 0) return spec.frontArtworkRect;
+    if (count === 1) return spec.backArtworkRect;
+    if (count === 2) return spec.spineArtworkRect;
     return {
       x: spec.totalWidthMm * 0.25,
       y: spec.totalHeightMm * 0.2,

@@ -1,3 +1,4 @@
+import { getBindingStrategy } from '@/core/bindingStyles';
 import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState, type StudioFontId } from '@/types/studio';
@@ -10,9 +11,18 @@ export interface StudioCanvasSpec {
   readonly totalHeightMm: number;
   readonly pixelWidth: number;
   readonly pixelHeight: number;
+  /** Full background band for back side (including turn-in / back flap). */
   readonly backZoneRect: Rect2D;
+  /** Full background band for spine (including top/bottom turn-in or trim). */
   readonly spineZoneRect: Rect2D;
+  /** Full background band for front side (including turn-in / front flap). */
   readonly frontZoneRect: Rect2D;
+  /** Artwork fit & clip bounds for back cover (excludes tuck flaps and glue tabs on flap covers). */
+  readonly backArtworkRect: Rect2D;
+  /** Artwork fit & clip bounds for spine (excludes top/bottom cut-away waste on glue-tab covers). */
+  readonly spineArtworkRect: Rect2D;
+  /** Artwork fit & clip bounds for front cover (excludes tuck flaps and glue tabs on flap covers). */
+  readonly frontArtworkRect: Rect2D;
   readonly fullWrapRect: Rect2D;
 }
 
@@ -79,6 +89,56 @@ export function computeStudioCanvasSpec(
 
   const spineZoneStart = bleedMm + outerWrap.leftHingeRect.x;
   const frontZoneStart = bleedMm + outerWrap.frontBoardRect.x;
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+
+  const backZoneRect: Rect2D = {
+    x: 0,
+    y: 0,
+    width: spineZoneStart,
+    height: totalHeightMm,
+  };
+  const spineZoneRect: Rect2D = {
+    x: spineZoneStart,
+    y: 0,
+    width: frontZoneStart - spineZoneStart,
+    height: totalHeightMm,
+  };
+  const frontZoneRect: Rect2D = {
+    x: frontZoneStart,
+    y: 0,
+    width: totalWidthMm - frontZoneStart,
+    height: totalHeightMm,
+  };
+
+  // On covers with fold-in flaps (slip covers & dust jackets), Fit Front/Back and front/back clip
+  // masks target the visible cover face instead of stretching across tucked-in flaps (and on
+  // fold-and-glue slip covers, stay cleanly inside the top/bottom glue-tab fold lines).
+  const backArtworkRect: Rect2D = strategy.capabilities.hasFlaps
+    ? {
+        x: bleedMm + outerWrap.backBoardRect.x,
+        y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.backBoardRect.y : 0,
+        width: outerWrap.backBoardRect.width,
+        height: strategy.capabilities.hasGlueTabs ? outerWrap.backBoardRect.height : totalHeightMm,
+      }
+    : backZoneRect;
+
+  const spineArtworkRect: Rect2D = strategy.capabilities.hasGlueTabs
+    ? {
+        x: spineZoneStart,
+        y: bleedMm + outerWrap.spineRect.y,
+        width: frontZoneStart - spineZoneStart,
+        height: outerWrap.spineRect.height,
+      }
+    : spineZoneRect;
+
+  const frontArtworkRect: Rect2D = strategy.capabilities.hasFlaps
+    ? {
+        x: bleedMm + outerWrap.frontBoardRect.x,
+        y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.frontBoardRect.y : 0,
+        width: outerWrap.frontBoardRect.width,
+        height: strategy.capabilities.hasGlueTabs ? outerWrap.frontBoardRect.height : totalHeightMm,
+      }
+    : frontZoneRect;
 
   return {
     bleedMm,
@@ -86,24 +146,12 @@ export function computeStudioCanvasSpec(
     totalHeightMm,
     pixelWidth: UnitConverter.mmToPixels(totalWidthMm, dpi),
     pixelHeight: UnitConverter.mmToPixels(totalHeightMm, dpi),
-    backZoneRect: {
-      x: 0,
-      y: 0,
-      width: spineZoneStart,
-      height: totalHeightMm,
-    },
-    spineZoneRect: {
-      x: spineZoneStart,
-      y: 0,
-      width: frontZoneStart - spineZoneStart,
-      height: totalHeightMm,
-    },
-    frontZoneRect: {
-      x: frontZoneStart,
-      y: 0,
-      width: totalWidthMm - frontZoneStart,
-      height: totalHeightMm,
-    },
+    backZoneRect,
+    spineZoneRect,
+    frontZoneRect,
+    backArtworkRect,
+    spineArtworkRect,
+    frontArtworkRect,
     fullWrapRect: {
       x: 0,
       y: 0,
@@ -119,11 +167,11 @@ export function resolveZoneClipRect(
 ): Rect2D {
   switch (clipZone) {
     case 'front':
-      return spec.frontZoneRect;
+      return spec.frontArtworkRect;
     case 'spine':
-      return spec.spineZoneRect;
+      return spec.spineArtworkRect;
     case 'back':
-      return spec.backZoneRect;
+      return spec.backArtworkRect;
     case 'none':
       return spec.fullWrapRect;
   }
@@ -135,11 +183,11 @@ export function resolveQuickFitRect(
 ): Rect2D {
   switch (target) {
     case 'front':
-      return spec.frontZoneRect;
+      return spec.frontArtworkRect;
     case 'spine':
-      return spec.spineZoneRect;
+      return spec.spineArtworkRect;
     case 'back':
-      return spec.backZoneRect;
+      return spec.backArtworkRect;
     case 'fullWrap':
       return spec.fullWrapRect;
   }

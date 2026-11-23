@@ -148,23 +148,23 @@ describe('bindingStyles strategy registry', () => {
     expect(evaluateFlapDepth('flexible-spine', 140, 30)).toBeNull();
     expect(evaluateFlapDepth('paperback-wrap', 140, 30)).toBeNull();
 
-    // Softcover slip cover (25% of page width, floor 25 mm, max 65 mm)
+    // Softcover slip cover (35% of page width, floor 35 mm, max 65 mm)
     expect(evaluateFlapDepth('softcover-jacket', 140, 24)).toEqual({
       currentFlapMm: 24,
-      minRecommendedMm: 35,
+      minRecommendedMm: 49,
       coverWidthPct: 17,
       isTooShallow: true,
     });
-    expect(evaluateFlapDepth('softcover-jacket', 140, 35)).toEqual({
-      currentFlapMm: 35,
-      minRecommendedMm: 35,
-      coverWidthPct: 25,
+    expect(evaluateFlapDepth('softcover-jacket', 140, 49)).toEqual({
+      currentFlapMm: 49,
+      minRecommendedMm: 49,
+      coverWidthPct: 35,
       isTooShallow: false,
     });
-    // Narrow book respects 25 mm floor
+    // Narrow book respects 35 mm floor
     expect(evaluateFlapDepth('softcover-jacket', 80, 24)).toEqual({
       currentFlapMm: 24,
-      minRecommendedMm: 25,
+      minRecommendedMm: 35,
       coverWidthPct: 30,
       isTooShallow: true,
     });
@@ -176,23 +176,23 @@ describe('bindingStyles strategy registry', () => {
       isTooShallow: false,
     });
 
-    // Classic dust jacket (38% of page width, floor 40 mm, max 100 mm)
+    // Classic dust jacket (45% of page width, floor 45 mm, max 100 mm)
     expect(evaluateFlapDepth('dust-jacket', 140, 35)).toEqual({
       currentFlapMm: 35,
-      minRecommendedMm: 53.2,
+      minRecommendedMm: 63,
       coverWidthPct: 25,
       isTooShallow: true,
     });
-    expect(evaluateFlapDepth('dust-jacket', 140, 53.2)).toEqual({
-      currentFlapMm: 53.2,
-      minRecommendedMm: 53.2,
-      coverWidthPct: 38,
+    expect(evaluateFlapDepth('dust-jacket', 140, 63)).toEqual({
+      currentFlapMm: 63,
+      minRecommendedMm: 63,
+      coverWidthPct: 45,
       isTooShallow: false,
     });
-    // Narrow pocket book respects 40 mm floor
+    // Narrow pocket book respects 45 mm floor
     expect(evaluateFlapDepth('dust-jacket', 90, 38)).toEqual({
       currentFlapMm: 38,
-      minRecommendedMm: 40,
+      minRecommendedMm: 45,
       coverWidthPct: 42,
       isTooShallow: true,
     });
