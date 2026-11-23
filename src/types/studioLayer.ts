@@ -4,6 +4,7 @@ import { clampFinite, roundTo } from './units';
 export type LayerClipZone = 'none' | 'front' | 'spine' | 'back';
 export type QuickFitTarget = 'front' | 'spine' | 'back' | 'fullWrap';
 export type ResizeCorner = 'nw' | 'ne' | 'se' | 'sw';
+export type StubExtensionMode = 'none' | 'edge-smear' | 'soft-mirror' | 'mirror';
 
 export interface CoverImageLayer {
   readonly id: string;
@@ -16,6 +17,12 @@ export interface CoverImageLayer {
   readonly widthMm: number;
   readonly heightMm: number;
   readonly clipZone: LayerClipZone;
+  /** Preserved original uploaded image when turn-in/pasting-stub edge extension is active */
+  readonly originalDataUrl?: string;
+  readonly originalWidth?: number;
+  readonly originalHeight?: number;
+  readonly stubExtensionMode?: StubExtensionMode;
+  readonly stubExtensionSide?: 'front' | 'back';
 }
 
 export const LAYER_MIN_SIZE_MM = 12;
@@ -31,6 +38,13 @@ function generateLayerId(): string {
 function parseClipZone(value: unknown): LayerClipZone {
   if (value === 'front' || value === 'spine' || value === 'back') return value;
   return 'none';
+}
+
+function parseStubExtensionMode(value: unknown): StubExtensionMode | undefined {
+  if (value === 'none' || value === 'edge-smear' || value === 'soft-mirror' || value === 'mirror') {
+    return value;
+  }
+  return undefined;
 }
 
 export const CoverImageLayerModel = {
@@ -79,7 +93,7 @@ export const CoverImageLayerModel = {
     targetRect: Rect2D,
     clipZone: LayerClipZone = layer.clipZone,
   ): CoverImageLayer {
-    return this.createInRect({
+    const fitted = this.createInRect({
       id: layer.id,
       dataUrl: layer.dataUrl,
       fileName: layer.fileName,
@@ -89,6 +103,14 @@ export const CoverImageLayerModel = {
       clipZone,
       mode: 'cover',
     });
+    return {
+      ...fitted,
+      originalDataUrl: layer.originalDataUrl,
+      originalWidth: layer.originalWidth,
+      originalHeight: layer.originalHeight,
+      stubExtensionMode: layer.stubExtensionMode,
+      stubExtensionSide: layer.stubExtensionSide,
+    };
   },
 
   moveBy(layer: CoverImageLayer, dxMm: number, dyMm: number): CoverImageLayer {
@@ -204,6 +226,11 @@ export const CoverImageLayerModel = {
     const naturalHeight =
       typeof obj.naturalHeight === 'number' && obj.naturalHeight > 0 ? obj.naturalHeight : 1000;
 
+    const originalDataUrl =
+      typeof obj.originalDataUrl === 'string' && obj.originalDataUrl.startsWith('data:image/')
+        ? obj.originalDataUrl
+        : undefined;
+
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateLayerId(),
       dataUrl: obj.dataUrl,
@@ -215,6 +242,20 @@ export const CoverImageLayerModel = {
       widthMm: clampFinite(obj.widthMm, 120, LAYER_MIN_SIZE_MM, LAYER_MAX_SIZE_MM),
       heightMm: clampFinite(obj.heightMm, 180, LAYER_MIN_SIZE_MM, LAYER_MAX_SIZE_MM),
       clipZone: parseClipZone(obj.clipZone),
+      originalDataUrl,
+      originalWidth:
+        originalDataUrl && typeof obj.originalWidth === 'number' && obj.originalWidth > 0
+          ? obj.originalWidth
+          : undefined,
+      originalHeight:
+        originalDataUrl && typeof obj.originalHeight === 'number' && obj.originalHeight > 0
+          ? obj.originalHeight
+          : undefined,
+      stubExtensionMode: parseStubExtensionMode(obj.stubExtensionMode),
+      stubExtensionSide:
+        obj.stubExtensionSide === 'front' || obj.stubExtensionSide === 'back'
+          ? obj.stubExtensionSide
+          : undefined,
     };
   },
 } as const;
