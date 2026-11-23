@@ -1,10 +1,12 @@
 import {
   ArrowDown,
   ArrowUp,
+  Expand,
   ImagePlus,
   Minus,
   Pipette,
   Plus,
+  Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -26,6 +28,7 @@ import type {
   CoverImageLayer,
   LayerClipZone,
   QuickFitTarget,
+  StubExtensionMode,
 } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 
@@ -35,9 +38,13 @@ export interface ArtworkControlsCardProps {
   readonly studio: CoverStudioState;
   readonly selectedLayerId: string | null;
   readonly eyedropperTarget: EyedropperTarget;
+  readonly extendingStub?: boolean;
+  readonly sampledEdgeHex?: string | null;
   readonly onSelectLayer: (id: string | null) => void;
   readonly onAddImageFiles: (files: readonly File[]) => void;
   readonly onQuickFitLayer: (id: string, target: QuickFitTarget) => void;
+  readonly onExtendLayerStub?: (id: string, mode: StubExtensionMode) => void;
+  readonly onMatchSpineBackToEdge?: (hex: string) => void;
   readonly onSetLayerClip: (id: string, clipZone: LayerClipZone) => void;
   readonly onScaleLayer: (id: string, factor: number) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
@@ -45,6 +52,29 @@ export interface ArtworkControlsCardProps {
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
   readonly onToggleEyedropper: (target: Exclude<EyedropperTarget, null>) => void;
 }
+
+const STUB_EXTENSION_MODES: readonly {
+  readonly id: StubExtensionMode;
+  readonly label: string;
+  readonly title: string;
+}[] = [
+  { id: 'none', label: 'Off', title: 'Keep original unextended image on board' },
+  {
+    id: 'edge-smear',
+    label: 'Edge Smear',
+    title: 'Stretch outer edge colors/gradients smoothly across the 18 mm turn-in + bleed (no mirrored text)',
+  },
+  {
+    id: 'soft-mirror',
+    label: 'Soft Mirror',
+    title: 'Reflect artwork edges across the turn-in + bleed with subtle feathering for paintings/textures',
+  },
+  {
+    id: 'mirror',
+    label: 'Mirror',
+    title: 'Crisp gallery-wrap reflection across the turn-in + bleed',
+  },
+];
 
 const QUICK_FIT_OPTIONS: readonly { readonly id: QuickFitTarget; readonly label: string }[] = [
   { id: 'front', label: 'Fit Front' },
@@ -57,9 +87,13 @@ export function ArtworkControlsCard({
   studio,
   selectedLayerId,
   eyedropperTarget,
+  extendingStub = false,
+  sampledEdgeHex = null,
   onSelectLayer,
   onAddImageFiles,
   onQuickFitLayer,
+  onExtendLayerStub,
+  onMatchSpineBackToEdge,
   onSetLayerClip,
   onScaleLayer,
   onReorderLayer,
@@ -264,6 +298,68 @@ export function ArtworkControlsCard({
                 </Button>
               </div>
             </div>
+
+            {/* Non-Destructive Turn-In / Pasting Stub Edge Extension */}
+            {onExtendLayerStub && (
+              <div className="kettle-stitch-divider space-y-2 pt-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+                    <Expand className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                    Extend to Pasting Stub (Turn-In &amp; Bleed)
+                  </span>
+                  {selectedLayer.stubExtensionMode && selectedLayer.stubExtensionMode !== 'none' && (
+                    <Badge variant="brass" className="font-mono text-[10px]">
+                      {selectedLayer.stubExtensionMode}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  Keeps a front-only cover uncropped on the board and extends its outer edges across
+                  the folded turn-in stub &amp; bleed.
+                </p>
+                <div
+                  role="group"
+                  aria-label="Pasting stub edge extension mode"
+                  className="grid grid-cols-4 gap-1"
+                >
+                  {STUB_EXTENSION_MODES.map((opt) => {
+                    const active = (selectedLayer.stubExtensionMode ?? 'none') === opt.id;
+                    return (
+                      <Button
+                        key={opt.id}
+                        variant={active ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-7 px-1.5 text-[11px]"
+                        disabled={extendingStub}
+                        aria-pressed={active}
+                        title={opt.title}
+                        data-testid={`stub-extend-${opt.id}`}
+                        onClick={() => onExtendLayerStub(selectedLayer.id, opt.id)}
+                      >
+                        {opt.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+                {sampledEdgeHex && onMatchSpineBackToEdge && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-full justify-center gap-1.5 text-xs"
+                    data-testid="match-spine-back-edge-btn"
+                    onClick={() => onMatchSpineBackToEdge(sampledEdgeHex)}
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                    <span
+                      className="h-3 w-3 rounded-full border border-border"
+                      style={{ backgroundColor: sampledEdgeHex }}
+                      aria-hidden="true"
+                    />
+                    Match Spine &amp; Back to Cover Edge ({sampledEdgeHex.toUpperCase()})
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
 

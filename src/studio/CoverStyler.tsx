@@ -42,6 +42,7 @@ import {
   type LayerClipZone,
   type QuickFitTarget,
   type ResizeCorner,
+  type StubExtensionMode,
 } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
@@ -54,6 +55,11 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
+import {
+  applyStubExtensionToLayer,
+  detectLayerCoverSide,
+  type StubExtensionSide,
+} from './edgeExtend';
 import {
   loadCustomFontFromFile,
   resolveFontCssFamily,
@@ -159,6 +165,8 @@ export function CoverStyler({
   const [showGuides, setShowGuides] = useState(true);
   const [showPreflightOverlays, setShowPreflightOverlays] = useState(true);
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
+  const [extendingStub, setExtendingStub] = useState(false);
+  const [sampledEdgeHex, setSampledEdgeHex] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
 
@@ -214,6 +222,43 @@ export function CoverStyler({
     });
   };
 
+  const handleExtendLayerStub = async (
+    layerId: string,
+    mode: StubExtensionMode,
+    explicitSide?: StubExtensionSide,
+  ) => {
+    const targetLayer = studioRef.current.layers.find((l) => l.id === layerId);
+    if (!targetLayer) return;
+    const side = explicitSide ?? detectLayerCoverSide(targetLayer, geometry);
+    setExtendingStub(true);
+    try {
+      const { layer: updated, sampledSpineEdgeHex } = await applyStubExtensionToLayer(
+        targetLayer,
+        geometry,
+        side,
+        mode,
+      );
+      const latest = studioRef.current;
+      onChangeRef.current({
+        ...latest,
+        layers: latest.layers.map((l) => (l.id === layerId ? updated : l)),
+      });
+      setSelectedLayerId(layerId);
+      setSampledEdgeHex(sampledSpineEdgeHex);
+      if (mode === 'none') {
+        onStatusMessage(`Restored original "${targetLayer.fileName}" onto ${side} board`);
+      } else {
+        onStatusMessage(
+          `Extended "${targetLayer.fileName}" across ${side} pasting stub (${mode})`,
+        );
+      }
+    } catch {
+      onStatusMessage('Could not extend cover edges onto the pasting stub.');
+    } finally {
+      setExtendingStub(false);
+    }
+  };
+
   const handleApplyQuickFix = (fix: PreflightQuickFix) => {
     switch (fix.kind) {
       case 'fit-layer': {
@@ -223,6 +268,9 @@ export function CoverStyler({
         onStatusMessage(`Applied Quick Fit (${fix.label})`);
         break;
       }
+      case 'extend-stub':
+        void handleExtendLayerStub(fix.layerId, 'edge-smear', fix.side);
+        break;
       case 'enable-bleed':
         onUpdateParams?.({ includeBleed: true, bleedMm: fix.bleedMm });
         onStatusMessage(`Enabled ${fix.bleedMm} mm outer artwork bleed`);
@@ -1249,11 +1297,18 @@ export function CoverStyler({
           studio={studio}
           selectedLayerId={selectedLayerId}
           eyedropperTarget={eyedropperTarget}
+          extendingStub={extendingStub}
+          sampledEdgeHex={sampledEdgeHex}
           onSelectLayer={setSelectedLayerId}
           onAddImageFiles={(files) => void handleAddImageFiles(files)}
           onQuickFitLayer={(id, target: QuickFitTarget) => {
             const targetRect = resolveQuickFitRect(spec, target);
             updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect));
+          }}
+          onExtendLayerStub={(id, mode) => void handleExtendLayerStub(id, mode)}
+          onMatchSpineBackToEdge={(hex) => {
+            updateStudio({ spineBgColor: hex, backBgColor: hex, frontBgColor: hex });
+            onStatusMessage(`Matched spine & back color to cover edge (${hex.toUpperCase()})`);
           }}
           onSetLayerClip={(id, clipZone: LayerClipZone) =>
             updateLayer(id, (layer) => ({ ...layer, clipZone }))

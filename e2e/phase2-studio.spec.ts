@@ -312,4 +312,46 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(pdfBytes.byteLength).toBeGreaterThan(2000);
   });
+
+  test('extends a front-only cover across the turn-in pasting stub non-destructively and matches spine/back edge color', async ({
+    page,
+  }) => {
+    // Upload a high-res front-only cover (1430x2230 matching the 143x223 mm front board)
+    const frontOnlyPng = createSolidPngBuffer(1430, 2230, 22, 74, 88);
+    await page.getByTestId('studio-upload-image-input').setInputFiles({
+      name: 'downloaded-front-cover.png',
+      mimeType: 'image/png',
+      buffer: frontOnlyPng,
+    });
+    await expect(page.getByTestId('studio-layer-0')).toBeVisible();
+
+    // Click Edge Smear to extend outer edges cleanly across the 18 mm turn-in + 3 mm bleed stub
+    await page.getByTestId('stub-extend-edge-smear').click();
+    await expect(page.getByTestId('stub-extend-edge-smear')).toHaveAttribute('aria-pressed', 'true');
+
+    // Layer now spans full front zone (board + 18mm turn-in + 3mm bleed = 164mm wide, 265mm tall)
+    const layerEl = page.getByTestId('studio-layer-0');
+    const extendedW = Number(await layerEl.getAttribute('width'));
+    const extendedH = Number(await layerEl.getAttribute('height'));
+    expect(extendedW).toBeGreaterThanOrEqual(163);
+    expect(extendedH).toBeGreaterThanOrEqual(264);
+
+    // Preflight passes with zero coverage or DPI errors
+    await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
+
+    // Match Spine & Back color to sampled cover edge (#164a58)
+    await page.getByTestId('match-spine-back-edge-btn').click();
+    await expect(page.getByTestId('studio-spine-fill')).toHaveAttribute('fill', '#164a58');
+    await expect(page.getByTestId('studio-back-fill')).toHaveAttribute('fill', '#164a58');
+
+    // Switch to Soft Mirror and then revert cleanly to Off (original uncropped board size)
+    await page.getByTestId('stub-extend-soft-mirror').click();
+    await expect(page.getByTestId('stub-extend-soft-mirror')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.getByTestId('stub-extend-none').click();
+    const revertedW = Number(await layerEl.getAttribute('width'));
+    expect(revertedW).toBeCloseTo(143, 0);
+  });
 });

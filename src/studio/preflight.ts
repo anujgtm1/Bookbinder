@@ -16,6 +16,12 @@ export type PreflightQuickFix =
       readonly label: string;
     }
   | {
+      readonly kind: 'extend-stub';
+      readonly layerId: string;
+      readonly side: 'front' | 'back';
+      readonly label: string;
+    }
+  | {
       readonly kind: 'enable-bleed';
       readonly bleedMm: number;
       readonly label: string;
@@ -424,10 +430,10 @@ export const PreflightEngine = {
             severity: 'warning',
           })),
           quickFix: {
-            kind: 'fit-layer',
+            kind: 'extend-stub',
             layerId: primary.layer.id,
-            target: side,
-            label: fitLabel,
+            side,
+            label: 'Extend Edges to Stub',
           },
         });
       }
