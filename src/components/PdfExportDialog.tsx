@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { getBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
+import type { CoverPdfLayerMode } from '@/studio/renderEngine';
 import {
   PAGE_SIZES,
   PRIMARY_SHEET_MEDIA_IDS,
@@ -36,6 +37,7 @@ export interface PdfExportSelection {
   readonly includeLegend: boolean;
   readonly dpi: 300 | 600;
   readonly tileOverlapMm: number;
+  readonly exportLayerMode: CoverPdfLayerMode;
 }
 
 export interface OuterPdfExportOptions {
@@ -64,6 +66,7 @@ export interface PdfExportDialogProps {
   readonly onReduceFlapWidth?: (widthMm: number) => void;
   readonly defaultIncludeGuides?: boolean;
   readonly defaultIncludeLegend?: boolean;
+  readonly defaultExportLayerMode?: CoverPdfLayerMode;
   readonly exporting?: boolean;
   readonly onConfirmExport: (selection: PdfExportSelection) => void | Promise<void>;
   readonly onClose: () => void;
@@ -139,6 +142,7 @@ export function PdfExportDialog({
   onReduceFlapWidth,
   defaultIncludeGuides = true,
   defaultIncludeLegend = false,
+  defaultExportLayerMode = 'full',
   exporting = false,
   onConfirmExport,
   onClose,
@@ -153,6 +157,8 @@ export function PdfExportDialog({
   const [includeGuides, setIncludeGuides] = useState(defaultIncludeGuides);
   const [includeScaleBar, setIncludeScaleBar] = useState(true);
   const [includeLegend, setIncludeLegend] = useState(defaultIncludeLegend);
+  const [exportLayerMode, setExportLayerMode] =
+    useState<CoverPdfLayerMode>(defaultExportLayerMode);
   const [dpi, setDpi] = useState<300 | 600>(300);
   const [tileOverlapMm, setTileOverlapMm] = useState<number>(10);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -186,6 +192,7 @@ export function PdfExportDialog({
     if (open) {
       setIncludeGuides(defaultIncludeGuides);
       setIncludeLegend(defaultIncludeLegend);
+      setExportLayerMode(defaultExportLayerMode);
       if (!dialog.open) {
         if (typeof dialog.showModal === 'function') {
           dialog.showModal();
@@ -200,7 +207,7 @@ export function PdfExportDialog({
         dialog.removeAttribute('open');
       }
     }
-  }, [open, defaultIncludeGuides, defaultIncludeLegend]);
+  }, [open, defaultIncludeGuides, defaultIncludeLegend, defaultExportLayerMode]);
 
   // Light-dismiss fallback for browsers without native HTMLDialogElement closedby support
   useEffect(() => {
@@ -289,7 +296,11 @@ export function PdfExportDialog({
       return `${activeInnerPlan.pageCount} ${pageWord} • ${sizeLabel}${legendSuffix}${modeSuffix}`;
     }
 
-    const dpiSuffix = target === 'cover-styled' ? ` • ${dpi} DPI` : ' • 1:1 mm';
+    const layerSuffix =
+      target === 'cover-styled' && exportLayerMode === 'base-only'
+        ? ' • Base Only (For HTV)'
+        : '';
+    const dpiSuffix = target === 'cover-styled' ? ` • ${dpi} DPI${layerSuffix}` : ' • 1:1 mm';
     if (effectiveSplitMode === 'three-piece') {
       return `3 pages • 3-Piece Split (Back, Spine, Front)${dpiSuffix}`;
     }
@@ -321,6 +332,7 @@ export function PdfExportDialog({
     pageSizeId,
     includeLegend,
     target,
+    exportLayerMode,
     dpi,
     effectiveSplitMode,
     isBlockedUnfitted,
@@ -343,6 +355,7 @@ export function PdfExportDialog({
       includeLegend,
       dpi,
       tileOverlapMm,
+      exportLayerMode,
     };
     setIsSubmitting(true);
     try {
@@ -581,6 +594,44 @@ export function PdfExportDialog({
               data-testid="pdf-export-options"
               className="kettle-stitch-divider grid gap-3 pt-3.5 sm:grid-cols-2"
             >
+              {/* Print Layers (cover-styled: Full Cover vs Base Only for Hybrid HTV) */}
+              {target === 'cover-styled' && (
+                <div className="flex flex-col justify-between gap-2 rounded-md border border-border bg-secondary/30 px-3 py-2 sm:col-span-2 sm:flex-row sm:items-center">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-medium text-foreground">Print Layers</span>
+                    <p className="text-[11px] text-muted-foreground">
+                      {exportLayerMode === 'base-only'
+                        ? 'Omits text & ornaments so Cricut HTV / foil presses onto a clean printed base with zero double-vision ghosting.'
+                        : 'Prints full cover artwork with embedded vector text and ornaments.'}
+                    </p>
+                  </div>
+                  <div className="inline-flex shrink-0 gap-1" role="group" aria-label="Print layers">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={exportLayerMode === 'full' ? 'default' : 'outline'}
+                      aria-pressed={exportLayerMode === 'full'}
+                      data-testid="pdf-opt-layers-full"
+                      className="h-7 px-2.5 text-[11px]"
+                      onClick={() => setExportLayerMode('full')}
+                    >
+                      Full Cover
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={exportLayerMode === 'base-only' ? 'default' : 'outline'}
+                      aria-pressed={exportLayerMode === 'base-only'}
+                      data-testid="pdf-opt-layers-base-only"
+                      className="h-7 px-2.5 text-[11px]"
+                      onClick={() => setExportLayerMode('base-only')}
+                    >
+                      Base Only (For HTV)
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Cut / Fold / Glue Guides (cover-styled & inner-styled) */}
               {(target === 'cover-styled' || target === 'inner-styled') && (
                 <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/30 px-3 py-2">
