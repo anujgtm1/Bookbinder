@@ -144,11 +144,27 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('layer-flip-v-btn')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /scale\(-1 -1\)/);
 
-    // Toggle flips back off before continuing eyedropper sample
+    // Toggle flips back off, then test Rotate 90° cycle (90° -> 180° -> 270° -> 0°)
     await page.getByTestId('layer-flip-h-btn').click();
     await page.getByTestId('layer-flip-v-btn').click();
     await expect(page.getByTestId('layer-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('layer-flip-v-btn')).toHaveAttribute('aria-pressed', 'false');
+
+    const layerRotateBtn = page.getByTestId('layer-rotate-90-btn');
+    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(layerRotateBtn).toContainText('90°');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(90\)/);
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toContainText('180°');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(180\)/);
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toContainText('270°');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(270\)/);
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(layerRotateBtn).toContainText('90°');
 
     await page.getByTestId('studio-eyedropper-both-btn').click();
     await expect(page.getByTestId('eyedropper-active-banner')).toBeVisible();
@@ -364,9 +380,25 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const widthAfterResize = Number(await pocketLayer.getAttribute('width'));
     expect(widthAfterResize).toBeGreaterThan(widthBeforeResize + 2);
 
-    // Copy to opposite pocket creates a 2nd interactive layer
+    // Copy to opposite pocket creates a 2nd interactive layer, then test Rotate 90° cycle on pocket artwork
     await page.getByTestId('pocket-copy-other-btn').click();
     await expect(page.getByTestId('pocket-layer-count-badge')).toHaveText('2 images');
+
+    const pocketRotateBtn = page.getByTestId('pocket-layer-rotate-90-btn');
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(pocketRotateBtn).toContainText('90°');
+    await expect(page.getByTestId('pocket-layer-1')).toHaveAttribute('transform', /rotate\(90\)/);
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toContainText('180°');
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toContainText('270°');
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    // Leave at 90° so Styled Pockets PDF export exercises rotated pocket image rendering
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'true');
 
     // Export Styled Pockets PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-styled-inner-pdf-btn').click();
@@ -671,6 +703,22 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('cover-text-flip-h-btn').click();
     await expect(page.getByTestId('cover-text-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
 
+    // Rotate Cover Text 90° -> 180° -> 270° -> 0° and leave at 90° for Cricut export verification
+    const textRotateBtn = page.getByTestId('cover-text-rotate-90-btn');
+    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(textRotateBtn).toContainText('90°');
+    await expect(page.getByTestId('studio-cover-text-0')).toHaveAttribute('transform', /rotate\(90\)/);
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toContainText('180°');
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toContainText('270°');
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await textRotateBtn.click();
+    await expect(page.getByTestId('studio-cover-text-0')).toHaveAttribute('transform', /rotate\(90\)/);
+
     // 2. Switch to Classic Designs tool dock tab, add a Double Rule Frame, test 1-click Margin Fit Presets, Spine Botanical Vine, and custom vector SVG stamp
     await page.getByTestId('studio-tool-designs').click();
     await page.getByTestId('add-ornament-frame-double-rule').click();
@@ -700,11 +748,30 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('ornament-cat-spine').click();
     await page.getByTestId('add-ornament-spine-botanical-vine').click();
 
-    // Flip ornament horizontally and vertically cleanly
+    // Flip ornament horizontally and vertically cleanly, then test Rotate 90° cycle
     await page.getByTestId('ornament-flip-h-btn').click();
     await expect(page.getByTestId('ornament-flip-h-btn')).toHaveAttribute('aria-pressed', 'true');
     await page.getByTestId('ornament-flip-v-btn').click();
     await expect(page.getByTestId('ornament-flip-v-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    const spineOrnRect = page.getByTestId('studio-ornament-1').locator('rect').first();
+    const ornW0 = Number(await spineOrnRect.getAttribute('width'));
+    const ornH0 = Number(await spineOrnRect.getAttribute('height'));
+    const ornRotateBtn = page.getByTestId('ornament-rotate-90-btn');
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(ornRotateBtn).toContainText('90°');
+    expect(Number(await spineOrnRect.getAttribute('width'))).toBeCloseTo(ornH0, 1);
+    expect(Number(await spineOrnRect.getAttribute('height'))).toBeCloseTo(ornW0, 1);
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toContainText('180°');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toContainText('270°');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'true');
 
     const customSvgStamp = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,5 65,40 95,50 65,60 50,95 35,60 5,50 35,40" fill="#000"/></svg>',
