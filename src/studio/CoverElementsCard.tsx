@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { FOIL_SWATCHES } from '@/resources/palettes';
 import {
   COVER_ORNAMENT_BOUNDS,
   COVER_TEXT_BOUNDS,
@@ -45,14 +46,6 @@ import {
   getClassicOrnamentSpec,
 } from './classicOrnaments';
 import { CURATED_FONTS, type CustomFontAsset } from './fonts';
-
-const FOIL_SWATCHES: readonly { readonly label: string; readonly hex: string }[] = [
-  { label: 'Antique Gold Foil', hex: '#d9b566' },
-  { label: 'Archival Cream', hex: '#f5efe2' },
-  { label: 'Silver Foil', hex: '#d4d8de' },
-  { label: 'Rose Copper', hex: '#d48b6a' },
-  { label: 'Lampblack Ink', hex: '#1f1b16' },
-];
 
 export type CoverElementsTab = 'text' | 'ornaments';
 

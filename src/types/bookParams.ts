@@ -1,4 +1,19 @@
+import {
+  BINDING_STYLES,
+  PAGE_SIZES,
+  PAPERBACK_PRESETS,
+  PRINT_MEDIA_OPTIONS,
+  getPrintMediaSpec,
+} from '@/resources/paperSpecs';
 import { UnitConverter, clampFinite, type UnitSystem } from './units';
+
+export {
+  BINDING_STYLES,
+  PAGE_SIZES,
+  PAPERBACK_PRESETS,
+  PRINT_MEDIA_OPTIONS,
+  getPrintMediaSpec,
+};
 
 export type BindingStyle = 'rigid-case' | 'flexible-spine' | 'softcover-jacket';
 export type SplitMode = 'single' | 'three-piece';
@@ -32,130 +47,12 @@ export interface PrintMediaSpec {
   readonly rollWidthMm: number | null;
 }
 
-export const PRINT_MEDIA_OPTIONS: readonly PrintMediaSpec[] = [
-  {
-    id: 'exact-auto',
-    label: 'Exact Wrap Size (Auto)',
-    shortLabel: 'Exact Wrap Size (Auto)',
-    kind: 'auto',
-    shortMm: null,
-    longMm: null,
-    rollWidthMm: null,
-  },
-  {
-    id: 'letter',
-    label: 'US Letter (8.5 × 11")',
-    shortLabel: 'US Letter',
-    kind: 'sheet',
-    shortMm: 215.9,
-    longMm: 279.4,
-    rollWidthMm: null,
-  },
-  {
-    id: 'a4',
-    label: 'A4 (210 × 297 mm)',
-    shortLabel: 'A4',
-    kind: 'sheet',
-    shortMm: 210.0,
-    longMm: 297.0,
-    rollWidthMm: null,
-  },
-  {
-    id: 'legal',
-    label: 'US Legal (8.5 × 14")',
-    shortLabel: 'US Legal',
-    kind: 'sheet',
-    shortMm: 215.9,
-    longMm: 355.6,
-    rollWidthMm: null,
-  },
-  {
-    id: 'tabloid',
-    label: 'Tabloid (11 × 17")',
-    shortLabel: 'Tabloid',
-    kind: 'sheet',
-    shortMm: 279.4,
-    longMm: 431.8,
-    rollWidthMm: null,
-  },
-  {
-    id: 'roll-13',
-    label: '13" Roll (330 mm)',
-    shortLabel: '13" Roll',
-    kind: 'roll',
-    shortMm: null,
-    longMm: null,
-    rollWidthMm: 330,
-  },
-  {
-    id: 'roll-17',
-    label: '17" Roll (432 mm)',
-    shortLabel: '17" Roll',
-    kind: 'roll',
-    shortMm: null,
-    longMm: null,
-    rollWidthMm: 432,
-  },
-  {
-    id: 'roll-24',
-    label: '24" Roll (610 mm)',
-    shortLabel: '24" Roll',
-    kind: 'roll',
-    shortMm: null,
-    longMm: null,
-    rollWidthMm: 610,
-  },
-  {
-    id: 'roll-36',
-    label: '36" Roll (914 mm)',
-    shortLabel: '36" Roll',
-    kind: 'roll',
-    shortMm: null,
-    longMm: null,
-    rollWidthMm: 914,
-  },
-  {
-    id: 'roll-44',
-    label: '44" Roll (1118 mm)',
-    shortLabel: '44" Roll',
-    kind: 'roll',
-    shortMm: null,
-    longMm: null,
-    rollWidthMm: 1118,
-  },
-] as const;
-
-export function getPrintMediaSpec(id: PrintMediaId): PrintMediaSpec {
-  return PRINT_MEDIA_OPTIONS.find((opt) => opt.id === id) ?? PRINT_MEDIA_OPTIONS[0];
-}
-
 export interface BindingStyleOption {
   readonly id: BindingStyle;
   readonly label: string;
   readonly shortLabel: string;
   readonly summary: string;
 }
-
-export const BINDING_STYLES: readonly BindingStyleOption[] = [
-  {
-    id: 'rigid-case',
-    label: 'Rigid 3-Board Hardcover',
-    shortLabel: 'Rigid Case',
-    summary: '2 cover boards + rigid spine strip (best ≥ 8 mm)',
-  },
-  {
-    id: 'flexible-spine',
-    label: 'Flexible Spine (No Spine Board)',
-    shortLabel: 'Flexible Spine',
-    summary: '2 cover boards + cloth spine gap (best 3–8 mm)',
-  },
-  {
-    id: 'softcover-jacket',
-    label: 'Fold-and-Glue Slip Cover (0-Board, 1 Sheet)',
-    shortLabel: 'Slip Cover',
-    summary: '1-piece printable cover with 4 mitered glue tabs — no separate pockets (fits Letter/A4 on A6)',
-  },
-] as const;
 
 export interface PageSizeSpec {
   readonly id: PageSizeId;
@@ -164,27 +61,6 @@ export interface PageSizeSpec {
   readonly heightMm: number;
 }
 
-export const PAGE_SIZES: Readonly<Record<PageSizeId, PageSizeSpec>> = {
-  letter: {
-    id: 'letter',
-    label: 'US Letter (8.5 × 11")',
-    widthMm: 215.9,
-    heightMm: 279.4,
-  },
-  a4: {
-    id: 'a4',
-    label: 'A4 (210 × 297 mm)',
-    widthMm: 210.0,
-    heightMm: 297.0,
-  },
-  tabloid: {
-    id: 'tabloid',
-    label: 'Tabloid (11 × 17")',
-    widthMm: 279.4,
-    heightMm: 431.8,
-  },
-};
-
 export interface PaperbackPreset {
   readonly id: Exclude<PaperbackPresetId, 'custom'>;
   readonly label: string;
@@ -192,44 +68,6 @@ export interface PaperbackPreset {
   readonly pbHeightMm: number;
   readonly summary: string;
 }
-
-export const PAPERBACK_PRESETS: readonly PaperbackPreset[] = [
-  {
-    id: 'mass-market',
-    label: 'Mass Market Paperback',
-    pbWidthMm: 106.0,
-    pbHeightMm: 174.0,
-    summary: '106 × 174 mm',
-  },
-  {
-    id: 'us-trade-digest',
-    label: 'US Trade Digest',
-    pbWidthMm: 139.7,
-    pbHeightMm: 215.9,
-    summary: '5.5 × 8.5 in',
-  },
-  {
-    id: 'us-trade-standard',
-    label: 'US Trade Standard',
-    pbWidthMm: 152.4,
-    pbHeightMm: 228.6,
-    summary: '6.0 × 9.0 in',
-  },
-  {
-    id: 'manga-b6',
-    label: 'Manga / B6',
-    pbWidthMm: 128.0,
-    pbHeightMm: 182.0,
-    summary: '128 × 182 mm',
-  },
-  {
-    id: 'a6-notebook',
-    label: 'A6 Pocket Notebook',
-    pbWidthMm: 105.0,
-    pbHeightMm: 148.0,
-    summary: '105 × 148 mm',
-  },
-] as const;
 
 export interface BookParameters {
   /** Structural binding style (rigid 3-board case, 2-board flexible spine, or 0-board softcover jacket) */

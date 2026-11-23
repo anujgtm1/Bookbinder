@@ -1,5 +1,8 @@
+import { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS } from '@/resources/paperSpecs';
 import type { BindingStyle, PrintMediaId } from './bookParams';
 import { roundTo } from './units';
+
+export { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS };
 
 export interface Point2D {
   readonly x: number;
@@ -112,16 +115,6 @@ export interface RollWidthOption {
   readonly widthMm: number;
   readonly label: string;
 }
-
-export const STANDARD_ROLL_WIDTHS: readonly RollWidthOption[] = [
-  { inches: 13, widthMm: 330, label: '13"' },
-  { inches: 17, widthMm: 432, label: '17"' },
-  { inches: 24, widthMm: 610, label: '24"' },
-  { inches: 36, widthMm: 914, label: '36"' },
-  { inches: 44, widthMm: 1118, label: '44"' },
-] as const;
-
-export const ROLL_TOTAL_MARGIN_MM = 10.0; // 5.0 mm unprintable margin per side
 
 export interface RollRecommendation {
   readonly fits: boolean;

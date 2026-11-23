@@ -1,3 +1,5 @@
+import { parseHexColor } from '@/lib/color';
+import { ENDPAPER_SWATCHES } from '@/resources/palettes';
 import {
   CoverOrnamentLayerModel,
   CoverTextLayerModel,
@@ -9,6 +11,8 @@ import {
   type CoverImageLayer,
 } from './studioLayer';
 import { UnitConverter, clampFinite, roundTo } from './units';
+
+export { ENDPAPER_SWATCHES };
 
 export type SpineLayoutPreset = 'inline' | 'stacked';
 export type SpineOrientation = 'top-to-bottom' | 'bottom-to-top';
@@ -35,15 +39,6 @@ export interface PocketStyleConfig {
   /** Whether styling fills only visible pocket faces (leaving white glue flaps) or the full cut envelope */
   styleScope: PocketStyleScope;
 }
-
-export const ENDPAPER_SWATCHES: readonly { readonly label: string; readonly hex: string }[] = [
-  { label: 'Archival Cream', hex: '#f4eee1' },
-  { label: 'Kraft Linen', hex: '#d8cab2' },
-  { label: 'Bindery Spruce', hex: '#1e4d44' },
-  { label: 'Oxford Navy', hex: '#1f3a52' },
-  { label: 'Oxblood Cloth', hex: '#6e2828' },
-  { label: 'Antique Sage', hex: '#4f6d5c' },
-] as const;
 
 export type CuratedFontId =
   | 'eb-garamond'
@@ -139,12 +134,6 @@ export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
   cutLineMode: 'full-cut-miter',
   pocketStyle: { ...DEFAULT_POCKET_STYLE },
 };
-
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-
-function parseHexColor(value: unknown, fallback: string): string {
-  return typeof value === 'string' && HEX_COLOR_RE.test(value) ? value.toLowerCase() : fallback;
-}
 
 function parseFontId(value: unknown): StudioFontId {
   if (value === 'custom') return 'custom';

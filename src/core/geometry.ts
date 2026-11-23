@@ -1,23 +1,25 @@
 import {
+  A4_SHEET,
   PRINT_MEDIA_OPTIONS,
-  getPrintMediaSpec,
-  type BookParameters,
-  type PrintMediaId,
-} from '@/types/bookParams';
-import {
   ROLL_TOTAL_MARGIN_MM,
   STANDARD_ROLL_WIDTHS,
-  type CaseGeometry,
-  type ChipboardCutList,
-  type OuterWrapGeometry,
-  type PocketEnvelopeGeometry,
-  type Polygon2D,
-  type PrintMediaFitEvaluation,
-  type PrintMediaFitStatus,
-  type RollFeedOrientation,
-  type RollRecommendation,
-  type SpineLinerGeometry,
-  type SplitWrapPanel,
+  US_LEGAL_SHEET,
+  US_LETTER_SHEET,
+  getPrintMediaSpec,
+} from '@/resources/paperSpecs';
+import type { BookParameters, PrintMediaId } from '@/types/bookParams';
+import type {
+  CaseGeometry,
+  ChipboardCutList,
+  OuterWrapGeometry,
+  PocketEnvelopeGeometry,
+  Polygon2D,
+  PrintMediaFitEvaluation,
+  PrintMediaFitStatus,
+  RollFeedOrientation,
+  RollRecommendation,
+  SpineLinerGeometry,
+  SplitWrapPanel,
 } from '@/types/geometry';
 import { roundTo } from '@/types/units';
 
@@ -27,12 +29,6 @@ const LINER_OVERLAP_PER_SIDE_MM = 15.0;
 const INNER_VERTICAL_INSET_MM = 1.0; // 1.0 mm inset top & bottom => -2.0 mm height
 const QUARTER_BOUND_LAP_MM = 3.0;
 const SOFTCOVER_GLUE_TAB_H_MM = 10.0;
-const US_LETTER_SHORT_MM = 215.9;
-const US_LETTER_LONG_MM = 279.4;
-const A4_SHORT_MM = 210.0;
-const A4_LONG_MM = 297.0;
-const US_LEGAL_SHORT_MM = 215.9;
-const US_LEGAL_LONG_MM = 355.6;
 
 export function resolveSlipFlapWidthMm(params: BookParameters): number {
   const defaultFlap = roundTo(Math.min(48, Math.max(24, params.pbWidthMm * 0.23)), 1);
@@ -412,16 +408,17 @@ export function evaluateRollWidth(
   const fitsLetter = fitsDesktopSheet(
     wrapWidthMm,
     wrapHeightMm,
-    US_LETTER_SHORT_MM,
-    US_LETTER_LONG_MM,
+    US_LETTER_SHEET.shortMm,
+    US_LETTER_SHEET.longMm,
   );
-  const fitsA4 = fitsDesktopSheet(wrapWidthMm, wrapHeightMm, A4_SHORT_MM, A4_LONG_MM);
+  const fitsA4 = fitsDesktopSheet(wrapWidthMm, wrapHeightMm, A4_SHEET.shortMm, A4_SHEET.longMm);
 
   if (fitsLetter || fitsA4) {
     const orientation: RollFeedOrientation =
       wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated';
     const usedWidthMm = Math.min(wrapWidthMm, wrapHeightMm);
-    const printableWidthMm = (fitsLetter ? US_LETTER_SHORT_MM : A4_SHORT_MM) - ROLL_TOTAL_MARGIN_MM;
+    const printableWidthMm =
+      (fitsLetter ? US_LETTER_SHEET.shortMm : A4_SHEET.shortMm) - ROLL_TOTAL_MARGIN_MM;
     const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
     const sheetLabel =
       fitsLetter && fitsA4
@@ -445,15 +442,15 @@ export function evaluateRollWidth(
   const fitsLegal = fitsDesktopSheet(
     wrapWidthMm,
     wrapHeightMm,
-    US_LEGAL_SHORT_MM,
-    US_LEGAL_LONG_MM,
+    US_LEGAL_SHEET.shortMm,
+    US_LEGAL_SHEET.longMm,
   );
 
   if (fitsLegal) {
     const orientation: RollFeedOrientation =
       wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated';
     const usedWidthMm = Math.min(wrapWidthMm, wrapHeightMm);
-    const printableWidthMm = US_LEGAL_SHORT_MM - ROLL_TOTAL_MARGIN_MM;
+    const printableWidthMm = US_LEGAL_SHEET.shortMm - ROLL_TOTAL_MARGIN_MM;
     const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
 
     return {
@@ -617,8 +614,8 @@ export function evaluatePrintMediaFit(
   }
 
   // Desktop sheet evaluation: 3-state ('fits-1-sheet' | 'fits-2-sheet-tile' | 'does-not-fit')
-  const shortMm = spec.shortMm ?? US_LETTER_SHORT_MM;
-  const longMm = spec.longMm ?? US_LETTER_LONG_MM;
+  const shortMm = spec.shortMm ?? US_LETTER_SHEET.shortMm;
+  const longMm = spec.longMm ?? US_LETTER_SHEET.longMm;
   const shortPrintable = shortMm - ROLL_TOTAL_MARGIN_MM;
   const longPrintable = longMm - ROLL_TOTAL_MARGIN_MM;
 
