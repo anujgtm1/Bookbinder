@@ -246,4 +246,30 @@ describe('BookParametersModel', () => {
     expect(hasIntegratedFlaps('softcover-jacket')).toBe(true);
     expect(hasIntegratedFlaps('dust-jacket')).toBe(true);
   });
+
+  it('parses, preserves, and serializes softcoverPocketMode cleanly with undefined default', () => {
+    const defaults = BookParametersModel.createDefault();
+    expect(defaults.softcoverPocketMode).toBeUndefined();
+
+    const separate = BookParametersModel.clampAndNormalize({
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+    });
+    expect(separate.softcoverPocketMode).toBe('separate');
+
+    const roundTripped = BookParametersModel.deserialize(BookParametersModel.serialize(separate));
+    expect(roundTripped.softcoverPocketMode).toBe('separate');
+
+    const integrated = BookParametersModel.clampAndNormalize({
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'integrated',
+    });
+    expect(integrated.softcoverPocketMode).toBe('integrated');
+
+    const invalid = BookParametersModel.deserialize({
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'bogus-mode',
+    });
+    expect(invalid.softcoverPocketMode).toBeUndefined();
+  });
 });

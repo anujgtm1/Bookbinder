@@ -10,7 +10,7 @@ import {
   type SpineLinerGeometry,
 } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
-import { getBindingStrategy } from './bindingStyles';
+import { resolveBindingStrategy } from './bindingStyles';
 import { layoutPdfToPrintMedia, type PdfSheetLayoutOptions } from './pdfSheetLayout';
 
 const PAGE_MARGIN_MM = 7.5;
@@ -676,6 +676,33 @@ export async function generateInnerTemplatesPdf(
   return { bytes, plan };
 }
 
+export interface OuterWrapPdfOptions extends PdfSheetLayoutOptions {
+  /** When true on 2-sheet softcover-jacket ('separate'), appends detached inner pockets page(s) to the exported PDF. */
+  readonly appendInnerPocketsPage?: boolean;
+  /** Sheet size for appended inner pockets page(s). Defaults to 'letter'. */
+  readonly innerPageSizeId?: PageSizeId;
+}
+
+/**
+ * Appends detached inner pockets template page(s) onto an already-generated outer cover PDF.
+ */
+export async function appendDetachedInnerPocketsPdf(
+  outerBytes: Uint8Array,
+  geometry: CaseGeometry,
+  innerPageSizeId: PageSizeId = 'letter',
+): Promise<Uint8Array> {
+  const { bytes: innerBytes } = await generateInnerTemplatesPdf(geometry, innerPageSizeId, {
+    includeLegend: false,
+  });
+  const mergedDoc = await PDFDocument.load(outerBytes);
+  const innerDoc = await PDFDocument.load(innerBytes);
+  const copiedPages = await mergedDoc.copyPages(innerDoc, innerDoc.getPageIndices());
+  for (const copiedPage of copiedPages) {
+    mergedDoc.addPage(copiedPage);
+  }
+  return mergedDoc.save();
+}
+
 /**
  * Generates an exact 1:1 physical mm structural PDF for the Outer Case Wrap
  * (1 page for Single-Piece Continuous Wrap; 3 pages for 3-Piece Quarter-Bound Split).
@@ -683,7 +710,7 @@ export async function generateInnerTemplatesPdf(
 export async function generateOuterWrapPdf(
   geometry: CaseGeometry,
   splitMode: SplitMode,
-  options?: PdfSheetLayoutOptions,
+  options?: OuterWrapPdfOptions,
 ): Promise<Uint8Array> {
   const { outerWrap, splitPanels, cutList } = geometry;
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
@@ -766,7 +793,7 @@ export async function generateOuterWrapPdf(
   }
 
   const shiftedCut = GeometryPrimitives.translatePolygon(outerWrap.outerCutPolygon, bleed, bleed);
-  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const strategy = resolveBindingStrategy(outerWrap);
   const { capabilities, panelLabels } = strategy;
   const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;
 
@@ -895,14 +922,23 @@ export async function generateOuterWrapPdf(
 
   const baseBytes = await pdfDoc.save();
 
-  if (options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)) {
-    return layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
-      ...options,
-      bleedMm: options.bleedMm ?? bleed,
-      documentTitle:
-        options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template (1:1 mm)',
-    });
+  const outerBytes =
+    options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)
+      ? await layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
+          ...options,
+          bleedMm: options.bleedMm ?? bleed,
+          documentTitle:
+            options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template (1:1 mm)',
+        })
+      : baseBytes;
+
+  if (
+    options?.appendInnerPocketsPage &&
+    geometry.bindingStyle === 'softcover-jacket' &&
+    geometry.softcoverPocketMode === 'separate'
+  ) {
+    return appendDetachedInnerPocketsPdf(outerBytes, geometry, options.innerPageSizeId ?? 'letter');
   }
 
-  return baseBytes;
+  return outerBytes;
 }

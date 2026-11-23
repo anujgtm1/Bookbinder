@@ -2,7 +2,7 @@ import { escapeXml, fmtMm } from '@/lib/svgFormat';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import { roundTo } from '@/types/units';
-import { getBindingStrategy } from './bindingStyles';
+import { resolveBindingStrategy } from './bindingStyles';
 
 const SPLIT_PANEL_GAP_MM = 12;
 
@@ -26,7 +26,7 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
   </g>`
       : `  <g id="bleed-box" />`;
 
-  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const strategy = resolveBindingStrategy(outerWrap);
   const { capabilities, panelLabels } = strategy;
   const hasHinges = cutList.hingeSpacerMm > 0;
   const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;

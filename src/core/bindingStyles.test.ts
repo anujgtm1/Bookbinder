@@ -3,9 +3,12 @@ import { BINDING_STYLES } from '@/resources/paperSpecs';
 import { DEFAULT_BOOK_PARAMETERS, type BindingStyle } from '@/types/bookParams';
 import {
   BINDING_STYLE_STRATEGIES,
+  SOFTCOVER_SEPARATE_POCKETS_STRATEGY,
+  evaluateDetachedSlipCoverFit,
   evaluateFlapDepth,
   getBindingStrategy,
   listBindingStrategies,
+  resolveBindingStrategy,
 } from './bindingStyles';
 
 describe('bindingStyles strategy registry', () => {
@@ -196,5 +199,69 @@ describe('bindingStyles strategy registry', () => {
       coverWidthPct: 42,
       isTooShallow: true,
     });
+  });
+
+  it('resolves SOFTCOVER_SEPARATE_POCKETS_STRATEGY for 2-sheet slip cover and evaluates detached single-sheet fit', () => {
+    const a6Separate = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket' as const,
+      softcoverPocketMode: 'separate' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    };
+
+    const sepStrategy = resolveBindingStrategy(a6Separate);
+    expect(sepStrategy).toBe(SOFTCOVER_SEPARATE_POCKETS_STRATEGY);
+    expect(sepStrategy.capabilities).toEqual({
+      usesChipboard: false,
+      hasRigidSpine: false,
+      hasHingeSpacers: false,
+      supportsThreePieceSplit: false,
+      usesInnerPockets: true,
+      hasFlaps: false,
+      hasGlueTabs: true,
+      hasTurnIns: false,
+    });
+    expect(sepStrategy.innerPocketsNotice).toBeUndefined();
+    expect(sepStrategy.flapConfig).toBeUndefined();
+    expect(sepStrategy.materialNote).toContain('2-Sheet Slip Cover');
+    expect(evaluateFlapDepth(a6Separate, 105, 0)).toBeNull();
+
+    // Integrated softcover resolves standard 1-piece strategy
+    expect(
+      resolveBindingStrategy({ bindingStyle: 'softcover-jacket', softcoverPocketMode: 'integrated' }),
+    ).toBe(BINDING_STYLE_STRATEGIES['softcover-jacket']);
+
+    const cutList = sepStrategy.calculateCutList(a6Separate);
+    const outerWrap = sepStrategy.calculateOuterWrap(a6Separate, cutList);
+    expect(outerWrap.softcoverPocketMode).toBe('separate');
+    expect(outerWrap.widthMm).toBe(223);
+    expect(outerWrap.heightMm).toBe(170);
+    expect(outerWrap.jacketFlapWidthMm).toBe(0);
+    expect(outerWrap.jacketGlueTabHeightMm).toBe(10);
+    expect(outerWrap.outerCutPolygon).toHaveLength(12);
+    expect(outerWrap.jacketGlueTabPolygons).toHaveLength(4);
+    expect(outerWrap.foldLines).toHaveLength(6);
+    expect(sepStrategy.buildExportNote(outerWrap, cutList)).toContain('2-SHEET SLIP COVER');
+
+    // evaluateDetachedSlipCoverFit returns single-sheet fit on integrated softcover-jacket, null otherwise
+    const a6Integrated = {
+      ...a6Separate,
+      softcoverPocketMode: undefined,
+      jacketFlapWidthMm: 50,
+    };
+    const detachedEval = evaluateDetachedSlipCoverFit(a6Integrated, 'letter');
+    expect(detachedEval).not.toBeNull();
+    expect(detachedEval?.fitsSingleSheet).toBe(true);
+    expect(detachedEval?.detachedWidthMm).toBe(223);
+    expect(detachedEval?.detachedHeightMm).toBe(170);
+    expect(detachedEval?.fit.status).toBe('fits-1-sheet');
+
+    // Returns null when already separate or on other binding styles
+    expect(evaluateDetachedSlipCoverFit(a6Separate, 'letter')).toBeNull();
+    expect(
+      evaluateDetachedSlipCoverFit({ ...DEFAULT_BOOK_PARAMETERS, bindingStyle: 'dust-jacket' }, 'letter'),
+    ).toBeNull();
   });
 });
