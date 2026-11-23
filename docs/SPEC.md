@@ -223,11 +223,26 @@ src/
   - **True Vector Glyph Outlines (Zero `<text>` Tags, Zero `transform` Attributes):** Parses the active curated `.woff` font or custom uploaded `.ttf`/`.otf`/`.woff` font client-side via `@pdf-lib/fontkit`, lays out properly kerned glyphs, and bakes every curve (`M/L/Q/C/Z`) into flattened absolute millimeter coordinates inside a single compound `<path id="spine-lettering" />`.
   - **Strict `1:1 mm` Physical Scaling:** Root `<svg>` explicitly specifies `width="{W}mm" height="{H}mm" viewBox="0 0 {W} {H}"` with zero embedded rasters, filters, or gradients.
   - **Export Options Modal (Native `<dialog closedby="any">` with live preview & mat compatibility badges):**
-    - **Scope:** `Spine Strip Only` (compact `SPINE_W × BOARD_H` mat compatible with Cricut Joy / Joy Xtra) vs. `Full Cover Wrap` (`WRAP_W × WRAP_H` for 12×24" Maker/Cameo mats).
-    - **Weeding Box (`+4 mm`):** Tight cut box around outlined lettering for effortless HTV weeding.
+    - **Scope:** `Spine Strip Only` (`SPINE_W × BOARD_H`), `Front Cover Only` (`BOARD_W × BOARD_H`), `Back Cover Only` (`BOARD_W × BOARD_H`), or `Full Cover Wrap` (`WRAP_W × WRAP_H`).
+    - **Weeding Box (`+4 mm`):** Tight cut box around outlined lettering and classic ornaments for effortless HTV weeding.
     - **Alignment Corner Marks:** Thin closed-path L-brackets at exact spine/board corners for dead-center HTV transfer onto wrapped bookcloth.
-    - **Outer Wrap Cut Outline:** Optional separate-color `#D93829` outer cut polygon (with 45° miters) for cutting bookcloth or cardstock directly on a cutting machine.
+    - **Outer Wrap Cut Outline:** Optional separate-color `#D93829` outer cut polygon (with 45° miters or fold-and-glue tabs) for cutting bookcloth or cardstock directly on a cutting machine.
     - **Mirror Horizontally (HTV Iron-On):** Optional horizontal coordinate flip (off by default to avoid double-mirroring with Cricut Design Space's *Make It → Mirror* toggle).
+
+### 7.7 Cover Typography Layers, Classic Bookbindery Vector Library & SVG Stamps (`src/types/coverElements.ts`, `src/studio/classicOrnaments.ts`, `src/studio/CoverElementsCard.tsx`)
+- **Draggable Front, Back & Spine Text Layers (`textLayers: CoverTextLayer[]`):**
+  - Add unlimited editable multi-line text blocks directly onto the Front Cover, Back Cover, or Spine via one-click classic presets (*Front Title*, *Front Author*, *Back Blurb*) or custom placement.
+  - Supports free pointer dragging in 1:1 mm coordinates with live golden-brass **Magnetic Smart Snap Guides** (snapping cleanly to `FRONT CENTER`, `BACK CENTER`, `SPINE CENTER`, and board margins), plus quick-align presets (*Upper ⅓*, *Center*, *Lower ⅓*).
+  - Configurable font family (all curated literary serifs/sans-serifs + custom `.ttf`/`.otf` uploads), font size (`8–96 pt`), letter spacing / tracking (`-0.05` to `0.40 em`), line height, uppercase transform, alignment (`Left / Center / Right`), and ink/foil color.
+  - Renders identically across the 2D Interactive Canvas, 3D Book Preview, 300 DPI Print PDF (as true vector PDF typography), Affinity SVG, and **Cricut / Silhouette / ScanNCut HTV SVG** (baked via `@pdf-lib/fontkit` into flattened `1:1 mm` Bezier `<path>` curves).
+- **Parametric Classic Bookbindery Vector Ornament Library (`ornaments: CoverOrnamentLayer[]`):**
+  - Built-in library of timeless single-color vector book motifs generated parametrically in `1:1 mm` (never distorting across A6, Digest, or Trade book sizes):
+    - **Cover Frames:** Single Hairline Rule, Classic Double Rule, Art Deco Stepped Frame, Notched Corner Frame.
+    - **Mirrored 4-Corner Flourishes:** Classic Scroll Corners, Art Deco Chevron Corners.
+    - **Title Dividers & Emblems:** Diamond Rule, Aldus Fleuron Leaf, Celestial Stars & Crescent, Compass Rose, Botanical Sprig.
+    - **Spine Bands:** 5-Band Classic Spine Foil Rules.
+  - Draggable with magnetic snap guides, corner-resizable, recolorable to any foil/ink hex color, and exported cleanly to 300 DPI Print PDF, 3D Preview, Affinity SVG, and **Cricut / HTV SVG** as flattened cuttable vector paths.
+- **SVG Artwork Uploads:** Image uploaders on both Outer Cover and Inner Pockets accept `.svg` (`image/svg+xml`) alongside `PNG`, `JPG`, and `WEBP`.
 
 ---
 
