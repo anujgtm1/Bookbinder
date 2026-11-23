@@ -1,10 +1,13 @@
-import { FileCode2, FileImage, FileText, Pipette } from 'lucide-react';
+import { Box, Eye, EyeOff, FileCode2, FileImage, FileText, Layers, Pipette } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FloatingHudToolbar,
+  HudButton,
+  HudGroup,
+  HudSeparator,
+} from '@/components/FloatingHudToolbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import {
   triggerBlobDownload,
   triggerBytesDownload,
@@ -25,7 +28,14 @@ import {
 } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
+import { Book3DPreview } from './Book3DPreview';
 import { SpineTypographyCard } from './SpineTypographyCard';
+import {
+  BOOK_3D_PRESETS,
+  Book3DModel,
+  DEFAULT_BOOK_3D_ANGLE,
+  type Book3DCameraAngle,
+} from './book3d';
 import {
   loadCustomFontFromFile,
   resolveFontCssFamily,
@@ -48,6 +58,8 @@ export interface CoverStylerProps {
   readonly onChange: (next: CoverStudioState) => void;
   readonly onStatusMessage: (message: string) => void;
 }
+
+type StudioViewMode = '2d' | '3d';
 
 type DragInteraction =
   | { readonly mode: 'none' }
@@ -102,6 +114,8 @@ export function CoverStyler({
   onChange,
   onStatusMessage,
 }: CoverStylerProps) {
+  const [viewMode, setViewMode] = useState<StudioViewMode>('2d');
+  const [book3DAngle, setBook3DAngle] = useState<Book3DCameraAngle>(DEFAULT_BOOK_3D_ANGLE);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => studio.layers[studio.layers.length - 1]?.id ?? null,
   );
@@ -132,6 +146,7 @@ export function CoverStyler({
     geometry.outerWrap.spineRect.width,
   );
   const activeFontFamily = resolveFontCssFamily(studio.spineText.fontId, customFont);
+  const activePreset3D = Book3DModel.matchPreset(book3DAngle);
 
   const selectedLayer = useMemo(
     () => studio.layers.find((l) => l.id === selectedLayerId) ?? null,
@@ -212,7 +227,7 @@ export function CoverStyler({
   // Delete selected layer via Backspace/Delete key when focus is not inside a text control
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!selectedLayerId) return;
+      if (viewMode !== '2d' || !selectedLayerId) return;
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       const target = e.target as HTMLElement | null;
       if (
@@ -231,7 +246,7 @@ export function CoverStyler({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedLayerId, studio, onChange]);
+  }, [viewMode, selectedLayerId, studio, onChange]);
 
   const clientPointToSvgMm = (
     clientX: number,
@@ -257,7 +272,6 @@ export function CoverStyler({
       if (dropPoint.xMm < spec.frontZoneRect.x) return spec.spineZoneRect;
       return spec.frontZoneRect;
     }
-    // Smart sequential default when clicking "Add Images": Front -> Back -> Spine -> Center
     const count = studio.layers.length;
     if (count === 0) return spec.frontZoneRect;
     if (count === 1) return spec.backZoneRect;
@@ -436,420 +450,502 @@ export function CoverStyler({
   const handleCornerSize = Math.max(7.5, spec.totalWidthMm * 0.022);
 
   return (
-    <div className="flex flex-col gap-5" data-testid="cover-styler">
-      {/* Live Interactive Cover Canvas + Export Toolbar */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <CardTitle className="font-serif text-base">
-                Interactive Cover &amp; Spine Canvas
-              </CardTitle>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Drop any number of images onto the book, click to select, drag to move, pull corner
-                handles to resize, and export at 1:1 mm / 300 DPI ({spec.pixelWidth} ×{' '}
-                {spec.pixelHeight} px).
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleExportPrintPdf}
-                disabled={exportingKind !== null}
-                data-testid="studio-export-pdf-btn"
-              >
-                <FileText className="h-4 w-4" aria-hidden="true" />
-                {exportingKind === 'pdf' ? 'Rendering PDF…' : 'Print-Ready PDF (300 DPI)'}
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleExportAffinityPng}
-                disabled={exportingKind !== null}
-                data-testid="studio-export-png-btn"
-              >
-                <FileImage className="h-4 w-4" aria-hidden="true" />
-                {exportingKind === 'png' ? 'Rendering PNG…' : 'Affinity PNG (300 DPI)'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportAffinitySvg}
-                disabled={exportingKind !== null}
-                data-testid="studio-export-svg-btn"
-              >
-                <FileCode2 className="h-4 w-4" aria-hidden="true" />
-                Affinity SVG (1:1 mm)
-              </Button>
-            </div>
+    <div className="flex flex-col gap-4" data-testid="cover-styler">
+      {/* Edge-to-Edge Cover Workbench Panel connected flush under the Folio Index Tabs */}
+      <section
+        aria-label="Interactive Cover and Spine Workbench"
+        className="overflow-hidden rounded-b-lg rounded-tr-lg border border-border bg-card shadow-xs"
+      >
+        {/* Compact Header + 300 DPI Export Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div>
+            <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
+              Interactive Cover &amp; Spine Canvas
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Drop artwork onto the wrap, drag &amp; resize freely, preview in 3D, and export at 300 DPI ({spec.pixelWidth} ×{' '}
+              {spec.pixelHeight} px).
+            </p>
           </div>
-        </CardHeader>
-
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex flex-wrap items-center gap-2">
-              {eyedropperTarget ? (
-                <Badge variant="warning" data-testid="eyedropper-active-banner">
-                  <Pipette className="h-3.5 w-3.5" aria-hidden="true" />
-                  Click anywhere on the cover preview to sample color for {eyedropperTarget}
-                </Badge>
-              ) : (
-                <span className="text-muted-foreground">
-                  {selectedLayer
-                    ? `Selected "${selectedLayer.fileName}" — drag to move, pull corners or scroll to resize`
-                    : 'Drop PNG, JPG, or WEBP images anywhere on the book or click Add Images below'}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="studio-guides-switch" className="text-xs text-muted-foreground">
-                Show Fold &amp; Cut Guides
-              </Label>
-              <Switch
-                id="studio-guides-switch"
-                checked={showGuides}
-                onCheckedChange={setShowGuides}
-              />
-            </div>
-          </div>
-
-          <div
-            data-testid="studio-canvas-dropzone"
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDraggingOver(true);
-            }}
-            onDragLeave={() => setIsDraggingOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setIsDraggingOver(false);
-              const files = Array.from(e.dataTransfer.files ?? []);
-              if (files.length === 0) return;
-              const dropPt = clientPointToSvgMm(e.clientX, e.clientY) ?? undefined;
-              void handleAddImageFiles(files, dropPt);
-            }}
-            className={`drafting-surface relative flex h-[430px] w-full items-center justify-center overflow-hidden rounded-lg border-2 p-4 transition-colors ${
-              isDraggingOver
-                ? 'border-primary bg-primary/5'
-                : eyedropperTarget
-                  ? 'border-amber-500 cursor-crosshair'
-                  : 'border-border'
-            }`}
-          >
-            <svg
-              ref={svgRef}
-              role="img"
-              aria-label="Interactive hardcover outer wrap canvas with draggable images and spine typography"
-              data-testid="studio-preview-svg"
-              viewBox={`0 0 ${spec.totalWidthMm} ${spec.totalHeightMm}`}
-              className={`max-h-full max-w-full select-none shadow-md ${
-                eyedropperTarget ? 'cursor-crosshair' : 'cursor-default'
-              }`}
-              style={{ touchAction: 'none' }}
-              onClick={(e) => {
-                if (suppressNextClickRef.current) {
-                  suppressNextClickRef.current = false;
-                  return;
-                }
-                if (eyedropperTarget) {
-                  void sampleColorAtSvgClick(e.clientX, e.clientY, eyedropperTarget);
-                } else if (e.target === e.currentTarget) {
-                  setSelectedLayerId(null);
-                }
-              }}
-              onWheel={(e) => {
-                if (!selectedLayer) return;
-                e.preventDefault();
-                const factor = e.deltaY < 0 ? 1.06 : 0.94;
-                updateLayer(selectedLayer.id, (layer) =>
-                  CoverImageLayerModel.scaleAroundCenter(layer, factor),
-                );
-              }}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleExportPrintPdf}
+              disabled={exportingKind !== null}
+              data-testid="studio-export-pdf-btn"
             >
-              <title>Outer Cover Styler Interactive Canvas</title>
-              <defs>
-                <clipPath id="studio-clip-none">
-                  <rect x={0} y={0} width={spec.totalWidthMm} height={spec.totalHeightMm} />
-                </clipPath>
-                <clipPath id="studio-clip-back">
-                  <rect
-                    x={spec.backZoneRect.x}
-                    y={spec.backZoneRect.y}
-                    width={spec.backZoneRect.width}
-                    height={spec.backZoneRect.height}
-                  />
-                </clipPath>
-                <clipPath id="studio-clip-spine">
-                  <rect
-                    x={spec.spineZoneRect.x}
-                    y={spec.spineZoneRect.y}
-                    width={spec.spineZoneRect.width}
-                    height={spec.spineZoneRect.height}
-                  />
-                </clipPath>
-                <clipPath id="studio-clip-front">
-                  <rect
-                    x={spec.frontZoneRect.x}
-                    y={spec.frontZoneRect.y}
-                    width={spec.frontZoneRect.width}
-                    height={spec.frontZoneRect.height}
-                  />
-                </clipPath>
-              </defs>
-
-              {/* Base Zone Background Fills */}
-              <rect
-                x={spec.backZoneRect.x}
-                y={spec.backZoneRect.y}
-                width={spec.backZoneRect.width}
-                height={spec.backZoneRect.height}
-                fill={studio.backBgColor}
-                data-testid="studio-back-fill"
-                onClick={(e) => {
-                  if (!eyedropperTarget) {
-                    e.stopPropagation();
-                    setSelectedLayerId(null);
-                  }
-                }}
-              />
-              <rect
-                x={spec.spineZoneRect.x}
-                y={spec.spineZoneRect.y}
-                width={spec.spineZoneRect.width}
-                height={spec.spineZoneRect.height}
-                fill={studio.spineBgColor}
-                data-testid="studio-spine-fill"
-                onClick={(e) => {
-                  if (!eyedropperTarget) {
-                    e.stopPropagation();
-                    setSelectedLayerId(null);
-                  }
-                }}
-              />
-              <rect
-                x={spec.frontZoneRect.x}
-                y={spec.frontZoneRect.y}
-                width={spec.frontZoneRect.width}
-                height={spec.frontZoneRect.height}
-                fill={studio.frontBgColor}
-                data-testid="studio-front-fill"
-                onClick={(e) => {
-                  if (!eyedropperTarget) {
-                    e.stopPropagation();
-                    setSelectedLayerId(null);
-                  }
-                }}
-              />
-
-              {/* Free-Form Draggable & Resizable Artwork Layers */}
-              {studio.layers.map((layer, index) => {
-                const clipId = `studio-clip-${layer.clipZone}`;
-                return (
-                  <g key={layer.id} clipPath={`url(#${clipId})`}>
-                    <image
-                      href={layer.dataUrl}
-                      x={layer.xMm}
-                      y={layer.yMm}
-                      width={layer.widthMm}
-                      height={layer.heightMm}
-                      preserveAspectRatio="none"
-                      data-testid={`studio-layer-${index}`}
-                      className={
-                        eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
-                      }
-                      onClick={(e) => {
-                        if (eyedropperTarget) return;
-                        e.stopPropagation();
-                        setSelectedLayerId(layer.id);
-                      }}
-                      onPointerDown={(e) => {
-                        if (eyedropperTarget) return;
-                        e.stopPropagation();
-                        setSelectedLayerId(layer.id);
-                        const pt = clientPointToSvgMm(e.clientX, e.clientY);
-                        if (!pt) return;
-                        dragRef.current = {
-                          mode: 'move',
-                          layerId: layer.id,
-                          startXMm: pt.xMm,
-                          startYMm: pt.yMm,
-                          origLayer: layer,
-                        };
-                      }}
-                    />
-                  </g>
-                );
-              })}
-
-              {/* Spine Typography Overlay */}
-              <g data-testid="studio-spine-typography" pointerEvents="none">
-                {spinePlacements.map((item, idx) => (
-                  <text
-                    key={`${item.kind}-${idx}`}
-                    x={item.anchorXMm}
-                    y={item.anchorYMm}
-                    fill={studio.spineText.textColor}
-                    fontFamily={activeFontFamily}
-                    fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    transform={`rotate(${item.rotationDegCss} ${item.anchorXMm} ${item.anchorYMm})`}
-                  >
-                    {item.text}
-                  </text>
-                ))}
-              </g>
-
-              {/* Fold, Board & Cut Guides Overlay */}
-              {showGuides && (
-                <g pointerEvents="none">
-                  <path
-                    d={GeometryPrimitives.polygonToSvgPath(shiftedCutPolygon, 2)}
-                    fill="none"
-                    stroke="#FF3B30"
-                    strokeWidth="0.9"
-                    strokeDasharray={
-                      studio.cutLineMode === 'bleed-registration' ? '4 2.5' : undefined
-                    }
-                  />
-                  {[
-                    geometry.outerWrap.backBoardRect,
-                    geometry.outerWrap.spineRect,
-                    geometry.outerWrap.frontBoardRect,
-                  ].map((rect, i) => (
-                    <rect
-                      key={i}
-                      x={rect.x + spec.bleedMm}
-                      y={rect.y + spec.bleedMm}
-                      width={rect.width}
-                      height={rect.height}
-                      fill="none"
-                      stroke="#ffffff"
-                      strokeOpacity="0.65"
-                      strokeWidth="0.7"
-                      strokeDasharray="5 3"
-                    />
-                  ))}
-                  {studio.layers.length === 0 && (
-                    <>
-                      <text
-                        x={
-                          spec.bleedMm +
-                          geometry.outerWrap.backBoardRect.x +
-                          geometry.outerWrap.backBoardRect.width / 2
-                        }
-                        y={spec.totalHeightMm / 2}
-                        fill="#ffffff"
-                        fillOpacity="0.45"
-                        fontSize="7.5"
-                        fontWeight="600"
-                        textAnchor="middle"
-                      >
-                        BACK COVER
-                      </text>
-                      <text
-                        x={
-                          spec.bleedMm +
-                          geometry.outerWrap.frontBoardRect.x +
-                          geometry.outerWrap.frontBoardRect.width / 2
-                        }
-                        y={spec.totalHeightMm / 2}
-                        fill="#ffffff"
-                        fillOpacity="0.45"
-                        fontSize="7.5"
-                        fontWeight="600"
-                        textAnchor="middle"
-                      >
-                        DROP IMAGES ANYWHERE
-                      </text>
-                    </>
-                  )}
-                </g>
-              )}
-
-              {/* Selection Frame & Corner Resize Handles for Selected Layer */}
-              {selectedLayer && !eyedropperTarget && (
-                <g data-testid="studio-selection-handles">
-                  {selectedLayer.clipZone !== 'none' && (() => {
-                    const clipRect = resolveZoneClipRect(spec, selectedLayer.clipZone);
-                    return (
-                      <rect
-                        x={clipRect.x}
-                        y={clipRect.y}
-                        width={clipRect.width}
-                        height={clipRect.height}
-                        fill="none"
-                        stroke="#38bdf8"
-                        strokeWidth="0.8"
-                        strokeDasharray="3 2"
-                        pointerEvents="none"
-                      />
-                    );
-                  })()}
-                  <rect
-                    x={selectedLayer.xMm}
-                    y={selectedLayer.yMm}
-                    width={selectedLayer.widthMm}
-                    height={selectedLayer.heightMm}
-                    fill="none"
-                    stroke="#facc15"
-                    strokeWidth="1.2"
-                    strokeDasharray="4 2"
-                    pointerEvents="none"
-                  />
-                  {(
-                    [
-                      { corner: 'nw' as const, x: selectedLayer.xMm, y: selectedLayer.yMm },
-                      {
-                        corner: 'ne' as const,
-                        x: selectedLayer.xMm + selectedLayer.widthMm,
-                        y: selectedLayer.yMm,
-                      },
-                      {
-                        corner: 'se' as const,
-                        x: selectedLayer.xMm + selectedLayer.widthMm,
-                        y: selectedLayer.yMm + selectedLayer.heightMm,
-                      },
-                      {
-                        corner: 'sw' as const,
-                        x: selectedLayer.xMm,
-                        y: selectedLayer.yMm + selectedLayer.heightMm,
-                      },
-                    ] as const
-                  ).map((handle) => (
-                    <rect
-                      key={handle.corner}
-                      x={handle.x - handleCornerSize / 2}
-                      y={handle.y - handleCornerSize / 2}
-                      width={handleCornerSize}
-                      height={handleCornerSize}
-                      rx={1}
-                      fill="#ffffff"
-                      stroke="#24476e"
-                      strokeWidth="1"
-                      style={{ cursor: CORNER_CURSORS[handle.corner] }}
-                      data-testid={`resize-handle-${handle.corner}`}
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        dragRef.current = {
-                          mode: 'resize',
-                          layerId: selectedLayer.id,
-                          corner: handle.corner,
-                          origLayer: selectedLayer,
-                        };
-                      }}
-                    />
-                  ))}
-                </g>
-              )}
-            </svg>
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              {exportingKind === 'pdf' ? 'Rendering PDF…' : 'Print-Ready PDF (300 DPI)'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleExportAffinityPng}
+              disabled={exportingKind !== null}
+              data-testid="studio-export-png-btn"
+            >
+              <FileImage className="h-4 w-4" aria-hidden="true" />
+              {exportingKind === 'png' ? 'Rendering PNG…' : 'Affinity PNG (300 DPI)'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportAffinitySvg}
+              disabled={exportingKind !== null}
+              data-testid="studio-export-svg-btn"
+            >
+              <FileCode2 className="h-4 w-4" aria-hidden="true" />
+              Affinity SVG (1:1 mm)
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage */}
+        <div
+          id="studio-mat-viewport"
+          data-testid="studio-canvas-dropzone"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDraggingOver(true);
+          }}
+          onDragLeave={() => setIsDraggingOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDraggingOver(false);
+            const files = Array.from(e.dataTransfer.files ?? []);
+            if (files.length === 0) return;
+            const dropPt =
+              viewMode === '2d' ? (clientPointToSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
+            void handleAddImageFiles(files, dropPt);
+          }}
+          className={`cutting-mat-surface relative flex h-[470px] w-full items-center justify-center overflow-hidden border-y transition-colors sm:h-[510px] ${
+            isDraggingOver
+              ? 'border-brass-bright ring-2 ring-inset ring-brass-bright/70'
+              : eyedropperTarget
+                ? 'border-amber-400 cursor-crosshair'
+                : 'border-border/80'
+          }`}
+        >
+          {/* Contextual Top Banner (Eyedropper active or helpful status pill) */}
+          <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
+            {eyedropperTarget && (
+              <Badge
+                variant="warning"
+                data-testid="eyedropper-active-banner"
+                className="pointer-events-auto border-amber-400/60 bg-amber-950/90 text-amber-100 shadow-md"
+              >
+                <Pipette className="h-3.5 w-3.5" aria-hidden="true" />
+                Click anywhere on the cover preview to sample color for {eyedropperTarget}
+              </Badge>
+            )}
+          </div>
+
+          {viewMode === '2d' ? (
+            <div className="flex h-full w-full items-center justify-center p-6 pb-16">
+              <svg
+                ref={svgRef}
+                role="img"
+                aria-label="Interactive hardcover outer wrap canvas with draggable images and spine typography"
+                data-testid="studio-preview-svg"
+                viewBox={`0 0 ${spec.totalWidthMm} ${spec.totalHeightMm}`}
+                className={`max-h-full max-w-full select-none drop-shadow-[0_16px_28px_rgba(0,0,0,0.48)] ${
+                  eyedropperTarget ? 'cursor-crosshair' : 'cursor-default'
+                }`}
+                style={{ touchAction: 'none' }}
+                onClick={(e) => {
+                  if (suppressNextClickRef.current) {
+                    suppressNextClickRef.current = false;
+                    return;
+                  }
+                  if (eyedropperTarget) {
+                    void sampleColorAtSvgClick(e.clientX, e.clientY, eyedropperTarget);
+                  } else if (e.target === e.currentTarget) {
+                    setSelectedLayerId(null);
+                  }
+                }}
+                onWheel={(e) => {
+                  if (!selectedLayer) return;
+                  e.preventDefault();
+                  const factor = e.deltaY < 0 ? 1.06 : 0.94;
+                  updateLayer(selectedLayer.id, (layer) =>
+                    CoverImageLayerModel.scaleAroundCenter(layer, factor),
+                  );
+                }}
+              >
+                <title>Outer Cover Styler Interactive Canvas</title>
+                <defs>
+                  <clipPath id="studio-clip-none">
+                    <rect x={0} y={0} width={spec.totalWidthMm} height={spec.totalHeightMm} />
+                  </clipPath>
+                  <clipPath id="studio-clip-back">
+                    <rect
+                      x={spec.backZoneRect.x}
+                      y={spec.backZoneRect.y}
+                      width={spec.backZoneRect.width}
+                      height={spec.backZoneRect.height}
+                    />
+                  </clipPath>
+                  <clipPath id="studio-clip-spine">
+                    <rect
+                      x={spec.spineZoneRect.x}
+                      y={spec.spineZoneRect.y}
+                      width={spec.spineZoneRect.width}
+                      height={spec.spineZoneRect.height}
+                    />
+                  </clipPath>
+                  <clipPath id="studio-clip-front">
+                    <rect
+                      x={spec.frontZoneRect.x}
+                      y={spec.frontZoneRect.y}
+                      width={spec.frontZoneRect.width}
+                      height={spec.frontZoneRect.height}
+                    />
+                  </clipPath>
+                </defs>
+
+                {/* Base Zone Background Fills */}
+                <rect
+                  x={spec.backZoneRect.x}
+                  y={spec.backZoneRect.y}
+                  width={spec.backZoneRect.width}
+                  height={spec.backZoneRect.height}
+                  fill={studio.backBgColor}
+                  data-testid="studio-back-fill"
+                  onClick={(e) => {
+                    if (!eyedropperTarget) {
+                      e.stopPropagation();
+                      setSelectedLayerId(null);
+                    }
+                  }}
+                />
+                <rect
+                  x={spec.spineZoneRect.x}
+                  y={spec.spineZoneRect.y}
+                  width={spec.spineZoneRect.width}
+                  height={spec.spineZoneRect.height}
+                  fill={studio.spineBgColor}
+                  data-testid="studio-spine-fill"
+                  onClick={(e) => {
+                    if (!eyedropperTarget) {
+                      e.stopPropagation();
+                      setSelectedLayerId(null);
+                    }
+                  }}
+                />
+                <rect
+                  x={spec.frontZoneRect.x}
+                  y={spec.frontZoneRect.y}
+                  width={spec.frontZoneRect.width}
+                  height={spec.frontZoneRect.height}
+                  fill={studio.frontBgColor}
+                  data-testid="studio-front-fill"
+                  onClick={(e) => {
+                    if (!eyedropperTarget) {
+                      e.stopPropagation();
+                      setSelectedLayerId(null);
+                    }
+                  }}
+                />
+
+                {/* Free-Form Draggable & Resizable Artwork Layers */}
+                {studio.layers.map((layer, index) => {
+                  const clipId = `studio-clip-${layer.clipZone}`;
+                  return (
+                    <g key={layer.id} clipPath={`url(#${clipId})`}>
+                      <image
+                        href={layer.dataUrl}
+                        x={layer.xMm}
+                        y={layer.yMm}
+                        width={layer.widthMm}
+                        height={layer.heightMm}
+                        preserveAspectRatio="none"
+                        data-testid={`studio-layer-${index}`}
+                        className={
+                          eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+                        }
+                        onClick={(e) => {
+                          if (eyedropperTarget) return;
+                          e.stopPropagation();
+                          setSelectedLayerId(layer.id);
+                        }}
+                        onPointerDown={(e) => {
+                          if (eyedropperTarget) return;
+                          e.stopPropagation();
+                          setSelectedLayerId(layer.id);
+                          const pt = clientPointToSvgMm(e.clientX, e.clientY);
+                          if (!pt) return;
+                          dragRef.current = {
+                            mode: 'move',
+                            layerId: layer.id,
+                            startXMm: pt.xMm,
+                            startYMm: pt.yMm,
+                            origLayer: layer,
+                          };
+                        }}
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* Spine Typography Overlay */}
+                <g data-testid="studio-spine-typography" pointerEvents="none">
+                  {spinePlacements.map((item, idx) => (
+                    <text
+                      key={`${item.kind}-${idx}`}
+                      x={item.anchorXMm}
+                      y={item.anchorYMm}
+                      fill={studio.spineText.textColor}
+                      fontFamily={activeFontFamily}
+                      fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      transform={`rotate(${item.rotationDegCss} ${item.anchorXMm} ${item.anchorYMm})`}
+                    >
+                      {item.text}
+                    </text>
+                  ))}
+                </g>
+
+                {/* Fold, Board & Cut Guides Overlay */}
+                {showGuides && (
+                  <g pointerEvents="none">
+                    <path
+                      d={GeometryPrimitives.polygonToSvgPath(shiftedCutPolygon, 2)}
+                      fill="none"
+                      stroke="#FF4D3D"
+                      strokeWidth="0.95"
+                      strokeDasharray={
+                        studio.cutLineMode === 'bleed-registration' ? '4 2.5' : undefined
+                      }
+                    />
+                    {[
+                      geometry.outerWrap.backBoardRect,
+                      geometry.outerWrap.spineRect,
+                      geometry.outerWrap.frontBoardRect,
+                    ].map((rect, i) => (
+                      <rect
+                        key={i}
+                        x={rect.x + spec.bleedMm}
+                        y={rect.y + spec.bleedMm}
+                        width={rect.width}
+                        height={rect.height}
+                        fill="none"
+                        stroke="#ffffff"
+                        strokeOpacity="0.68"
+                        strokeWidth="0.7"
+                        strokeDasharray="5 3"
+                      />
+                    ))}
+                    {studio.layers.length === 0 && (
+                      <>
+                        <text
+                          x={
+                            spec.bleedMm +
+                            geometry.outerWrap.backBoardRect.x +
+                            geometry.outerWrap.backBoardRect.width / 2
+                          }
+                          y={spec.totalHeightMm / 2}
+                          fill="#ffffff"
+                          fillOpacity="0.45"
+                          fontSize="7.5"
+                          fontWeight="600"
+                          textAnchor="middle"
+                        >
+                          BACK COVER
+                        </text>
+                        <text
+                          x={
+                            spec.bleedMm +
+                            geometry.outerWrap.frontBoardRect.x +
+                            geometry.outerWrap.frontBoardRect.width / 2
+                          }
+                          y={spec.totalHeightMm / 2}
+                          fill="#ffffff"
+                          fillOpacity="0.45"
+                          fontSize="7.5"
+                          fontWeight="600"
+                          textAnchor="middle"
+                        >
+                          DROP IMAGES ANYWHERE
+                        </text>
+                      </>
+                    )}
+                  </g>
+                )}
+
+                {/* Selection Frame & Corner Resize Handles for Selected Layer */}
+                {selectedLayer && !eyedropperTarget && (
+                  <g data-testid="studio-selection-handles">
+                    {selectedLayer.clipZone !== 'none' &&
+                      (() => {
+                        const clipRect = resolveZoneClipRect(spec, selectedLayer.clipZone);
+                        return (
+                          <rect
+                            x={clipRect.x}
+                            y={clipRect.y}
+                            width={clipRect.width}
+                            height={clipRect.height}
+                            fill="none"
+                            stroke="#38bdf8"
+                            strokeWidth="0.8"
+                            strokeDasharray="3 2"
+                            pointerEvents="none"
+                          />
+                        );
+                      })()}
+                    <rect
+                      x={selectedLayer.xMm}
+                      y={selectedLayer.yMm}
+                      width={selectedLayer.widthMm}
+                      height={selectedLayer.heightMm}
+                      fill="none"
+                      stroke="#dfb96a"
+                      strokeWidth="1.25"
+                      strokeDasharray="4 2"
+                      pointerEvents="none"
+                    />
+                    {(
+                      [
+                        { corner: 'nw' as const, x: selectedLayer.xMm, y: selectedLayer.yMm },
+                        {
+                          corner: 'ne' as const,
+                          x: selectedLayer.xMm + selectedLayer.widthMm,
+                          y: selectedLayer.yMm,
+                        },
+                        {
+                          corner: 'se' as const,
+                          x: selectedLayer.xMm + selectedLayer.widthMm,
+                          y: selectedLayer.yMm + selectedLayer.heightMm,
+                        },
+                        {
+                          corner: 'sw' as const,
+                          x: selectedLayer.xMm,
+                          y: selectedLayer.yMm + selectedLayer.heightMm,
+                        },
+                      ] as const
+                    ).map((handle) => (
+                      <rect
+                        key={handle.corner}
+                        x={handle.x - handleCornerSize / 2}
+                        y={handle.y - handleCornerSize / 2}
+                        width={handleCornerSize}
+                        height={handleCornerSize}
+                        rx={1}
+                        fill="#faf6ee"
+                        stroke="#1e4d44"
+                        strokeWidth="1.1"
+                        style={{ cursor: CORNER_CURSORS[handle.corner] }}
+                        data-testid={`resize-handle-${handle.corner}`}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          dragRef.current = {
+                            mode: 'resize',
+                            layerId: selectedLayer.id,
+                            corner: handle.corner,
+                            origLayer: selectedLayer,
+                          };
+                        }}
+                      />
+                    ))}
+                  </g>
+                )}
+              </svg>
+            </div>
+          ) : (
+            <div className="h-full w-full pb-12">
+              <Book3DPreview
+                geometry={geometry}
+                studio={studio}
+                customFont={customFont}
+                angle={book3DAngle}
+                onAngleChange={setBook3DAngle}
+              />
+            </div>
+          )}
+
+          {/* Floating Bottom-Center HUD Pill Toolbar */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-3.5 z-20 flex justify-center px-3">
+            <FloatingHudToolbar
+              label="Cover preview view and overlay controls"
+              controlsId="studio-mat-viewport"
+              className="pointer-events-auto max-w-full overflow-x-auto"
+              testId="studio-hud-toolbar"
+            >
+              <HudGroup label="Preview mode">
+                <HudButton
+                  pressed={viewMode === '2d'}
+                  onClick={() => setViewMode('2d')}
+                  data-testid="studio-view-2d-btn"
+                >
+                  <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+                  2D Flat Wrap
+                </HudButton>
+                <HudButton
+                  pressed={viewMode === '3d'}
+                  onClick={() => {
+                    setEyedropperTarget(null);
+                    setViewMode('3d');
+                  }}
+                  data-testid="studio-view-3d-btn"
+                >
+                  <Box className="h-3.5 w-3.5" aria-hidden="true" />
+                  3D Book Preview
+                </HudButton>
+              </HudGroup>
+
+              <HudSeparator />
+
+              {viewMode === '2d' ? (
+                <HudGroup label="Canvas guides">
+                  <HudButton
+                    pressed={showGuides}
+                    onClick={() => setShowGuides((v) => !v)}
+                    data-testid="studio-guides-btn"
+                  >
+                    {showGuides ? (
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    Cut &amp; Fold Guides
+                  </HudButton>
+                </HudGroup>
+              ) : (
+                <HudGroup label="3D camera angles">
+                  {BOOK_3D_PRESETS.map((preset) => (
+                    <HudButton
+                      key={preset.id}
+                      pressed={activePreset3D === preset.id}
+                      onClick={() => setBook3DAngle(preset.angle)}
+                      data-testid={`book3d-preset-${preset.id}`}
+                    >
+                      {preset.label}
+                    </HudButton>
+                  ))}
+                </HudGroup>
+              )}
+            </FloatingHudToolbar>
+          </div>
+        </div>
+
+        {/* Subtle Contextual Hint Footer Strip */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-muted-foreground">
+          <span>
+            {viewMode === '3d'
+              ? 'Drag directly on the hardcover volume (or use Arrow keys) to inspect Front, Spine, and Back proportions.'
+              : selectedLayer
+                ? `Selected "${selectedLayer.fileName}" — drag to position, pull corners or scroll wheel to resize, Backspace to remove.`
+                : 'Drop PNG, JPG, or WEBP artwork anywhere onto the cutting mat or click Add Images below.'}
+          </span>
+          <span className="font-mono text-[11px] text-brass">
+            {spec.totalWidthMm.toFixed(1)} × {spec.totalHeightMm.toFixed(1)} mm @ 300 DPI
+          </span>
+        </div>
+      </section>
 
       {/* Decoupled Controls Grid */}
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid gap-4 xl:grid-cols-2">
         <ArtworkControlsCard
           studio={studio}
           selectedLayerId={selectedLayerId}
@@ -880,9 +976,10 @@ export function CoverStyler({
             }
           }}
           onUpdateStudio={updateStudio}
-          onToggleEyedropper={(target) =>
-            setEyedropperTarget((prev) => (prev === target ? null : target))
-          }
+          onToggleEyedropper={(target) => {
+            setViewMode('2d');
+            setEyedropperTarget((prev) => (prev === target ? null : target));
+          }}
         />
 
         <SpineTypographyCard

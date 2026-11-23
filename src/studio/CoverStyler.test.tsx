@@ -82,4 +82,29 @@ describe('CoverStyler', () => {
     await user.click(screen.getByTestId('studio-eyedropper-both-btn'));
     expect(screen.getByTestId('eyedropper-active-banner')).toBeInTheDocument();
   });
+
+  it('toggles between 2D Flat Wrap and interactive 3D Book Preview with angle presets', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    render(
+      <CoverStyler
+        geometry={geom}
+        studio={CoverStudioModel.createDefault()}
+        onChange={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('studio-preview-svg')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('studio-view-3d-btn'));
+    expect(screen.getByTestId('book3d-stage')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('book3d-preset-spine'));
+    expect(screen.getByTestId('book3d-preset-spine')).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(screen.getByTestId('studio-view-2d-btn'));
+    expect(screen.getByTestId('studio-preview-svg')).toBeInTheDocument();
+  });
 });
