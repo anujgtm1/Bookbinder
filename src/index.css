@@ -482,20 +482,20 @@
 }
 
 /* Native modal <dialog> scroll containment & backdrop per modern-web-guidance */
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+
 dialog.bindery-modal[open] {
   display: flex;
   flex-direction: column;
-}
-
-dialog.bindery-modal:modal {
-  overscroll-behavior: contain;
-}
-
-dialog.bindery-modal::backdrop {
-  overflow: hidden;
-  overscroll-behavior: contain;
-  background-color: rgba(11, 24, 21, 0.62);
-  backdrop-filter: blur(2px);
 }
 
 /* Visually hidden utility per accessibility guide */
