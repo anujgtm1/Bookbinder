@@ -354,4 +354,39 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const revertedW = Number(await layerEl.getAttribute('width'));
     expect(revertedW).toBeCloseTo(143, 0);
   });
+
+  test('displays glowing brass magnetic snap guides while dragging artwork near structural lines', async ({
+    page,
+  }) => {
+    const emblemPng = createSolidPngBuffer(200, 200, 210, 175, 70);
+    await page.getByTestId('studio-upload-image-input').setInputFiles({
+      name: 'emblem.png',
+      mimeType: 'image/png',
+      buffer: emblemPng,
+    });
+
+    // Shrink emblem slightly so its center aligns neatly on the Front Center / Centerline when dragged
+    await page.getByTestId('layer-scale-down-btn').click();
+    await page.getByTestId('layer-scale-down-btn').click();
+    await page.getByTestId('layer-scale-down-btn').click();
+
+    await expect(page.getByTestId('studio-snap-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    const layer = page.getByTestId('studio-layer-0');
+    await layer.scrollIntoViewIfNeeded();
+    const box = await layer.boundingBox();
+    expect(box).not.toBeNull();
+
+    // Drag gently near the center — magnetic snap locks onto FRONT CENTER / CENTERLINE and lights up brass guides
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 2, box!.y + box!.height / 2 + 2, { steps: 3 });
+
+    await expect(page.getByTestId('studio-snap-guides')).toBeVisible();
+    expect(await page.getByTestId('snap-guide-line').count()).toBeGreaterThanOrEqual(1);
+
+    // Guides disappear cleanly on pointer release
+    await page.mouse.up();
+    await expect(page.getByTestId('studio-snap-guides')).toBeHidden();
+  });
 });

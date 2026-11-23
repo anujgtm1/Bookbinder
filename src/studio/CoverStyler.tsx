@@ -7,6 +7,7 @@ import {
   FileImage,
   FileText,
   Layers,
+  Magnet,
   Maximize2,
   Pipette,
   ShieldAlert,
@@ -76,6 +77,12 @@ import {
   resolveQuickFitRect,
   resolveZoneClipRect,
 } from './renderEngine';
+import {
+  buildCanvasSnapTargets,
+  snapLayerMove,
+  snapLayerResize,
+  type ActiveSnapGuide,
+} from './snapGuides';
 
 export interface CoverStylerProps {
   readonly params?: BookParameters;
@@ -163,6 +170,8 @@ export function CoverStyler({
   const [customFont, setCustomFont] = useState<CustomFontAsset | null>(null);
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [activeSnapGuides, setActiveSnapGuides] = useState<readonly ActiveSnapGuide[]>([]);
   const [showPreflightOverlays, setShowPreflightOverlays] = useState(true);
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
   const [extendingStub, setExtendingStub] = useState(false);
@@ -181,6 +190,13 @@ export function CoverStyler({
   }, [studio, onChange]);
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
+  const snapTargets = useMemo(() => buildCanvasSnapTargets(geometry, spec), [geometry, spec]);
+  const snapTargetsRef = useRef(snapTargets);
+  const snapEnabledRef = useRef(snapEnabled);
+  useEffect(() => {
+    snapTargetsRef.current = snapTargets;
+    snapEnabledRef.current = snapEnabled;
+  }, [snapTargets, snapEnabled]);
   const preflight = useMemo(
     () => PreflightEngine.evaluate(effectiveParams, geometry, studio),
     [effectiveParams, geometry, studio],
@@ -316,24 +332,43 @@ export function CoverStyler({
       }
 
       suppressNextClickRef.current = true;
+      const useSnap = snapEnabledRef.current && !e.altKey;
       const currentStudio = studioRef.current;
+      let latestGuides: readonly ActiveSnapGuide[] = [];
       const nextLayers = currentStudio.layers.map((layer) => {
         if (layer.id !== drag.layerId) return layer;
         if (drag.mode === 'move') {
-          return CoverImageLayerModel.moveBy(
+          const moved = CoverImageLayerModel.moveBy(
             drag.origLayer,
             xMm - drag.startXMm,
             yMm - drag.startYMm,
           );
+          if (!useSnap) return moved;
+          const snapped = snapLayerMove(moved, snapTargetsRef.current);
+          latestGuides = snapped.guides;
+          return snapped.layer;
         }
-        return CoverImageLayerModel.resizeFromCorner(drag.origLayer, drag.corner, xMm, yMm);
+        if (!useSnap) {
+          return CoverImageLayerModel.resizeFromCorner(drag.origLayer, drag.corner, xMm, yMm);
+        }
+        const snapped = snapLayerResize(
+          drag.origLayer,
+          drag.corner,
+          xMm,
+          yMm,
+          snapTargetsRef.current,
+        );
+        latestGuides = snapped.guides;
+        return snapped.layer;
       });
+      setActiveSnapGuides(latestGuides);
       onChangeRef.current({ ...currentStudio, layers: nextLayers });
     };
 
     const onPointerEnd = () => {
       if (dragRef.current.mode !== 'none') {
         dragRef.current = { mode: 'none' };
+        setActiveSnapGuides([]);
         // Clear click suppression after the immediate click event turn so future clicks are never eaten
         window.setTimeout(() => {
           suppressNextClickRef.current = false;
@@ -798,6 +833,9 @@ export function CoverStyler({
                     <rect width="6" height="6" fill="rgba(249, 115, 22, 0.20)" />
                     <line x1="0" y1="0" x2="0" y2="6" stroke="#f97316" strokeWidth="1.4" />
                   </pattern>
+                  <filter id="brass-snap-glow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="1.4" floodColor="#facc15" floodOpacity="0.9" />
+                  </filter>
                 </defs>
 
                 {/* Base Zone Background Fills */}
@@ -1044,6 +1082,113 @@ export function CoverStyler({
                     </g>
                   )}
 
+                {/* Glowing Brass Magnetic Smart Snap Guides (live during drag/resize) */}
+                {activeSnapGuides.length > 0 && (
+                  <g
+                    data-testid="studio-snap-guides"
+                    pointerEvents="none"
+                    filter="url(#brass-snap-glow)"
+                  >
+                    {activeSnapGuides.map((guide, idx) => {
+                      const isCenter = guide.kind === 'center';
+                      if (guide.axis === 'x') {
+                        const labelX = Math.min(
+                          spec.totalWidthMm - 24,
+                          Math.max(24, guide.positionMm),
+                        );
+                        return (
+                          <g key={`snap-x-${idx}`} data-testid="snap-guide-line">
+                            <line
+                              x1={guide.positionMm}
+                              y1={0}
+                              x2={guide.positionMm}
+                              y2={spec.totalHeightMm}
+                              stroke="#fde047"
+                              strokeWidth={isCenter ? '1.25' : '1.05'}
+                              strokeDasharray={isCenter ? '5 2.5' : undefined}
+                            />
+                            <rect
+                              x={labelX - 20}
+                              y={5}
+                              width={40}
+                              height={7.5}
+                              rx={2}
+                              fill="#1c1917"
+                              fillOpacity="0.92"
+                              stroke="#facc15"
+                              strokeWidth="0.5"
+                            />
+                            <text
+                              x={labelX}
+                              y={9.1}
+                              fill="#fef08a"
+                              fontSize="4.2"
+                              fontWeight="700"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                            >
+                              {guide.label}
+                            </text>
+                          </g>
+                        );
+                      }
+                      const labelY = Math.min(
+                        spec.totalHeightMm - 10,
+                        Math.max(10, guide.positionMm),
+                      );
+                      return (
+                        <g key={`snap-y-${idx}`} data-testid="snap-guide-line">
+                          <line
+                            x1={0}
+                            y1={guide.positionMm}
+                            x2={spec.totalWidthMm}
+                            y2={guide.positionMm}
+                            stroke="#fde047"
+                            strokeWidth={isCenter ? '1.25' : '1.05'}
+                            strokeDasharray={isCenter ? '5 2.5' : undefined}
+                          />
+                          <rect
+                            x={5}
+                            y={labelY - 3.75}
+                            width={38}
+                            height={7.5}
+                            rx={2}
+                            fill="#1c1917"
+                            fillOpacity="0.92"
+                            stroke="#facc15"
+                            strokeWidth="0.5"
+                          />
+                          <text
+                            x={24}
+                            y={labelY + 0.35}
+                            fill="#fef08a"
+                            fontSize="4.2"
+                            fontWeight="700"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                          >
+                            {guide.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {/* Intersection brass diamond marker when both X and Y snap simultaneously */}
+                    {(() => {
+                      const xG = activeSnapGuides.find((g) => g.axis === 'x');
+                      const yG = activeSnapGuides.find((g) => g.axis === 'y');
+                      if (!xG || !yG) return null;
+                      return (
+                        <polygon
+                          points={`${xG.positionMm},${yG.positionMm - 3.2} ${xG.positionMm + 3.2},${yG.positionMm} ${xG.positionMm},${yG.positionMm + 3.2} ${xG.positionMm - 3.2},${yG.positionMm}`}
+                          fill="#fef08a"
+                          stroke="#1c1917"
+                          strokeWidth="0.6"
+                        />
+                      );
+                    })()}
+                  </g>
+                )}
+
                 {/* Selection Frame & Corner Resize Handles for Selected Layer */}
                 {selectedLayer && !eyedropperTarget && (
                   <g data-testid="studio-selection-handles">
@@ -1200,6 +1345,15 @@ export function CoverStyler({
                       <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
                     )}
                     Guides
+                  </HudButton>
+                  <HudButton
+                    pressed={snapEnabled}
+                    onClick={() => setSnapEnabled((v) => !v)}
+                    title="Magnetic smart snap guides (hold Alt while dragging to bypass)"
+                    data-testid="studio-snap-btn"
+                  >
+                    <Magnet className="h-3.5 w-3.5" aria-hidden="true" />
+                    Snap
                   </HudButton>
                   <HudButton
                     pressed={showPreflightOverlays}

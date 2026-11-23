@@ -23,11 +23,12 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 - [x] **Bindery Cutting Mat UI & Interactive 3D Book Preview (`src/studio/Book3DPreview.tsx`, `src/components/FloatingHudToolbar.tsx`):** Self-healing spruce cutting-mat workbench, warm cotton-rag paper sheets, kettle-stitch dividers, collapsible Book Spec rail, folder-style paper index tabs, accessible floating HUD pill toolbars, and a live rotatable CSS 3D folded hardcover book mockup rendered at exact `BOARD_W × BOARD_H × SPINE_W` proportions.
 - [x] **Unified Two-Tab Physical Workbench & Stylable Inner Pockets (`src/studio/InnerPocketsStudio.tsx`, `src/studio/pocketRenderEngine.ts`):** Merged duplicate Outer Wrap views into two physical tabs (**Outer Case Wrap** with `Styled Cover` / `Blueprint` / `3D Book` HUD + **Inner Pockets & Liner** with `Styled Pockets` / `Blueprint` HUD). Added endpaper color picker, **Match Cover Color** sync, custom picture upload (`Cover` / `Contain` / `Tile`, scale, opacity), and 300 DPI **Styled Pockets PDF** export.
 - [x] **Turn-In / Pasting Stub Edge Extension (`src/studio/edgeExtend.ts`):** Non-destructive client-side canvas edge synthesis (**`Edge Smear`**, **`Soft Mirror`**, **`Mirror`**, plus `Off` revert and one-click **Match Spine & Back to Cover Edge**) that keeps downloaded front-only covers 100% uncropped on the chipboard face while seamlessly extending colors/textures across the 18 mm turn-in pasting stub and bleed.
+- [x] **Magnetic Smart Snap Guides (`src/studio/snapGuides.ts`):** Live `3.5 mm` magnetic alignment snapping while dragging or corner-resizing artwork onto Front/Back board edges & centers, Spine edges & centerline, Turn-In cut boundaries, and Bleed edges—rendered as glowing brass guidelines with intersection diamonds and target badges (toggleable via HUD `Snap` or bypassed with `Alt`).
 - [x] **Live Print Preflight Consistency Checker (`src/studio/preflight.ts`, `src/studio/PreflightCard.tsx`):** Real-time verification of front/back board & turn-in/bleed coverage gaps, effective print DPI, WCAG 2.1 spine text contrast, spine hinge clearance, and structural readiness—with preview-only red diagonal-hatched gap zones, red DPI outlines, and one-click Quick Fix actions (`Extend Edges to Stub`, `Fit to Front/Back`, `Enable 3 mm Bleed`, etc.).
 - [x] **300 DPI Dual Exports (`src/studio/renderEngine.ts`):** Print-Ready Roll PDF (`outer_cover_print.pdf`) with embedded vector spine typography and cut-line vs. bleed-registration mark toggle; Affinity Round-Trip 300 DPI PNG (`outer_cover_300dpi.png`) and `1:1` mm SVG (`outer_cover_300dpi.svg`).
 
 ### Quality & Research
-- [x] **Automated Test Suite:** 85 Vitest unit/component tests + 11 Playwright Chromium behavioral E2E tests covering real downloads, interactive canvas manipulation, collapsible rail, 3D book orbiting, live preflight warning overlays/quick fixes, styled inner pocket PDF exports, and non-destructive pasting-stub edge extension.
+- [x] **Automated Test Suite:** 88 Vitest unit/component tests + 12 Playwright Chromium behavioral E2E tests covering real downloads, interactive canvas manipulation, collapsible rail, 3D book orbiting, live preflight warning overlays/quick fixes, styled inner pocket PDF exports, non-destructive pasting-stub edge extension, and magnetic smart snap guides.
 - [x] **Affinity Connector Research:** Documented feasibility and architectures in [RESEARCH.md](./RESEARCH.md).
 - [x] **Deployment Plan:** Documented GitHub Pages CI/CD plan in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
@@ -52,6 +53,5 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 
 ### Future Craft Enhancements (Ideas)
 - [ ] Layer rotation & opacity controls on the interactive cover canvas.
-- [ ] Snap-to-guide magnetism while dragging images near board/spine edges.
 - [ ] Custom user-saved paperback presets library in `localStorage`.
 - [ ] Printable assembly instruction sheet / folding guide.
