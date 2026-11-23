@@ -50,8 +50,13 @@ src/
   - US Trade Digest (`139.7 × 215.9 mm` / `5.5 × 8.5 in`)
   - US Trade Standard (`152.4 × 228.6 mm` / `6.0 × 9.0 in`)
   - Manga / B6 (`128.0 × 182.0 mm`)
+  - A6 Pocket Notebook (`105.0 × 148.0 mm`, minimum thickness supported down to `2.0 mm`)
 
-### 3.3 Construction & Layout Defaults (Collapsible Panel)
+### 3.3 Binding Style & Construction Defaults
+- **`BINDING_STYLE` (selectable in Book Spec Rail):**
+  1. **`rigid-case` — Rigid 3-Board Hardcover Case (Default, recommended ≥ 8 mm):** 2 Cover Boards + 1 Rigid Spine Strip, two `9.0 mm` hinge channels, `18.0 mm` mitered turn-ins, and separate Inner Pockets + Spine Liner.
+  2. **`flexible-spine` — Flexible Spine 2-Board Hardcover (recommended 3–8 mm thin notebooks):** 2 Cover Boards (`0` rigid spine strip). Replaces `hinge + rigid spine + hinge` with one unified flexible spine channel (`FLEX_SPINE_W = PB_THICK + BOARD_T * 2 + 2.0 mm`, `effectiveHinge = 0`) reinforced by the inner spine liner so thin notebooks open smoothly without hinge shear stress.
+  3. **`softcover-jacket` — Softcover / Limp Slip-In Jacket (0-Board, great for 2–8 mm cardstock/leather covers):** `0` chipboard pieces. No top/bottom mitered turn-ins (`effectiveTurnIn = 0`); instead adds integrated left & right slip-in tuck flaps (`FLAP_W = clamp(PB_W * 0.42, 25, 55) mm`) folded inward along score lines, with `SPINE_W = PB_THICK + 1.0 mm`. No separate inner pocket sheets are required.
 - `BOARD_T` — Chipboard Thickness (default: `2.0 mm` / ~80 pt)
 - `HINGE_W` — Hinge Spacer Width (default: `9.0 mm`)
 - `OVERHANG_TB` — Top & Bottom Board Overhang total (default: `7.0 mm`, i.e., `3.5 mm` top + `3.5 mm` bottom)
@@ -177,8 +182,8 @@ src/
   - Automatic font-size clamping so text height never exceeds `SPINE_W - 4.0 mm` (preventing text from spilling into the `9 mm` hinge grooves), paired with a **`±2.0 mm` Optical Horizontal Nudge** slider.
 - **Interactive 3D Folded Book Preview (`Book3DPreview.tsx`):**
   - Toggleable right inside the Cover & Spine Styler's floating HUD (`2D Flat Wrap` ↔ `3D Book Preview`).
-  - Renders a physically proportioned CSS 3D hardcover volume using exact `BOARD_W × BOARD_H × SPINE_W` ratios, mapping the live Front Cover, Spine (with live vertical/horizontal typography), and Back Cover artwork onto the 3D book faces alongside cream paper page-block edges inset inside the hardcover overhang.
-  - Supports free pointer drag-to-orbit (`Yaw` / `Pitch`), keyboard arrow rotation, and one-click angle presets (`Front 3/4`, `Spine`, `Back 3/4`, `Reset`).
+  - Renders a physically proportioned CSS 3D volume using exact `BOARD_W × BOARD_H × SPINE_W` ratios, mapping the live Front Cover, Spine (with live vertical/horizontal typography and subtly curved styling for `flexible-spine`), and Back Cover artwork onto the 3D book faces alongside cream paper page-block edges inset inside the cover overhang.
+  - Supports free pointer drag-to-orbit (`Yaw` / `Pitch`), keyboard arrow rotation, one-click angle presets (`Front 3/4`, `Spine`, `Back 3/4`, `Front`), and an **Open Cover / Close Cover** toggle that hinges the front board open (`rotateY(-118deg)`) to reveal the live styled **Inner Front Pocket** (endpaper color, positioned artwork, or tiled pattern) and first cream page inside.
 
 ### 7.3 Dual High-Resolution Exports (Exact `WRAP_W × WRAP_H` Physical Scale)
 1. **Print-Ready Roll PDF (`outer_cover_print.pdf`):**
@@ -198,7 +203,10 @@ src/
   - **Spine Typography Legibility & Clearance:**
     - Computes WCAG 2.1 relative luminance contrast between `spineText.textColor` and `spineBgColor` when no artwork covers the spine (`< 3.0:1` Error, `< 4.5:1` Warning).
     - Flags font sizes auto-clamped to `SPINE_W - 4.0 mm` (hinge safety), narrow-spine horizontal author text (`< 6.5 pt`), and overly long spine titles risking top/bottom board edge overflow.
-  - **Structural Readiness:** Checks whether outer artwork bleed is enabled when artwork layers exist, whether single-piece wrap fits standard roll widths, and surfaces parameter validation errors/warnings.
+  - **Structural & Binding Style Recommendations:** Checks whether outer artwork bleed is enabled when artwork layers exist, whether single-piece wrap fits standard roll widths, surfaces parameter validation errors/warnings, and provides physics-based one-click recommendations:
+    - Thin books (`PB_THICK < 8 mm`) on `rigid-case` → recommend switching to **Flexible Spine (2-Board)**.
+    - Thick books (`PB_THICK ≥ 18 mm`) on `flexible-spine` or `softcover-jacket` → recommend **Rigid 3-Board Spine**.
+    - Pocket-width books (`PB_W ≤ 115 mm`) using thick `≥ 2.0 mm` board on hardcover styles → recommend pocket proportions (`1.5 mm` board, `14 mm` turn-in, `1.5 mm` fore-edge overhang).
 - **Visual Canvas Overlays & One-Click Fixes:**
   - Preview-only red diagonal-hatched warning zones (`#EF4444`) and crimson outlines render directly on the 2D interactive cover canvas over uncovered strips, low-DPI layers, or low-contrast spines (never included in exported PDF/PNG/SVG files).
   - Toggleable via the Floating HUD (`Preflight`) and spotlighted when hovering or focusing an individual issue in `PreflightCard`.
@@ -208,7 +216,7 @@ src/
 - Both the **Outer Case Wrap** and **Inner Pockets & Liner** tabs share a unified interactive layer engine (`useInteractiveLayers` + `LayerSelectionOverlay`) so both sides of the book work identically—differing only in their underlying physical shapes and zone clip masks:
   - **Drag-and-Drop Upload:** Dropping `PNG`, `JPG`, or `WEBP` files directly onto either cutting mat places them right over the target piece/zone where they were dropped.
   - **Direct Manipulation:** Click to select, drag freely in 1:1 mm coordinates with live golden-brass **Magnetic Smart Snap Guides**, drag any of the 4 corner handles to resize proportionally, scroll-wheel to scale, or press `Backspace`/`Delete` to remove.
-  - **Inner Pockets Shape Helpers:** Quick-Fit presets (`Fit Back Pocket`, `Fit Front Pocket`, `Fit Spine Liner`, `Fit All Pieces`), one-click **Copy to Other Pocket** (mirrors a layer cleanly between Front & Back pockets), plus `Pocket Faces Only` vs `Full Cut Envelope` clip scope and opacity control.
+  - **Inner Pockets Shape Helpers:** Quick-Fit presets (`Fit Back Pocket`, `Fit Front Pocket`, `Fit Spine Liner`, `Fit All Pieces`), one-click **Copy to Other Pocket** (mirrors a layer cleanly between Front & Back pockets), a one-click **Tile Pattern** toggle on any selected layer (turning any swatch into a seamless repeating endpaper pattern whose repeat size and offset respond live to corner-handle resizing and dragging), plus `Pocket Faces Only` vs `Full Cut Envelope` clip scope and opacity control.
   - **Exact 300 DPI PDF Compositing (`pocketRenderEngine.ts`):** All positioned inner pocket layers composite at exact 1:1 mm alignment onto each auto-paginated (and 90°-rotated if needed) sheet underneath vector cut/score/glue lines.
 
 ---
