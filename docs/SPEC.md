@@ -186,6 +186,20 @@ src/
 2. **Affinity Round-Trip Export (`outer_cover_300dpi.png` / `.svg`):**
    - Exports the composed 300 DPI flat cover + centered spine strip at exact `1:1` millimeter scale so it can be dropped straight into Affinity for advanced graphic textures, foil overlays, or custom back-cover layouts.
 
+### 7.4 Preflight & Print Consistency Verification System (`src/studio/preflight.ts`, `PreflightCard.tsx`)
+- Real-time, pure pre-print audit evaluating `BookParameters`, `CaseGeometry`, and `CoverStudioState` for common bookbinding and print-production pitfalls:
+  - **Cover & Turn-In / Bleed Coverage Gaps:** Detects when a cover artwork layer (covering ≥ 35% of the Front or Back board—avoiding false alarms on small centered emblems/medallions) leaves an uncovered strip on the board face or stops short of the outer turn-in / bleed edge. Computes exact uncovered gap rectangles (`Rect2D[]`) in canvas millimeter coordinates.
+  - **Off-Canvas Layers:** Flags any layer whose bounds fall completely outside the printable wrap area.
+  - **Effective Print Resolution (DPI):** Computes `min(naturalWidth / widthIn, naturalHeight / heightIn)` for every placed layer; flags `< 150 DPI` as **Error** (visible pixelation) and `150–239 DPI` as **Warning** (below 300 DPI ideal).
+  - **Spine Typography Legibility & Clearance:**
+    - Computes WCAG 2.1 relative luminance contrast between `spineText.textColor` and `spineBgColor` when no artwork covers the spine (`< 3.0:1` Error, `< 4.5:1` Warning).
+    - Flags font sizes auto-clamped to `SPINE_W - 4.0 mm` (hinge safety), narrow-spine horizontal author text (`< 6.5 pt`), and overly long spine titles risking top/bottom board edge overflow.
+  - **Structural Readiness:** Checks whether outer artwork bleed is enabled when artwork layers exist, whether single-piece wrap fits standard roll widths, and surfaces parameter validation errors/warnings.
+- **Visual Canvas Overlays & One-Click Fixes:**
+  - Preview-only red diagonal-hatched warning zones (`#EF4444`) and crimson outlines render directly on the 2D interactive cover canvas over uncovered strips, low-DPI layers, or low-contrast spines (never included in exported PDF/PNG/SVG files).
+  - Toggleable via the Floating HUD (`Preflight`) and spotlighted when hovering or focusing an individual issue in `PreflightCard`.
+  - Actionable issues provide one-click fixes (e.g. `Fit Front`, `Fit Back`, `Enable 3 mm Bleed`, `Switch to Vertical`, `High-Contrast Ink`).
+
 ---
 
 ## 8. Recommended Tech Stack (Local Build)
