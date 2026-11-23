@@ -1,14 +1,18 @@
 import {
   Box,
+  Compass,
   Eye,
   EyeOff,
   FileCode2,
   FileImage,
   FileText,
   Layers,
+  Maximize2,
   Pipette,
   ShieldAlert,
   ShieldCheck,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -17,6 +21,7 @@ import {
   HudGroup,
   HudSeparator,
 } from '@/components/FloatingHudToolbar';
+import { OuterBlueprintCanvas } from '@/components/OuterBlueprintCanvas';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,7 +43,7 @@ import {
   type QuickFitTarget,
   type ResizeCorner,
 } from '@/types/studioLayer';
-import { PRINT_DPI, UnitConverter } from '@/types/units';
+import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
 import { PreflightCard } from './PreflightCard';
@@ -70,12 +75,15 @@ export interface CoverStylerProps {
   readonly params?: BookParameters;
   readonly geometry: CaseGeometry;
   readonly studio: CoverStudioState;
+  readonly exportingOuterPdf?: boolean;
   readonly onChange: (next: CoverStudioState) => void;
   readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
+  readonly onDownloadOuterSvg?: () => void;
+  readonly onDownloadOuterPdf?: () => void;
   readonly onStatusMessage: (message: string) => void;
 }
 
-type StudioViewMode = '2d' | '3d';
+type StudioViewMode = '2d' | 'blueprint' | '3d';
 
 type DragInteraction =
   | { readonly mode: 'none' }
@@ -128,8 +136,11 @@ export function CoverStyler({
   params,
   geometry,
   studio,
+  exportingOuterPdf = false,
   onChange,
   onUpdateParams,
+  onDownloadOuterSvg,
+  onDownloadOuterPdf,
   onStatusMessage,
 }: CoverStylerProps) {
   const effectiveParams = useMemo(
@@ -137,6 +148,8 @@ export function CoverStyler({
     [params],
   );
   const [viewMode, setViewMode] = useState<StudioViewMode>('2d');
+  const [blueprintZoom, setBlueprintZoom] = useState(1);
+  const [blueprintPan, setBlueprintPan] = useState({ x: 0, y: 0 });
   const [book3DAngle, setBook3DAngle] = useState<Book3DCameraAngle>(DEFAULT_BOOK_3D_ANGLE);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => studio.layers[studio.layers.length - 1]?.id ?? null,
@@ -513,57 +526,106 @@ export function CoverStyler({
     }
   };
 
+  const adjustBlueprintZoom = (delta: number) => {
+    setBlueprintZoom((prev) => roundTo(Math.min(3.5, Math.max(0.5, prev + delta)), 2));
+  };
+
+  const resetBlueprintView = () => {
+    setBlueprintZoom(1);
+    setBlueprintPan({ x: 0, y: 0 });
+  };
+
   const handleCornerSize = Math.max(7.5, spec.totalWidthMm * 0.022);
 
   return (
     <div className="flex flex-col gap-4" data-testid="cover-styler">
-      {/* Edge-to-Edge Cover Workbench Panel connected flush under the Folio Index Tabs */}
+      {/* Edge-to-Edge Unified Outer Case Wrap Workbench connected flush under the Folio Index Tabs */}
       <section
         aria-label="Interactive Cover and Spine Workbench"
         className="overflow-hidden rounded-b-lg rounded-tr-lg border border-border bg-card shadow-xs"
       >
-        {/* Compact Header + 300 DPI Export Bar */}
+        {/* Compact Header + Grouped Styled (300 DPI) & Cut-Only (1:1 mm) Export Strip */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
             <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
-              Interactive Cover &amp; Spine Canvas
+              Outer Case Wrap &amp; Cover Styler
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Drop artwork onto the wrap, drag &amp; resize freely, preview in 3D, and export at 300 DPI ({spec.pixelWidth} ×{' '}
-              {spec.pixelHeight} px).
+              Style artwork &amp; spine lettering, inspect the 1:1 mm CAD blueprint, or orbit in 3D ({spec.pixelWidth} ×{' '}
+              {spec.pixelHeight} px @ 300 DPI).
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleExportPrintPdf}
-              disabled={exportingKind !== null}
-              data-testid="studio-export-pdf-btn"
-            >
-              <FileText className="h-4 w-4" aria-hidden="true" />
-              {exportingKind === 'pdf' ? 'Rendering PDF…' : 'Print-Ready PDF (300 DPI)'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleExportAffinityPng}
-              disabled={exportingKind !== null}
-              data-testid="studio-export-png-btn"
-            >
-              <FileImage className="h-4 w-4" aria-hidden="true" />
-              {exportingKind === 'png' ? 'Rendering PNG…' : 'Affinity PNG (300 DPI)'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExportAffinitySvg}
-              disabled={exportingKind !== null}
-              data-testid="studio-export-svg-btn"
-            >
-              <FileCode2 className="h-4 w-4" aria-hidden="true" />
-              Affinity SVG (1:1 mm)
-            </Button>
+            {/* Styled 300 DPI Artwork Exports */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleExportPrintPdf}
+                disabled={exportingKind !== null}
+                data-testid="studio-export-pdf-btn"
+              >
+                <FileText className="h-4 w-4" aria-hidden="true" />
+                {exportingKind === 'pdf' ? 'Rendering…' : 'Print PDF (300 DPI)'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExportAffinityPng}
+                disabled={exportingKind !== null}
+                data-testid="studio-export-png-btn"
+              >
+                <FileImage className="h-4 w-4" aria-hidden="true" />
+                {exportingKind === 'png' ? 'Rendering…' : 'PNG'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportAffinitySvg}
+                disabled={exportingKind !== null}
+                data-testid="studio-export-svg-btn"
+              >
+                <FileCode2 className="h-4 w-4" aria-hidden="true" />
+                Affinity SVG
+              </Button>
+            </div>
+
+            {/* 1:1 mm Unstyled Structural Cut Templates */}
+            {(onDownloadOuterSvg || onDownloadOuterPdf) && (
+              <div
+                className="flex items-center gap-1 rounded-md border border-border bg-secondary/45 px-2 py-1"
+                aria-label="Structural cut-only outer wrap downloads"
+              >
+                <span className="pr-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Cut-Only
+                </span>
+                {onDownloadOuterSvg && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={onDownloadOuterSvg}
+                    aria-label="Download Outer Case Wrap as SVG"
+                    data-testid="download-outer-svg-btn"
+                  >
+                    SVG
+                  </Button>
+                )}
+                {onDownloadOuterPdf && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={onDownloadOuterPdf}
+                    disabled={exportingOuterPdf}
+                    aria-label="Download Outer Case Wrap as PDF"
+                    data-testid="download-outer-pdf-btn"
+                  >
+                    {exportingOuterPdf ? '…' : 'PDF'}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1004,6 +1066,16 @@ export function CoverStyler({
                 )}
               </svg>
             </div>
+          ) : viewMode === 'blueprint' ? (
+            <OuterBlueprintCanvas
+              geometry={geometry}
+              splitMode={effectiveParams.splitMode}
+              unit={effectiveParams.unit}
+              zoom={blueprintZoom}
+              onAdjustZoom={adjustBlueprintZoom}
+              pan={blueprintPan}
+              onPanChange={setBlueprintPan}
+            />
           ) : (
             <div className="h-full w-full pb-12">
               <Book3DPreview
@@ -1031,7 +1103,18 @@ export function CoverStyler({
                   data-testid="studio-view-2d-btn"
                 >
                   <Layers className="h-3.5 w-3.5" aria-hidden="true" />
-                  2D Flat Wrap
+                  Styled Cover
+                </HudButton>
+                <HudButton
+                  pressed={viewMode === 'blueprint'}
+                  onClick={() => {
+                    setEyedropperTarget(null);
+                    setViewMode('blueprint');
+                  }}
+                  data-testid="studio-view-blueprint-btn"
+                >
+                  <Compass className="h-3.5 w-3.5" aria-hidden="true" />
+                  Blueprint
                 </HudButton>
                 <HudButton
                   pressed={viewMode === '3d'}
@@ -1042,7 +1125,7 @@ export function CoverStyler({
                   data-testid="studio-view-3d-btn"
                 >
                   <Box className="h-3.5 w-3.5" aria-hidden="true" />
-                  3D Book Preview
+                  3D Book
                 </HudButton>
               </HudGroup>
 
@@ -1060,7 +1143,7 @@ export function CoverStyler({
                     ) : (
                       <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
                     )}
-                    Cut &amp; Fold Guides
+                    Guides
                   </HudButton>
                   <HudButton
                     pressed={showPreflightOverlays}
@@ -1075,6 +1158,36 @@ export function CoverStyler({
                     {preflight.status === 'pass'
                       ? 'Preflight OK'
                       : `Preflight (${preflight.errorCount + preflight.warningCount})`}
+                  </HudButton>
+                </HudGroup>
+              ) : viewMode === 'blueprint' ? (
+                <HudGroup label="Blueprint zoom">
+                  <HudButton
+                    aria-label="Zoom out blueprint"
+                    title="Zoom out"
+                    onClick={() => adjustBlueprintZoom(-0.25)}
+                    className="px-2"
+                  >
+                    <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
+                  </HudButton>
+                  <span className="min-w-11 text-center font-mono text-[11px] text-[#f6efe2]/90">
+                    {Math.round(blueprintZoom * 100)}%
+                  </span>
+                  <HudButton
+                    aria-label="Zoom in blueprint"
+                    title="Zoom in"
+                    onClick={() => adjustBlueprintZoom(0.25)}
+                    className="px-2"
+                  >
+                    <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
+                  </HudButton>
+                  <HudButton
+                    aria-label="Reset blueprint zoom and pan"
+                    title="Reset zoom & pan"
+                    onClick={resetBlueprintView}
+                    className="px-2"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </HudButton>
                 </HudGroup>
               ) : (
@@ -1100,9 +1213,11 @@ export function CoverStyler({
           <span>
             {viewMode === '3d'
               ? 'Drag directly on the hardcover volume (or use Arrow keys) to inspect Front, Spine, and Back proportions.'
-              : selectedLayer
-                ? `Selected "${selectedLayer.fileName}" — drag to position, pull corners or scroll wheel to resize, Backspace to remove.`
-                : 'Drop PNG, JPG, or WEBP artwork anywhere onto the cutting mat or click Add Images below.'}
+              : viewMode === 'blueprint'
+                ? 'Solid Red: 45° Miter Cut Line • Dashed Blue: Board Guides • Brass: Hinge Spacers • Green: Bleed.'
+                : selectedLayer
+                  ? `Selected "${selectedLayer.fileName}" — drag to position, pull corners or scroll wheel to resize, Backspace to remove.`
+                  : 'Drop PNG, JPG, or WEBP artwork anywhere onto the cutting mat or click Add Images below.'}
           </span>
           <span className="font-mono text-[11px] text-brass">
             {spec.totalWidthMm.toFixed(1)} × {spec.totalHeightMm.toFixed(1)} mm @ 300 DPI

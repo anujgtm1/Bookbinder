@@ -351,12 +351,12 @@ export function Book3DPreview({
           />
         </div>
 
-        {/* Front Cover Inside Endpaper Lip (visible around overhanging page block) */}
+        {/* Front Cover Inside Endpaper Lip (mirrors styled inner pocket endpaper color) */}
         <div
           aria-hidden="true"
           className="book3d-face rounded-l-[3px]"
           style={{
-            backgroundColor: '#e9e0cf',
+            backgroundColor: studio.pocketStyle.backgroundColor,
             transform: `rotateY(180deg) translateZ(${-(halfDepth - dims.boardThicknessPx)}px)`,
           }}
         />
@@ -402,7 +402,7 @@ export function Book3DPreview({
           aria-hidden="true"
           className="book3d-face rounded-r-[3px]"
           style={{
-            backgroundColor: '#e9e0cf',
+            backgroundColor: studio.pocketStyle.backgroundColor,
             transform: `translateZ(${-(halfDepth - dims.boardThicknessPx)}px)`,
           }}
         />

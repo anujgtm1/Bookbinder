@@ -58,12 +58,11 @@ function createSolidPngBuffer(width: number, height: number, r: number, g: numbe
   ]);
 }
 
-test.describe('Phase 2 — Interactive Cover & Spine Styler', () => {
+test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
-    await page.getByTestId('nav-studio').click();
     await expect(page.getByTestId('cover-styler')).toBeVisible();
   });
 
@@ -282,5 +281,35 @@ test.describe('Phase 2 — Interactive Cover & Spine Styler', () => {
     await page.getByTestId('preflight-fix-spine-low-contrast-error').click();
     await expect(page.getByTestId('preflight-issue-spine-low-contrast-error')).toBeHidden();
     await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
+  });
+
+  test('styles Inner Pockets with Match Cover Color, custom picture upload, and exports Styled Pockets PDF', async ({
+    page,
+  }) => {
+    // Switch to Inner Pockets & Liner tab
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
+
+    // Match cover color (#1f3a52)
+    await page.getByTestId('pocket-match-cover-btn').click();
+    await expect(page.getByTestId('styled-front-pocket-fill')).toHaveAttribute('fill', '#1f3a52');
+
+    // Upload a custom endpaper pattern image
+    const marbledPng = createSolidPngBuffer(64, 64, 180, 140, 75);
+    await page.getByTestId('pocket-upload-image-input').setInputFiles({
+      name: 'marbled-endpaper.png',
+      mimeType: 'image/png',
+      buffer: marbledPng,
+    });
+    await expect(page.getByTestId('pocket-remove-image-btn')).toBeVisible();
+
+    // Export Styled Pockets PDF
+    const styledPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('download-styled-inner-pdf-btn').click();
+    const styledPdfDownload = await styledPdfPromise;
+    expect(styledPdfDownload.suggestedFilename()).toBe('inner_pockets_styled.pdf');
+    const pdfBytes = await readFile((await styledPdfDownload.path())!);
+    expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(pdfBytes.byteLength).toBeGreaterThan(2000);
   });
 });

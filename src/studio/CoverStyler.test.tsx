@@ -157,4 +157,34 @@ describe('CoverStyler', () => {
     expect(screen.queryByTestId('preflight-issue-front-board-gap')).not.toBeInTheDocument();
     expect(screen.getByTestId('preflight-status-badge')).toHaveTextContent('All Checks Passed');
   });
+
+  it('switches to 1:1 mm CAD Blueprint mode (including 3-piece split) and triggers Cut-Only exports', async () => {
+    const user = userEvent.setup();
+    const splitParams = { ...DEFAULT_BOOK_PARAMETERS, splitMode: 'three-piece' as const };
+    const geom = calculateCaseGeometry(splitParams);
+    const onDownloadOuterSvg = vi.fn();
+    const onDownloadOuterPdf = vi.fn();
+
+    render(
+      <CoverStyler
+        params={splitParams}
+        geometry={geom}
+        studio={CoverStudioModel.createDefault()}
+        onChange={vi.fn()}
+        onDownloadOuterSvg={onDownloadOuterSvg}
+        onDownloadOuterPdf={onDownloadOuterPdf}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByTestId('studio-view-blueprint-btn'));
+    expect(screen.getByTestId('outer-blueprint-svg')).toBeInTheDocument();
+    expect(screen.getByTestId('blueprint-split-panels')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('download-outer-svg-btn'));
+    expect(onDownloadOuterSvg).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByTestId('download-outer-pdf-btn'));
+    expect(onDownloadOuterPdf).toHaveBeenCalledTimes(1);
+  });
 });

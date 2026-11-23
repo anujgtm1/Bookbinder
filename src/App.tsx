@@ -1,6 +1,5 @@
-import { Layers, Palette } from 'lucide-react';
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { BlueprintPreview } from '@/components/BlueprintPreview';
+import { BookMarked, FolderOpen } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { CutListCard } from '@/components/CutListCard';
 import { Header } from '@/components/Header';
 import { SidebarControls } from '@/components/SidebarControls';
@@ -15,20 +14,17 @@ import {
   triggerTextDownload,
 } from '@/core/storage';
 import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExport';
+import { CoverStyler } from '@/studio/CoverStyler';
+import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 
-type WorkspaceTab = 'templates' | 'studio';
-
-const CoverStyler = lazy(async () => {
-  const mod = await import('@/studio/CoverStyler');
-  return { default: mod.CoverStyler };
-});
+type WorkspaceTab = 'outer' | 'pockets';
 
 export function App() {
   const [project, setProject] = useState<BookbinderProject>(() => loadProjectFromStorage());
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('templates');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('outer');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [exportingTarget, setExportingTarget] = useState<'outer-pdf' | 'inner-pdf' | null>(null);
@@ -176,7 +172,7 @@ export function App() {
         <div className="flex min-w-0 flex-col gap-4">
           <CutListCard geometry={geometry} unit={project.parameters.unit} />
 
-          {/* Folder-style Paper Index Tabs anchored directly onto the top edge of the workbench */}
+          {/* Unified Physical-Part Folder Index Tabs: Outer Case Wrap & Inner Pockets & Liner */}
           <Tabs
             value={activeTab}
             onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
@@ -185,59 +181,57 @@ export function App() {
             <div className="flex flex-wrap items-end justify-between gap-2 px-1">
               <TabsList className="h-auto gap-1.5 rounded-none bg-transparent p-0">
                 <TabsTrigger
-                  value="templates"
-                  data-testid="nav-templates"
+                  value="outer"
+                  data-testid="nav-outer"
                   className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
                 >
-                  <Layers className="h-4 w-4 text-brass" aria-hidden="true" />
-                  Structural Templates
+                  <BookMarked className="h-4 w-4 text-brass" aria-hidden="true" />
+                  Outer Case Wrap
                 </TabsTrigger>
                 <TabsTrigger
-                  value="studio"
-                  data-testid="nav-studio"
+                  value="pockets"
+                  data-testid="nav-pockets"
                   className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
                 >
-                  <Palette className="h-4 w-4 text-brass" aria-hidden="true" />
-                  Cover &amp; Spine Styler
+                  <FolderOpen className="h-4 w-4 text-brass" aria-hidden="true" />
+                  Inner Pockets &amp; Liner
                 </TabsTrigger>
               </TabsList>
             </div>
 
-            <TabsContent value="templates" className="mt-0">
-              <BlueprintPreview
+            <TabsContent value="outer" className="mt-0">
+              <CoverStyler
+                params={project.parameters}
                 geometry={geometry}
-                splitMode={project.parameters.splitMode}
-                pdfPageSize={project.parameters.pdfPageSize}
-                unit={project.parameters.unit}
-                exportingTarget={exportingTarget}
+                studio={project.studio}
+                exportingOuterPdf={exportingTarget === 'outer-pdf'}
+                onChange={handleStudioChange}
+                onUpdateParams={(patch) =>
+                  handleParamsChange(
+                    BookParametersModel.clampAndNormalize({ ...project.parameters, ...patch }),
+                  )
+                }
                 onDownloadOuterSvg={handleDownloadOuterSvg}
                 onDownloadOuterPdf={handleDownloadOuterPdf}
-                onDownloadInnerSvg={handleDownloadInnerSvg}
-                onDownloadInnerPdf={handleDownloadInnerPdf}
+                onStatusMessage={setStatusMessage}
               />
             </TabsContent>
 
-            <TabsContent value="studio" className="mt-0">
-              <Suspense
-                fallback={
-                  <div className="rounded-b-lg rounded-tr-lg border border-border bg-card p-10 text-center text-sm text-muted-foreground">
-                    Loading Cover &amp; Spine Styler…
-                  </div>
+            <TabsContent value="pockets" className="mt-0">
+              <InnerPocketsStudio
+                geometry={geometry}
+                pocketStyle={project.studio.pocketStyle}
+                coverMatchColor={project.studio.spineBgColor}
+                pdfPageSize={project.parameters.pdfPageSize}
+                unit={project.parameters.unit}
+                exportingInnerPdf={exportingTarget === 'inner-pdf'}
+                onChangePocketStyle={(pocketStyle) =>
+                  handleStudioChange({ ...project.studio, pocketStyle })
                 }
-              >
-                <CoverStyler
-                  params={project.parameters}
-                  geometry={geometry}
-                  studio={project.studio}
-                  onChange={handleStudioChange}
-                  onUpdateParams={(patch) =>
-                    handleParamsChange(
-                      BookParametersModel.clampAndNormalize({ ...project.parameters, ...patch }),
-                    )
-                  }
-                  onStatusMessage={setStatusMessage}
-                />
-              </Suspense>
+                onDownloadInnerSvg={handleDownloadInnerSvg}
+                onDownloadInnerPdf={handleDownloadInnerPdf}
+                onStatusMessage={setStatusMessage}
+              />
             </TabsContent>
           </Tabs>
         </div>
