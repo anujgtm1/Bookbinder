@@ -7,6 +7,7 @@ import {
 import type { PageSizeId } from '@/types/bookParams';
 import type { CaseGeometry, Polygon2D, Rect2D } from '@/types/geometry';
 import type { PocketImageFitMode, PocketStyleConfig } from '@/types/studio';
+import type { CoverImageLayer } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
 
 export interface PocketImagePlacement {
@@ -14,6 +15,91 @@ export interface PocketImagePlacement {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+export interface InnerPocketsLayout {
+  readonly backX: number;
+  readonly linerX: number;
+  readonly linerY: number;
+  readonly frontX: number;
+  readonly totalWidthMm: number;
+  readonly totalHeightMm: number;
+  readonly padMm: number;
+  readonly viewBoxRect: Rect2D;
+  readonly viewBox: string;
+  readonly backFaceRect: Rect2D;
+  readonly backFullRect: Rect2D;
+  readonly linerRect: Rect2D;
+  readonly frontFaceRect: Rect2D;
+  readonly frontFullRect: Rect2D;
+}
+
+/**
+ * Single source of truth for the 1:1 mm layout of Back Pocket, Spine Liner, and Front Pocket
+ * on the Inner Pockets cutting mat (shared by live SVG canvas, snap targets, and 300 DPI PDF export).
+ */
+export function computeInnerPocketsLayout(geometry: CaseGeometry): InnerPocketsLayout {
+  const gap = 18;
+  const padMm = 16;
+  const { backPocket, spineLiner, frontPocket } = geometry;
+  const backX = 0;
+  const linerX = backPocket.totalWidthMm + gap;
+  const frontX = linerX + spineLiner.widthMm + gap;
+  const totalWidthMm = frontX + frontPocket.totalWidthMm;
+  const totalHeightMm = Math.max(
+    backPocket.totalHeightMm,
+    spineLiner.heightMm,
+    frontPocket.totalHeightMm,
+  );
+  const linerY = (totalHeightMm - spineLiner.heightMm) / 2;
+  const viewBoxRect: Rect2D = {
+    x: -padMm,
+    y: -padMm,
+    width: totalWidthMm + padMm * 2,
+    height: totalHeightMm + padMm * 2,
+  };
+
+  return {
+    backX,
+    linerX,
+    linerY,
+    frontX,
+    totalWidthMm,
+    totalHeightMm,
+    padMm,
+    viewBoxRect,
+    viewBox: `${viewBoxRect.x} ${viewBoxRect.y} ${viewBoxRect.width} ${viewBoxRect.height}`,
+    backFaceRect: {
+      x: backX + backPocket.faceRect.x,
+      y: backPocket.faceRect.y,
+      width: backPocket.faceRect.width,
+      height: backPocket.faceRect.height,
+    },
+    backFullRect: {
+      x: backX,
+      y: 0,
+      width: backPocket.totalWidthMm,
+      height: backPocket.totalHeightMm,
+    },
+    linerRect: {
+      x: linerX,
+      y: linerY,
+      width: spineLiner.widthMm,
+      height: spineLiner.heightMm,
+    },
+    frontFaceRect: {
+      x: frontX + frontPocket.faceRect.x,
+      y: frontPocket.faceRect.y,
+      width: frontPocket.faceRect.width,
+      height: frontPocket.faceRect.height,
+    },
+    frontFullRect: {
+      x: frontX,
+      y: 0,
+      width: frontPocket.totalWidthMm,
+      height: frontPocket.totalHeightMm,
+    },
+  };
 }
 
 /**
@@ -82,6 +168,8 @@ async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> 
 }
 
 interface PieceRenderSpec {
+  readonly offsetX: number;
+  readonly offsetY: number;
   readonly widthMm: number;
   readonly heightMm: number;
   readonly faceRect: Rect2D;
@@ -93,6 +181,7 @@ async function renderStyledPiecePng(
   style: PocketStyleConfig,
   rotated90: boolean,
   loadedImage: HTMLImageElement | null,
+  loadedLayers: readonly { readonly layer: CoverImageLayer; readonly image: HTMLImageElement }[],
   dpi = PRINT_DPI,
 ): Promise<Uint8Array | null> {
   const outWidthMm = rotated90 ? piece.heightMm : piece.widthMm;
@@ -185,6 +274,24 @@ async function renderStyledPiecePng(
     ctx.restore();
   }
 
+  // Composite interactive multi-layer artwork positioned in the shared 1:1 mm inner pockets layout
+  if (loadedLayers.length > 0) {
+    ctx.save();
+    ctx.globalAlpha = style.imageOpacity;
+    for (const { layer, image } of loadedLayers) {
+      const localX = layer.xMm - piece.offsetX;
+      const localY = layer.yMm - piece.offsetY;
+      ctx.drawImage(
+        image,
+        localX * pxPerMm,
+        localY * pxPerMm,
+        layer.widthMm * pxPerMm,
+        layer.heightMm * pxPerMm,
+      );
+    }
+    ctx.restore();
+  }
+
   ctx.restore();
   return canvasToPngBytes(canvas);
 }
@@ -201,6 +308,7 @@ export async function generateStyledInnerTemplatesPdf(
   dpi = PRINT_DPI,
 ): Promise<{ readonly bytes: Uint8Array; readonly plan: InnerPdfLayoutPlan }> {
   const plan = planInnerTemplateLayout(geometry, pageSizeId);
+  const layout = computeInnerPocketsLayout(geometry);
 
   let loadedImage: HTMLImageElement | null = null;
   if (pocketStyle.imageDataUrl) {
@@ -211,20 +319,36 @@ export async function generateStyledInnerTemplatesPdf(
     }
   }
 
+  const loadedLayers: { readonly layer: CoverImageLayer; readonly image: HTMLImageElement }[] = [];
+  for (const layer of pocketStyle.layers ?? []) {
+    try {
+      const image = await loadImageElement(layer.dataUrl);
+      loadedLayers.push({ layer, image });
+    } catch {
+      // Skip unreadable layer gracefully
+    }
+  }
+
   const pieceSpecs: Record<Exclude<InnerPieceKind, 'calibration-legend'>, PieceRenderSpec> = {
     'back-pocket': {
+      offsetX: layout.backX,
+      offsetY: 0,
       widthMm: geometry.backPocket.totalWidthMm,
       heightMm: geometry.backPocket.totalHeightMm,
       faceRect: geometry.backPocket.faceRect,
       fullPolygon: geometry.backPocket.outerCutPolygon,
     },
     'front-pocket': {
+      offsetX: layout.frontX,
+      offsetY: 0,
       widthMm: geometry.frontPocket.totalWidthMm,
       heightMm: geometry.frontPocket.totalHeightMm,
       faceRect: geometry.frontPocket.faceRect,
       fullPolygon: geometry.frontPocket.outerCutPolygon,
     },
     'spine-liner': {
+      offsetX: layout.linerX,
+      offsetY: layout.linerY,
       widthMm: geometry.spineLiner.widthMm,
       heightMm: geometry.spineLiner.heightMm,
       faceRect: {
@@ -252,6 +376,7 @@ export async function generateStyledInnerTemplatesPdf(
       pocketStyle,
       placement.rotated90,
       loadedImage,
+      loadedLayers,
       dpi,
     );
     if (png) {

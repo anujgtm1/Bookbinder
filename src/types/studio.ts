@@ -14,13 +14,15 @@ export type PocketStyleScope = 'faces-only' | 'full-envelope';
 export interface PocketStyleConfig {
   /** Base endpaper fill color for inner pockets and spine liner */
   backgroundColor: string;
-  /** Optional custom endpaper picture/pattern (data URL) */
+  /** Free-form draggable & resizable artwork layers positioned in the 1:1 mm Inner Pockets layout */
+  layers: readonly CoverImageLayer[];
+  /** Optional tiled/background custom endpaper picture/pattern (data URL) */
   imageDataUrl: string | null;
   imageFileName: string | null;
   imageNaturalWidth: number;
   imageNaturalHeight: number;
   imageFitMode: PocketImageFitMode;
-  /** Relative scale multiplier (0.25 to 2.5) for tile or artwork sizing */
+  /** Relative scale multiplier (0.25 to 2.5) for tile or background pattern sizing */
   imageScale: number;
   /** Image blend opacity over backgroundColor (0.1 to 1.0) */
   imageOpacity: number;
@@ -94,6 +96,7 @@ export const STUDIO_BOUNDS = {
 
 export const DEFAULT_POCKET_STYLE: Readonly<PocketStyleConfig> = {
   backgroundColor: '#f4eee1',
+  layers: [],
   imageDataUrl: null,
   imageFileName: null,
   imageNaturalWidth: 0,
@@ -217,6 +220,7 @@ export const CoverStudioModel = {
       spineText: { ...state.spineText },
       pocketStyle: {
         ...state.pocketStyle,
+        layers: includeImageData ? state.pocketStyle.layers.map((layer) => ({ ...layer })) : [],
         imageDataUrl: includeImageData ? state.pocketStyle.imageDataUrl : null,
         imageFileName: includeImageData ? state.pocketStyle.imageFileName : null,
       },
@@ -241,6 +245,14 @@ export const CoverStudioModel = {
       for (const item of obj.layers) {
         const parsed = CoverImageLayerModel.deserialize(item);
         if (parsed) layers.push(parsed);
+      }
+    }
+
+    const pocketLayers: CoverImageLayer[] = [];
+    if (Array.isArray(rawPocket.layers)) {
+      for (const item of rawPocket.layers) {
+        const parsed = CoverImageLayerModel.deserialize(item);
+        if (parsed) pocketLayers.push(parsed);
       }
     }
 
@@ -283,6 +295,7 @@ export const CoverStudioModel = {
           rawPocket.backgroundColor,
           DEFAULT_POCKET_STYLE.backgroundColor,
         ),
+        layers: pocketLayers,
         imageDataUrl:
           typeof rawPocket.imageDataUrl === 'string' && rawPocket.imageDataUrl.startsWith('data:image/')
             ? rawPocket.imageDataUrl

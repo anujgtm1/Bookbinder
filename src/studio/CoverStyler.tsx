@@ -652,6 +652,15 @@ export function CoverStyler({
             )}
           </div>
 
+          {/* Dropzone visual cue */}
+          {isDraggingOver && (
+            <div className="pointer-events-none absolute inset-4 z-30 flex items-center justify-center rounded-lg border-2 border-dashed border-brass-bright bg-black/45 backdrop-blur-[1px]">
+              <span className="rounded-full border border-brass-bright/60 bg-black/75 px-4 py-1.5 font-serif text-sm font-semibold text-[#faf6ee] shadow-lg">
+                Drop image onto Back Cover, Spine, or Front Cover
+              </span>
+            </div>
+          )}
+
           {viewMode === '2d' ? (
             <div className="flex h-full w-full items-center justify-center p-6 pb-16">
               <svg

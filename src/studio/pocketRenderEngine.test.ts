@@ -3,11 +3,31 @@ import { calculateCaseGeometry } from '@/core/geometry';
 import { BookParametersModel } from '@/types/bookParams';
 import { DEFAULT_POCKET_STYLE } from '@/types/studio';
 import {
+  computeInnerPocketsLayout,
   computePocketImagePlacement,
   generateStyledInnerTemplatesPdf,
 } from './pocketRenderEngine';
+import { buildInnerPocketSnapTargets } from './snapGuides';
 
 describe('pocketRenderEngine', () => {
+  it('computes consistent 1:1 mm inner pockets layout rects and magnetic snap targets', () => {
+    const geom = calculateCaseGeometry(BookParametersModel.createDefault());
+    const layout = computeInnerPocketsLayout(geom);
+
+    expect(layout.backX).toBe(0);
+    expect(layout.linerX).toBeGreaterThan(layout.backFullRect.width);
+    expect(layout.frontX).toBeGreaterThan(layout.linerX + layout.linerRect.width);
+    expect(layout.totalWidthMm).toBeCloseTo(
+      layout.frontX + geom.frontPocket.totalWidthMm,
+      2,
+    );
+
+    const targets = buildInnerPocketSnapTargets(layout);
+    expect(targets.vertical.some((t) => t.label === 'FRONT CENTER')).toBe(true);
+    expect(targets.vertical.some((t) => t.label === 'BACK CENTER')).toBe(true);
+    expect(targets.horizontal.some((t) => t.label === 'CENTERLINE')).toBe(true);
+  });
+
   it('computes cover, contain, and tile placements accurately', () => {
     const target = { x: 12, y: 12, width: 100, height: 200 };
 

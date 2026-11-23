@@ -283,7 +283,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
   });
 
-  test('styles Inner Pockets with Match Cover Color, custom picture upload, and exports Styled Pockets PDF', async ({
+  test('styles Inner Pockets with Match Cover Color, interactive draggable/resizable artwork layers, and Styled Pockets PDF', async ({
     page,
   }) => {
     // Switch to Inner Pockets & Liner tab
@@ -294,14 +294,52 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('pocket-match-cover-btn').click();
     await expect(page.getByTestId('styled-front-pocket-fill')).toHaveAttribute('fill', '#1f3a52');
 
-    // Upload a custom endpaper pattern image
+    // Upload a custom endpaper artwork image -> lands as an interactive draggable layer
     const marbledPng = createSolidPngBuffer(64, 64, 180, 140, 75);
     await page.getByTestId('pocket-upload-image-input').setInputFiles({
       name: 'marbled-endpaper.png',
       mimeType: 'image/png',
       buffer: marbledPng,
     });
+    const pocketLayer = page.getByTestId('pocket-layer-0');
+    await expect(pocketLayer).toBeVisible();
     await expect(page.getByTestId('pocket-remove-image-btn')).toBeVisible();
+
+    // Drag the artwork layer interactively across the pocket envelope
+    await pocketLayer.scrollIntoViewIfNeeded();
+    const initialX = Number(await pocketLayer.getAttribute('x'));
+    const layerBox = await pocketLayer.boundingBox();
+    expect(layerBox).not.toBeNull();
+
+    await page.mouse.move(layerBox!.x + layerBox!.width / 2, layerBox!.y + layerBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      layerBox!.x + layerBox!.width / 2 - 45,
+      layerBox!.y + layerBox!.height / 2 + 15,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+
+    const movedX = Number(await pocketLayer.getAttribute('x'));
+    expect(movedX).toBeLessThan(initialX - 5);
+
+    // Resize via SE corner handle
+    const widthBeforeResize = Number(await pocketLayer.getAttribute('width'));
+    const seHandle = page.getByTestId('resize-handle-se');
+    const seBox = await seHandle.boundingBox();
+    expect(seBox).not.toBeNull();
+    await page.mouse.move(seBox!.x + seBox!.width / 2, seBox!.y + seBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(seBox!.x + seBox!.width / 2 + 30, seBox!.y + seBox!.height / 2 + 30, {
+      steps: 5,
+    });
+    await page.mouse.up();
+    const widthAfterResize = Number(await pocketLayer.getAttribute('width'));
+    expect(widthAfterResize).toBeGreaterThan(widthBeforeResize + 2);
+
+    // Copy to opposite pocket creates a 2nd interactive layer
+    await page.getByTestId('pocket-copy-other-btn').click();
+    await expect(page.getByTestId('pocket-layer-count-badge')).toHaveText('2 images');
 
     // Export Styled Pockets PDF
     const styledPdfPromise = page.waitForEvent('download');
