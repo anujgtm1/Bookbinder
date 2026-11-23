@@ -218,6 +218,17 @@ src/
   - **Inner Pockets Shape Helpers:** Quick-Fit presets (`Fit Back Pocket`, `Fit Front Pocket`, `Fit Spine Liner`, `Fit All Pieces`), one-click **Copy to Other Pocket** (mirrors a layer cleanly between Front & Back pockets), a one-click **Tile Pattern** toggle on any selected layer (turning any swatch into a seamless repeating endpaper pattern whose repeat size and offset respond live to corner-handle resizing and dragging), plus `Pocket Faces Only` vs `Full Cut Envelope` clip scope and opacity control.
   - **Exact 300 DPI PDF Compositing (`pocketRenderEngine.ts`):** All positioned inner pocket layers composite at exact 1:1 mm alignment onto each auto-paginated (and 90°-rotated if needed) sheet underneath vector cut/score/glue lines.
 
+### 7.6 Cricut / Silhouette / ScanNCut HTV & Foil SVG Export (`src/studio/cricutExport.ts`, `CricutExportDialog.tsx`)
+- Dedicated cutting-machine vector exporter designed for **Cricut Design Space**, **Silhouette Studio**, and **Brother CanvasWorkspace (ScanNCut)** so binders can cut Heat Transfer Vinyl (HTV), foil iron-on lettering, or bookcloth wraps without font-substitution or scaling errors:
+  - **True Vector Glyph Outlines (Zero `<text>` Tags, Zero `transform` Attributes):** Parses the active curated `.woff` font or custom uploaded `.ttf`/`.otf`/`.woff` font client-side via `@pdf-lib/fontkit`, lays out properly kerned glyphs, and bakes every curve (`M/L/Q/C/Z`) into flattened absolute millimeter coordinates inside a single compound `<path id="spine-lettering" />`.
+  - **Strict `1:1 mm` Physical Scaling:** Root `<svg>` explicitly specifies `width="{W}mm" height="{H}mm" viewBox="0 0 {W} {H}"` with zero embedded rasters, filters, or gradients.
+  - **Export Options Modal (Native `<dialog closedby="any">` with live preview & mat compatibility badges):**
+    - **Scope:** `Spine Strip Only` (compact `SPINE_W × BOARD_H` mat compatible with Cricut Joy / Joy Xtra) vs. `Full Cover Wrap` (`WRAP_W × WRAP_H` for 12×24" Maker/Cameo mats).
+    - **Weeding Box (`+4 mm`):** Tight cut box around outlined lettering for effortless HTV weeding.
+    - **Alignment Corner Marks:** Thin closed-path L-brackets at exact spine/board corners for dead-center HTV transfer onto wrapped bookcloth.
+    - **Outer Wrap Cut Outline:** Optional separate-color `#D93829` outer cut polygon (with 45° miters) for cutting bookcloth or cardstock directly on a cutting machine.
+    - **Mirror Horizontally (HTV Iron-On):** Optional horizontal coordinate flip (off by default to avoid double-mirroring with Cricut Design Space's *Make It → Mirror* toggle).
+
 ---
 
 ## 8. Recommended Tech Stack (Local Build)
