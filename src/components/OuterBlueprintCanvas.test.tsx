@@ -92,13 +92,86 @@ describe('OuterBlueprintCanvas', () => {
 
     const flapsAndTabs = screen.getByTestId('blueprint-softcover-flaps-and-tabs');
     expect(flapsAndTabs).toBeInTheDocument();
-    expect(flapsAndTabs).toHaveTextContent('BACK FLAP (52.5 mm)');
-    expect(flapsAndTabs).toHaveTextContent('FRONT FLAP (52.5 mm)');
+    expect(screen.getAllByText('TUCK FLAP (52.5 mm)')).toHaveLength(2);
     expect(screen.getAllByText('GLUE')).toHaveLength(4);
+    expect(screen.queryByTestId('blueprint-miter-callout')).not.toBeInTheDocument();
 
     const dims = screen.getByTestId('outer-blueprint-dimensions');
     expect(dims).toHaveTextContent('TOTAL W: 323.0 mm');
     expect(dims).toHaveTextContent('TOTAL H: 170.0 mm');
+  });
+
+  it('renders paperback-wrap with 2 vertical spine fold lines, zero glue tabs, and no miter callout', () => {
+    const geometry = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    });
+
+    render(
+      <OuterBlueprintCanvas
+        geometry={geometry}
+        splitMode="single"
+        unit="mm"
+        zoom={1}
+        onAdjustZoom={vi.fn()}
+        pan={{ x: 0, y: 0 }}
+        onPanChange={vi.fn()}
+      />,
+    );
+
+    const svg = screen.getByTestId('outer-blueprint-svg');
+    expect(svg).toHaveTextContent('BACK COVER');
+    expect(svg).toHaveTextContent('SPINE');
+    expect(svg).toHaveTextContent('FRONT COVER');
+    expect(screen.getAllByTestId('blueprint-fold-line')).toHaveLength(2);
+    expect(screen.queryByTestId('blueprint-softcover-flaps-and-tabs')).not.toBeInTheDocument();
+    expect(screen.queryByText('GLUE')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('blueprint-miter-callout')).not.toBeInTheDocument();
+
+    const dims = screen.getByTestId('outer-blueprint-dimensions');
+    expect(dims).toHaveTextContent('TOTAL W: 220.0 mm');
+    expect(dims).toHaveTextContent('TOTAL H: 148.0 mm');
+  });
+
+  it('renders dust-jacket with BACK FLAP / FRONT FLAP, 4 vertical fold lines, zero glue tabs, and no miter callout', () => {
+    const geometry = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 70,
+    });
+
+    render(
+      <OuterBlueprintCanvas
+        geometry={geometry}
+        splitMode="single"
+        unit="mm"
+        zoom={1}
+        onAdjustZoom={vi.fn()}
+        pan={{ x: 0, y: 0 }}
+        onPanChange={vi.fn()}
+      />,
+    );
+
+    const svg = screen.getByTestId('outer-blueprint-svg');
+    expect(svg).toHaveTextContent('BACK COVER');
+    expect(svg).toHaveTextContent('FRONT COVER');
+    expect(screen.getAllByTestId('blueprint-fold-line')).toHaveLength(4);
+
+    const flaps = screen.getByTestId('blueprint-softcover-flaps-and-tabs');
+    expect(flaps).toHaveTextContent('BACK FLAP (70 mm)');
+    expect(flaps).toHaveTextContent('FRONT FLAP (70 mm)');
+    expect(screen.queryByText('GLUE')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('blueprint-miter-callout')).not.toBeInTheDocument();
+
+    const dims = screen.getByTestId('outer-blueprint-dimensions');
+    expect(dims).toHaveTextContent('TOTAL W: 363.5 mm');
+    expect(dims).toHaveTextContent('TOTAL H: 148.0 mm');
   });
 
   it('toggles CAD dimensions visibility via showDimensions in single and 3-piece modes and handles wheel zoom', () => {

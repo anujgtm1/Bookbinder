@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import {
@@ -176,6 +177,10 @@ export function PdfExportDialog({
 
   const isOuterTarget = target === 'cover-styled' || target === 'outer-blueprint';
   const isRollSelected = ROLL_MEDIA_OPTIONS.some((opt) => opt.id === printMediaId);
+  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const effectiveSplitMode: SplitMode = bindingStrategy.capabilities.supportsThreePieceSplit
+    ? splitMode
+    : 'single';
 
   const requestClose = useCallback(() => {
     const dialog = dialogRef.current;
@@ -287,7 +292,7 @@ export function PdfExportDialog({
 
   const isBlockedUnfitted =
     isOuterTarget &&
-    splitMode === 'single' &&
+    effectiveSplitMode === 'single' &&
     printMediaId !== 'exact-auto' &&
     activeFit.status === 'does-not-fit';
   const isBusy = Boolean(exporting || isSubmitting);
@@ -303,7 +308,7 @@ export function PdfExportDialog({
     }
 
     const dpiSuffix = target === 'cover-styled' ? ` • ${dpi} DPI` : ' • 1:1 mm';
-    if (splitMode === 'three-piece') {
+    if (effectiveSplitMode === 'three-piece') {
       return `3 pages • 3-Piece Split (Back, Spine, Front)${dpiSuffix}`;
     }
     if (isBlockedUnfitted) {
@@ -334,7 +339,7 @@ export function PdfExportDialog({
     includeLegend,
     target,
     dpi,
-    splitMode,
+    effectiveSplitMode,
     isBlockedUnfitted,
     activeFit,
     printMediaId,
@@ -349,7 +354,7 @@ export function PdfExportDialog({
       target,
       printMediaId,
       pageSizeId,
-      splitMode,
+      splitMode: effectiveSplitMode,
       includeGuides,
       includeScaleBar,
       includeLegend,
@@ -366,9 +371,11 @@ export function PdfExportDialog({
   };
 
   const canToggleSplitMode =
-    isOuterTarget && geometry.bindingStyle !== 'softcover-jacket' && Boolean(onChangeSplitMode);
+    isOuterTarget &&
+    bindingStrategy.capabilities.supportsThreePieceSplit &&
+    Boolean(onChangeSplitMode);
   const showTileOverlapControl =
-    isOuterTarget && splitMode === 'single' && activeFit.status === 'fits-2-sheet-tile';
+    isOuterTarget && effectiveSplitMode === 'single' && activeFit.status === 'fits-2-sheet-tile';
 
   return (
     <dialog
@@ -556,7 +563,7 @@ export function PdfExportDialog({
                 </div>
               )}
 
-              {isOuterTarget && splitMode === 'three-piece' && (
+              {isOuterTarget && effectiveSplitMode === 'three-piece' && (
                 <p className="rounded-md border border-brass/35 bg-brass/10 px-3 py-1.5 text-[11px] text-foreground">
                   3-Piece Split outputs 3 separate 1:1 panel pages (<strong>Back Board</strong>,{' '}
                   <strong>Spine Strip</strong>, and <strong>Front Board</strong>).
@@ -570,7 +577,7 @@ export function PdfExportDialog({
               geometry={geometry}
               unit={unit}
               printMediaId={printMediaId}
-              splitMode={splitMode}
+              splitMode={effectiveSplitMode}
               activeFit={activeFit}
               tileOverlapMm={tileOverlapMm}
               includeScaleBar={includeScaleBar}

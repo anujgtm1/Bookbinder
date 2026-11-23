@@ -161,4 +161,66 @@ describe('SidebarControls', () => {
     await user.click(screen.getByTestId('flap-preset-a4'));
     expect(latest.jacketFlapWidthMm).toBeCloseTo(34.5, 1);
   });
+
+  it('renders Jacket Flap Width (up to 100 mm) + Classic (70 mm) / Fit Letter presets for dust-jacket and hides chipboard controls', async () => {
+    const user = userEvent.setup();
+    let latest: BookParameters = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    };
+    const onChange = vi.fn((next: BookParameters) => {
+      latest = next;
+    });
+
+    const { rerender } = render(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+
+    const flapControls = screen.getByTestId('softcover-flap-controls');
+    expect(flapControls).toHaveTextContent('Jacket Flap Width');
+    const slider = screen.getByTestId('slider-jacket-flap-width') as HTMLInputElement;
+    expect(slider.max).toBe('100');
+    expect(screen.getByTestId('flap-preset-deep')).toHaveTextContent('Classic (70 mm)');
+
+    await user.click(screen.getByTestId('flap-preset-deep'));
+    expect(latest.jacketFlapWidthMm).toBe(70);
+
+    await user.click(screen.getByTestId('flap-preset-letter'));
+    // innerW = 106*2 + 11.5 = 223.5; printable Letter long = 269.4 -> floor((45.9/2)*10)/10 = 22.9 mm
+    expect(latest.jacketFlapWidthMm).toBeCloseTo(22.9, 1);
+
+    // Chipboard, 3-piece split, and Inner Envelopes PDF sheet size are hidden on dust-jacket
+    expect(screen.queryByTestId('pdf-page-size-select')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('construction-settings-toggle'));
+    expect(screen.queryByTestId('input-board-thickness')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('input-turn-in')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('split-mode-toggle')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bleed-toggle')).toBeInTheDocument();
+
+    // Switch to paperback-wrap -> hides flap controls as well as chipboard & inner pocket controls
+    latest = { ...latest, bindingStyle: 'paperback-wrap' };
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('softcover-flap-controls')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('input-board-thickness')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('split-mode-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pdf-page-size-select')).not.toBeInTheDocument();
+    expect(screen.getByTestId('bleed-toggle')).toBeInTheDocument();
+  });
 });

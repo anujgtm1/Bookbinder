@@ -49,4 +49,41 @@ describe('CutListCard', () => {
     expect(screen.getByTestId('roll-recommendation-badge')).toHaveTextContent('US Letter / A4');
     expect(screen.getByTestId('cut-list-card')).toHaveTextContent('Glue blank back of 4 tabs');
   });
+
+  it('renders crisp 0-board cards, fold counts, and materialNote for paperback-wrap and dust-jacket', () => {
+    const pbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    });
+    const { rerender } = render(<CutListCard geometry={pbGeom} unit="mm" />);
+
+    expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('None');
+    expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('0-Board Paperback');
+    expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('2 Folds');
+    expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('10.0 mm Spine');
+    expect(screen.getByTestId('cut-outer-wrap')).toHaveTextContent('220.0 × 148.0 mm');
+    expect(screen.getByTestId('cut-list-card')).toHaveTextContent('220–300 gsm cover cardstock');
+    expect(screen.getByRole('img', { name: /2 score folds/i })).toBeInTheDocument();
+
+    const djGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 70,
+    });
+    rerender(<CutListCard geometry={djGeom} unit="mm" />);
+
+    expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('None');
+    expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('0-Board Dust Jacket');
+    expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('70.0 mm Flaps');
+    expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('4 vertical fold stops');
+    expect(screen.getByTestId('cut-outer-wrap')).toHaveTextContent('363.5 × 148.0 mm');
+    expect(screen.getByTestId('cut-list-card')).toHaveTextContent('130–200 gsm coated or matte paper');
+    expect(screen.getByRole('img', { name: /4 vertical score folds/i })).toBeInTheDocument();
+  });
 });

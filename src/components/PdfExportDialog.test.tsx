@@ -21,6 +21,7 @@ function StatefulPdfExportDialog({
   initialMedia = 'letter',
   initialPageSize = 'letter',
   initialSplitMode = 'single',
+  onReduceFlapWidth,
   onConfirmExport,
   onClose = vi.fn(),
 }: {
@@ -29,6 +30,7 @@ function StatefulPdfExportDialog({
   readonly initialMedia?: PrintMediaId;
   readonly initialPageSize?: PageSizeId;
   readonly initialSplitMode?: SplitMode;
+  readonly onReduceFlapWidth?: (widthMm: number) => void;
   readonly onConfirmExport: (selection: PdfExportSelection) => void;
   readonly onClose?: () => void;
 }) {
@@ -48,6 +50,7 @@ function StatefulPdfExportDialog({
       onChangePageSize={setPageSize}
       splitMode={splitMode}
       onChangeSplitMode={setSplitMode}
+      onReduceFlapWidth={onReduceFlapWidth}
       onConfirmExport={onConfirmExport}
       onClose={onClose}
     />
@@ -231,5 +234,60 @@ describe('PdfExportDialog', () => {
       dpi: 300,
       tileOverlapMm: 10,
     });
+  });
+
+  it('fits A6 paperback-wrap onto 1x US Letter without 3-piece split toggle and offers shrink-flap quick-fix for oversized dust-jacket', async () => {
+    const user = userEvent.setup();
+    const pbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      printMedia: 'letter',
+    });
+
+    const onConfirmExport = vi.fn();
+    const { rerender } = render(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={pbGeom}
+        initialMedia="letter"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    expect(screen.getByTestId('pdf-media-option-letter')).toHaveTextContent('1 sheet');
+    expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent(/1 page • US Letter/i);
+    expect(screen.queryByTestId('pdf-opt-split-three')).not.toBeInTheDocument();
+
+    // Dust jacket on A6 with 70 mm flaps (363.5 x 148 mm) -> 2 tiled sheets on Letter with 1-click shrink-flap fix to 22.9 mm
+    const djGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 70,
+      printMedia: 'letter',
+    });
+    const onReduceFlapWidth = vi.fn();
+    rerender(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={djGeom}
+        initialMedia="letter"
+        onReduceFlapWidth={onReduceFlapWidth}
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    expect(screen.getByTestId('pdf-media-option-letter')).toHaveTextContent('2 sheets (tiled)');
+    expect(screen.queryByTestId('pdf-opt-split-three')).not.toBeInTheDocument();
+
+    const reduceBtn = screen.getByTestId('pdf-quick-reduce-flap');
+    expect(reduceBtn).toHaveTextContent('22.9 mm');
+    await user.click(reduceBtn);
+    expect(onReduceFlapWidth).toHaveBeenCalledWith(22.9);
   });
 });

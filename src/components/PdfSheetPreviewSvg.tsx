@@ -1,14 +1,11 @@
 import { AlertTriangle, CheckCircle2, Layers } from 'lucide-react';
 import { useId } from 'react';
 import { Button } from '@/components/ui/button';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import type { InnerPdfLayoutPlan, InnerPieceKind } from '@/core/pdfExport';
 import { ROLL_TOTAL_MARGIN_MM, getPrintMediaSpec } from '@/resources/paperSpecs';
-import {
-  BOOK_PARAM_BOUNDS,
-  type PrintMediaId,
-  type SplitMode,
-} from '@/types/bookParams';
+import type { PrintMediaId, SplitMode } from '@/types/bookParams';
 import type { CaseGeometry, PrintMediaFitEvaluation } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
@@ -61,16 +58,31 @@ function computeReducibleFlapMm(
   geometry: CaseGeometry,
   mediaId: PrintMediaId,
 ): number | null {
-  if (geometry.bindingStyle !== 'softcover-jacket') return null;
+  const strategy = getBindingStrategy(geometry.bindingStyle);
+  if (
+    !strategy.capabilities.hasFlaps ||
+    !strategy.flapConfig ||
+    !strategy.computeMaxFlapWidthForSheet
+  ) {
+    return null;
+  }
   const spec = getPrintMediaSpec(mediaId);
   if (spec.kind !== 'sheet' || spec.longMm === null || spec.shortMm === null) return null;
   const shortPrintable = spec.shortMm - ROLL_TOTAL_MARGIN_MM;
   if (geometry.outerWrap.heightMm > shortPrintable + 0.05) return null;
-  const maxFlap =
-    Math.floor(
-      ((spec.longMm - ROLL_TOTAL_MARGIN_MM - geometry.outerWrap.innerWidthMm) / 2) * 10 + 1e-9,
-    ) / 10;
-  if (maxFlap < BOOK_PARAM_BOUNDS.jacketFlapWidthMm.min) return null;
+  const longPrintable = spec.longMm - ROLL_TOTAL_MARGIN_MM;
+  const rawMaxFlap =
+    Math.floor(((longPrintable - geometry.outerWrap.innerWidthMm) / 2) * 10 + 1e-9) / 10;
+  if (rawMaxFlap < strategy.flapConfig.minMm) return null;
+  const spineEase = strategy.capabilities.hasGlueTabs ? 1.0 : 1.5;
+  const maxFlap = strategy.computeMaxFlapWidthForSheet(
+    {
+      bindingStyle: geometry.bindingStyle,
+      pbWidthMm: geometry.cutList.coverBoards.widthMm - 1.0,
+      pbThicknessMm: geometry.cutList.spineStrip.widthMm - spineEase,
+    },
+    longPrintable,
+  );
   if (maxFlap >= geometry.outerWrap.jacketFlapWidthMm - 0.1) return null;
   return roundTo(maxFlap, 1);
 }
@@ -188,6 +200,7 @@ export function PdfSheetPreviewSvg({
   const uid = useId().replace(/:/g, '');
   const tile1ClipId = `${uid}-tile-1`;
   const tile2ClipId = `${uid}-tile-2`;
+  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
   const wrapW = geometry.outerWrap.widthMm;
   const wrapH = geometry.outerWrap.heightMm;
 
@@ -411,7 +424,7 @@ export function PdfSheetPreviewSvg({
               Reduce flap to {reducibleFlapMm} mm
             </Button>
           )}
-          {geometry.bindingStyle !== 'softcover-jacket' && onChangeSplitMode && (
+          {bindingStrategy.capabilities.supportsThreePieceSplit && onChangeSplitMode && (
             <Button
               type="button"
               size="sm"

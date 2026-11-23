@@ -10,6 +10,7 @@ import { SidebarControls } from '@/components/SidebarControls';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { generateInnerTemplatesPdf, generateOuterWrapPdf } from '@/core/pdfExport';
 import {
@@ -47,12 +48,14 @@ export function App() {
     }
   }, [project]);
 
-  const isSoftcoverJacket = project.parameters.bindingStyle === 'softcover-jacket';
+  const bindingStrategy = getBindingStrategy(project.parameters.bindingStyle);
+  const usesInnerPockets = bindingStrategy.capabilities.usesInnerPockets;
 
   const handleParamsChange = (parameters: BookParameters) => {
+    const nextStrategy = getBindingStrategy(parameters.bindingStyle);
     if (
-      parameters.bindingStyle === 'softcover-jacket' &&
-      project.parameters.bindingStyle !== 'softcover-jacket' &&
+      !nextStrategy.capabilities.usesInnerPockets &&
+      bindingStrategy.capabilities.usesInnerPockets &&
       activeTab === 'pockets'
     ) {
       setActiveTab('outer');
@@ -230,17 +233,17 @@ export function App() {
                   className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
                 >
                   <FolderOpen
-                    className={`h-4 w-4 text-brass ${isSoftcoverJacket ? 'opacity-60' : ''}`}
+                    className={`h-4 w-4 text-brass ${!usesInnerPockets ? 'opacity-60' : ''}`}
                     aria-hidden="true"
                   />
-                  <span className={isSoftcoverJacket ? 'opacity-65' : undefined}>Inner Pockets</span>
-                  {isSoftcoverJacket && (
+                  <span className={!usesInnerPockets ? 'opacity-65' : undefined}>Inner Pockets</span>
+                  {!usesInnerPockets && bindingStrategy.innerPocketsNotice && (
                     <Badge
                       variant="outline"
                       data-testid="pockets-builtin-badge"
                       className="ml-0.5 h-4 px-1.5 font-mono text-[10px]"
                     >
-                      Built-In
+                      {bindingStrategy.innerPocketsNotice.tabBadge}
                     </Badge>
                   )}
                 </TabsTrigger>
@@ -280,9 +283,9 @@ export function App() {
             </TabsContent>
 
             <TabsContent value="pockets" className="mt-0">
-              {isSoftcoverJacket ? (
+              {!usesInnerPockets ? (
                 <section
-                  aria-label="Built-In Inner Pockets Notice"
+                  aria-label="Inner Pockets Notice"
                   data-testid="pockets-not-needed-notice"
                   className="rounded-b-lg rounded-tr-lg border border-border bg-card p-6 shadow-xs sm:p-8"
                 >
@@ -291,15 +294,16 @@ export function App() {
                       <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <Badge variant="outline" className="mb-2 font-mono text-[10px] uppercase">
-                      Built-In Slip-In Pockets
+                      {bindingStrategy.shortLabel} •{' '}
+                      {bindingStrategy.innerPocketsNotice?.tabBadge ?? 'Not Needed'}
                     </Badge>
                     <h2 className="font-serif text-lg font-semibold tracking-tight text-foreground">
-                      Inner Pockets Are Already Included
+                      {bindingStrategy.innerPocketsNotice?.heading ??
+                        'Separate Inner Pockets Not Needed'}
                     </h2>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      Separate Inner Pockets &amp; Spine Liner are not needed for the 1-Piece
-                      Fold-and-Glue Slip Cover — your slip-in pockets and 4 wrap-over glue tabs are
-                      already built into the Cover Studio sheet.
+                      {bindingStrategy.innerPocketsNotice?.explanation ??
+                        bindingStrategy.materialNote}
                     </p>
                     <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
                       <Button

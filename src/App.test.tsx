@@ -93,4 +93,35 @@ describe('App', () => {
     expect(screen.getByTestId('inner-pockets-studio')).toBeInTheDocument();
     expect(screen.queryByTestId('pockets-builtin-badge')).not.toBeInTheDocument();
   });
+
+  it('shows Not Needed badge & dynamic notice on Inner Pockets for Replacement Paperback Cover and Classic Dust Jacket, auto-switching away when entered from Inner Pockets', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Open Inner Pockets first
+    await user.click(screen.getByTestId('nav-pockets'));
+    expect(screen.getByTestId('inner-pockets-studio')).toBeInTheDocument();
+
+    // Switch to Replacement Paperback Cover -> auto-switches to Cover Studio and shows Not Needed badge
+    await user.click(screen.getByTestId('binding-style-select'));
+    await user.click(screen.getByRole('option', { name: /Replacement Paperback Cover/i }));
+    expect(screen.getByTestId('cover-styler')).toBeInTheDocument();
+    expect(screen.getByTestId('pockets-builtin-badge')).toHaveTextContent('Not Needed');
+
+    // Clicking Inner Pockets renders paperback-wrap dynamic notice
+    await user.click(screen.getByTestId('nav-pockets'));
+    expect(screen.getByTestId('pockets-not-needed-notice')).toBeInTheDocument();
+    expect(
+      screen.getByText('Replacement Paperback Cover — No Inner Pockets or Chipboard'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('inner-pockets-studio')).not.toBeInTheDocument();
+
+    // Switch to Classic Dust Jacket -> Not Needed badge + dust jacket heading
+    await user.click(screen.getByTestId('binding-style-select'));
+    await user.click(screen.getByRole('option', { name: /Classic Dust Jacket/i }));
+    expect(screen.getByTestId('pockets-builtin-badge')).toHaveTextContent('Not Needed');
+    expect(
+      screen.getByText('Classic Dust Jacket — No Separate Inner Pockets'),
+    ).toBeInTheDocument();
+  });
 });

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
@@ -49,6 +50,9 @@ export function OuterBlueprintCanvas({
   }>({ active: false, startX: 0, startY: 0, origX: 0, origY: 0 });
 
   const { outerWrap, splitPanels, cutList } = geometry;
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const { capabilities, panelLabels } = strategy;
+  const effectiveSplitMode: SplitMode = capabilities.supportsThreePieceSplit ? splitMode : 'single';
   const bleedPad = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
 
   const outerLayout = useMemo(() => {
@@ -57,7 +61,7 @@ export function OuterBlueprintCanvas({
     const padTop = (showDimensions ? 36 : 14) + bleedPad;
     const padBottom = (showDimensions ? 34 : 14) + bleedPad;
 
-    if (splitMode === 'three-piece') {
+    if (effectiveSplitMode === 'three-piece') {
       const gap = showDimensions ? 20 : 14;
       let cursorX = 0;
       const positionedPanels = splitPanels.map((panel) => {
@@ -75,14 +79,15 @@ export function OuterBlueprintCanvas({
       viewBox: `${-padLeft} ${-padTop} ${outerWrap.widthMm + padLeft + padRight} ${outerWrap.heightMm + padTop + padBottom}`,
       positionedPanels: [],
     };
-  }, [outerWrap, splitPanels, splitMode, bleedPad, showDimensions]);
+  }, [outerWrap, splitPanels, effectiveSplitMode, bleedPad, showDimensions]);
 
   const singleHorizontalSegments = useMemo(() => {
     const segs: { readonly x1: number; readonly x2: number }[] = [];
-    const sideW =
-      outerWrap.bindingStyle === 'softcover-jacket'
-        ? outerWrap.jacketFlapWidthMm
-        : outerWrap.turnInMm;
+    const sideW = capabilities.hasFlaps
+      ? outerWrap.jacketFlapWidthMm
+      : capabilities.hasTurnIns
+        ? outerWrap.turnInMm
+        : 0;
 
     if (sideW > 0.2) segs.push({ x1: 0, x2: sideW });
     segs.push({
@@ -113,7 +118,7 @@ export function OuterBlueprintCanvas({
       segs.push({ x1: outerWrap.widthMm - sideW, x2: outerWrap.widthMm });
     }
     return segs;
-  }, [outerWrap]);
+  }, [outerWrap, capabilities.hasFlaps, capabilities.hasTurnIns]);
 
   const cumulativeStops = useMemo<readonly CumulativeRulerStop[]>(() => {
     const pts: number[] = [0];
@@ -166,7 +171,7 @@ export function OuterBlueprintCanvas({
         className="pointer-events-none absolute top-3 left-3 z-10 rounded-full border border-white/15 bg-black/25 px-2.5 py-0.5 font-mono text-[10px] tracking-wide text-[#efe8d8]/85"
       >
         OUTER WRAP CAD • {UnitConverter.formatDimensions(outerWrap.widthMm, outerWrap.heightMm, unit)}
-        {splitMode === 'three-piece' ? ' • 3-PIECE SPLIT' : ''}
+        {effectiveSplitMode === 'three-piece' ? ' • 3-PIECE SPLIT' : ''}
       </div>
 
       <div
@@ -200,7 +205,7 @@ export function OuterBlueprintCanvas({
             </pattern>
           </defs>
 
-          {splitMode === 'single' ? (
+          {effectiveSplitMode === 'single' ? (
             <g>
               {outerWrap.includeBleed && outerWrap.bleedMm > 0 && (
                 <rect
@@ -224,23 +229,11 @@ export function OuterBlueprintCanvas({
               />
 
               {[
-                {
-                  label: outerWrap.bindingStyle === 'softcover-jacket' ? 'BACK COVER' : 'BACK BOARD',
-                  rect: outerWrap.backBoardRect,
-                },
-                {
-                  label:
-                    outerWrap.bindingStyle === 'flexible-spine' ? 'FLEX SPINE' : 'SPINE',
-                  rect: outerWrap.spineRect,
-                },
-                {
-                  label:
-                    outerWrap.bindingStyle === 'softcover-jacket' ? 'FRONT COVER' : 'FRONT BOARD',
-                  rect: outerWrap.frontBoardRect,
-                },
-              ].map(({ label, rect }) => {
+                { label: panelLabels.back, rect: outerWrap.backBoardRect, isSpine: false },
+                { label: panelLabels.spine, rect: outerWrap.spineRect, isSpine: true },
+                { label: panelLabels.front, rect: outerWrap.frontBoardRect, isSpine: false },
+              ].map(({ label, rect, isSpine }) => {
                 const c = GeometryPrimitives.rectCenter(rect);
-                const isSpineLabel = label === 'SPINE' || label === 'FLEX SPINE';
                 return (
                   <g key={label}>
                     <rect
@@ -256,17 +249,17 @@ export function OuterBlueprintCanvas({
                     />
                     <text
                       x={c.x}
-                      y={c.y - (isSpineLabel ? 0 : 5)}
+                      y={c.y - (isSpine ? 0 : 5)}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize={isSpineLabel ? '6.2' : '8'}
+                      fontSize={isSpine ? '6.2' : '8'}
                       fontWeight="700"
                       fill="#1D5BD6"
-                      transform={isSpineLabel ? `rotate(-90 ${c.x} ${c.y})` : undefined}
+                      transform={isSpine ? `rotate(-90 ${c.x} ${c.y})` : undefined}
                     >
                       {label}
                     </text>
-                    {!isSpineLabel && (
+                    {!isSpine && (
                       <text
                         x={c.x}
                         y={c.y + 6}
@@ -281,6 +274,26 @@ export function OuterBlueprintCanvas({
                   </g>
                 );
               })}
+
+              {/* Strategy fold / score dashed lines */}
+              {outerWrap.foldLines.length > 0 && (
+                <g data-testid="blueprint-fold-lines">
+                  {outerWrap.foldLines.map((line, idx) => (
+                    <line
+                      key={`fold-${idx}`}
+                      data-testid="blueprint-fold-line"
+                      x1={line.x1}
+                      y1={line.y1}
+                      x2={line.x2}
+                      y2={line.y2}
+                      stroke="#1D5BD6"
+                      strokeWidth="0.85"
+                      strokeDasharray="4 2.5"
+                      opacity="0.78"
+                    />
+                  ))}
+                </g>
+              )}
 
               {/* Rigid hinge spacers (only when hingeSpacerMm > 0) */}
               {cutList.hingeSpacerMm > 0 &&
@@ -315,11 +328,11 @@ export function OuterBlueprintCanvas({
                   );
                 })}
 
-              {/* Integrated Slip-In Pocket Flaps & 4 Mitered Glue Tabs for 1-Piece Fold-and-Glue Slip Cover */}
-              {outerWrap.bindingStyle === 'softcover-jacket' &&
-                outerWrap.jacketFlapWidthMm > 0 && (
-                  <g data-testid="blueprint-softcover-flaps-and-tabs">
-                    {outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => {
+              {/* Integrated Flaps (Slip Cover & Classic Dust Jacket) + Mitered Glue Tabs (Slip Cover only) */}
+              {capabilities.hasFlaps && outerWrap.jacketFlapWidthMm > 0 && (
+                <g data-testid="blueprint-softcover-flaps-and-tabs">
+                  {capabilities.hasGlueTabs &&
+                    outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => {
                       const bbox = GeometryPrimitives.boundingBox(tabPoly);
                       const cx = bbox.x + bbox.width / 2;
                       const cy = bbox.y + bbox.height / 2;
@@ -346,57 +359,59 @@ export function OuterBlueprintCanvas({
                         </g>
                       );
                     })}
-                    {[
-                      {
-                        label: 'BACK FLAP',
-                        rect: {
-                          x: 0,
-                          y: outerWrap.jacketGlueTabHeightMm,
-                          width: outerWrap.jacketFlapWidthMm,
-                          height: cutList.coverBoards.heightMm,
-                        },
+                  {[
+                    {
+                      key: 'left-flap',
+                      label: panelLabels.leftFlap ?? 'BACK FLAP',
+                      rect: {
+                        x: 0,
+                        y: outerWrap.backBoardRect.y,
+                        width: outerWrap.jacketFlapWidthMm,
+                        height: outerWrap.backBoardRect.height,
                       },
-                      {
-                        label: 'FRONT FLAP',
-                        rect: {
-                          x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
-                          y: outerWrap.jacketGlueTabHeightMm,
-                          width: outerWrap.jacketFlapWidthMm,
-                          height: cutList.coverBoards.heightMm,
-                        },
+                    },
+                    {
+                      key: 'right-flap',
+                      label: panelLabels.rightFlap ?? 'FRONT FLAP',
+                      rect: {
+                        x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
+                        y: outerWrap.frontBoardRect.y,
+                        width: outerWrap.jacketFlapWidthMm,
+                        height: outerWrap.frontBoardRect.height,
                       },
-                    ].map(({ label, rect }) => {
-                      const c = GeometryPrimitives.rectCenter(rect);
-                      return (
-                        <g key={label}>
-                          <rect
-                            x={rect.x}
-                            y={rect.y}
-                            width={rect.width}
-                            height={rect.height}
-                            fill="#C59B48"
-                            fillOpacity="0.14"
-                            stroke="#A67B2E"
-                            strokeWidth="0.7"
-                            strokeDasharray="3 2"
-                          />
-                          <text
-                            x={c.x}
-                            y={c.y}
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                            fontSize="5"
-                            fontWeight="700"
-                            fill="#8A6019"
-                            transform={`rotate(-90 ${c.x} ${c.y})`}
-                          >
-                            {label} ({roundTo(outerWrap.jacketFlapWidthMm, 1)} mm)
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </g>
-                )}
+                    },
+                  ].map(({ key, label, rect }) => {
+                    const c = GeometryPrimitives.rectCenter(rect);
+                    return (
+                      <g key={key}>
+                        <rect
+                          x={rect.x}
+                          y={rect.y}
+                          width={rect.width}
+                          height={rect.height}
+                          fill="#C59B48"
+                          fillOpacity="0.14"
+                          stroke="#A67B2E"
+                          strokeWidth="0.7"
+                          strokeDasharray="3 2"
+                        />
+                        <text
+                          x={c.x}
+                          y={c.y}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="5"
+                          fontWeight="700"
+                          fill="#8A6019"
+                          transform={`rotate(-90 ${c.x} ${c.y})`}
+                        >
+                          {label} ({roundTo(outerWrap.jacketFlapWidthMm, 1)} mm)
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
 
               {/* Manual-Cutting CAD Dimension Lines, Cumulative Ruler, Miter Callout & Grain Arrow */}
               {showDimensions && (
@@ -442,10 +457,11 @@ export function OuterBlueprintCanvas({
 
                   {/* Right Vertical Breakdown Chain (Top Margin | Cover/Board Height | Bottom Margin) */}
                   {(() => {
-                    const vMargin =
-                      outerWrap.bindingStyle === 'softcover-jacket'
-                        ? outerWrap.jacketGlueTabHeightMm
-                        : outerWrap.turnInMm;
+                    const vMargin = capabilities.hasGlueTabs
+                      ? outerWrap.jacketGlueTabHeightMm
+                      : capabilities.hasTurnIns
+                        ? outerWrap.turnInMm
+                        : 0;
                     if (vMargin <= 0.2) {
                       return (
                         <VerticalDimLine
@@ -496,12 +512,14 @@ export function OuterBlueprintCanvas({
                     unit={unit}
                   />
 
-                  {/* Exact 45° Corner Miter Cut Leg & Board Clearance Gap Callout */}
-                  <CornerMiterCallout
-                    miterCutLegMm={outerWrap.miterCutLegMm}
-                    miterGapMm={outerWrap.miterGapMm}
-                    unit={unit}
-                  />
+                  {/* Exact 45° Corner Miter Cut Leg & Board Clearance Gap Callout (turn-in styles only) */}
+                  {capabilities.hasTurnIns && (
+                    <CornerMiterCallout
+                      miterCutLegMm={outerWrap.miterCutLegMm}
+                      miterGapMm={outerWrap.miterGapMm}
+                      unit={unit}
+                    />
+                  )}
                 </g>
               )}
             </g>

@@ -14,6 +14,7 @@ import {
   type PdfExportSelection,
 } from '@/components/PdfExportDialog';
 import { Button } from '@/components/ui/button';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
@@ -61,9 +62,15 @@ export function MeasureAndCutPanel({
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(splitMode);
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
+  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const { capabilities } = bindingStrategy;
   const effectivePrintMedia = onChangePrintMedia ? printMediaId : localPrintMedia;
   const effectivePageSize = onChangePageSize ? pageSizeId : localPageSize;
-  const effectiveSplitMode = onChangeSplitMode ? splitMode : localSplitMode;
+  const effectiveSplitMode: SplitMode = capabilities.supportsThreePieceSplit
+    ? onChangeSplitMode
+      ? splitMode
+      : localSplitMode
+    : 'single';
 
   const handleConfirmPdfExport = async (selection: PdfExportSelection) => {
     await onDownloadOuterPdf({
@@ -249,8 +256,13 @@ export function MeasureAndCutPanel({
         {/* Subtle Legend Footer Strip */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-muted-foreground">
           <span>
-            Solid Red: 45° Miter Cut Line • Dashed Blue: Board Guides • Brass: Hinge Spacers •
-            Green: Bleed.
+            {capabilities.hasTurnIns
+              ? 'Solid Red: 45° Miter Cut Line • Dashed Blue: Board Guides • Brass: Hinge Spacers • Green: Bleed.'
+              : capabilities.hasGlueTabs
+                ? 'Solid Red: Outer Cut Outline • Dashed Blue: Fold Lines • Hatched Brass: Glue Tabs • Green: Bleed.'
+                : capabilities.hasFlaps
+                  ? 'Solid Red: Outer Trim Outline • Dashed Blue: 4 Vertical Fold Lines • Brass: Fold-In Flaps • Green: Bleed.'
+                  : 'Solid Red: Flush Trim Outline • Dashed Blue: 2 Spine Score Folds • Green: Bleed.'}
           </span>
           <span className="font-mono text-[11px] text-brass">
             {UnitConverter.formatDimensions(

@@ -232,7 +232,7 @@ function buildHardcoverOuterWrap(
 }
 
 const SOFTCOVER_FLAP_CONFIG: BindingStyleFlapConfig = {
-  label: 'Slip Flap Depth',
+  label: 'Slip Flap Width',
   minMm: 20,
   maxMm: 65,
   defaultRatio: 0.23,
@@ -243,7 +243,7 @@ const SOFTCOVER_FLAP_CONFIG: BindingStyleFlapConfig = {
 };
 
 const DUST_JACKET_FLAP_CONFIG: BindingStyleFlapConfig = {
-  label: 'Fold-In Flap Width',
+  label: 'Jacket Flap Width',
   minMm: 20,
   maxMm: 100,
   defaultRatio: 0.5,
@@ -384,10 +384,10 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       rightFlap: 'TUCK FLAP',
     },
     innerPocketsNotice: {
-      tabBadge: 'Integrated Flaps',
-      heading: '1-Piece Fold-and-Glue Slip Cover — No Separate Inner Pockets',
+      tabBadge: 'Built-In',
+      heading: 'Inner Pockets Are Already Included',
       explanation:
-        'Your left & right slip-in pocket flaps and 4 mitered glue tabs are built directly into the single outer cover sheet.',
+        'Separate Inner Pockets & Spine Liner are not needed for the 1-Piece Fold-and-Glue Slip Cover — your slip-in pockets and 4 wrap-over glue tabs are already built into the Cover Studio sheet.',
     },
     flapConfig: SOFTCOVER_FLAP_CONFIG,
     materialNote:
@@ -564,7 +564,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       rightFlap: 'FRONT FLAP',
     },
     innerPocketsNotice: {
-      tabBadge: 'Fold-In Flaps',
+      tabBadge: 'Not Needed',
       heading: 'Classic Dust Jacket — No Separate Inner Pockets',
       explanation:
         'Dust jackets wrap around an existing book cover with wide fold-in flaps — no inner pockets, chipboard, or glue tabs are required.',
@@ -674,7 +674,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       front: 'FRONT COVER',
     },
     innerPocketsNotice: {
-      tabBadge: 'Direct Spine Glue',
+      tabBadge: 'Not Needed',
       heading: 'Replacement Paperback Cover — No Inner Pockets or Chipboard',
       explanation:
         'This flush 1-piece cardstock wrap glues directly to the paperback textblock spine — no separate inner pockets, spine liner, or boards are needed.',
