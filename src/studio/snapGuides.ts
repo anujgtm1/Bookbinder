@@ -28,6 +28,17 @@ export interface ActiveSnapGuide {
   readonly kind: 'board' | 'center' | 'cut' | 'bleed';
 }
 
+export interface AxisSnapResult {
+  readonly deltaMm: number;
+  readonly target: SnapTargetLine;
+}
+
+export interface PointSnapResult {
+  readonly xMm: number;
+  readonly yMm: number;
+  readonly guides: readonly ActiveSnapGuide[];
+}
+
 export interface SnapMoveResult {
   readonly layer: CoverImageLayer;
   readonly guides: readonly ActiveSnapGuide[];
@@ -197,11 +208,24 @@ export function buildInnerPocketSnapTargets(layout: InnerPocketSnapLayout): Canv
   };
 }
 
-function findBestAxisSnap(
+function toActiveGuide(target: SnapTargetLine): ActiveSnapGuide {
+  return {
+    axis: target.axis,
+    positionMm: target.positionMm,
+    label: target.label,
+    kind: target.kind,
+  };
+}
+
+/**
+ * Finds the closest snap target along a single axis for a set of anchor positions
+ * within `thresholdMm`. Earlier targets win ties so centerlines keep priority.
+ */
+export function findBestAxisSnap(
   anchors: readonly number[],
   targets: readonly SnapTargetLine[],
-  thresholdMm: number,
-): { readonly deltaMm: number; readonly target: SnapTargetLine } | null {
+  thresholdMm = DEFAULT_SNAP_THRESHOLD_MM,
+): AxisSnapResult | null {
   let best: { deltaMm: number; absDelta: number; target: SnapTargetLine } | null = null;
 
   for (const anchor of anchors) {
@@ -218,6 +242,63 @@ function findBestAxisSnap(
 }
 
 /**
+ * Magnetically snaps a 2D point (e.g., text anchor or resize pointer) onto nearby
+ * vertical and horizontal structural guides.
+ */
+export function snapPointToTargets(
+  xMm: number,
+  yMm: number,
+  targets: CanvasSnapTargets,
+  thresholdMm = DEFAULT_SNAP_THRESHOLD_MM,
+): PointSnapResult {
+  const xSnap = findBestAxisSnap([xMm], targets.vertical, thresholdMm);
+  const ySnap = findBestAxisSnap([yMm], targets.horizontal, thresholdMm);
+
+  const guides: ActiveSnapGuide[] = [];
+  if (xSnap) guides.push(toActiveGuide(xSnap.target));
+  if (ySnap) guides.push(toActiveGuide(ySnap.target));
+
+  return {
+    xMm: xSnap ? xSnap.target.positionMm : xMm,
+    yMm: ySnap ? ySnap.target.positionMm : yMm,
+    guides,
+  };
+}
+
+/**
+ * Magnetically snaps a moving axis-aligned box's left/center/right and top/middle/bottom
+ * anchors onto nearby structural board, spine, cut, bleed, or safe-margin guides.
+ */
+export function snapBoxToTargets(
+  xMm: number,
+  yMm: number,
+  widthMm: number,
+  heightMm: number,
+  targets: CanvasSnapTargets,
+  thresholdMm = DEFAULT_SNAP_THRESHOLD_MM,
+): PointSnapResult {
+  const xAnchors = [xMm, xMm + widthMm / 2, xMm + widthMm];
+  const yAnchors = [yMm, yMm + heightMm / 2, yMm + heightMm];
+
+  const xSnap = findBestAxisSnap(xAnchors, targets.vertical, thresholdMm);
+  const ySnap = findBestAxisSnap(yAnchors, targets.horizontal, thresholdMm);
+
+  const guides: ActiveSnapGuide[] = [];
+  if (xSnap) guides.push(toActiveGuide(xSnap.target));
+  if (ySnap) guides.push(toActiveGuide(ySnap.target));
+
+  if (guides.length === 0) {
+    return { xMm, yMm, guides };
+  }
+
+  return {
+    xMm: roundTo(xMm + (xSnap?.deltaMm ?? 0), 2),
+    yMm: roundTo(yMm + (ySnap?.deltaMm ?? 0), 2),
+    guides,
+  };
+}
+
+/**
  * Magnetically snaps a moving cover image layer's left/center/right and top/middle/bottom
  * anchors onto nearby structural board, spine, cut, or bleed guides.
  */
@@ -226,49 +307,26 @@ export function snapLayerMove(
   targets: CanvasSnapTargets,
   thresholdMm = DEFAULT_SNAP_THRESHOLD_MM,
 ): SnapMoveResult {
-  const xAnchors = [
+  const snapped = snapBoxToTargets(
     rawLayer.xMm,
-    rawLayer.xMm + rawLayer.widthMm / 2,
-    rawLayer.xMm + rawLayer.widthMm,
-  ];
-  const yAnchors = [
     rawLayer.yMm,
-    rawLayer.yMm + rawLayer.heightMm / 2,
-    rawLayer.yMm + rawLayer.heightMm,
-  ];
+    rawLayer.widthMm,
+    rawLayer.heightMm,
+    targets,
+    thresholdMm,
+  );
 
-  const xSnap = findBestAxisSnap(xAnchors, targets.vertical, thresholdMm);
-  const ySnap = findBestAxisSnap(yAnchors, targets.horizontal, thresholdMm);
-
-  const guides: ActiveSnapGuide[] = [];
-  if (xSnap) {
-    guides.push({
-      axis: 'x',
-      positionMm: xSnap.target.positionMm,
-      label: xSnap.target.label,
-      kind: xSnap.target.kind,
-    });
-  }
-  if (ySnap) {
-    guides.push({
-      axis: 'y',
-      positionMm: ySnap.target.positionMm,
-      label: ySnap.target.label,
-      kind: ySnap.target.kind,
-    });
-  }
-
-  if (guides.length === 0) {
-    return { layer: rawLayer, guides };
+  if (snapped.guides.length === 0) {
+    return { layer: rawLayer, guides: snapped.guides };
   }
 
   return {
     layer: {
       ...rawLayer,
-      xMm: roundTo(rawLayer.xMm + (xSnap?.deltaMm ?? 0), 2),
-      yMm: roundTo(rawLayer.yMm + (ySnap?.deltaMm ?? 0), 2),
+      xMm: snapped.xMm,
+      yMm: snapped.yMm,
     },
-    guides,
+    guides: snapped.guides,
   };
 }
 

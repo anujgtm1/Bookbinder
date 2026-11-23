@@ -7,8 +7,11 @@ import { computeStudioCanvasSpec } from './renderEngine';
 import {
   buildCanvasSnapTargets,
   computeCoverSafeMarginMm,
+  findBestAxisSnap,
+  snapBoxToTargets,
   snapLayerMove,
   snapLayerResize,
+  snapPointToTargets,
 } from './snapGuides';
 
 describe('snapGuides', () => {
@@ -124,5 +127,29 @@ describe('snapGuides', () => {
     expect(bottomMargin?.positionMm).toBeCloseTo(b + front.y + front.height - margin, 1);
     expect(topMargin?.kind).toBe('board');
     expect(bottomMargin?.kind).toBe('board');
+  });
+
+  it('supports shared point and box snapping helpers via findBestAxisSnap', () => {
+    const geom = calculateCaseGeometry(BookParametersModel.createDefault());
+    const spec = computeStudioCanvasSpec(geom, PRINT_DPI);
+    const targets = buildCanvasSnapTargets(geom, spec);
+
+    const frontCenter = spec.bleedMm + geom.outerWrap.frontBoardRect.x + geom.outerWrap.frontBoardRect.width / 2;
+    const midY = spec.totalHeightMm / 2;
+
+    const axisMatch = findBestAxisSnap([frontCenter + 1.4], targets.vertical, 3.5);
+    expect(axisMatch?.target.label).toBe('FRONT CENTER');
+    expect(axisMatch?.deltaMm).toBeCloseTo(-1.4, 2);
+
+    const ptSnap = snapPointToTargets(frontCenter + 1.4, midY - 2.0, targets, 3.5);
+    expect(ptSnap.xMm).toBeCloseTo(frontCenter, 1);
+    expect(ptSnap.yMm).toBeCloseTo(midY, 1);
+    expect(ptSnap.guides).toHaveLength(2);
+
+    // Box centered near frontCenter & midY
+    const boxSnap = snapBoxToTargets(frontCenter - 20 + 1.2, midY - 15 - 1.1, 40, 30, targets, 3.5);
+    expect(boxSnap.xMm + 20).toBeCloseTo(frontCenter, 1);
+    expect(boxSnap.yMm + 15).toBeCloseTo(midY, 1);
+    expect(boxSnap.guides).toHaveLength(2);
   });
 });
