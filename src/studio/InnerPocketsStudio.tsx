@@ -1,53 +1,27 @@
 import {
-  ArrowDown,
-  ArrowUp,
-  Copy,
   Download,
   Eye,
   EyeOff,
   FileCode2,
   FileText,
-  FlipHorizontal2,
-  FlipVertical2,
-  Grid2x2,
-  ImagePlus,
   Layers,
   Magnet,
   Maximize2,
   Minimize2,
-  Minus,
   Palette,
-  Plus,
   Ruler,
   Sparkles,
-  Trash2,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import {
-  GrainDirectionArrow,
-  HorizontalDimLine,
-  VerticalDimLine,
-} from '@/components/BlueprintDimensionLines';
 import {
   FloatingHudToolbar,
   HudButton,
   HudGroup,
   HudSeparator,
 } from '@/components/FloatingHudToolbar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import { triggerBytesDownload } from '@/core/storage';
 import {
@@ -56,26 +30,25 @@ import {
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
 import { PAGE_SIZES, type PageSizeId } from '@/types/bookParams';
-import {
-  GeometryPrimitives,
-  type CaseGeometry,
-  type PocketEnvelopeGeometry,
-  type Rect2D,
-} from '@/types/geometry';
-import {
-  ENDPAPER_SWATCHES,
-  STUDIO_BOUNDS,
-  type PocketStyleConfig,
-  type PocketStyleScope,
-} from '@/types/studio';
+import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
+import type { PocketStyleConfig } from '@/types/studio';
 import { CoverImageLayerModel, type CoverImageLayer } from '@/types/studioLayer';
-import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
+import { roundTo, type UnitSystem } from '@/types/units';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import {
   computeInnerPocketsLayout,
   computePocketImagePlacement,
   generateStyledInnerTemplatesPdf,
 } from './pocketRenderEngine';
+import { PocketBlueprintDimensions } from './pockets/PocketBlueprintDimensions';
+import {
+  PocketPieceBaseSvg,
+  PocketPieceGuidesSvg,
+  SpineLinerBaseSvg,
+  SpineLinerGuidesSvg,
+  type PocketViewMode,
+} from './pockets/PocketPieceSvg';
+import { PocketStyleControls, type PocketQuickFitTarget } from './pockets/PocketStyleControls';
 import { buildLayerFlipTransform } from './renderEngine';
 import { buildInnerPocketSnapTargets } from './snapGuides';
 import {
@@ -97,251 +70,9 @@ export interface InnerPocketsStudioProps {
   readonly onStatusMessage: (message: string) => void;
 }
 
-type PocketViewMode = 'styled' | 'blueprint';
-type PocketQuickFitTarget = 'front' | 'back' | 'liner' | 'all';
-
 const EMPTY_LAYERS: readonly CoverImageLayer[] = [];
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3.5;
-const PAPER_SHEET_FILL = '#FAF6EE';
-const PAPER_INK_FILL = '#231F1B';
-
-interface PocketPieceBaseProps {
-  readonly idPrefix: string;
-  readonly pocket: PocketEnvelopeGeometry;
-  readonly offsetX: number;
-  readonly offsetY: number;
-  readonly style: PocketStyleConfig;
-  readonly viewMode: PocketViewMode;
-}
-
-/** Renders the paper backing, base endpaper color, and optional legacy background pattern for one pocket. */
-function PocketPieceBaseSvg({
-  idPrefix,
-  pocket,
-  offsetX,
-  offsetY,
-  style,
-  viewMode,
-}: PocketPieceBaseProps) {
-  const clipId = `${idPrefix}-clip`;
-  const tilePatternId = `${idPrefix}-tile`;
-  const isStyled = viewMode === 'styled';
-
-  const styleTargetRect: Rect2D =
-    style.styleScope === 'full-envelope'
-      ? { x: 0, y: 0, width: pocket.totalWidthMm, height: pocket.totalHeightMm }
-      : pocket.faceRect;
-
-  const imgPlacement =
-    isStyled && style.imageDataUrl
-      ? computePocketImagePlacement(
-          styleTargetRect,
-          style.imageNaturalWidth || 100,
-          style.imageNaturalHeight || 100,
-          style.imageFitMode,
-          style.imageScale,
-        )
-      : null;
-
-  return (
-    <g transform={`translate(${offsetX}, ${offsetY})`}>
-      <defs>
-        <clipPath id={clipId}>
-          {style.styleScope === 'full-envelope' ? (
-            <path d={GeometryPrimitives.polygonToSvgPath(pocket.outerCutPolygon, 2)} />
-          ) : (
-            <rect
-              x={pocket.faceRect.x}
-              y={pocket.faceRect.y}
-              width={pocket.faceRect.width}
-              height={pocket.faceRect.height}
-            />
-          )}
-        </clipPath>
-        {isStyled && style.imageDataUrl && style.imageFitMode === 'tile' && imgPlacement && (
-          <pattern
-            id={tilePatternId}
-            x={styleTargetRect.x}
-            y={styleTargetRect.y}
-            width={imgPlacement.width}
-            height={imgPlacement.height}
-            patternUnits="userSpaceOnUse"
-          >
-            <image
-              href={style.imageDataUrl}
-              x={0}
-              y={0}
-              width={imgPlacement.width}
-              height={imgPlacement.height}
-              preserveAspectRatio="none"
-            />
-          </pattern>
-        )}
-      </defs>
-
-      {/* Base paper sheet backing */}
-      <path
-        d={GeometryPrimitives.polygonToSvgPath(pocket.outerCutPolygon, 2)}
-        fill={PAPER_SHEET_FILL}
-      />
-
-      {/* Styled endpaper base fill & optional legacy pattern */}
-      {isStyled && (
-        <g clipPath={`url(#${clipId})`} data-testid={`styled-${pocket.side}-pocket`}>
-          <rect
-            x={styleTargetRect.x}
-            y={styleTargetRect.y}
-            width={styleTargetRect.width}
-            height={styleTargetRect.height}
-            fill={style.backgroundColor}
-            data-testid={`styled-${pocket.side}-pocket-fill`}
-          />
-          {style.imageDataUrl && imgPlacement && (
-            <g opacity={style.imageOpacity}>
-              {style.imageFitMode === 'tile' ? (
-                <rect
-                  x={styleTargetRect.x}
-                  y={styleTargetRect.y}
-                  width={styleTargetRect.width}
-                  height={styleTargetRect.height}
-                  fill={`url(#${tilePatternId})`}
-                />
-              ) : (
-                <image
-                  href={style.imageDataUrl}
-                  x={imgPlacement.x}
-                  y={imgPlacement.y}
-                  width={imgPlacement.width}
-                  height={imgPlacement.height}
-                  preserveAspectRatio="none"
-                />
-              )}
-            </g>
-          )}
-        </g>
-      )}
-    </g>
-  );
-}
-
-interface PocketPieceGuidesProps {
-  readonly pocket: PocketEnvelopeGeometry;
-  readonly offsetX: number;
-  readonly offsetY: number;
-  readonly unit: UnitSystem;
-  readonly viewMode: PocketViewMode;
-  readonly showGuides: boolean;
-  readonly showEmptyLabel: boolean;
-}
-
-/** Renders vector cut/score/glue guides and labels ABOVE the artwork layers (pointerEvents="none"). */
-function PocketPieceGuidesSvg({
-  pocket,
-  offsetX,
-  offsetY,
-  unit,
-  viewMode,
-  showGuides,
-  showEmptyLabel,
-}: PocketPieceGuidesProps) {
-  const center = GeometryPrimitives.rectCenter(pocket.faceRect);
-  const openX = pocket.openEdge === 'right' ? pocket.faceRect.x + pocket.faceRect.width : 0;
-  const isStyled = viewMode === 'styled';
-
-  return (
-    <g transform={`translate(${offsetX}, ${offsetY})`} pointerEvents="none">
-      {(viewMode === 'blueprint' || showGuides) && (
-        <>
-          {pocket.glueFlapPolygons.map((flap, idx) => (
-            <polygon
-              key={idx}
-              points={GeometryPrimitives.polygonToSvgPoints(flap, 2)}
-              fill="url(#inner-glue-hatch)"
-              fillOpacity={isStyled ? '0.45' : '0.65'}
-            />
-          ))}
-          <path
-            d={GeometryPrimitives.polygonToSvgPath(pocket.outerCutPolygon, 2)}
-            fill="none"
-            stroke="#D93829"
-            strokeWidth="1.0"
-          />
-          {pocket.scoreLines.map((line, idx) => (
-            <line
-              key={idx}
-              x1={line.x1}
-              y1={line.y1}
-              x2={line.x2}
-              y2={line.y2}
-              stroke="#1D5BD6"
-              strokeWidth="0.75"
-              strokeDasharray="4 2.5"
-            />
-          ))}
-          <line
-            x1={openX}
-            y1={pocket.faceRect.y}
-            x2={openX}
-            y2={pocket.faceRect.y + pocket.faceRect.height}
-            stroke="#0F8A47"
-            strokeWidth="1.5"
-          />
-        </>
-      )}
-
-      {viewMode === 'blueprint' ? (
-        <>
-          <text
-            x={center.x}
-            y={center.y - 6}
-            textAnchor="middle"
-            fontSize="7"
-            fontWeight="700"
-            fill={PAPER_INK_FILL}
-          >
-            {pocket.label.toUpperCase()}
-          </text>
-          <text
-            x={center.x}
-            y={center.y + 4}
-            textAnchor="middle"
-            fontSize="5.5"
-            fill={PAPER_INK_FILL}
-            opacity="0.75"
-          >
-            {UnitConverter.formatDimensions(pocket.pocketWidthMm, pocket.pocketHeightMm, unit)}
-          </text>
-          <text
-            x={center.x}
-            y={center.y + 13}
-            textAnchor="middle"
-            fontSize="5"
-            fontWeight="600"
-            fill="#0F8A47"
-          >
-            OPEN EDGE: {pocket.openEdge.toUpperCase()} (SPINE)
-          </text>
-        </>
-      ) : (
-        showGuides &&
-        showEmptyLabel && (
-          <text
-            x={center.x}
-            y={center.y}
-            textAnchor="middle"
-            fontSize="6.5"
-            fontWeight="600"
-            fill={PAPER_INK_FILL}
-            opacity="0.32"
-          >
-            {pocket.label.toUpperCase()}
-          </text>
-        )
-      )}
-    </g>
-  );
-}
 
 export function InnerPocketsStudio({
   geometry,
@@ -374,7 +105,6 @@ export function InnerPocketsStudio({
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const svgRef = useRef<SVGSVGElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const panDragRef = useRef<{
     active: boolean;
     startX: number;
@@ -658,7 +388,9 @@ export function InnerPocketsStudio({
               variant={includePdfGuides ? 'secondary' : 'outline'}
               size="sm"
               className={`h-8 px-2.5 text-xs ${
-                includePdfGuides ? 'border-brass/60 text-foreground' : 'border-dashed text-muted-foreground'
+                includePdfGuides
+                  ? 'border-brass/60 text-foreground'
+                  : 'border-dashed text-muted-foreground'
               }`}
               aria-pressed={includePdfGuides}
               data-testid="pocket-pdf-guides-toggle"
@@ -672,7 +404,9 @@ export function InnerPocketsStudio({
               variant={includePdfLegend ? 'secondary' : 'outline'}
               size="sm"
               className={`h-8 px-2.5 text-xs ${
-                includePdfLegend ? 'border-brass/60 text-foreground' : 'border-dashed text-muted-foreground'
+                includePdfLegend
+                  ? 'border-brass/60 text-foreground'
+                  : 'border-dashed text-muted-foreground'
               }`}
               aria-pressed={includePdfLegend}
               data-testid="pocket-pdf-legend-toggle"
@@ -984,43 +718,15 @@ export function InnerPocketsStudio({
                   style={pocketStyle}
                   viewMode={viewMode}
                 />
-
-                {/* Spine Reinforcement Liner Base */}
-                <g transform={`translate(${innerLayout.linerX}, ${innerLayout.linerY})`}>
-                  <rect
-                    x={0}
-                    y={0}
-                    width={spineLiner.widthMm}
-                    height={spineLiner.heightMm}
-                    fill={viewMode === 'styled' ? pocketStyle.backgroundColor : PAPER_SHEET_FILL}
-                  />
-                  {viewMode === 'styled' && pocketStyle.imageDataUrl && linerImgPlacement && (
-                    <g
-                      clipPath={`url(#${uniquePrefix}-liner-clip)`}
-                      opacity={pocketStyle.imageOpacity}
-                    >
-                      {pocketStyle.imageFitMode === 'tile' ? (
-                        <rect
-                          x={0}
-                          y={0}
-                          width={spineLiner.widthMm}
-                          height={spineLiner.heightMm}
-                          fill={`url(#${uniquePrefix}-liner-tile)`}
-                        />
-                      ) : (
-                        <image
-                          href={pocketStyle.imageDataUrl}
-                          x={linerImgPlacement.x}
-                          y={linerImgPlacement.y}
-                          width={linerImgPlacement.width}
-                          height={linerImgPlacement.height}
-                          preserveAspectRatio="none"
-                        />
-                      )}
-                    </g>
-                  )}
-                </g>
-
+                <SpineLinerBaseSvg
+                  uniquePrefix={uniquePrefix}
+                  spineLiner={spineLiner}
+                  offsetX={innerLayout.linerX}
+                  offsetY={innerLayout.linerY}
+                  style={pocketStyle}
+                  viewMode={viewMode}
+                  linerImgPlacement={linerImgPlacement}
+                />
                 <PocketPieceBaseSvg
                   idPrefix={`${uniquePrefix}-front`}
                   pocket={frontPocket}
@@ -1101,63 +807,14 @@ export function InnerPocketsStudio({
                 showGuides={showGuides}
                 showEmptyLabel={layers.length === 0 && !pocketStyle.imageDataUrl}
               />
-
-              <g
-                transform={`translate(${innerLayout.linerX}, ${innerLayout.linerY})`}
-                pointerEvents="none"
-              >
-                {(viewMode === 'blueprint' || showGuides) && (
-                  <>
-                    <rect
-                      x={0}
-                      y={0}
-                      width={spineLiner.widthMm}
-                      height={spineLiner.heightMm}
-                      fill="none"
-                      stroke="#D93829"
-                      strokeWidth="1.0"
-                    />
-                    {spineLiner.scoreLines.map((line, i) => (
-                      <line
-                        key={i}
-                        x1={line.x1}
-                        y1={line.y1}
-                        x2={line.x2}
-                        y2={line.y2}
-                        stroke="#1D5BD6"
-                        strokeWidth="0.75"
-                        strokeDasharray="4 2.5"
-                      />
-                    ))}
-                  </>
-                )}
-
-                {viewMode === 'blueprint' && (
-                  <>
-                    <text
-                      x={spineLiner.widthMm / 2}
-                      y={spineLiner.heightMm / 2 - 4}
-                      textAnchor="middle"
-                      fontSize="6.5"
-                      fontWeight="700"
-                      fill={PAPER_INK_FILL}
-                    >
-                      SPINE LINER
-                    </text>
-                    <text
-                      x={spineLiner.widthMm / 2}
-                      y={spineLiner.heightMm / 2 + 5}
-                      textAnchor="middle"
-                      fontSize="5.2"
-                      fill={PAPER_INK_FILL}
-                      opacity="0.75"
-                    >
-                      {UnitConverter.formatDimensions(spineLiner.widthMm, spineLiner.heightMm, unit)}
-                    </text>
-                  </>
-                )}
-              </g>
-
+              <SpineLinerGuidesSvg
+                spineLiner={spineLiner}
+                offsetX={innerLayout.linerX}
+                offsetY={innerLayout.linerY}
+                unit={unit}
+                viewMode={viewMode}
+                showGuides={showGuides}
+              />
               <PocketPieceGuidesSvg
                 pocket={frontPocket}
                 offsetX={innerLayout.frontX}
@@ -1187,147 +844,11 @@ export function InnerPocketsStudio({
 
               {/* 5. Manual-Cutting CAD Dimension Lines & Grain Arrows in Blueprint Mode */}
               {viewMode === 'blueprint' && showBlueprintDimensions && (
-                <g data-testid="pockets-blueprint-dimensions">
-                  {/* Grain Direction Arrows parallel to spine */}
-                  <GrainDirectionArrow
-                    x={innerLayout.backFaceRect.x + 14}
-                    centerY={innerLayout.backFaceRect.y + innerLayout.backFaceRect.height / 2}
-                    lengthMm={36}
-                  />
-                  <GrainDirectionArrow
-                    x={innerLayout.frontFaceRect.x + innerLayout.frontFaceRect.width - 14}
-                    centerY={innerLayout.frontFaceRect.y + innerLayout.frontFaceRect.height / 2}
-                    lengthMm={36}
-                  />
-
-                  {/* Back Pocket Overall Width (top) & Flap/Face Breakdown (bottom) */}
-                  <HorizontalDimLine
-                    x1={innerLayout.backX}
-                    x2={innerLayout.backX + backPocket.totalWidthMm}
-                    y={-12}
-                    anchorY={0}
-                    label={UnitConverter.format(backPocket.totalWidthMm, unit)}
-                    emphasized
-                    fontSize={4.4}
-                  />
-                  <HorizontalDimLine
-                    x1={innerLayout.backX}
-                    x2={innerLayout.backFaceRect.x}
-                    y={backPocket.totalHeightMm + 11}
-                    anchorY={backPocket.totalHeightMm}
-                    label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
-                    fontSize={4.0}
-                  />
-                  <HorizontalDimLine
-                    x1={innerLayout.backFaceRect.x}
-                    x2={innerLayout.backFaceRect.x + backPocket.pocketWidthMm}
-                    y={backPocket.totalHeightMm + 11}
-                    anchorY={backPocket.totalHeightMm}
-                    label={UnitConverter.format(backPocket.pocketWidthMm, unit)}
-                    fontSize={4.2}
-                  />
-
-                  {/* Left Vertical Breakdown for Pocket Flaps & Face Height */}
-                  <VerticalDimLine
-                    y1={0}
-                    y2={backPocket.flapWidthMm}
-                    x={-12}
-                    anchorX={0}
-                    label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
-                    fontSize={4.0}
-                  />
-                  <VerticalDimLine
-                    y1={backPocket.flapWidthMm}
-                    y2={backPocket.flapWidthMm + backPocket.pocketHeightMm}
-                    x={-12}
-                    anchorX={0}
-                    label={UnitConverter.format(backPocket.pocketHeightMm, unit)}
-                    fontSize={4.4}
-                  />
-                  <VerticalDimLine
-                    y1={backPocket.flapWidthMm + backPocket.pocketHeightMm}
-                    y2={backPocket.totalHeightMm}
-                    x={-12}
-                    anchorX={0}
-                    label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
-                    fontSize={4.0}
-                  />
-
-                  {/* Spine Liner Overall Width (top) & Segment Breakdown (bottom) */}
-                  <HorizontalDimLine
-                    x1={innerLayout.linerX}
-                    x2={innerLayout.linerX + spineLiner.widthMm}
-                    y={-12}
-                    anchorY={innerLayout.linerY}
-                    label={UnitConverter.format(spineLiner.widthMm, unit)}
-                    emphasized
-                    fontSize={4.4}
-                  />
-                  <HorizontalDimLine
-                    x1={innerLayout.linerX}
-                    x2={innerLayout.linerX + spineLiner.boardOverlapMm}
-                    y={innerLayout.linerY + spineLiner.heightMm + 11}
-                    anchorY={innerLayout.linerY + spineLiner.heightMm}
-                    label={UnitConverter.formatValue(spineLiner.boardOverlapMm, unit)}
-                    fontSize={3.8}
-                  />
-                  <HorizontalDimLine
-                    x1={innerLayout.linerX + spineLiner.spineZoneRect.x}
-                    x2={
-                      innerLayout.linerX +
-                      spineLiner.spineZoneRect.x +
-                      spineLiner.spineZoneRect.width
-                    }
-                    y={innerLayout.linerY + spineLiner.heightMm + 11}
-                    anchorY={innerLayout.linerY + spineLiner.heightMm}
-                    label={UnitConverter.formatValue(spineLiner.spineZoneRect.width, unit)}
-                    fontSize={3.8}
-                  />
-                  <HorizontalDimLine
-                    x1={innerLayout.linerX + spineLiner.widthMm - spineLiner.boardOverlapMm}
-                    x2={innerLayout.linerX + spineLiner.widthMm}
-                    y={innerLayout.linerY + spineLiner.heightMm + 11}
-                    anchorY={innerLayout.linerY + spineLiner.heightMm}
-                    label={UnitConverter.formatValue(spineLiner.boardOverlapMm, unit)}
-                    fontSize={3.8}
-                  />
-
-                  {/* Front Pocket Overall Width (top), Face/Flap Breakdown (bottom) & Overall Height (right) */}
-                  <HorizontalDimLine
-                    x1={innerLayout.frontX}
-                    x2={innerLayout.frontX + frontPocket.totalWidthMm}
-                    y={-12}
-                    anchorY={0}
-                    label={UnitConverter.format(frontPocket.totalWidthMm, unit)}
-                    emphasized
-                    fontSize={4.4}
-                  />
-                  <HorizontalDimLine
-                    x1={innerLayout.frontFaceRect.x}
-                    x2={innerLayout.frontFaceRect.x + frontPocket.pocketWidthMm}
-                    y={frontPocket.totalHeightMm + 11}
-                    anchorY={frontPocket.totalHeightMm}
-                    label={UnitConverter.format(frontPocket.pocketWidthMm, unit)}
-                    fontSize={4.2}
-                  />
-                  <HorizontalDimLine
-                    x1={innerLayout.frontFaceRect.x + frontPocket.pocketWidthMm}
-                    x2={innerLayout.frontX + frontPocket.totalWidthMm}
-                    y={frontPocket.totalHeightMm + 11}
-                    anchorY={frontPocket.totalHeightMm}
-                    label={UnitConverter.formatValue(frontPocket.flapWidthMm, unit)}
-                    fontSize={4.0}
-                  />
-                  <VerticalDimLine
-                    y1={0}
-                    y2={frontPocket.totalHeightMm}
-                    x={innerLayout.totalWidthMm + 12}
-                    anchorX={innerLayout.totalWidthMm}
-                    label={`TOTAL H: ${UnitConverter.format(frontPocket.totalHeightMm, unit)}`}
-                    emphasized
-                    fontSize={4.4}
-                  />
-                </g>
+                <PocketBlueprintDimensions
+                  geometry={geometry}
+                  innerLayout={innerLayout}
+                  unit={unit}
+                />
               )}
             </svg>
           </div>
@@ -1484,396 +1005,21 @@ export function InnerPocketsStudio({
       </section>
 
       {/* Inner Pocket & Endpaper Styling Controls */}
-      <div className="grid gap-4 xl:grid-cols-2">
-        {/* Endpaper Base Color & Scope */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 font-serif text-base">
-                <Palette className="h-4 w-4 text-brass" aria-hidden="true" />
-                Endpaper Base Color
-              </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 px-2.5 text-xs"
-                data-testid="pocket-match-cover-btn"
-                onClick={() => {
-                  updateStyle({ backgroundColor: coverMatchColor });
-                  onStatusMessage(`Matched inner pocket color to cover (${coverMatchColor.toUpperCase()})`);
-                }}
-              >
-                <span
-                  className="h-3 w-3 rounded-full border border-border"
-                  style={{ backgroundColor: coverMatchColor }}
-                  aria-hidden="true"
-                />
-                Match Cover Color
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs">
-                <input
-                  type="color"
-                  value={pocketStyle.backgroundColor}
-                  onChange={(e) => updateStyle({ backgroundColor: e.target.value })}
-                  aria-label="Inner pocket endpaper color"
-                  data-testid="pocket-color-input"
-                  className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent p-0"
-                />
-                <span className="font-mono text-xs text-foreground">
-                  {pocketStyle.backgroundColor.toUpperCase()}
-                </span>
-              </label>
-
-              <div
-                className="flex flex-wrap items-center gap-1.5"
-                role="group"
-                aria-label="Archival endpaper swatches"
-              >
-                {ENDPAPER_SWATCHES.map((swatch) => {
-                  const active =
-                    pocketStyle.backgroundColor.toLowerCase() === swatch.hex.toLowerCase();
-                  return (
-                    <button
-                      key={swatch.hex}
-                      type="button"
-                      title={swatch.label}
-                      aria-label={`Set endpaper color to ${swatch.label}`}
-                      aria-pressed={active}
-                      onClick={() => updateStyle({ backgroundColor: swatch.hex })}
-                      className={`h-7 w-7 cursor-pointer rounded-full border transition-transform ${
-                        active
-                          ? 'scale-110 border-brass ring-2 ring-brass/40'
-                          : 'border-border hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: swatch.hex }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="kettle-stitch-divider pt-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="pocket-style-scope">Print Color &amp; Image Clipping Area</Label>
-                <Select
-                  value={pocketStyle.styleScope}
-                  onValueChange={(val) => updateStyle({ styleScope: val as PocketStyleScope })}
-                >
-                  <SelectTrigger id="pocket-style-scope" data-testid="pocket-scope-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="faces-only">
-                      Pocket Faces Only (keeps glue flaps white for clean gluing)
-                    </SelectItem>
-                    <SelectItem value="full-envelope">
-                      Full Cut Envelope (extends color &amp; artwork across glue flaps)
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Interactive Pocket Artwork Layers (mirrors Outer Cover Artwork Card) */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 font-serif text-base">
-                <ImagePlus className="h-4 w-4 text-brass" aria-hidden="true" />
-                Pocket Artwork Layers
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {layers.length > 0 && (
-                  <Badge variant="secondary" data-testid="pocket-layer-count-badge">
-                    {layers.length} {layers.length === 1 ? 'image' : 'images'}
-                  </Badge>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  onClick={() => fileInputRef.current?.click()}
-                  data-testid="pocket-upload-btn"
-                >
-                  <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
-                  Add Images
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                  className="visually-hidden"
-                  aria-label="Upload artwork images for inner pockets"
-                  data-testid="pocket-upload-image-input"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length > 0) {
-                      void handleAddImageFiles(files);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-3.5">
-            {selectedLayer && (
-              <div
-                className="space-y-2.5 rounded-md border border-primary/30 bg-primary/5 p-2.5"
-                data-testid="pocket-selected-layer-controls"
-              >
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate font-semibold text-foreground">
-                    Selected: {selectedLayer.fileName}
-                  </span>
-                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                    {roundTo(selectedLayer.widthMm, 1)} × {roundTo(selectedLayer.heightMm, 1)} mm
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {(
-                    [
-                      { id: 'front' as const, label: 'Fit Front Pocket' },
-                      { id: 'back' as const, label: 'Fit Back Pocket' },
-                      { id: 'liner' as const, label: 'Fit Spine Liner' },
-                      { id: 'all' as const, label: 'Fit All' },
-                    ] as const
-                  ).map((opt) => (
-                    <Button
-                      key={opt.id}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      data-testid={`pocket-quick-fit-${opt.id}`}
-                      onClick={() => handleQuickFitPocketLayer(selectedLayer.id, opt.id)}
-                    >
-                      {opt.label}
-                    </Button>
-                  ))}
-                  <Button
-                    variant={selectedLayer.tiled ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    aria-pressed={Boolean(selectedLayer.tiled)}
-                    data-testid="pocket-tile-toggle-btn"
-                    title="Repeat this image seamlessly across all inner pockets (drag corners to adjust tile size)"
-                    onClick={() => handleToggleLayerTile(selectedLayer)}
-                  >
-                    <Grid2x2 className="h-3 w-3" aria-hidden="true" />
-                    {selectedLayer.tiled ? 'Tiled Pattern' : 'Tile Pattern'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2 text-xs"
-                    data-testid="pocket-copy-other-btn"
-                    title="Duplicate this image onto the opposite pocket"
-                    onClick={() => handleCopyToOtherPocket(selectedLayer)}
-                  >
-                    <Copy className="h-3 w-3" aria-hidden="true" />
-                    Copy to Other Pocket
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-[1fr_auto] items-end gap-3">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <Label htmlFor="pocket-opacity-slider">Artwork Opacity</Label>
-                      <span className="font-mono text-muted-foreground">
-                        {Math.round(pocketStyle.imageOpacity * 100)}%
-                      </span>
-                    </div>
-                    <Slider
-                      id="pocket-opacity-slider"
-                      aria-label="Pocket artwork opacity"
-                      min={STUDIO_BOUNDS.pocketImageOpacity.min}
-                      max={STUDIO_BOUNDS.pocketImageOpacity.max}
-                      step={0.05}
-                      value={[pocketStyle.imageOpacity]}
-                      onValueChange={([imageOpacity]) => updateStyle({ imageOpacity })}
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant={selectedLayer.flipX ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-8 px-2 text-xs"
-                      aria-label="Flip selected pocket image horizontally"
-                      aria-pressed={Boolean(selectedLayer.flipX)}
-                      title="Flip image horizontally"
-                      data-testid="pocket-layer-flip-h-btn"
-                      onClick={() =>
-                        updateLayer(selectedLayer.id, (layer) => ({
-                          ...layer,
-                          flipX: !layer.flipX,
-                        }))
-                      }
-                    >
-                      <FlipHorizontal2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      Flip H
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={selectedLayer.flipY ? 'default' : 'outline'}
-                      size="sm"
-                      className="h-8 px-2 text-xs"
-                      aria-label="Flip selected pocket image vertically"
-                      aria-pressed={Boolean(selectedLayer.flipY)}
-                      title="Flip image vertically"
-                      data-testid="pocket-layer-flip-v-btn"
-                      onClick={() =>
-                        updateLayer(selectedLayer.id, (layer) => ({
-                          ...layer,
-                          flipY: !layer.flipY,
-                        }))
-                      }
-                    >
-                      <FlipVertical2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      Flip V
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label="Scale selected pocket image down"
-                      data-testid="pocket-layer-scale-down-btn"
-                      onClick={() =>
-                        updateLayer(selectedLayer.id, (layer) =>
-                          CoverImageLayerModel.scaleAroundCenter(layer, 0.9),
-                        )
-                      }
-                    >
-                      <Minus className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8"
-                      aria-label="Scale selected pocket image up"
-                      data-testid="pocket-layer-scale-up-btn"
-                      onClick={() =>
-                        updateLayer(selectedLayer.id, (layer) =>
-                          CoverImageLayerModel.scaleAroundCenter(layer, 1.1),
-                        )
-                      }
-                    >
-                      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {layers.length > 0 ? (
-              <ul className="space-y-1.5" data-testid="pocket-layer-list">
-                {[...layers].reverse().map((layer, revIdx) => {
-                  const index = layers.length - 1 - revIdx;
-                  const isSelected = layer.id === selectedLayerId;
-                  return (
-                    <li
-                      key={layer.id}
-                      className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs transition-colors ${
-                        isSelected
-                          ? 'border-primary/50 bg-primary/10'
-                          : 'border-border bg-secondary/35'
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
-                        data-testid={`pocket-layer-select-${index}`}
-                        onClick={() => setSelectedLayerId(layer.id)}
-                      >
-                        <img
-                          src={layer.dataUrl}
-                          alt=""
-                          className="h-7 w-7 shrink-0 rounded border border-border object-cover"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate font-medium text-foreground">
-                            {layer.fileName}
-                          </div>
-                          <div className="font-mono text-[10px] text-muted-foreground">
-                            {layer.naturalWidth} × {layer.naturalHeight} px
-                          </div>
-                        </div>
-                      </button>
-
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={index === layers.length - 1}
-                          aria-label={`Bring ${layer.fileName} forward`}
-                          onClick={() =>
-                            updateStyle({
-                              layers: CoverImageLayerModel.reorder(layers, layer.id, 'forward'),
-                            })
-                          }
-                        >
-                          <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={index === 0}
-                          aria-label={`Send ${layer.fileName} backward`}
-                          onClick={() =>
-                            updateStyle({
-                              layers: CoverImageLayerModel.reorder(layers, layer.id, 'backward'),
-                            })
-                          }
-                        >
-                          <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:text-destructive"
-                          aria-label={`Remove ${layer.fileName}`}
-                          data-testid={
-                            isSelected || layers.length === 1
-                              ? 'pocket-remove-image-btn'
-                              : `pocket-remove-layer-${index}`
-                          }
-                          onClick={() => {
-                            const remaining = layers.filter((l) => l.id !== layer.id);
-                            updateStyle({ layers: remaining });
-                            if (selectedLayerId === layer.id) {
-                              setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                        </Button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="rounded-md border border-dashed border-border bg-secondary/35 px-3.5 py-5 text-center text-xs text-muted-foreground">
-                Drag &amp; drop PNG, JPG, or WEBP images directly onto the pockets cutting mat above
-                (or click <strong>Add Images</strong>) — then drag to move and pull corners to
-                resize.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <PocketStyleControls
+        pocketStyle={pocketStyle}
+        coverMatchColor={coverMatchColor}
+        layers={layers}
+        selectedLayerId={selectedLayerId}
+        selectedLayer={selectedLayer}
+        onUpdateStyle={updateStyle}
+        onUpdateLayer={updateLayer}
+        onSelectLayer={setSelectedLayerId}
+        onAddImageFiles={handleAddImageFiles}
+        onQuickFitLayer={handleQuickFitPocketLayer}
+        onToggleLayerTile={handleToggleLayerTile}
+        onCopyToOtherPocket={handleCopyToOtherPocket}
+        onStatusMessage={onStatusMessage}
+      />
     </div>
   );
 }
