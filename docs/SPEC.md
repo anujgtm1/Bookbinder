@@ -158,6 +158,13 @@ src/
   - **Layer Stack & Quick-Fit Helpers:**
     - Reorder layers (bring forward / send backward), remove individual layers, or reset.
     - One-click **Quick Fit** presets for the selected layer (`Fit Front`, `Fit Spine`, `Fit Back`, `Fit Full Wrap`) plus an optional **Clip to Zone** mask (`None`, `Front`, `Spine`, `Back`) for crisp edges at board/spine seams.
+  - **Turn-In / Pasting Stub Edge Extension (`src/studio/edgeExtend.ts`):**
+    - Allows downloaded front-only (or back-only) covers to stay **100% uncropped on the chipboard face (`BOARD_W × BOARD_H`)** while automatically synthesizing seamless artwork across the surrounding **18 mm turn-in pasting stub + bleed** on Top, Bottom, and Fore-Edge (and optionally matching Spine & Back base colors to the spine-facing edge).
+    - Supports three client-side canvas synthesis modes (non-destructive via preserved `originalDataUrl` so users can switch modes or revert to `None` at any time):
+      - **`Edge Smear`:** Samples an inset perimeter strip (skipping 1–3 px scanner/JPEG border artifacts) and stretches each edge's exact colors/gradients smoothly across the turn-in + bleed with bilinear corner blends—preventing mirrored text or cropped borders.
+      - **`Soft Mirror`:** Reflects the outer edges of the artwork across the turn-in + bleed with subtle feathering for organic paintings, clouds, and textures.
+      - **`Mirror`:** Crisp gallery-wrap reflection along each edge.
+    - Also surfaced directly as a one-click Quick Fix (`Extend Edges to Stub`) in the Print Preflight checker when a cover covers the board face but stops short of the outer turn-in/bleed.
 - **Back Cover & Spine Background Fill:**
   - Solid color pickers for Back Cover, Spine, and Front base backgrounds (visible wherever no image is placed), plus an **Eyedropper Tool** to sample a matching color directly from the preview artwork.
 - **Spine Typography:**
