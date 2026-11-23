@@ -2,7 +2,11 @@ import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState, type StudioFontId } from '@/types/studio';
-import type { LayerClipZone, QuickFitTarget } from '@/types/studioLayer';
+import {
+  normalizeQuarterTurn,
+  type LayerClipZone,
+  type QuickFitTarget,
+} from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 
 export interface StudioCanvasSpec {
@@ -46,7 +50,38 @@ export interface CoverTextLinePlacement {
   readonly fontId: StudioFontId;
 }
 
-/** Builds an SVG transform attribute flipping a rectangular layer around its center. */
+/**
+ * Builds an SVG transform attribute rotating (clockwise quarter-turns) and/or flipping
+ * an element around a point (cx, cy). Returns undefined when no flip and rotation === 0.
+ */
+export function buildPointFlipTransform(
+  cx: number,
+  cy: number,
+  flipX?: boolean,
+  flipY?: boolean,
+  rotationDeg?: number,
+): string | undefined {
+  const rot = normalizeQuarterTurn(rotationDeg);
+  if (!flipX && !flipY && rot === 0) return undefined;
+  const rx = roundTo(cx, 3);
+  const ry = roundTo(cy, 3);
+  const parts: string[] = [`translate(${rx} ${ry})`];
+  if (rot !== 0) {
+    parts.push(`rotate(${rot})`);
+  }
+  if (flipX || flipY) {
+    const sx = flipX ? -1 : 1;
+    const sy = flipY ? -1 : 1;
+    parts.push(`scale(${sx} ${sy})`);
+  }
+  parts.push(`translate(${-rx} ${-ry})`);
+  return parts.join(' ');
+}
+
+/**
+ * Builds an SVG transform attribute rotating (clockwise quarter-turns) and/or flipping
+ * a rectangular layer around its center. Returns undefined when no flip and rotation === 0.
+ */
 export function buildLayerFlipTransform(
   xMm: number,
   yMm: number,
@@ -54,28 +89,15 @@ export function buildLayerFlipTransform(
   heightMm: number,
   flipX?: boolean,
   flipY?: boolean,
+  rotationDeg?: number,
 ): string | undefined {
-  if (!flipX && !flipY) return undefined;
-  const cx = roundTo(xMm + widthMm / 2, 3);
-  const cy = roundTo(yMm + heightMm / 2, 3);
-  const sx = flipX ? -1 : 1;
-  const sy = flipY ? -1 : 1;
-  return `translate(${cx} ${cy}) scale(${sx} ${sy}) translate(${-cx} ${-cy})`;
-}
-
-/** Builds an SVG transform attribute flipping an element around a point (cx, cy). */
-export function buildPointFlipTransform(
-  cx: number,
-  cy: number,
-  flipX?: boolean,
-  flipY?: boolean,
-): string | undefined {
-  if (!flipX && !flipY) return undefined;
-  const rx = roundTo(cx, 3);
-  const ry = roundTo(cy, 3);
-  const sx = flipX ? -1 : 1;
-  const sy = flipY ? -1 : 1;
-  return `translate(${rx} ${ry}) scale(${sx} ${sy}) translate(${-rx} ${-ry})`;
+  return buildPointFlipTransform(
+    xMm + widthMm / 2,
+    yMm + heightMm / 2,
+    flipX,
+    flipY,
+    rotationDeg,
+  );
 }
 
 export function computeStudioCanvasSpec(

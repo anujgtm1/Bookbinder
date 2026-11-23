@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
-import { CoverOrnamentLayerModel, CoverTextLayerModel } from '@/types/coverElements';
+import {
+  CoverOrnamentLayerModel,
+  CoverTextLayerModel,
+  rotateOrnament90,
+} from '@/types/coverElements';
 import { CoverStudioModel } from '@/types/studio';
 import {
   DEFAULT_CRICUT_EXPORT_OPTIONS,
@@ -174,6 +178,30 @@ describe('cricutExport — Cricut / Silhouette / ScanNCut HTV Vector SVG', () =>
     expect(flippedResult.svg).not.toBe(result.svg);
     expect(flippedResult.svg).not.toContain('transform=');
     expect(flippedResult.svg).not.toContain('NaN');
+
+    const rotatedStudio = {
+      ...studio,
+      textLayers: [{ ...frontTitle, text: 'MOBY\nDICK', rotationDeg: 90 as const, flipX: true }],
+      ornaments: [rotateOrnament90(frame)],
+    };
+    const rotatedResult = await generateCricutHtvSvg(
+      geom,
+      rotatedStudio,
+      null,
+      {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: 'front-cover',
+        includeLettering: true,
+        includeOrnaments: true,
+        mirrorForHtv: true,
+      },
+      REAL_WOFF_BYTES,
+    );
+    expect(rotatedResult.hasLettering).toBe(true);
+    expect(rotatedResult.svg).not.toBe(result.svg);
+    expect(rotatedResult.svg).not.toContain('<text');
+    expect(rotatedResult.svg).not.toContain('transform=');
+    expect(rotatedResult.svg).not.toContain('NaN');
   });
 
   it('groups filled paths by normalized foil color when groupByColor is true and populates foilColors', async () => {

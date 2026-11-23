@@ -3,6 +3,7 @@ import { fmtMm } from '@/lib/svgFormat';
 import type { CoverTextLayer } from '@/types/coverElements';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { CoverStudioState, CuratedFontId, StudioFontId } from '@/types/studio';
+import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { loadCuratedFontBytes, type CustomFontAsset } from './fonts';
@@ -348,18 +349,28 @@ export function bakeCoverTextLayerToPaths(
   mirrorX: boolean,
 ): BakedLetteringPaths {
   const lineItems = computeCoverTextLinePlacements(layer);
+  const rot = normalizeQuarterTurn(layer.rotationDeg);
+  const rad = (rot * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
   return bakeGlyphRunsToPaths(
-    lineItems.map((item) => ({
-      text: item.text,
-      anchorXMm: item.anchorXMm,
-      anchorYMm: layer.flipY ? roundTo(2 * layer.yMm - item.anchorYMm, 2) : item.anchorYMm,
-      fontSizePt: item.fontSizePt,
-      rotationDegCss: 0,
-      align: item.align,
-      letterSpacingEm: item.letterSpacingEm,
-      flipX: layer.flipX,
-      flipY: layer.flipY,
-    })),
+    lineItems.map((item) => {
+      const dyLine = (layer.flipY ? -1 : 1) * (item.anchorYMm - layer.yMm);
+      const anchorXMm = roundTo(layer.xMm - dyLine * sin, 3);
+      const anchorYMm = roundTo(layer.yMm + dyLine * cos, 3);
+      return {
+        text: item.text,
+        anchorXMm,
+        anchorYMm,
+        fontSizePt: item.fontSizePt,
+        rotationDegCss: rot,
+        align: item.align,
+        letterSpacingEm: item.letterSpacingEm,
+        flipX: layer.flipX,
+        flipY: layer.flipY,
+      };
+    }),
     fontBytes,
     originXMm,
     originYMm,

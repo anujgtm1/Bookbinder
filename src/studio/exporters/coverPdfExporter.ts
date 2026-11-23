@@ -23,6 +23,7 @@ import {
   type Rect2D,
 } from '@/types/geometry';
 import type { CoverStudioState, StudioFontId } from '@/types/studio';
+import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
 import {
   computeCoverTextLinePlacements,
@@ -400,19 +401,41 @@ async function renderBaseCoverPdfPage(
       const tc = hexToRgb01(textLayer.color);
       const textColor = rgb(tc.r, tc.g, tc.b);
       const isFlipped = Boolean(textLayer.flipX || textLayer.flipY);
+      const rotDeg = normalizeQuarterTurn(textLayer.rotationDeg);
+      // PDF Y-axis points UP, so screen CW +rotDeg equals PDF CCW -rotDeg
+      const pdfRotDeg = rotDeg === 0 ? 0 : -rotDeg;
+      const layerAnchorXPt = toPdfX(textLayer.xMm);
+      const layerAnchorYPt = toPdfY(textLayer.yMm);
+      const rad = (pdfRotDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
 
       if (isFlipped) {
-        const layerAnchorXPt = toPdfX(textLayer.xMm);
-        const layerAnchorYPt = toPdfY(textLayer.yMm);
         const sx = textLayer.flipX ? -1 : 1;
         const sy = textLayer.flipY ? -1 : 1;
-        const tx = layerAnchorXPt * (1 - sx);
-        const ty = layerAnchorYPt * (1 - sy);
+        // Compose R(-rotDeg) * S(sx, sy) around (layerAnchorXPt, layerAnchorYPt)
+        const a = cos * sx;
+        const b = sin * sx;
+        const c = -sin * sy;
+        const d = cos * sy;
+        const e = layerAnchorXPt - a * layerAnchorXPt - c * layerAnchorYPt;
+        const f = layerAnchorYPt - b * layerAnchorXPt - d * layerAnchorYPt;
         page.pushOperators(
           pushGraphicsState(),
-          concatTransformationMatrix(sx, 0, 0, sy, tx, ty),
+          concatTransformationMatrix(a, b, c, d, e, f),
         );
       }
+
+      const rotateTextPt = (px: number, py: number): { readonly x: number; readonly y: number } => {
+        if (isFlipped || pdfRotDeg === 0) return { x: px, y: py };
+        const dx = px - layerAnchorXPt;
+        const dy = py - layerAnchorYPt;
+        return {
+          x: layerAnchorXPt + dx * cos - dy * sin,
+          y: layerAnchorYPt + dx * sin + dy * cos,
+        };
+      };
+      const drawRotate = !isFlipped && pdfRotDeg !== 0 ? degrees(pdfRotDeg) : undefined;
 
       for (const item of lineItems) {
         if (!item.text.trim()) continue;
@@ -443,22 +466,26 @@ async function renderBaseCoverPdfPage(
         if (Math.abs(trackingPt) > 0.05 && chars.length > 1) {
           let cursorX = startXPt;
           for (const ch of chars) {
+            const pt = rotateTextPt(cursorX, baseYPt);
             page.drawText(ch, {
-              x: cursorX,
-              y: baseYPt,
+              x: pt.x,
+              y: pt.y,
               size: item.fontSizePt,
               font: pdfFont,
               color: textColor,
+              rotate: drawRotate,
             });
             cursorX += pdfFont.widthOfTextAtSize(ch, item.fontSizePt) + trackingPt;
           }
         } else {
+          const pt = rotateTextPt(startXPt, baseYPt);
           page.drawText(item.text, {
-            x: startXPt,
-            y: baseYPt,
+            x: pt.x,
+            y: pt.y,
             size: item.fontSizePt,
             font: pdfFont,
             color: textColor,
+            rotate: drawRotate,
           });
         }
       }

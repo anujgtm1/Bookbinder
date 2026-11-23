@@ -1,6 +1,7 @@
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import {
   CoverImageLayerModel,
+  getLayerVisualRect,
   type CoverImageLayer,
   type ResizeCorner,
 } from '@/types/studioLayer';
@@ -307,11 +308,12 @@ export function snapLayerMove(
   targets: CanvasSnapTargets,
   thresholdMm = DEFAULT_SNAP_THRESHOLD_MM,
 ): SnapMoveResult {
+  const vis = getLayerVisualRect(rawLayer);
   const snapped = snapBoxToTargets(
-    rawLayer.xMm,
-    rawLayer.yMm,
-    rawLayer.widthMm,
-    rawLayer.heightMm,
+    vis.x,
+    vis.y,
+    vis.width,
+    vis.height,
     targets,
     thresholdMm,
   );
@@ -320,11 +322,13 @@ export function snapLayerMove(
     return { layer: rawLayer, guides: snapped.guides };
   }
 
+  const dx = snapped.xMm - vis.x;
+  const dy = snapped.yMm - vis.y;
   return {
     layer: {
       ...rawLayer,
-      xMm: snapped.xMm,
-      yMm: snapped.yMm,
+      xMm: roundTo(rawLayer.xMm + dx, 2),
+      yMm: roundTo(rawLayer.yMm + dy, 2),
     },
     guides: snapped.guides,
   };
@@ -348,8 +352,9 @@ export function snapLayerResize(
     pointerXMm,
     pointerYMm,
   );
-  const activeX = corner === 'nw' || corner === 'sw' ? rawResized.xMm : rawResized.xMm + rawResized.widthMm;
-  const activeY = corner === 'nw' || corner === 'ne' ? rawResized.yMm : rawResized.yMm + rawResized.heightMm;
+  const rawVis = getLayerVisualRect(rawResized);
+  const activeX = corner === 'nw' || corner === 'sw' ? rawVis.x : rawVis.x + rawVis.width;
+  const activeY = corner === 'nw' || corner === 'ne' ? rawVis.y : rawVis.y + rawVis.height;
 
   const xSnap = findBestAxisSnap([activeX], targets.vertical, thresholdMm);
   const ySnap = findBestAxisSnap([activeY], targets.horizontal, thresholdMm);
@@ -380,8 +385,9 @@ export function snapLayerResize(
       : rawResized;
 
   const guides: ActiveSnapGuide[] = [];
-  const finalX = corner === 'nw' || corner === 'sw' ? snapped.xMm : snapped.xMm + snapped.widthMm;
-  const finalY = corner === 'nw' || corner === 'ne' ? snapped.yMm : snapped.yMm + snapped.heightMm;
+  const finalVis = getLayerVisualRect(snapped);
+  const finalX = corner === 'nw' || corner === 'sw' ? finalVis.x : finalVis.x + finalVis.width;
+  const finalY = corner === 'nw' || corner === 'ne' ? finalVis.y : finalVis.y + finalVis.height;
 
   if (xSnap && Math.abs(finalX - xSnap.target.positionMm) <= 0.35) {
     guides.push({

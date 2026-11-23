@@ -220,13 +220,23 @@ describe('studio renderEngine', () => {
     expect(hexToRgb01('invalid').r).toBeCloseTo(0.12, 2);
   });
 
-  it('builds flip SVG transforms and renders flipped cover text in Print PDF & Affinity SVG', async () => {
+  it('builds flip and 90° rotation SVG transforms and renders rotated/flipped cover text in Print PDF & Affinity SVG', async () => {
     expect(buildLayerFlipTransform(10, 20, 100, 50, false, false)).toBeUndefined();
+    expect(buildLayerFlipTransform(10, 20, 100, 50, false, false, 0)).toBeUndefined();
     expect(buildLayerFlipTransform(10, 20, 100, 50, true, false)).toBe(
       'translate(60 45) scale(-1 1) translate(-60 -45)',
     );
+    expect(buildLayerFlipTransform(10, 20, 100, 50, false, false, 90)).toBe(
+      'translate(60 45) rotate(90) translate(-60 -45)',
+    );
+    expect(buildLayerFlipTransform(10, 20, 100, 50, true, false, 90)).toBe(
+      'translate(60 45) rotate(90) scale(-1 1) translate(-60 -45)',
+    );
     expect(buildPointFlipTransform(200, 100, false, true)).toBe(
       'translate(200 100) scale(1 -1) translate(-200 -100)',
+    );
+    expect(buildPointFlipTransform(200, 100, false, false, 270)).toBe(
+      'translate(200 100) rotate(270) translate(-200 -100)',
     );
 
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
@@ -234,14 +244,21 @@ describe('studio renderEngine', () => {
       ...CoverTextLayerModel.createPreset('front-title', geom.outerWrap.frontBoardRect),
       text: 'MIRRORED',
       flipX: true,
+      rotationDeg: 90 as const,
+    };
+    const rotatedOnlyBlurb = {
+      ...CoverTextLayerModel.createPreset('back-blurb', geom.outerWrap.backBoardRect),
+      text: 'LINE ONE\nLINE TWO',
+      rotationDeg: 270 as const,
     };
     const studio = {
       ...CoverStudioModel.createDefault(),
-      textLayers: [flippedTitle],
+      textLayers: [flippedTitle, rotatedOnlyBlurb],
     };
 
     const svg = generateAffinityCoverSvg(geom, studio, null);
-    expect(svg).toContain('scale(-1 1)');
+    expect(svg).toContain('rotate(90) scale(-1 1)');
+    expect(svg).toContain('rotate(270)');
     expect(svg).toContain('MIRRORED');
 
     const pdfBytes = await generatePrintReadyRollPdf(geom, studio, null, {

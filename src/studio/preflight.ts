@@ -15,7 +15,11 @@ import {
 } from '@/types/bookParams';
 import { ROLL_TOTAL_MARGIN_MM, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
-import type { CoverImageLayer, QuickFitTarget } from '@/types/studioLayer';
+import {
+  getLayerVisualRect,
+  type CoverImageLayer,
+  type QuickFitTarget,
+} from '@/types/studioLayer';
 import { MM_PER_INCH, PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { computeStudioCanvasSpec, resolveZoneClipRect } from './renderEngine';
 
@@ -280,14 +284,9 @@ export const PreflightEngine = {
       height: geometry.outerWrap.spineRect.height,
     };
 
-    // Resolve each layer's effective visible rect (respecting optional zone clip mask)
+    // Resolve each layer's effective visible rect (respecting rotation & optional zone clip mask)
     const visibleLayers = studio.layers.map((layer) => {
-      const rawRect: Rect2D = {
-        x: layer.xMm,
-        y: layer.yMm,
-        width: layer.widthMm,
-        height: layer.heightMm,
-      };
+      const rawRect = getLayerVisualRect(layer);
       const clipRect = resolveZoneClipRect(spec, layer.clipZone);
       const visibleRect = intersectRect(rawRect, clipRect);
       const onCanvasRect = visibleRect ? intersectRect(visibleRect, canvasRect) : null;
