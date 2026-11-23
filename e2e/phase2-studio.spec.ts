@@ -129,9 +129,24 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const widthAfterResize = Number(await layer2.getAttribute('width'));
     expect(widthAfterResize).toBeGreaterThan(widthBeforeResize + 2);
 
-    // Select 1st layer (crimson) and Quick-Fit to Front, then sample its crimson color via Eyedropper
+    // Select 1st layer (crimson) and Quick-Fit to Front, then toggle Flip H / Flip V cleanly
     await page.getByTestId('layer-select-0').click();
     await page.getByTestId('quick-fit-front').click();
+
+    await expect(page.getByTestId('layer-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
+    await page.getByTestId('layer-flip-h-btn').click();
+    await expect(page.getByTestId('layer-flip-h-btn')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /scale\(-1 1\)/);
+
+    await page.getByTestId('layer-flip-v-btn').click();
+    await expect(page.getByTestId('layer-flip-v-btn')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /scale\(-1 -1\)/);
+
+    // Toggle flips back off before continuing eyedropper sample
+    await page.getByTestId('layer-flip-h-btn').click();
+    await page.getByTestId('layer-flip-v-btn').click();
+    await expect(page.getByTestId('layer-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('layer-flip-v-btn')).toHaveAttribute('aria-pressed', 'false');
 
     await page.getByTestId('studio-eyedropper-both-btn').click();
     await expect(page.getByTestId('eyedropper-active-banner')).toBeVisible();
@@ -631,14 +646,31 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('studio-tool-text').click();
     await page.getByTestId('add-front-title-btn').click();
     await expect(page.getByTestId('studio-cover-text-0')).toBeVisible();
+    await expect(page.getByTestId('cover-text-upload-font-btn')).toBeVisible();
     await page.getByTestId('cover-text-textarea').fill('THE ODYSSEY');
     await expect(page.getByTestId('studio-cover-text-0')).toContainText('THE ODYSSEY');
+
+    // Toggle Cover Text Flip H -> sets aria-pressed & applies SVG flip transform on studio-cover-text-0
+    await page.getByTestId('cover-text-flip-h-btn').click();
+    await expect(page.getByTestId('cover-text-flip-h-btn')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('studio-cover-text-0')).toHaveAttribute(
+      'transform',
+      /scale\(-1 1\)/,
+    );
+    await page.getByTestId('cover-text-flip-h-btn').click();
+    await expect(page.getByTestId('cover-text-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
 
     // 2. Switch to Classic Designs tool dock tab, add a Double Rule Frame, Spine Botanical Vine, and custom vector SVG stamp
     await page.getByTestId('studio-tool-designs').click();
     await page.getByTestId('add-ornament-frame-double-rule').click();
     await page.getByTestId('ornament-cat-spine').click();
     await page.getByTestId('add-ornament-spine-botanical-vine').click();
+
+    // Flip ornament horizontally and vertically cleanly
+    await page.getByTestId('ornament-flip-h-btn').click();
+    await expect(page.getByTestId('ornament-flip-h-btn')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('ornament-flip-v-btn').click();
+    await expect(page.getByTestId('ornament-flip-v-btn')).toHaveAttribute('aria-pressed', 'true');
 
     const customSvgStamp = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,5 65,40 95,50 65,60 50,95 35,60 5,50 35,40" fill="#000"/></svg>',
