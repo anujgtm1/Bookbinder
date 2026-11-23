@@ -42,8 +42,19 @@ export interface BindingStyleFlapConfig {
   readonly defaultRatio: number;
   readonly defaultMinMm: number;
   readonly defaultMaxMm: number;
+  /** Minimum recommended fraction of page width (e.g. 0.25 for glued slip covers, 0.38 for unglued dust jackets). */
+  readonly minRecommendedRatio: number;
+  /** Absolute floor in mm regardless of how narrow the book is. */
+  readonly minRecommendedFloorMm: number;
   readonly presetLabel: string;
   readonly presetMm: number;
+}
+
+export interface FlapDepthEvaluation {
+  readonly currentFlapMm: number;
+  readonly minRecommendedMm: number;
+  readonly coverWidthPct: number;
+  readonly isTooShallow: boolean;
 }
 
 export interface BindingStyleStrategy extends BindingStyleOption {
@@ -238,6 +249,8 @@ const SOFTCOVER_FLAP_CONFIG: BindingStyleFlapConfig = {
   defaultRatio: 0.23,
   defaultMinMm: 24,
   defaultMaxMm: 48,
+  minRecommendedRatio: 0.25,
+  minRecommendedFloorMm: 25,
   presetLabel: 'Deep (38 mm)',
   presetMm: 38,
 };
@@ -249,6 +262,8 @@ const DUST_JACKET_FLAP_CONFIG: BindingStyleFlapConfig = {
   defaultRatio: 0.5,
   defaultMinMm: 40,
   defaultMaxMm: 75,
+  minRecommendedRatio: 0.38,
+  minRecommendedFloorMm: 40,
   presetLabel: 'Classic (70 mm)',
   presetMm: 70,
 };
@@ -762,4 +777,28 @@ export function getBindingStrategy(style?: BindingStyle): BindingStyleStrategy {
 
 export function listBindingStrategies(): readonly BindingStyleStrategy[] {
   return BINDING_STYLES.map((opt) => BINDING_STYLE_STRATEGIES[opt.id]);
+}
+
+export function evaluateFlapDepth(
+  style: BindingStyle,
+  pbWidthMm: number,
+  currentFlapMm: number,
+): FlapDepthEvaluation | null {
+  const strategy = getBindingStrategy(style);
+  if (!strategy.capabilities.hasFlaps || !strategy.flapConfig) {
+    return null;
+  }
+  const { flapConfig } = strategy;
+  const minRecommendedMm = Math.min(
+    flapConfig.maxMm,
+    roundTo(Math.max(flapConfig.minRecommendedFloorMm, pbWidthMm * flapConfig.minRecommendedRatio), 1),
+  );
+  const coverWidthPct = pbWidthMm > 0 ? Math.round((currentFlapMm / pbWidthMm) * 100) : 0;
+  const isTooShallow = currentFlapMm < minRecommendedMm - 0.05;
+  return {
+    currentFlapMm,
+    minRecommendedMm,
+    coverWidthPct,
+    isTooShallow,
+  };
 }

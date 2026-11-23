@@ -1,4 +1,4 @@
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { evaluateFlapDepth, getBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import { contrastRatio, parseHexRgb, relativeLuminance } from '@/lib/color';
 import {
@@ -667,6 +667,53 @@ export const PreflightEngine = {
           kind: 'enable-bleed',
           bleedMm: 3,
           label: 'Enable 3 mm Bleed',
+        },
+      });
+    }
+
+    const flapEval = evaluateFlapDepth(
+      style,
+      params.pbWidthMm,
+      geometry.outerWrap.jacketFlapWidthMm,
+    );
+    if (flapEval?.isTooShallow && strategy.flapConfig) {
+      const flapW = geometry.outerWrap.jacketFlapWidthMm;
+      const flapTopY = geometry.outerWrap.backBoardRect.y + spec.bleedMm;
+      const flapHeight = geometry.outerWrap.backBoardRect.height;
+      const currentFlapRounded = roundTo(flapEval.currentFlapMm, 1);
+      const flapHighlightLabel = `${currentFlapRounded} mm flap`;
+      allIssues.push({
+        id: 'flap-too-shallow',
+        severity: 'warning',
+        category: 'structure',
+        title: 'Flap is too shallow for this page width',
+        detail: `${strategy.flapConfig.label} is ${currentFlapRounded} mm (${flapEval.coverWidthPct}% of the ${roundTo(params.pbWidthMm, 1)} mm page width), below the recommended ≥ ${flapEval.minRecommendedMm} mm minimum for ${strategy.shortLabel} so the cover stays tucked securely. If widening flaps exceeds 1 sheet, print across 2 tiled sheets or switch to larger paper.`,
+        highlights: [
+          {
+            rect: {
+              x: spec.bleedMm,
+              y: flapTopY,
+              width: flapW,
+              height: flapHeight,
+            },
+            label: flapHighlightLabel,
+            severity: 'warning',
+          },
+          {
+            rect: {
+              x: geometry.outerWrap.widthMm - flapW + spec.bleedMm,
+              y: flapTopY,
+              width: flapW,
+              height: flapHeight,
+            },
+            label: flapHighlightLabel,
+            severity: 'warning',
+          },
+        ],
+        quickFix: {
+          kind: 'set-jacket-flap-width',
+          flapWidthMm: flapEval.minRecommendedMm,
+          label: `Set Flap to ${flapEval.minRecommendedMm} mm (Recommended)`,
         },
       });
     }

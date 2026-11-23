@@ -3,6 +3,7 @@ import { BINDING_STYLES } from '@/resources/paperSpecs';
 import { DEFAULT_BOOK_PARAMETERS, type BindingStyle } from '@/types/bookParams';
 import {
   BINDING_STYLE_STRATEGIES,
+  evaluateFlapDepth,
   getBindingStrategy,
   listBindingStrategies,
 } from './bindingStyles';
@@ -139,5 +140,61 @@ describe('bindingStyles strategy registry', () => {
     const scCut = scStrategy.calculateCutList(scParams);
     const scWrap = scStrategy.calculateOuterWrap(scParams, scCut);
     expect(scWrap.foldLines).toHaveLength(8);
+  });
+
+  it('evaluates flap depth thresholds accurately for softcover-jacket and dust-jacket and returns null for non-flap styles', () => {
+    // Non-flap styles return null
+    expect(evaluateFlapDepth('rigid-case', 140, 30)).toBeNull();
+    expect(evaluateFlapDepth('flexible-spine', 140, 30)).toBeNull();
+    expect(evaluateFlapDepth('paperback-wrap', 140, 30)).toBeNull();
+
+    // Softcover slip cover (25% of page width, floor 25 mm, max 65 mm)
+    expect(evaluateFlapDepth('softcover-jacket', 140, 24)).toEqual({
+      currentFlapMm: 24,
+      minRecommendedMm: 35,
+      coverWidthPct: 17,
+      isTooShallow: true,
+    });
+    expect(evaluateFlapDepth('softcover-jacket', 140, 35)).toEqual({
+      currentFlapMm: 35,
+      minRecommendedMm: 35,
+      coverWidthPct: 25,
+      isTooShallow: false,
+    });
+    // Narrow book respects 25 mm floor
+    expect(evaluateFlapDepth('softcover-jacket', 80, 24)).toEqual({
+      currentFlapMm: 24,
+      minRecommendedMm: 25,
+      coverWidthPct: 30,
+      isTooShallow: true,
+    });
+    // Very wide book clamps recommendation to maxMm (65 mm)
+    expect(evaluateFlapDepth('softcover-jacket', 300, 65)).toEqual({
+      currentFlapMm: 65,
+      minRecommendedMm: 65,
+      coverWidthPct: 22,
+      isTooShallow: false,
+    });
+
+    // Classic dust jacket (38% of page width, floor 40 mm, max 100 mm)
+    expect(evaluateFlapDepth('dust-jacket', 140, 35)).toEqual({
+      currentFlapMm: 35,
+      minRecommendedMm: 53.2,
+      coverWidthPct: 25,
+      isTooShallow: true,
+    });
+    expect(evaluateFlapDepth('dust-jacket', 140, 53.2)).toEqual({
+      currentFlapMm: 53.2,
+      minRecommendedMm: 53.2,
+      coverWidthPct: 38,
+      isTooShallow: false,
+    });
+    // Narrow pocket book respects 40 mm floor
+    expect(evaluateFlapDepth('dust-jacket', 90, 38)).toEqual({
+      currentFlapMm: 38,
+      minRecommendedMm: 40,
+      coverWidthPct: 42,
+      isTooShallow: true,
+    });
   });
 });

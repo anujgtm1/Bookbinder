@@ -517,7 +517,7 @@ export function useCoverStudioActions({
         const activeStrategy = getBindingStrategy(geometry.bindingStyle);
         const flapLabel = activeStrategy.flapConfig?.label.toLowerCase() ?? 'flap width';
         onUpdateParams?.({ jacketFlapWidthMm: fix.flapWidthMm });
-        onStatusMessage(`Adjusted ${flapLabel} to ${fix.flapWidthMm} mm to fit on 1 sheet`);
+        onStatusMessage(`Updated ${flapLabel} to ${fix.flapWidthMm} mm`);
         break;
       }
     }
