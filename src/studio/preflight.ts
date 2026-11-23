@@ -43,6 +43,8 @@ export interface PreflightHighlight {
   readonly rect: Rect2D;
   readonly label?: string;
   readonly severity: PreflightSeverity;
+  /** 'hatch' fills uncovered gap strips; 'outline' frames an existing image/spine without obscuring artwork */
+  readonly style?: 'hatch' | 'outline';
 }
 
 export interface PreflightIssue {
@@ -308,6 +310,7 @@ export const PreflightEngine = {
               rect: onCanvasRect,
               label: `${dpi} DPI`,
               severity: 'error',
+              style: 'outline',
             },
           ],
           quickFix: {
@@ -330,6 +333,7 @@ export const PreflightEngine = {
               rect: rawRect,
               label: `${dpi} DPI`,
               severity: 'warning',
+              style: 'outline',
             },
           ],
           quickFix: {

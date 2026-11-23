@@ -934,12 +934,20 @@ export function CoverStyler({
                           <g key={issue.id} opacity={dimmed ? 0.22 : 1}>
                             {issue.highlights.map((hl, idx) => {
                               const isErr = hl.severity === 'error';
+                              const isOutline = hl.style === 'outline';
                               const strokeColor = isErr ? '#ef4444' : '#f97316';
-                              const fillUrl = isErr
-                                ? 'url(#preflight-hatch-error)'
-                                : 'url(#preflight-hatch-warning)';
-                              const cx = hl.rect.x + hl.rect.width / 2;
-                              const cy = hl.rect.y + hl.rect.height / 2;
+                              const fillValue = isOutline
+                                ? 'none'
+                                : isErr
+                                  ? 'url(#preflight-hatch-error)'
+                                  : 'url(#preflight-hatch-warning)';
+                              const pillW = Math.min(hl.rect.width * 0.9, 44);
+                              const cx = isOutline
+                                ? hl.rect.x + hl.rect.width - pillW / 2 - 3
+                                : hl.rect.x + hl.rect.width / 2;
+                              const cy = isOutline
+                                ? hl.rect.y + 7
+                                : hl.rect.y + hl.rect.height / 2;
                               const showTag =
                                 Boolean(hl.label) && hl.rect.width >= 16 && hl.rect.height >= 7;
                               return (
@@ -949,7 +957,7 @@ export function CoverStyler({
                                     y={hl.rect.y}
                                     width={hl.rect.width}
                                     height={hl.rect.height}
-                                    fill={fillUrl}
+                                    fill={fillValue}
                                     stroke={strokeColor}
                                     strokeWidth={isErr ? '1.3' : '1.0'}
                                     strokeDasharray={isErr ? undefined : '4 2'}
@@ -958,9 +966,9 @@ export function CoverStyler({
                                   {showTag && (
                                     <g>
                                       <rect
-                                        x={cx - Math.min(hl.rect.width * 0.45, 24)}
+                                        x={cx - pillW / 2}
                                         y={cy - 4.2}
-                                        width={Math.min(hl.rect.width * 0.9, 48)}
+                                        width={pillW}
                                         height={8.4}
                                         rx={2}
                                         fill={isErr ? '#991b1b' : '#9a3412'}
