@@ -107,4 +107,54 @@ describe('CoverStyler', () => {
     await user.click(screen.getByTestId('studio-view-2d-btn'));
     expect(screen.getByTestId('studio-preview-svg')).toBeInTheDocument();
   });
+
+  it('highlights uncovered cover gaps in red on the canvas and resolves them with one-click Quick Fix', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    // High-res image shifted down so it leaves an uncovered strip on the front board
+    const shiftedLayer = CoverImageLayerModel.createInRect({
+      id: 'shifted-front',
+      dataUrl: 'data:image/png;base64,AAA',
+      fileName: 'front-art.png',
+      naturalWidth: 2400,
+      naturalHeight: 3600,
+      targetRect: { x: 210, y: 40, width: 155, height: 220 },
+      mode: 'cover',
+    });
+
+    let state: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      layers: [shiftedLayer],
+    };
+    const onChange = vi.fn((next: CoverStudioState) => {
+      state = next;
+    });
+
+    const { rerender } = render(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={state}
+        onChange={onChange}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('studio-preflight-overlays')).toBeInTheDocument();
+    expect(screen.getByTestId('preflight-issue-front-board-gap')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('preflight-fix-front-board-gap'));
+    rerender(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={state}
+        onChange={onChange}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('preflight-issue-front-board-gap')).not.toBeInTheDocument();
+    expect(screen.getByTestId('preflight-status-badge')).toHaveTextContent('All Checks Passed');
+  });
 });

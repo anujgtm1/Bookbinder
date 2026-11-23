@@ -226,9 +226,15 @@ export function App() {
                 }
               >
                 <CoverStyler
+                  params={project.parameters}
                   geometry={geometry}
                   studio={project.studio}
                   onChange={handleStudioChange}
+                  onUpdateParams={(patch) =>
+                    handleParamsChange(
+                      BookParametersModel.clampAndNormalize({ ...project.parameters, ...patch }),
+                    )
+                  }
                   onStatusMessage={setStatusMessage}
                 />
               </Suspense>

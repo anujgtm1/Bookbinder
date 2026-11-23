@@ -248,4 +248,39 @@ test.describe('Phase 2 — Interactive Cover & Spine Styler', () => {
     const transformAfterDrag = await page.getByTestId('book3d-volume').getAttribute('style');
     expect(transformAfterDrag).not.toBe(transformAtSpine);
   });
+
+  test('runs live preflight checks, paints red warning zones on the canvas, and resolves issues via quick fixes', async ({
+    page,
+  }) => {
+    // Upload a high-res solid cover image (auto-placed contain inside front zone, which leaves side/turn-in gaps)
+    const highResCover = createSolidPngBuffer(2200, 3000, 18, 72, 92);
+    await page.getByTestId('studio-upload-image-input').setInputFiles({
+      name: 'high-res-cover.png',
+      mimeType: 'image/png',
+      buffer: highResCover,
+    });
+
+    // Shrink the cover slightly so it visibly leaves uncovered gaps on the front board
+    await page.getByTestId('layer-scale-down-btn').click();
+    await page.getByTestId('layer-scale-down-btn').click();
+
+    // Red preflight warning overlay appears on canvas AND PreflightCard reports front-board-gap
+    await expect(page.getByTestId('studio-preflight-overlays')).toBeVisible();
+    await expect(page.getByTestId('preflight-issue-front-board-gap')).toBeVisible();
+
+    // One-click Fit to Front clears the red coverage gap immediately
+    await page.getByTestId('preflight-fix-front-board-gap').click();
+    await expect(page.getByTestId('preflight-issue-front-board-gap')).toBeHidden();
+    await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
+
+    // Trigger low-contrast spine text error, verify red spine highlight, then resolve with one-click ink fix
+    await page.getByTestId('studio-spine-title-input').fill('DUNE');
+    await page.getByTestId('studio-spine-text-color').fill('#243f57');
+    await expect(page.getByTestId('preflight-issue-spine-low-contrast-error')).toBeVisible();
+    await expect(page.getByTestId('studio-preflight-overlays')).toBeVisible();
+
+    await page.getByTestId('preflight-fix-spine-low-contrast-error').click();
+    await expect(page.getByTestId('preflight-issue-spine-low-contrast-error')).toBeHidden();
+    await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
+  });
 });

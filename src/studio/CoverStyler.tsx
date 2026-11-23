@@ -1,4 +1,15 @@
-import { Box, Eye, EyeOff, FileCode2, FileImage, FileText, Layers, Pipette } from 'lucide-react';
+import {
+  Box,
+  Eye,
+  EyeOff,
+  FileCode2,
+  FileImage,
+  FileText,
+  Layers,
+  Pipette,
+  ShieldAlert,
+  ShieldCheck,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FloatingHudToolbar,
@@ -13,6 +24,7 @@ import {
   triggerBytesDownload,
   triggerTextDownload,
 } from '@/core/storage';
+import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import {
   CoverStudioModel,
@@ -29,6 +41,7 @@ import {
 import { PRINT_DPI, UnitConverter } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
+import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
 import {
   BOOK_3D_PRESETS,
@@ -41,6 +54,7 @@ import {
   resolveFontCssFamily,
   type CustomFontAsset,
 } from './fonts';
+import { PreflightEngine, type PreflightQuickFix } from './preflight';
 import {
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
@@ -53,9 +67,11 @@ import {
 } from './renderEngine';
 
 export interface CoverStylerProps {
+  readonly params?: BookParameters;
   readonly geometry: CaseGeometry;
   readonly studio: CoverStudioState;
   readonly onChange: (next: CoverStudioState) => void;
+  readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
   readonly onStatusMessage: (message: string) => void;
 }
 
@@ -109,11 +125,17 @@ function readImageFile(file: File): Promise<{ dataUrl: string; width: number; he
 }
 
 export function CoverStyler({
+  params,
   geometry,
   studio,
   onChange,
+  onUpdateParams,
   onStatusMessage,
 }: CoverStylerProps) {
+  const effectiveParams = useMemo(
+    () => params ?? BookParametersModel.createDefault(),
+    [params],
+  );
   const [viewMode, setViewMode] = useState<StudioViewMode>('2d');
   const [book3DAngle, setBook3DAngle] = useState<Book3DCameraAngle>(DEFAULT_BOOK_3D_ANGLE);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
@@ -122,6 +144,8 @@ export function CoverStyler({
   const [customFont, setCustomFont] = useState<CustomFontAsset | null>(null);
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
+  const [showPreflightOverlays, setShowPreflightOverlays] = useState(true);
+  const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
 
@@ -136,6 +160,10 @@ export function CoverStyler({
   }, [studio, onChange]);
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
+  const preflight = useMemo(
+    () => PreflightEngine.evaluate(effectiveParams, geometry, studio),
+    [effectiveParams, geometry, studio],
+  );
   const spinePlacements = useMemo(
     () => computeSpineTextPlacements(geometry, studio),
     [geometry, studio],
@@ -171,6 +199,38 @@ export function CoverStyler({
       ...studio,
       layers: studio.layers.map((layer) => (layer.id === id ? updater(layer) : layer)),
     });
+  };
+
+  const handleApplyQuickFix = (fix: PreflightQuickFix) => {
+    switch (fix.kind) {
+      case 'fit-layer': {
+        const targetRect = resolveQuickFitRect(spec, fix.target);
+        updateLayer(fix.layerId, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect));
+        setSelectedLayerId(fix.layerId);
+        onStatusMessage(`Applied Quick Fit (${fix.label})`);
+        break;
+      }
+      case 'enable-bleed':
+        onUpdateParams?.({ includeBleed: true, bleedMm: fix.bleedMm });
+        onStatusMessage(`Enabled ${fix.bleedMm} mm outer artwork bleed`);
+        break;
+      case 'author-vertical':
+        updateSpineText({ authorOrientation: 'vertical' });
+        onStatusMessage('Switched spine author writing to Vertical');
+        break;
+      case 'high-contrast-spine-text':
+        updateSpineText({ textColor: fix.hexColor });
+        onStatusMessage(`Updated spine ink to ${fix.hexColor.toUpperCase()} for high contrast`);
+        break;
+      case 'enable-split-mode':
+        onUpdateParams?.({ splitMode: 'three-piece' });
+        onStatusMessage('Enabled 3-Piece Quarter-Bound Split');
+        break;
+      case 'select-layer':
+        setViewMode('2d');
+        setSelectedLayerId(fix.layerId);
+        break;
+    }
   };
 
   // Window-level pointer move/up so dragging or corner-resizing keeps tracking smoothly even outside the SVG
@@ -608,6 +668,26 @@ export function CoverStyler({
                       height={spec.frontZoneRect.height}
                     />
                   </clipPath>
+                  <pattern
+                    id="preflight-hatch-error"
+                    width="6"
+                    height="6"
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <rect width="6" height="6" fill="rgba(239, 68, 68, 0.24)" />
+                    <line x1="0" y1="0" x2="0" y2="6" stroke="#ef4444" strokeWidth="1.6" />
+                  </pattern>
+                  <pattern
+                    id="preflight-hatch-warning"
+                    width="6"
+                    height="6"
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <rect width="6" height="6" fill="rgba(249, 115, 22, 0.20)" />
+                    <line x1="0" y1="0" x2="0" y2="6" stroke="#f97316" strokeWidth="1.4" />
+                  </pattern>
                 </defs>
 
                 {/* Base Zone Background Fills */}
@@ -780,6 +860,72 @@ export function CoverStyler({
                   </g>
                 )}
 
+                {/* Preview-Only Red/Amber Preflight Consistency Overlays */}
+                {(showPreflightOverlays || activeIssueId !== null) &&
+                  preflight.issues.some((i) => i.highlights.length > 0) && (
+                    <g data-testid="studio-preflight-overlays" pointerEvents="none">
+                      {preflight.issues.map((issue) => {
+                        if (issue.highlights.length === 0) return null;
+                        if (!showPreflightOverlays && activeIssueId !== issue.id) return null;
+                        const dimmed = activeIssueId !== null && activeIssueId !== issue.id;
+                        return (
+                          <g key={issue.id} opacity={dimmed ? 0.22 : 1}>
+                            {issue.highlights.map((hl, idx) => {
+                              const isErr = hl.severity === 'error';
+                              const strokeColor = isErr ? '#ef4444' : '#f97316';
+                              const fillUrl = isErr
+                                ? 'url(#preflight-hatch-error)'
+                                : 'url(#preflight-hatch-warning)';
+                              const cx = hl.rect.x + hl.rect.width / 2;
+                              const cy = hl.rect.y + hl.rect.height / 2;
+                              const showTag =
+                                Boolean(hl.label) && hl.rect.width >= 16 && hl.rect.height >= 7;
+                              return (
+                                <g key={idx}>
+                                  <rect
+                                    x={hl.rect.x}
+                                    y={hl.rect.y}
+                                    width={hl.rect.width}
+                                    height={hl.rect.height}
+                                    fill={fillUrl}
+                                    stroke={strokeColor}
+                                    strokeWidth={isErr ? '1.3' : '1.0'}
+                                    strokeDasharray={isErr ? undefined : '4 2'}
+                                    data-testid="preflight-highlight-rect"
+                                  />
+                                  {showTag && (
+                                    <g>
+                                      <rect
+                                        x={cx - Math.min(hl.rect.width * 0.45, 24)}
+                                        y={cy - 4.2}
+                                        width={Math.min(hl.rect.width * 0.9, 48)}
+                                        height={8.4}
+                                        rx={2}
+                                        fill={isErr ? '#991b1b' : '#9a3412'}
+                                        fillOpacity="0.92"
+                                      />
+                                      <text
+                                        x={cx}
+                                        y={cy + 0.4}
+                                        fill="#fff7ed"
+                                        fontSize="4.8"
+                                        fontWeight="700"
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                      >
+                                        {hl.label}
+                                      </text>
+                                    </g>
+                                  )}
+                                </g>
+                              );
+                            })}
+                          </g>
+                        );
+                      })}
+                    </g>
+                  )}
+
                 {/* Selection Frame & Corner Resize Handles for Selected Layer */}
                 {selectedLayer && !eyedropperTarget && (
                   <g data-testid="studio-selection-handles">
@@ -903,7 +1049,7 @@ export function CoverStyler({
               <HudSeparator />
 
               {viewMode === '2d' ? (
-                <HudGroup label="Canvas guides">
+                <HudGroup label="Canvas overlays">
                   <HudButton
                     pressed={showGuides}
                     onClick={() => setShowGuides((v) => !v)}
@@ -915,6 +1061,20 @@ export function CoverStyler({
                       <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
                     )}
                     Cut &amp; Fold Guides
+                  </HudButton>
+                  <HudButton
+                    pressed={showPreflightOverlays}
+                    onClick={() => setShowPreflightOverlays((v) => !v)}
+                    data-testid="studio-preflight-hud-btn"
+                  >
+                    {preflight.status === 'pass' ? (
+                      <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    {preflight.status === 'pass'
+                      ? 'Preflight OK'
+                      : `Preflight (${preflight.errorCount + preflight.warningCount})`}
                   </HudButton>
                 </HudGroup>
               ) : (
@@ -949,6 +1109,16 @@ export function CoverStyler({
           </span>
         </div>
       </section>
+
+      {/* Live Print Preflight Consistency Check Panel */}
+      <PreflightCard
+        report={preflight}
+        showOverlays={showPreflightOverlays}
+        activeIssueId={activeIssueId}
+        onToggleOverlays={setShowPreflightOverlays}
+        onHighlightIssue={setActiveIssueId}
+        onApplyQuickFix={handleApplyQuickFix}
+      />
 
       {/* Decoupled Controls Grid */}
       <div className="grid gap-4 xl:grid-cols-2">
