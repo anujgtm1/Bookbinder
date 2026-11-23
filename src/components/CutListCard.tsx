@@ -1,14 +1,16 @@
 import { Printer, Ruler, Scissors } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export interface CutListCardProps {
   readonly geometry: CaseGeometry;
   readonly unit: UnitSystem;
+  readonly className?: string;
 }
 
-export function CutListCard({ geometry, unit }: CutListCardProps) {
+export function CutListCard({ geometry, unit, className }: CutListCardProps) {
   const { cutList, outerWrap, rollRecommendation, bindingStyle } = geometry;
   const isFlexible = bindingStyle === 'flexible-spine';
   const isSoftcover = bindingStyle === 'softcover-jacket';
@@ -22,7 +24,7 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
     <section
       aria-label="Chipboard Cut List and Roll Sizing"
       data-testid="cut-list-card"
-      className="rounded-lg border border-border bg-card px-4 py-3 shadow-xs"
+      className={cn('rounded-lg border border-border bg-card px-4 py-3 shadow-xs', className)}
     >
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5">
         <h2 className="flex items-center gap-2 font-serif text-base font-semibold tracking-tight text-foreground">
