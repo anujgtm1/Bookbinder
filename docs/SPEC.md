@@ -204,6 +204,13 @@ src/
   - Toggleable via the Floating HUD (`Preflight`) and spotlighted when hovering or focusing an individual issue in `PreflightCard`.
   - Actionable issues provide one-click fixes (e.g. `Fit Front`, `Fit Back`, `Enable 3 mm Bleed`, `Switch to Vertical`, `High-Contrast Ink`).
 
+### 7.5 Shared Interactive Layer Canvas & Inner Pockets Artwork (`useInteractiveLayers.ts`, `LayerSelectionOverlay.tsx`, `InnerPocketsStudio.tsx`)
+- Both the **Outer Case Wrap** and **Inner Pockets & Liner** tabs share a unified interactive layer engine (`useInteractiveLayers` + `LayerSelectionOverlay`) so both sides of the book work identically—differing only in their underlying physical shapes and zone clip masks:
+  - **Drag-and-Drop Upload:** Dropping `PNG`, `JPG`, or `WEBP` files directly onto either cutting mat places them right over the target piece/zone where they were dropped.
+  - **Direct Manipulation:** Click to select, drag freely in 1:1 mm coordinates with live golden-brass **Magnetic Smart Snap Guides**, drag any of the 4 corner handles to resize proportionally, scroll-wheel to scale, or press `Backspace`/`Delete` to remove.
+  - **Inner Pockets Shape Helpers:** Quick-Fit presets (`Fit Back Pocket`, `Fit Front Pocket`, `Fit Spine Liner`, `Fit All Pieces`), one-click **Copy to Other Pocket** (mirrors a layer cleanly between Front & Back pockets), plus `Pocket Faces Only` vs `Full Cut Envelope` clip scope and opacity control.
+  - **Exact 300 DPI PDF Compositing (`pocketRenderEngine.ts`):** All positioned inner pocket layers composite at exact 1:1 mm alignment onto each auto-paginated (and 90°-rotated if needed) sheet underneath vector cut/score/glue lines.
+
 ---
 
 ## 8. Recommended Tech Stack (Local Build)
