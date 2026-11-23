@@ -158,7 +158,7 @@ src/
     - **Magnetic Smart Snap Guides (`src/studio/snapGuides.ts`):** While dragging or corner-resizing cover artwork, layers gently snap within `3.5 mm` to Front/Back board edges & centers, Spine edges & centerline, Turn-In cut boundaries, and Bleed edges—illuminating live golden-brass alignment guidelines and target badges on the canvas (toggleable via Floating HUD `Snap` or bypassed on the fly while holding `Alt`).
   - **Layer Stack & Quick-Fit Helpers:**
     - Reorder layers (bring forward / send backward), remove individual layers, or reset.
-    - One-click **Quick Fit** presets for the selected layer (`Fit Front`, `Fit Spine`, `Fit Back`, `Fit Full Wrap`) plus an optional **Clip to Zone** mask (`None`, `Front`, `Spine`, `Back`) for crisp edges at board/spine seams.
+    - One-click **Quick Fit** presets for the selected layer (`Fit Front`, `Fit Spine`, `Fit Back`, `Fit Full Wrap`) automatically apply the matching **Clip to Zone** mask (`Front`, `Spine`, `Back`, or `None`) so cover artwork never spills across the spine after resizing book dimensions—and automatically re-synthesize active pasting-stub extensions for the updated book size.
   - **Turn-In / Pasting Stub Edge Extension (`src/studio/edgeExtend.ts`):**
     - Allows downloaded front-only (or back-only) covers to stay **100% uncropped on the chipboard face (`BOARD_W × BOARD_H`)** while automatically synthesizing seamless artwork across the surrounding **18 mm turn-in pasting stub + bleed** on Top, Bottom, and Fore-Edge (and optionally matching Spine & Back base colors to the spine-facing edge).
     - Supports three client-side canvas synthesis modes (non-destructive via preserved `originalDataUrl` so users can switch modes or revert to `None` at any time):
@@ -193,7 +193,8 @@ src/
 - Real-time, pure pre-print audit evaluating `BookParameters`, `CaseGeometry`, and `CoverStudioState` for common bookbinding and print-production pitfalls:
   - **Cover & Turn-In / Bleed Coverage Gaps:** Detects when a cover artwork layer (covering ≥ 35% of the Front or Back board—avoiding false alarms on small centered emblems/medallions) leaves an uncovered strip on the board face or stops short of the outer turn-in / bleed edge. Computes exact uncovered gap rectangles (`Rect2D[]`) in canvas millimeter coordinates.
   - **Off-Canvas Layers:** Flags any layer whose bounds fall completely outside the printable wrap area.
-  - **Effective Print Resolution (DPI):** Computes `min(naturalWidth / widthIn, naturalHeight / heightIn)` for every placed layer; flags `< 150 DPI` as **Error** (visible pixelation) and `150–239 DPI` as **Warning** (below 300 DPI ideal).
+  - **Effective Print Resolution (DPI — Optional):** Computes `min(naturalWidth / widthIn, naturalHeight / heightIn)` for every placed layer (showing the maximum physical size that stays 300 DPI); flags `< 150 DPI` as **Error** and `150–239 DPI` as **Warning**. Can be toggled on/off anytime via the **DPI Check** toggle in `PreflightCard`.
+  - **Per-Warning Dismissal (`Ignore for now`):** Individual Preflight warnings/errors can be dismissed via an **Ignore** button (clearing their canvas highlights immediately) with a one-click **Restore** action when ignored items exist.
   - **Spine Typography Legibility & Clearance:**
     - Computes WCAG 2.1 relative luminance contrast between `spineText.textColor` and `spineBgColor` when no artwork covers the spine (`< 3.0:1` Error, `< 4.5:1` Warning).
     - Flags font sizes auto-clamped to `SPINE_W - 4.0 mm` (hinge safety), narrow-spine horizontal author text (`< 6.5 pt`), and overly long spine titles risking top/bottom board edge overflow.
