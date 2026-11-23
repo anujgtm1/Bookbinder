@@ -59,4 +59,30 @@ describe('generateOuterWrapSvg', () => {
     expect(svg).toContain('data-label="Front Pocket Envelope"');
     expect(svg).toContain('width="50" height="50"');
   });
+
+  it('omits zero-width hinge labels on Flexible Spine and labels integrated Tuck Flaps on Softcover Jacket', () => {
+    const flexGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'flexible-spine',
+      pbThicknessMm: 5,
+    });
+    const flexSvg = generateOuterWrapSvg(flexGeom, 'single');
+    expect(flexSvg).toContain('FLEX SPINE');
+    expect(flexSvg).toContain('Cloth Spine Gap');
+    expect(flexSvg).not.toContain('HINGE 0 mm');
+
+    const softGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+    });
+    const softSvg = generateOuterWrapSvg(softGeom, 'single');
+    expect(softSvg).toContain('Softcover Jacket');
+    expect(softSvg).toContain('TUCK FLAP 44.1 mm');
+    expect(softSvg).toContain('BACK COVER');
+    expect(softSvg).not.toContain('HINGE 0 mm');
+    expect(softSvg).not.toContain('Turn-In 0 mm');
+  });
 });

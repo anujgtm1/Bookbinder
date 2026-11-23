@@ -735,10 +735,12 @@ export async function generateOuterWrapPdf(
   const shiftedCut = GeometryPrimitives.translatePolygon(outerWrap.outerCutPolygon, bleed, bleed);
   writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
 
+  const isSoftcover = outerWrap.bindingStyle === 'softcover-jacket';
+  const isFlexible = outerWrap.bindingStyle === 'flexible-spine';
   const boardRects = [
-    { label: 'BACK BOARD', rect: outerWrap.backBoardRect },
-    { label: 'SPINE', rect: outerWrap.spineRect },
-    { label: 'FRONT BOARD', rect: outerWrap.frontBoardRect },
+    { label: isSoftcover ? 'BACK COVER' : 'BACK BOARD', rect: outerWrap.backBoardRect },
+    { label: isFlexible ? 'FLEX SPINE' : 'SPINE', rect: outerWrap.spineRect },
+    { label: isSoftcover ? 'FRONT COVER' : 'FRONT BOARD', rect: outerWrap.frontBoardRect },
   ];
   for (const { label, rect } of boardRects) {
     writer.drawRect(rect.x + bleed, rect.y + bleed, rect.width, rect.height, {
@@ -748,22 +750,31 @@ export async function generateOuterWrapPdf(
     });
     const c = GeometryPrimitives.rectCenter(rect);
     const dim = `${roundTo(rect.width, 1)} × ${roundTo(rect.height, 1)} mm`;
+    const isSpine = label === 'SPINE' || label === 'FLEX SPINE';
     writer.drawText(label, c.x + bleed - 16, c.y + bleed - 3, boldFont, 8.5, guideColor);
-    if (label !== 'SPINE') {
+    if (!isSpine) {
       writer.drawText(dim, c.x + bleed - 16, c.y + bleed + 4, font, 7.2, mutedColor);
     }
   }
 
-  for (const hinge of [outerWrap.leftHingeRect, outerWrap.rightHingeRect]) {
-    writer.drawRect(hinge.x + bleed, hinge.y + bleed, hinge.width, hinge.height, {
-      borderColor: guideColor,
-      borderWidthPt: 0.5,
-      dashArray: [2, 2],
-    });
+  if (cutList.hingeSpacerMm > 0) {
+    for (const hinge of [outerWrap.leftHingeRect, outerWrap.rightHingeRect]) {
+      writer.drawRect(hinge.x + bleed, hinge.y + bleed, hinge.width, hinge.height, {
+        borderColor: guideColor,
+        borderWidthPt: 0.5,
+        dashArray: [2, 2],
+      });
+    }
   }
 
-  const headerNote = `Outer Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Hinge Spacer ${roundTo(cutList.hingeSpacerMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`;
-  writer.drawText(headerNote, bleed + outerWrap.turnInMm, bleed + outerWrap.turnInMm * 0.6, font, 7.5, mutedColor);
+  const headerNote = isSoftcover
+    ? `Softcover Jacket ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Slip-In Flaps ${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm • Print at 100% (1:1 mm)`
+    : isFlexible
+      ? `Flexible-Spine Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Cloth Spine Gap ${roundTo(cutList.spineStrip.widthMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`
+      : `Outer Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Hinge Spacer ${roundTo(cutList.hingeSpacerMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`;
+  const headerX = bleed + (isSoftcover ? outerWrap.jacketFlapWidthMm + 4 : outerWrap.turnInMm);
+  const headerY = bleed + (isSoftcover ? 6 : outerWrap.turnInMm * 0.6);
+  writer.drawText(headerNote, headerX, headerY, font, 7.5, mutedColor);
 
   return pdfDoc.save();
 }

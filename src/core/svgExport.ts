@@ -35,10 +35,35 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
     svgRect(outerWrap.frontBoardRect, 'data-label="Front Board"'),
   ].join('\n    ');
 
-  const hingeGuides = [
-    svgRect(outerWrap.leftHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Left Hinge"'),
-    svgRect(outerWrap.rightHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Right Hinge"'),
-  ].join('\n    ');
+  const isSoftcover = outerWrap.bindingStyle === 'softcover-jacket';
+  const isFlexible = outerWrap.bindingStyle === 'flexible-spine';
+  const hasHinges = cutList.hingeSpacerMm > 0;
+
+  const hingeGuides = hasHinges
+    ? [
+        svgRect(outerWrap.leftHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Left Hinge"'),
+        svgRect(outerWrap.rightHingeRect, 'stroke-dasharray="1.5 1.5" stroke-opacity="0.7" data-label="Right Hinge"'),
+      ].join('\n    ')
+    : '';
+
+  const flapGuides =
+    isSoftcover && outerWrap.jacketFlapWidthMm > 0
+      ? [
+          svgRect(
+            { x: 0, y: 0, width: outerWrap.jacketFlapWidthMm, height: outerWrap.heightMm },
+            'stroke-dasharray="2 2" stroke-opacity="0.8" data-label="Back Tuck Flap"',
+          ),
+          svgRect(
+            {
+              x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
+              y: 0,
+              width: outerWrap.jacketFlapWidthMm,
+              height: outerWrap.heightMm,
+            },
+            'stroke-dasharray="2 2" stroke-opacity="0.8" data-label="Front Tuck Flap"',
+          ),
+        ].join('\n    ')
+      : '';
 
   const backCenter = GeometryPrimitives.rectCenter(outerWrap.backBoardRect);
   const spineCenter = GeometryPrimitives.rectCenter(outerWrap.spineRect);
@@ -49,6 +74,24 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
   const boardDim = `${roundTo(cutList.coverBoards.widthMm, 1)} × ${roundTo(cutList.coverBoards.heightMm, 1)} mm`;
   const spineDim = `${roundTo(cutList.spineStrip.widthMm, 1)} × ${roundTo(cutList.spineStrip.heightMm, 1)} mm`;
   const wrapDim = `${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm`;
+
+  const hingeNotes = hasHinges
+    ? `    <text x="${fmt(leftHingeCenter.x)}" y="${fmt(leftHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmt(leftHingeCenter.x)} ${fmt(leftHingeCenter.y)})">HINGE ${fmt(cutList.hingeSpacerMm)} mm</text>
+    <text x="${fmt(rightHingeCenter.x)}" y="${fmt(rightHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmt(rightHingeCenter.x)} ${fmt(rightHingeCenter.y)})">HINGE ${fmt(cutList.hingeSpacerMm)} mm</text>`
+    : '';
+
+  const flapNotes =
+    isSoftcover && outerWrap.jacketFlapWidthMm > 0
+      ? `    <text x="${fmt(outerWrap.jacketFlapWidthMm / 2)}" y="${fmt(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmt(outerWrap.jacketFlapWidthMm / 2)} ${fmt(outerWrap.heightMm / 2)})">TUCK FLAP ${fmt(outerWrap.jacketFlapWidthMm)} mm</text>
+    <text x="${fmt(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)}" y="${fmt(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmt(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)} ${fmt(outerWrap.heightMm / 2)})">TUCK FLAP ${fmt(outerWrap.jacketFlapWidthMm)} mm</text>`
+      : '';
+
+  const headerNoteY = isSoftcover ? 6 : outerWrap.turnInMm / 2;
+  const headerNote = isSoftcover
+    ? `Softcover Jacket ${escapeXml(wrapDim)} • Slip-In Tuck Flaps ${fmt(outerWrap.jacketFlapWidthMm)} mm • Scale 1:1 mm`
+    : isFlexible
+      ? `Flexible-Spine Wrap ${escapeXml(wrapDim)} • Cloth Spine Gap ${fmt(cutList.spineStrip.widthMm)} mm • Turn-In ${fmt(outerWrap.turnInMm)} mm • Scale 1:1 mm`
+      : `Outer Wrap ${escapeXml(wrapDim)} • Turn-In ${fmt(outerWrap.turnInMm)} mm • 45° Miter Clearance ${fmt(outerWrap.miterGapMm)} mm • Scale 1:1 mm`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
@@ -63,16 +106,17 @@ ${bleedGroup}
   <g id="board-guides" fill="none" stroke="#0066FF" stroke-width="0.35" stroke-dasharray="4 2">
     ${boardGuides}
     ${hingeGuides}
+    ${flapGuides}
   </g>
   <g id="dimensions-notes" font-family="sans-serif" fill="#0066FF" text-anchor="middle" dominant-baseline="middle">
-    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y - 4)}" font-size="6" font-weight="600">BACK BOARD</text>
+    <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y - 4)}" font-size="6" font-weight="600">${isSoftcover ? 'BACK COVER' : 'BACK BOARD'}</text>
     <text x="${fmt(backCenter.x)}" y="${fmt(backCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
-    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y - 4)}" font-size="6" font-weight="600">FRONT BOARD</text>
+    <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y - 4)}" font-size="6" font-weight="600">${isSoftcover ? 'FRONT COVER' : 'FRONT BOARD'}</text>
     <text x="${fmt(frontCenter.x)}" y="${fmt(frontCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
-    <text x="${fmt(spineCenter.x)}" y="${fmt(spineCenter.y)}" font-size="4.2" font-weight="600" transform="rotate(-90 ${fmt(spineCenter.x)} ${fmt(spineCenter.y)})">SPINE ${escapeXml(spineDim)}</text>
-    <text x="${fmt(leftHingeCenter.x)}" y="${fmt(leftHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmt(leftHingeCenter.x)} ${fmt(leftHingeCenter.y)})">HINGE ${fmt(cutList.hingeSpacerMm)} mm</text>
-    <text x="${fmt(rightHingeCenter.x)}" y="${fmt(rightHingeCenter.y)}" font-size="3.2" transform="rotate(-90 ${fmt(rightHingeCenter.x)} ${fmt(rightHingeCenter.y)})">HINGE ${fmt(cutList.hingeSpacerMm)} mm</text>
-    <text x="${fmt(outerWrap.widthMm / 2)}" y="${fmt(outerWrap.turnInMm / 2)}" font-size="3.6" fill="#444444">Outer Wrap ${escapeXml(wrapDim)} • Turn-In ${fmt(outerWrap.turnInMm)} mm • 45° Miter Clearance ${fmt(outerWrap.miterGapMm)} mm • Scale 1:1 mm</text>
+    <text x="${fmt(spineCenter.x)}" y="${fmt(spineCenter.y)}" font-size="4.2" font-weight="600" transform="rotate(-90 ${fmt(spineCenter.x)} ${fmt(spineCenter.y)})">${isFlexible ? 'FLEX SPINE' : 'SPINE'} ${escapeXml(spineDim)}</text>
+${hingeNotes}
+${flapNotes}
+    <text x="${fmt(outerWrap.widthMm / 2)}" y="${fmt(headerNoteY)}" font-size="3.6" fill="#444444">${headerNote}</text>
   </g>
 </svg>
 `;

@@ -150,11 +150,23 @@ export function OuterBlueprintCanvas({
               />
 
               {[
-                { label: 'BACK BOARD', rect: outerWrap.backBoardRect },
-                { label: 'SPINE', rect: outerWrap.spineRect },
-                { label: 'FRONT BOARD', rect: outerWrap.frontBoardRect },
+                {
+                  label: outerWrap.bindingStyle === 'softcover-jacket' ? 'BACK COVER' : 'BACK BOARD',
+                  rect: outerWrap.backBoardRect,
+                },
+                {
+                  label:
+                    outerWrap.bindingStyle === 'flexible-spine' ? 'FLEX SPINE' : 'SPINE',
+                  rect: outerWrap.spineRect,
+                },
+                {
+                  label:
+                    outerWrap.bindingStyle === 'softcover-jacket' ? 'FRONT COVER' : 'FRONT BOARD',
+                  rect: outerWrap.frontBoardRect,
+                },
               ].map(({ label, rect }) => {
                 const c = GeometryPrimitives.rectCenter(rect);
+                const isSpineLabel = label === 'SPINE' || label === 'FLEX SPINE';
                 return (
                   <g key={label}>
                     <rect
@@ -170,17 +182,17 @@ export function OuterBlueprintCanvas({
                     />
                     <text
                       x={c.x}
-                      y={c.y - (label === 'SPINE' ? 0 : 5)}
+                      y={c.y - (isSpineLabel ? 0 : 5)}
                       textAnchor="middle"
                       dominantBaseline="middle"
-                      fontSize={label === 'SPINE' ? '6.5' : '8'}
+                      fontSize={isSpineLabel ? '6.2' : '8'}
                       fontWeight="700"
                       fill="#1D5BD6"
-                      transform={label === 'SPINE' ? `rotate(-90 ${c.x} ${c.y})` : undefined}
+                      transform={isSpineLabel ? `rotate(-90 ${c.x} ${c.y})` : undefined}
                     >
                       {label}
                     </text>
-                    {label !== 'SPINE' && (
+                    {!isSpineLabel && (
                       <text
                         x={c.x}
                         y={c.y + 6}
@@ -196,36 +208,91 @@ export function OuterBlueprintCanvas({
                 );
               })}
 
-              {[outerWrap.leftHingeRect, outerWrap.rightHingeRect].map((hinge, i) => {
-                const c = GeometryPrimitives.rectCenter(hinge);
-                return (
-                  <g key={i}>
-                    <rect
-                      x={hinge.x}
-                      y={hinge.y}
-                      width={hinge.width}
-                      height={hinge.height}
-                      fill="#C59B48"
-                      fillOpacity="0.18"
-                      stroke="#A67B2E"
-                      strokeWidth="0.65"
-                      strokeDasharray="2 2"
-                    />
-                    <text
-                      x={c.x}
-                      y={c.y}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize="5"
-                      fontWeight="700"
-                      fill="#8A6019"
-                      transform={`rotate(-90 ${c.x} ${c.y})`}
-                    >
-                      {roundTo(cutList.hingeSpacerMm, 1)} mm
-                    </text>
-                  </g>
-                );
-              })}
+              {/* Rigid hinge spacers (only when hingeSpacerMm > 0) */}
+              {cutList.hingeSpacerMm > 0 &&
+                [outerWrap.leftHingeRect, outerWrap.rightHingeRect].map((hinge, i) => {
+                  const c = GeometryPrimitives.rectCenter(hinge);
+                  return (
+                    <g key={i}>
+                      <rect
+                        x={hinge.x}
+                        y={hinge.y}
+                        width={hinge.width}
+                        height={hinge.height}
+                        fill="#C59B48"
+                        fillOpacity="0.18"
+                        stroke="#A67B2E"
+                        strokeWidth="0.65"
+                        strokeDasharray="2 2"
+                      />
+                      <text
+                        x={c.x}
+                        y={c.y}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="5"
+                        fontWeight="700"
+                        fill="#8A6019"
+                        transform={`rotate(-90 ${c.x} ${c.y})`}
+                      >
+                        {roundTo(cutList.hingeSpacerMm, 1)} mm
+                      </text>
+                    </g>
+                  );
+                })}
+
+              {/* Integrated Slip-In Tuck Flaps for Softcover Jacket */}
+              {outerWrap.bindingStyle === 'softcover-jacket' &&
+                outerWrap.jacketFlapWidthMm > 0 &&
+                [
+                  {
+                    label: 'BACK TUCK FLAP',
+                    rect: {
+                      x: 0,
+                      y: 0,
+                      width: outerWrap.jacketFlapWidthMm,
+                      height: outerWrap.heightMm,
+                    },
+                  },
+                  {
+                    label: 'FRONT TUCK FLAP',
+                    rect: {
+                      x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
+                      y: 0,
+                      width: outerWrap.jacketFlapWidthMm,
+                      height: outerWrap.heightMm,
+                    },
+                  },
+                ].map(({ label, rect }) => {
+                  const c = GeometryPrimitives.rectCenter(rect);
+                  return (
+                    <g key={label}>
+                      <rect
+                        x={rect.x}
+                        y={rect.y}
+                        width={rect.width}
+                        height={rect.height}
+                        fill="#C59B48"
+                        fillOpacity="0.16"
+                        stroke="#A67B2E"
+                        strokeWidth="0.7"
+                        strokeDasharray="3 2"
+                      />
+                      <text
+                        x={c.x}
+                        y={c.y}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="5.2"
+                        fontWeight="700"
+                        fill="#8A6019"
+                        transform={`rotate(-90 ${c.x} ${c.y})`}
+                      >
+                        {label} ({roundTo(outerWrap.jacketFlapWidthMm, 1)} mm)
+                      </text>
+                    </g>
+                  );
+                })}
             </g>
           ) : (
             <g data-testid="blueprint-split-panels">
