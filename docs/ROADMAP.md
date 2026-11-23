@@ -21,10 +21,11 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 - [x] **Colors & Eyedropper:** Independent Back, Spine & Hinges, and Front base color pickers plus click-to-sample eyedropper mapped via SVG `getScreenCTM`.
 - [x] **Spine Typography (`src/studio/fonts.ts`, `src/studio/SpineTypographyCard.tsx`):** Separate Title/Author inputs, Inline vs. Stacked presets, US/UK vs. European reading orientation, Vertical vs. Horizontal author writing toggle, 6 bundled offline `@fontsource/*` fonts, custom `.ttf`/`.otf`/`.woff`/`.woff2` `FontFace` uploader, automatic font-size clamping (`≤ SPINE_W - 4.0 mm`), and `±2.0 mm` optical horizontal nudge.
 - [x] **Bindery Cutting Mat UI & Interactive 3D Book Preview (`src/studio/Book3DPreview.tsx`, `src/components/FloatingHudToolbar.tsx`):** Self-healing spruce cutting-mat workbench, warm cotton-rag paper sheets, kettle-stitch dividers, collapsible Book Spec rail, folder-style paper index tabs, accessible floating HUD pill toolbars, and a live rotatable CSS 3D folded hardcover book mockup rendered at exact `BOARD_W × BOARD_H × SPINE_W` proportions.
+- [x] **Live Print Preflight Consistency Checker (`src/studio/preflight.ts`, `src/studio/PreflightCard.tsx`):** Real-time verification of front/back board & turn-in/bleed coverage gaps, effective print DPI, WCAG 2.1 spine text contrast, spine hinge clearance, and structural readiness—with preview-only red diagonal-hatched canvas warning zones and one-click Quick Fix actions.
 - [x] **300 DPI Dual Exports (`src/studio/renderEngine.ts`):** Print-Ready Roll PDF (`outer_cover_print.pdf`) with embedded vector spine typography and cut-line vs. bleed-registration mark toggle; Affinity Round-Trip 300 DPI PNG (`outer_cover_300dpi.png`) and `1:1` mm SVG (`outer_cover_300dpi.svg`).
 
 ### Quality & Research
-- [x] **Automated Test Suite:** 72 Vitest unit/component tests (~85% coverage) + 8 Playwright Chromium behavioral E2E tests covering real downloads, interactive canvas manipulation, collapsible rail, and 3D book orbiting.
+- [x] **Automated Test Suite:** 79 Vitest unit/component tests (~85% coverage) + 9 Playwright Chromium behavioral E2E tests covering real downloads, interactive canvas manipulation, collapsible rail, 3D book orbiting, and live preflight warning overlays/quick fixes.
 - [x] **Affinity Connector Research:** Documented feasibility and architectures in [RESEARCH.md](./RESEARCH.md).
 - [x] **Deployment Plan:** Documented GitHub Pages CI/CD plan in [DEPLOYMENT.md](./DEPLOYMENT.md).
 
