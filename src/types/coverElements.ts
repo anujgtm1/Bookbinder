@@ -1,6 +1,9 @@
 import type { Rect2D } from './geometry';
 import type { CuratedFontId, StudioFontId } from './studio';
+import type { ResizeCorner } from './studioLayer';
 import { UnitConverter, clampFinite, roundTo } from './units';
+
+export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
 
 const VALID_CURATED_FONT_IDS: readonly CuratedFontId[] = [
   'eb-garamond',
@@ -29,7 +32,13 @@ export type ClassicOrnamentId =
   | 'divider-celestial-stars'
   | 'emblem-compass-rose'
   | 'emblem-botanical-sprig'
-  | 'spine-classic-bands';
+  | 'spine-classic-bands'
+  | 'spine-title-cartouche'
+  | 'spine-head-tail-bands'
+  | 'spine-botanical-vine'
+  | 'spine-celestial-column'
+  | 'spine-diamond-lattice'
+  | 'custom-svg';
 
 export const CLASSIC_ORNAMENT_IDS: readonly ClassicOrnamentId[] = [
   'frame-single-rule',
@@ -44,6 +53,12 @@ export const CLASSIC_ORNAMENT_IDS: readonly ClassicOrnamentId[] = [
   'emblem-compass-rose',
   'emblem-botanical-sprig',
   'spine-classic-bands',
+  'spine-title-cartouche',
+  'spine-head-tail-bands',
+  'spine-botanical-vine',
+  'spine-celestial-column',
+  'spine-diamond-lattice',
+  'custom-svg',
 ] as const;
 
 export interface CoverTextLayer {
@@ -78,6 +93,11 @@ export interface CoverOrnamentLayer {
   readonly color: string;
   /** Line/rule thickness in mm (0.35 to 3.0 mm; default 0.7 mm for crisp foil/HTV cutting) */
   readonly strokeWidthMm: number;
+  /** Optional custom imported SVG stamp metadata when presetId === 'custom-svg' */
+  readonly customSvgName?: string;
+  readonly customSvgPaths?: readonly string[];
+  readonly customSvgViewBox?: { readonly width: number; readonly height: number };
+  readonly customSvgRenderMode?: CustomSvgRenderMode;
 }
 
 export const COVER_TEXT_BOUNDS = {
@@ -282,7 +302,7 @@ export const CoverOrnamentLayerModel = {
     const isFrameOrCorner =
       presetId.startsWith('frame-') || presetId.startsWith('corners-');
     const isDivider = presetId.startsWith('divider-');
-    const isSpineBands = presetId === 'spine-classic-bands';
+    const isSpinePreset = presetId.startsWith('spine-');
 
     let xMm: number;
     let yMm: number;
@@ -290,14 +310,14 @@ export const CoverOrnamentLayerModel = {
     let heightMm: number;
     let strokeWidthMm = 0.7;
 
-    if (isSpineBands) {
-      const padX = Math.min(2.5, targetBoardRectMm.width * 0.12);
-      const padY = Math.min(18, targetBoardRectMm.height * 0.08);
+    if (isSpinePreset) {
+      const padX = Math.min(2.4, targetBoardRectMm.width * 0.14);
+      const padY = Math.min(14, targetBoardRectMm.height * 0.07);
       xMm = targetBoardRectMm.x + padX;
       yMm = targetBoardRectMm.y + padY;
       widthMm = Math.max(COVER_ORNAMENT_BOUNDS.minSizeMm, targetBoardRectMm.width - padX * 2);
       heightMm = Math.max(COVER_ORNAMENT_BOUNDS.minSizeMm, targetBoardRectMm.height - padY * 2);
-      strokeWidthMm = 0.75;
+      strokeWidthMm = 0.65;
     } else if (isFrameOrCorner) {
       const inset = Math.min(12, Math.max(6, Math.min(targetBoardRectMm.width, targetBoardRectMm.height) * 0.085));
       xMm = targetBoardRectMm.x + inset;
@@ -328,6 +348,95 @@ export const CoverOrnamentLayerModel = {
       heightMm: roundTo(heightMm, 2),
       color,
       strokeWidthMm,
+    };
+  },
+
+  createCustomSvg(input: {
+    readonly name: string;
+    readonly paths: readonly string[];
+    readonly viewBoxWidth: number;
+    readonly viewBoxHeight: number;
+    readonly renderMode: CustomSvgRenderMode;
+    readonly targetBoardRectMm: Rect2D;
+    readonly zone: CoverElementZone;
+    readonly color?: string;
+  }): CoverOrnamentLayer {
+    const aspect = Math.max(0.1, input.viewBoxWidth / Math.max(0.1, input.viewBoxHeight));
+    const maxW = input.targetBoardRectMm.width * (input.zone === 'spine' ? 0.78 : 0.48);
+    const maxH = input.targetBoardRectMm.height * (input.zone === 'spine' ? 0.72 : 0.42);
+    let widthMm = maxW;
+    let heightMm = widthMm / aspect;
+    if (heightMm > maxH) {
+      heightMm = maxH;
+      widthMm = heightMm * aspect;
+    }
+    widthMm = clampFinite(widthMm, 36, COVER_ORNAMENT_BOUNDS.minSizeMm, COVER_ORNAMENT_BOUNDS.maxSizeMm);
+    heightMm = clampFinite(heightMm, 36, COVER_ORNAMENT_BOUNDS.minSizeMm, COVER_ORNAMENT_BOUNDS.maxSizeMm);
+
+    return {
+      id: generateElementId('svg'),
+      presetId: 'custom-svg',
+      zone: input.zone,
+      xMm: roundTo(input.targetBoardRectMm.x + (input.targetBoardRectMm.width - widthMm) / 2, 2),
+      yMm: roundTo(input.targetBoardRectMm.y + (input.targetBoardRectMm.height - heightMm) / 2, 2),
+      widthMm: roundTo(widthMm, 2),
+      heightMm: roundTo(heightMm, 2),
+      color: input.color ?? '#d9b566',
+      strokeWidthMm: input.renderMode === 'stroke' ? 0.7 : 0.5,
+      customSvgName: input.name,
+      customSvgPaths: [...input.paths],
+      customSvgViewBox: { width: input.viewBoxWidth, height: input.viewBoxHeight },
+      customSvgRenderMode: input.renderMode,
+    };
+  },
+
+  resizeFromCorner(
+    layer: CoverOrnamentLayer,
+    corner: ResizeCorner,
+    pointerXMm: number,
+    pointerYMm: number,
+    lockAspect: boolean,
+  ): CoverOrnamentLayer {
+    const left = layer.xMm;
+    const right = layer.xMm + layer.widthMm;
+    const top = layer.yMm;
+    const bottom = layer.yMm + layer.heightMm;
+    const anchorX = corner === 'nw' || corner === 'sw' ? right : left;
+    const anchorY = corner === 'nw' || corner === 'ne' ? bottom : top;
+
+    let nextW = clampFinite(
+      Math.abs(pointerXMm - anchorX),
+      layer.widthMm,
+      COVER_ORNAMENT_BOUNDS.minSizeMm,
+      COVER_ORNAMENT_BOUNDS.maxSizeMm,
+    );
+    let nextH = clampFinite(
+      Math.abs(pointerYMm - anchorY),
+      layer.heightMm,
+      COVER_ORNAMENT_BOUNDS.minSizeMm,
+      COVER_ORNAMENT_BOUNDS.maxSizeMm,
+    );
+
+    if (lockAspect) {
+      const aspect = layer.widthMm / Math.max(0.1, layer.heightMm);
+      if (nextW / aspect >= nextH) {
+        nextH = clampFinite(nextW / aspect, nextH, COVER_ORNAMENT_BOUNDS.minSizeMm, COVER_ORNAMENT_BOUNDS.maxSizeMm);
+        nextW = nextH * aspect;
+      } else {
+        nextW = clampFinite(nextH * aspect, nextW, COVER_ORNAMENT_BOUNDS.minSizeMm, COVER_ORNAMENT_BOUNDS.maxSizeMm);
+        nextH = nextW / aspect;
+      }
+    }
+
+    const nextX = corner === 'nw' || corner === 'sw' ? anchorX - nextW : anchorX;
+    const nextY = corner === 'nw' || corner === 'ne' ? anchorY - nextH : anchorY;
+
+    return {
+      ...layer,
+      xMm: roundTo(nextX, 2),
+      yMm: roundTo(nextY, 2),
+      widthMm: roundTo(nextW, 2),
+      heightMm: roundTo(nextH, 2),
     };
   },
 
@@ -369,6 +478,33 @@ export const CoverOrnamentLayerModel = {
     const obj = raw as Record<string, unknown>;
     const presetId = parseOrnamentId(obj.presetId);
     if (!presetId) return null;
+    const rawMode = obj.customSvgRenderMode;
+    const customSvgRenderMode: CustomSvgRenderMode | undefined =
+      rawMode === 'fill' || rawMode === 'stroke' || rawMode === 'fill-and-stroke'
+        ? rawMode
+        : undefined;
+    const customSvgPaths =
+      presetId === 'custom-svg' && Array.isArray(obj.customSvgPaths)
+        ? obj.customSvgPaths.filter((p): p is string => typeof p === 'string' && p.length > 0)
+        : undefined;
+    const rawVb =
+      obj.customSvgViewBox && typeof obj.customSvgViewBox === 'object'
+        ? (obj.customSvgViewBox as Record<string, unknown>)
+        : null;
+    const customSvgViewBox =
+      presetId === 'custom-svg' &&
+      rawVb &&
+      typeof rawVb.width === 'number' &&
+      rawVb.width > 0 &&
+      typeof rawVb.height === 'number' &&
+      rawVb.height > 0
+        ? { width: rawVb.width, height: rawVb.height }
+        : undefined;
+
+    if (presetId === 'custom-svg' && (!customSvgPaths || customSvgPaths.length === 0)) {
+      return null;
+    }
+
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateElementId('orn'),
       presetId,
@@ -394,6 +530,10 @@ export const CoverOrnamentLayerModel = {
         COVER_ORNAMENT_BOUNDS.strokeWidthMm.min,
         COVER_ORNAMENT_BOUNDS.strokeWidthMm.max,
       ),
+      customSvgName: typeof obj.customSvgName === 'string' ? obj.customSvgName : undefined,
+      customSvgPaths,
+      customSvgViewBox,
+      customSvgRenderMode,
     };
   },
 } as const;

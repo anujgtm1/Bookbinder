@@ -3,7 +3,7 @@ import type { CoverTextLayer } from '@/types/coverElements';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { CoverStudioState, CuratedFontId, StudioFontId } from '@/types/studio';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
-import { buildOrnamentCompoundPath } from './classicOrnaments';
+import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { loadCuratedFontBytes, type CustomFontAsset } from './fonts';
 import {
   computeCoverTextLinePlacements,
@@ -477,9 +477,10 @@ export async function generateCricutHtvSvg(
 
   const letteringD = letteringParts.join(' ');
 
-  // 3. Classic Bookbindery Vector Ornaments
+  // 3. Classic Bookbindery Vector Ornaments & Custom SVG Stamps
   const includeOrnaments = options.includeOrnaments ?? true;
-  const ornamentParts: string[] = [];
+  const filledOrnamentParts: string[] = [];
+  const strokedOrnamentEls: string[] = [];
   if (includeOrnaments) {
     for (const orn of studio.ornaments ?? []) {
       if (!matchesScopeZone(orn.zone)) continue;
@@ -490,7 +491,15 @@ export async function generateCricutHtvSvg(
         mirrorX: options.mirrorForHtv,
       });
       if (!d) continue;
-      ornamentParts.push(d);
+      const style = getOrnamentSvgStyle(orn);
+      if (style.fill !== 'none') {
+        filledOrnamentParts.push(d);
+      }
+      if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
+        strokedOrnamentEls.push(
+          `  <path id="custom-svg-stroke-${orn.id}" d="${d}" fill="none" stroke="#222222" stroke-width="${fmt(style.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
+        );
+      }
       const rawX = orn.xMm - originXMm;
       const ornX = options.mirrorForHtv ? widthMm - (rawX + orn.widthMm) : rawX;
       designBounds = mergeBounds(designBounds, {
@@ -501,7 +510,7 @@ export async function generateCricutHtvSvg(
       });
     }
   }
-  const ornamentsD = ornamentParts.join(' ');
+  const ornamentsD = filledOrnamentParts.join(' ');
 
   const pathElements: string[] = [];
 
@@ -554,11 +563,14 @@ export async function generateCricutHtvSvg(
     }
   }
 
-  // 4. Classic Bookbindery Vector Ornaments (separate foil/HTV cut path)
+  // 4. Classic Bookbindery Vector Ornaments & Custom SVG Stamps (separate foil/HTV cut paths)
   if (ornamentsD) {
     pathElements.push(
       `  <path id="classic-ornaments" d="${ornamentsD}" fill="#222222" fill-rule="nonzero" />`,
     );
+  }
+  for (const el of strokedOrnamentEls) {
+    pathElements.push(el);
   }
 
   // 5. Outlined Compound Vector Lettering (solid lampblack fill — Cricut Basic Cut / HTV)
@@ -602,7 +614,7 @@ ${pathElements.join('\n')}
     widthMm,
     heightMm,
     pathCount: pathElements.length,
-    hasLettering: Boolean(letteringD || ornamentsD),
+    hasLettering: Boolean(letteringD || ornamentsD || strokedOrnamentEls.length > 0),
     fitsCricutJoy,
     fitsStandard12x12,
     fitsLarge12x24,

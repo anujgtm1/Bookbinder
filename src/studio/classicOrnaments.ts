@@ -5,6 +5,7 @@ import type {
   CoverOrnamentLayer,
 } from '@/types/coverElements';
 import { roundTo } from '@/types/units';
+import { mapNormalizedPathsToMm } from './svgStampParser';
 
 export interface ClassicOrnamentSpec {
   readonly id: ClassicOrnamentId;
@@ -99,10 +100,75 @@ export const CLASSIC_ORNAMENTS: readonly ClassicOrnamentSpec[] = [
     defaultZone: 'spine',
     description: 'Classic raised-band foil bars across spine',
   },
+  {
+    id: 'spine-title-cartouche',
+    label: 'Spine Title Cartouche',
+    category: 'spine',
+    defaultZone: 'spine',
+    description: 'Gilded double-rule box around upper spine title',
+  },
+  {
+    id: 'spine-head-tail-bands',
+    label: 'Head & Tail Spine Bands',
+    category: 'spine',
+    defaultZone: 'spine',
+    description: 'Decorative top/bottom bands leaving center clear for title',
+  },
+  {
+    id: 'spine-botanical-vine',
+    label: 'Spine Botanical Vine',
+    category: 'spine',
+    defaultZone: 'spine',
+    description: 'Vertical clothbound vine with paired leaves along spine',
+  },
+  {
+    id: 'spine-celestial-column',
+    label: 'Spine Celestial Column',
+    category: 'spine',
+    defaultZone: 'spine',
+    description: 'Vertical column of stars & diamond accents down spine',
+  },
+  {
+    id: 'spine-diamond-lattice',
+    label: 'Art Deco Spine Lattice',
+    category: 'spine',
+    defaultZone: 'spine',
+    description: 'Stacked geometric diamond filigree panel along spine',
+  },
 ] as const;
 
 export function getClassicOrnamentSpec(id: ClassicOrnamentId): ClassicOrnamentSpec {
+  if (id === 'custom-svg') {
+    return {
+      id: 'custom-svg',
+      label: 'Custom SVG Stamp',
+      category: 'emblems',
+      defaultZone: 'front',
+      description: 'User-imported vector SVG stamp',
+    };
+  }
   return CLASSIC_ORNAMENTS.find((o) => o.id === id) ?? CLASSIC_ORNAMENTS[0];
+}
+
+export interface OrnamentSvgRenderStyle {
+  readonly fill: string;
+  readonly stroke: string;
+  readonly strokeWidthMm: number;
+}
+
+/** Resolves fill & stroke styling for built-in parametric ornaments and custom imported SVG stamps. */
+export function getOrnamentSvgStyle(ornament: CoverOrnamentLayer): OrnamentSvgRenderStyle {
+  if (ornament.presetId !== 'custom-svg') {
+    return { fill: ornament.color, stroke: 'none', strokeWidthMm: 0 };
+  }
+  const mode = ornament.customSvgRenderMode ?? 'fill';
+  if (mode === 'stroke') {
+    return { fill: 'none', stroke: ornament.color, strokeWidthMm: ornament.strokeWidthMm };
+  }
+  if (mode === 'fill-and-stroke') {
+    return { fill: ornament.color, stroke: ornament.color, strokeWidthMm: ornament.strokeWidthMm };
+  }
+  return { fill: ornament.color, stroke: 'none', strokeWidthMm: 0 };
 }
 
 const fmt = (n: number): string => String(roundTo(n, 3));
@@ -566,6 +632,132 @@ export function buildOrnamentClosedPaths(
         }
       }
       return paths;
+    }
+
+    case 'spine-title-cartouche': {
+      // Classic gilded rectangular title frame in upper half + head/tail accent bars & diamonds
+      const boxY = h * 0.14;
+      const boxH = h * 0.36;
+      const innerGap = Math.max(1.1, t * 1.7);
+      const cx = w / 2;
+      const dR = Math.min(w * 0.26, 3.2);
+      return [
+        rectBar(0, 0, w, t, mapX, mapY),
+        rectBar(0, h - t, w, t, mapX, mapY),
+        ...rectFrameBars(0, boxY, w, boxH, t, mapX, mapY),
+        ...(w > innerGap * 3 && boxH > innerGap * 3
+          ? rectFrameBars(
+              innerGap,
+              boxY + innerGap,
+              w - innerGap * 2,
+              boxH - innerGap * 2,
+              Math.max(0.35, t * 0.65),
+              mapX,
+              mapY,
+            )
+          : []),
+        fourPointStar(cx, boxY * 0.5, dR, dR * 1.25, 0.35, mapX, mapY),
+        fourPointStar(cx, boxY + boxH + (h - (boxY + boxH)) * 0.5, dR, dR * 1.25, 0.35, mapX, mapY),
+      ];
+    }
+
+    case 'spine-head-tail-bands': {
+      // Decorative triple rules + central diamond at head and tail, leaving middle clear for vertical spine title
+      const cx = w / 2;
+      const bandGap = Math.max(1.4, t * 2.2);
+      const dR = Math.min(w * 0.28, 3.0);
+      const headDiamondY = bandGap * 2.6 + dR;
+      const tailDiamondY = h - bandGap * 2.6 - dR;
+      return [
+        // Head triple band + diamond finial
+        rectBar(0, 0, w, t, mapX, mapY),
+        rectBar(0, bandGap, w, Math.max(0.35, t * 0.65), mapX, mapY),
+        rectBar(0, bandGap * 1.9, w, Math.max(0.35, t * 0.65), mapX, mapY),
+        fourPointStar(cx, headDiamondY, dR, dR * 1.2, 0.3, mapX, mapY),
+        // Tail triple band + diamond finial
+        fourPointStar(cx, tailDiamondY, dR, dR * 1.2, 0.3, mapX, mapY),
+        rectBar(0, h - bandGap * 1.9 - t * 0.65, w, Math.max(0.35, t * 0.65), mapX, mapY),
+        rectBar(0, h - bandGap - t * 0.65, w, Math.max(0.35, t * 0.65), mapX, mapY),
+        rectBar(0, h - t, w, t, mapX, mapY),
+      ];
+    }
+
+    case 'spine-botanical-vine': {
+      // Vertical bindery vine with paired leaves running down the spine
+      const cx = w / 2;
+      const span = Math.min(w * 0.48, 12);
+      const leafW = Math.max(1.1, span * 0.34);
+      const paths: string[] = [
+        rectBar(cx - t * 0.42, h * 0.06, t * 0.84, h * 0.88, mapX, mapY),
+        leafPetal(cx, h * 0.08, cx, h * 0.01, leafW * 0.8, mapX, mapY),
+        leafPetal(cx, h * 0.92, cx, h * 0.99, leafW * 0.8, mapX, mapY),
+      ];
+      const tiers = [0.18, 0.34, 0.5, 0.66, 0.82];
+      for (const ratio of tiers) {
+        const y = h * ratio;
+        const lift = Math.min(h * 0.055, span * 1.15);
+        paths.push(
+          leafPetal(cx, y, cx - span, y - lift, leafW, mapX, mapY),
+          leafPetal(cx, y, cx + span, y - lift, leafW, mapX, mapY),
+        );
+      }
+      return paths;
+    }
+
+    case 'spine-celestial-column': {
+      // Vertical column of celestial 4-point stars & delicate connecting rules
+      const cx = w / 2;
+      const bigR = Math.min(w * 0.44, h * 0.065);
+      const smR = bigR * 0.55;
+      const paths: string[] = [
+        rectBar(0, 0, w, t, mapX, mapY),
+        rectBar(0, h - t, w, t, mapX, mapY),
+      ];
+      const majorYs = [0.14, 0.5, 0.86];
+      const minorYs = [0.26, 0.38, 0.62, 0.74];
+      for (const r of majorYs) {
+        paths.push(fourPointStar(cx, h * r, bigR, bigR * 1.25, 0.22, mapX, mapY));
+      }
+      for (const r of minorYs) {
+        paths.push(fourPointStar(cx, h * r, smR, smR * 1.2, 0.32, mapX, mapY));
+      }
+      return paths;
+    }
+
+    case 'spine-diamond-lattice': {
+      // Art Deco stacked geometric diamond lattice down the spine
+      const cx = w / 2;
+      const cells = Math.max(4, Math.min(8, Math.round(h / Math.max(12, w * 1.4))));
+      const cellH = (h - t * 2) / cells;
+      const halfW = Math.max(2, w / 2 - t * 0.5);
+      const paths: string[] = [
+        ...rectFrameBars(0, 0, w, h, t, mapX, mapY),
+      ];
+      for (let i = 0; i < cells; i++) {
+        const yTop = t + i * cellH;
+        const yMid = yTop + cellH / 2;
+        const yBot = yTop + cellH;
+        paths.push(
+          segmentBar(cx, yTop, cx + halfW, yMid, t * 0.72, mapX, mapY),
+          segmentBar(cx + halfW, yMid, cx, yBot, t * 0.72, mapX, mapY),
+          segmentBar(cx, yBot, cx - halfW, yMid, t * 0.72, mapX, mapY),
+          segmentBar(cx - halfW, yMid, cx, yTop, t * 0.72, mapX, mapY),
+        );
+      }
+      return paths;
+    }
+
+    case 'custom-svg': {
+      if (!ornament.customSvgPaths || ornament.customSvgPaths.length === 0) return [];
+      const vbW = ornament.customSvgViewBox?.width ?? 100;
+      const vbH = ornament.customSvgViewBox?.height ?? 100;
+      return mapNormalizedPathsToMm(
+        ornament.customSvgPaths,
+        vbW,
+        vbH,
+        { xMm: ornament.xMm, yMm: ornament.yMm, widthMm: ornament.widthMm, heightMm: ornament.heightMm },
+        transform,
+      );
     }
   }
 }

@@ -7,7 +7,7 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
-import { buildOrnamentCompoundPath } from './classicOrnaments';
+import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
 import { computeInnerPocketsLayout } from './pocketRenderEngine';
 import {
@@ -134,10 +134,22 @@ function CoverFaceSvg({
         </g>
       ))}
 
-      {/* Classic Bookbindery Vector Ornaments */}
+      {/* Classic Bookbindery Vector Ornaments & Custom SVG Stamps */}
       {(studio.ornaments ?? []).map((orn) => {
         const d = buildOrnamentCompoundPath(orn);
-        return d ? <path key={orn.id} d={d} fill={orn.color} /> : null;
+        if (!d) return null;
+        const style = getOrnamentSvgStyle(orn);
+        return (
+          <path
+            key={orn.id}
+            d={d}
+            fill={style.fill}
+            stroke={style.stroke !== 'none' ? style.stroke : undefined}
+            strokeWidth={style.strokeWidthMm > 0 ? style.strokeWidthMm : undefined}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        );
       })}
 
       {/* Draggable Cover Text Layers (Front / Back / Spine) */}

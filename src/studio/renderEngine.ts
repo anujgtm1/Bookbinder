@@ -11,7 +11,7 @@ import {
 import { CoverStudioModel, type CoverStudioState, type StudioFontId } from '@/types/studio';
 import type { LayerClipZone, QuickFitTarget } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
-import { buildOrnamentCompoundPath } from './classicOrnaments';
+import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import {
   getCuratedFont,
   loadCuratedFontBytes,
@@ -327,14 +327,25 @@ export async function renderCoverArtworkCanvas(
 
   // 3. Optional rasterized classic ornaments, cover text layers & spine typography (used for 300 DPI PNG export)
   if (options.includeSpineText) {
-    // 3a. Classic Bookbindery Vector Ornaments
+    // 3a. Classic Bookbindery Vector Ornaments & Custom SVG Stamps
     for (const orn of studio.ornaments ?? []) {
       const compoundD = buildOrnamentCompoundPath(orn);
       if (!compoundD || typeof Path2D === 'undefined') continue;
+      const style = getOrnamentSvgStyle(orn);
+      const path2d = new Path2D(compoundD);
       ctx.save();
       ctx.scale(pxPerMm, pxPerMm);
-      ctx.fillStyle = orn.color;
-      ctx.fill(new Path2D(compoundD));
+      if (style.fill !== 'none') {
+        ctx.fillStyle = style.fill;
+        ctx.fill(path2d);
+      }
+      if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
+        ctx.strokeStyle = style.stroke;
+        ctx.lineWidth = style.strokeWidthMm;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.stroke(path2d);
+      }
       ctx.restore();
     }
 
@@ -498,17 +509,24 @@ export async function generatePrintReadyRollPdf(
     }
   }
 
-  // 2a. True Vector Classic Bookbindery Ornaments (crisp at any scale, never rasterized)
+  // 2a. True Vector Classic Bookbindery Ornaments & Custom SVG Stamps (crisp at any scale, never rasterized)
   const mmToPt = UnitConverter.mmToPoints(1);
   for (const orn of studio.ornaments ?? []) {
     const compoundD = buildOrnamentCompoundPath(orn);
     if (!compoundD) continue;
+    const style = getOrnamentSvgStyle(orn);
     const oc = hexToRgb01(orn.color);
+    const pdfColor = rgb(oc.r, oc.g, oc.b);
     page.drawSvgPath(compoundD, {
       x: 0,
       y: pageH,
       scale: mmToPt,
-      color: rgb(oc.r, oc.g, oc.b),
+      color: style.fill !== 'none' ? pdfColor : undefined,
+      borderColor: style.stroke !== 'none' && style.strokeWidthMm > 0 ? pdfColor : undefined,
+      borderWidth:
+        style.stroke !== 'none' && style.strokeWidthMm > 0
+          ? UnitConverter.mmToPoints(style.strokeWidthMm)
+          : undefined,
     });
   }
 
@@ -802,7 +820,13 @@ export function generateAffinityCoverSvg(
   const ornamentNodes = (studio.ornaments ?? [])
     .map((orn) => {
       const d = buildOrnamentCompoundPath(orn);
-      return d ? `    <path d="${d}" fill="${escapeXml(orn.color)}" />` : '';
+      if (!d) return '';
+      const style = getOrnamentSvgStyle(orn);
+      const strokeAttrs =
+        style.stroke !== 'none' && style.strokeWidthMm > 0
+          ? ` stroke="${escapeXml(style.stroke)}" stroke-width="${fmt(style.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round"`
+          : '';
+      return `    <path d="${d}" fill="${escapeXml(style.fill)}"${strokeAttrs} />`;
     })
     .filter(Boolean)
     .join('\n');
