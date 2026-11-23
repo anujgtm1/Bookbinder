@@ -307,4 +307,66 @@ describe('SidebarControls', () => {
     expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('45% of page width');
     expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('meets ≥ 63.0 mm recommendation');
   });
+
+  it('toggles Pocket Construction between 1-Piece Flaps and Separate Pockets (2-Sheet) on softcover-jacket', async () => {
+    const user = userEvent.setup();
+    let latest: BookParameters = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+    };
+    const onChange = vi.fn((next: BookParameters) => {
+      latest = next;
+    });
+
+    const { rerender } = render(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+
+    // Pocket construction selector is visible for softcover-jacket, defaulting to 1-Piece Flaps
+    expect(screen.getByTestId('softcover-pocket-mode-controls')).toBeInTheDocument();
+    expect(screen.getByTestId('softcover-pocket-mode-integrated')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByTestId('softcover-pocket-mode-separate')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByTestId('softcover-flap-controls')).toBeInTheDocument();
+    expect(screen.queryByTestId('pdf-page-size-select')).not.toBeInTheDocument();
+
+    // Switch to Separate Pockets (2-Sheet)
+    await user.click(screen.getByTestId('softcover-pocket-mode-separate'));
+    expect(latest.softcoverPocketMode).toBe('separate');
+
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('softcover-pocket-mode-separate')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // Flap width controls hide and Inner Envelopes PDF Sheet Size + Pocket Depth unlock automatically
+    expect(screen.queryByTestId('softcover-flap-controls')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pdf-page-size-select')).toBeInTheDocument();
+    await user.click(screen.getByTestId('construction-settings-toggle'));
+    expect(screen.getByTestId('pocket-depth-value')).toBeInTheDocument();
+
+    // Switch back to 1-Piece Flaps
+    await user.click(screen.getByTestId('softcover-pocket-mode-integrated'));
+    expect(latest.softcoverPocketMode).toBe('integrated');
+  });
 });

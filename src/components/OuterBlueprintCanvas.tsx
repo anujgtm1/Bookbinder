@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
@@ -50,7 +50,7 @@ export function OuterBlueprintCanvas({
   }>({ active: false, startX: 0, startY: 0, origX: 0, origY: 0 });
 
   const { outerWrap, splitPanels, cutList } = geometry;
-  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const strategy = resolveBindingStrategy(outerWrap);
   const { capabilities, panelLabels } = strategy;
   const effectiveSplitMode: SplitMode = capabilities.supportsThreePieceSplit ? splitMode : 'single';
   const bleedPad = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
@@ -328,8 +328,9 @@ export function OuterBlueprintCanvas({
                   );
                 })}
 
-              {/* Integrated Flaps (Slip Cover & Classic Dust Jacket) + Mitered Glue Tabs (Slip Cover only) */}
-              {capabilities.hasFlaps && outerWrap.jacketFlapWidthMm > 0 && (
+              {/* Integrated Flaps (Slip Cover & Classic Dust Jacket) + Mitered Glue Tabs (Slip Cover 1-Piece & 2-Sheet) */}
+              {((capabilities.hasFlaps && outerWrap.jacketFlapWidthMm > 0) ||
+                (capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0)) && (
                 <g data-testid="blueprint-softcover-flaps-and-tabs">
                   {capabilities.hasGlueTabs &&
                     outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => {
@@ -359,57 +360,59 @@ export function OuterBlueprintCanvas({
                         </g>
                       );
                     })}
-                  {[
-                    {
-                      key: 'left-flap',
-                      label: panelLabels.leftFlap ?? 'BACK FLAP',
-                      rect: {
-                        x: 0,
-                        y: outerWrap.backBoardRect.y,
-                        width: outerWrap.jacketFlapWidthMm,
-                        height: outerWrap.backBoardRect.height,
+                  {capabilities.hasFlaps &&
+                    outerWrap.jacketFlapWidthMm > 0 &&
+                    [
+                      {
+                        key: 'left-flap',
+                        label: panelLabels.leftFlap ?? 'BACK FLAP',
+                        rect: {
+                          x: 0,
+                          y: outerWrap.backBoardRect.y,
+                          width: outerWrap.jacketFlapWidthMm,
+                          height: outerWrap.backBoardRect.height,
+                        },
                       },
-                    },
-                    {
-                      key: 'right-flap',
-                      label: panelLabels.rightFlap ?? 'FRONT FLAP',
-                      rect: {
-                        x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
-                        y: outerWrap.frontBoardRect.y,
-                        width: outerWrap.jacketFlapWidthMm,
-                        height: outerWrap.frontBoardRect.height,
+                      {
+                        key: 'right-flap',
+                        label: panelLabels.rightFlap ?? 'FRONT FLAP',
+                        rect: {
+                          x: outerWrap.widthMm - outerWrap.jacketFlapWidthMm,
+                          y: outerWrap.frontBoardRect.y,
+                          width: outerWrap.jacketFlapWidthMm,
+                          height: outerWrap.frontBoardRect.height,
+                        },
                       },
-                    },
-                  ].map(({ key, label, rect }) => {
-                    const c = GeometryPrimitives.rectCenter(rect);
-                    return (
-                      <g key={key}>
-                        <rect
-                          x={rect.x}
-                          y={rect.y}
-                          width={rect.width}
-                          height={rect.height}
-                          fill="#C59B48"
-                          fillOpacity="0.14"
-                          stroke="#A67B2E"
-                          strokeWidth="0.7"
-                          strokeDasharray="3 2"
-                        />
-                        <text
-                          x={c.x}
-                          y={c.y}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          fontSize="5"
-                          fontWeight="700"
-                          fill="#8A6019"
-                          transform={`rotate(-90 ${c.x} ${c.y})`}
-                        >
-                          {label} ({roundTo(outerWrap.jacketFlapWidthMm, 1)} mm)
-                        </text>
-                      </g>
-                    );
-                  })}
+                    ].map(({ key, label, rect }) => {
+                      const c = GeometryPrimitives.rectCenter(rect);
+                      return (
+                        <g key={key}>
+                          <rect
+                            x={rect.x}
+                            y={rect.y}
+                            width={rect.width}
+                            height={rect.height}
+                            fill="#C59B48"
+                            fillOpacity="0.14"
+                            stroke="#A67B2E"
+                            strokeWidth="0.7"
+                            strokeDasharray="3 2"
+                          />
+                          <text
+                            x={c.x}
+                            y={c.y}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="5"
+                            fontWeight="700"
+                            fill="#8A6019"
+                            transform={`rotate(-90 ${c.x} ${c.y})`}
+                          >
+                            {label} ({roundTo(outerWrap.jacketFlapWidthMm, 1)} mm)
+                          </text>
+                        </g>
+                      );
+                    })}
                 </g>
               )}
 

@@ -24,6 +24,7 @@ function StatefulPdfExportDialog({
   initialSplitMode = 'single',
   defaultExportLayerMode = 'full',
   onReduceFlapWidth,
+  onDetachSlipFlaps,
   onConfirmExport,
   onClose = vi.fn(),
 }: {
@@ -34,6 +35,7 @@ function StatefulPdfExportDialog({
   readonly initialSplitMode?: SplitMode;
   readonly defaultExportLayerMode?: CoverPdfLayerMode;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
+  readonly onDetachSlipFlaps?: () => void;
   readonly onConfirmExport: (selection: PdfExportSelection) => void;
   readonly onClose?: () => void;
 }) {
@@ -54,6 +56,7 @@ function StatefulPdfExportDialog({
       splitMode={splitMode}
       onChangeSplitMode={setSplitMode}
       onReduceFlapWidth={onReduceFlapWidth}
+      onDetachSlipFlaps={onDetachSlipFlaps}
       defaultExportLayerMode={defaultExportLayerMode}
       onConfirmExport={onConfirmExport}
       onClose={onClose}
@@ -136,6 +139,7 @@ describe('PdfExportDialog', () => {
       dpi: 600,
       tileOverlapMm: 15,
       exportLayerMode: 'full',
+      appendInnerPocketsPage: false,
     });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -241,6 +245,7 @@ describe('PdfExportDialog', () => {
       dpi: 300,
       tileOverlapMm: 10,
       exportLayerMode: 'full',
+      appendInnerPocketsPage: false,
     });
   });
 
@@ -348,5 +353,68 @@ describe('PdfExportDialog', () => {
     );
     expect(screen.getByTestId('pdf-opt-layers-base-only')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent('Base Only (For HTV)');
+  });
+
+  it('offers 1-click Detach Flaps callout on tiled A6 slip cover and enables Include Detached Pockets (Page 2) toggle', async () => {
+    const user = userEvent.setup();
+    const baseA6 = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 50,
+      printMedia: 'letter' as const,
+    };
+    const integratedGeom = calculateCaseGeometry(baseA6);
+    const separateGeom = calculateCaseGeometry({ ...baseA6, softcoverPocketMode: 'separate' });
+    const onDetachSlipFlaps = vi.fn();
+    const onConfirmExport = vi.fn();
+
+    const { rerender } = render(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={integratedGeom}
+        initialMedia="letter"
+        onDetachSlipFlaps={onDetachSlipFlaps}
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    // Tiled on US Letter with prominent 1-click Detach Flaps button
+    expect(screen.getByTestId('pdf-media-option-letter')).toHaveTextContent('2 sheets (tiled)');
+    const detachBtn = screen.getByTestId('pdf-detach-flaps-btn');
+    expect(detachBtn).toHaveTextContent('Detach Flaps → 1× US Letter + Separate Pockets');
+    expect(screen.queryByTestId('pdf-opt-append-pockets')).not.toBeInTheDocument();
+
+    await user.click(detachBtn);
+    expect(onDetachSlipFlaps).toHaveBeenCalledTimes(1);
+
+    // Rerender with detached separate-pockets geometry -> flips to 1 sheet + Include Detached Pockets (Page 2) ON
+    rerender(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={separateGeom}
+        initialMedia="letter"
+        onDetachSlipFlaps={onDetachSlipFlaps}
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    expect(screen.getByTestId('pdf-media-option-letter')).toHaveTextContent('1 sheet');
+    expect(screen.queryByTestId('pdf-detach-flaps-btn')).not.toBeInTheDocument();
+    const appendSwitch = screen.getByTestId('pdf-opt-append-pockets');
+    expect(appendSwitch).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent('+ Pockets');
+
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onConfirmExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'cover-styled',
+        printMediaId: 'letter',
+        pageSizeId: 'letter',
+        appendInnerPocketsPage: true,
+      }),
+    );
   });
 });

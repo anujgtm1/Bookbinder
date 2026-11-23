@@ -1,11 +1,11 @@
-import { Download, FileText, Printer, X } from 'lucide-react';
+import { Download, FileText, Printer, Sparkles, X } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { PdfSheetPreviewSvg } from '@/components/PdfSheetPreviewSvg';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { evaluateDetachedSlipCoverFit, resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import type { CoverPdfLayerMode } from '@/studio/renderEngine';
@@ -38,6 +38,7 @@ export interface PdfExportSelection {
   readonly dpi: 300 | 600;
   readonly tileOverlapMm: number;
   readonly exportLayerMode: CoverPdfLayerMode;
+  readonly appendInnerPocketsPage: boolean;
 }
 
 export interface OuterPdfExportOptions {
@@ -45,6 +46,8 @@ export interface OuterPdfExportOptions {
   readonly printMediaId?: PrintMediaId;
   readonly tileOverlapMm?: number;
   readonly includeScaleBar?: boolean;
+  readonly appendInnerPocketsPage?: boolean;
+  readonly innerPageSizeId?: PageSizeId;
 }
 
 export interface InnerPdfExportOptions {
@@ -64,6 +67,7 @@ export interface PdfExportDialogProps {
   readonly splitMode: SplitMode;
   readonly onChangeSplitMode?: (mode: SplitMode) => void;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
+  readonly onDetachSlipFlaps?: () => void;
   readonly defaultIncludeGuides?: boolean;
   readonly defaultIncludeLegend?: boolean;
   readonly defaultExportLayerMode?: CoverPdfLayerMode;
@@ -140,6 +144,7 @@ export function PdfExportDialog({
   splitMode,
   onChangeSplitMode,
   onReduceFlapWidth,
+  onDetachSlipFlaps,
   defaultIncludeGuides = true,
   defaultIncludeLegend = false,
   defaultExportLayerMode = 'full',
@@ -151,12 +156,14 @@ export function PdfExportDialog({
   const guidesSwitchId = useId();
   const scaleBarSwitchId = useId();
   const legendSwitchId = useId();
+  const appendPocketsSwitchId = useId();
   const rollSelectId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   const [includeGuides, setIncludeGuides] = useState(defaultIncludeGuides);
   const [includeScaleBar, setIncludeScaleBar] = useState(true);
   const [includeLegend, setIncludeLegend] = useState(defaultIncludeLegend);
+  const [appendInnerPocketsPage, setAppendInnerPocketsPage] = useState(true);
   const [exportLayerMode, setExportLayerMode] =
     useState<CoverPdfLayerMode>(defaultExportLayerMode);
   const [dpi, setDpi] = useState<300 | 600>(300);
@@ -165,10 +172,14 @@ export function PdfExportDialog({
 
   const isOuterTarget = target === 'cover-styled' || target === 'outer-blueprint';
   const isRollSelected = ROLL_MEDIA_OPTIONS.some((opt) => opt.id === printMediaId);
-  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const bindingStrategy = resolveBindingStrategy(geometry);
+  const isSeparateSlipCover =
+    geometry.bindingStyle === 'softcover-jacket' && geometry.softcoverPocketMode === 'separate';
   const effectiveSplitMode: SplitMode = bindingStrategy.capabilities.supportsThreePieceSplit
     ? splitMode
     : 'single';
+  const effectiveAppendPockets =
+    isOuterTarget && effectiveSplitMode === 'single' && isSeparateSlipCover && appendInnerPocketsPage;
 
   const requestClose = useCallback(() => {
     const dialog = dialogRef.current;
@@ -193,6 +204,7 @@ export function PdfExportDialog({
       setIncludeGuides(defaultIncludeGuides);
       setIncludeLegend(defaultIncludeLegend);
       setExportLayerMode(defaultExportLayerMode);
+      setAppendInnerPocketsPage(true);
       if (!dialog.open) {
         if (typeof dialog.showModal === 'function') {
           dialog.showModal();
@@ -279,6 +291,32 @@ export function PdfExportDialog({
     [innerPlansByPage, geometry, pageSizeId, includeLegend],
   );
 
+  const resolvedInnerPageSizeId: PageSizeId =
+    printMediaId === 'letter' ||
+    printMediaId === 'a4' ||
+    printMediaId === 'legal' ||
+    printMediaId === 'tabloid'
+      ? printMediaId
+      : pageSizeId;
+
+  const detachedInnerPlan = useMemo(
+    () => planInnerTemplateLayout(geometry, resolvedInnerPageSizeId, { includeLegend: false }),
+    [geometry, resolvedInnerPageSizeId],
+  );
+
+  const detachedSlipFit = useMemo(
+    () => evaluateDetachedSlipCoverFit(geometry, printMediaId),
+    [geometry, printMediaId],
+  );
+
+  const activeMediaSpec = getPrintMediaSpec(printMediaId);
+  const showDetachFlapsCallout =
+    isOuterTarget &&
+    effectiveSplitMode === 'single' &&
+    Boolean(onDetachSlipFlaps) &&
+    (activeFit.status === 'fits-2-sheet-tile' || activeFit.status === 'does-not-fit') &&
+    Boolean(detachedSlipFit?.fitsSingleSheet);
+
   const isBlockedUnfitted =
     isOuterTarget &&
     effectiveSplitMode === 'single' &&
@@ -304,17 +342,21 @@ export function PdfExportDialog({
     if (effectiveSplitMode === 'three-piece') {
       return `3 pages • 3-Piece Split (Back, Spine, Front)${dpiSuffix}`;
     }
-    const activeMediaSpec = getPrintMediaSpec(printMediaId);
     if (isBlockedUnfitted) {
       return `Cover exceeds ${activeMediaSpec.label} — choose a larger paper or split layout`;
     }
+    const pocketsSuffix = effectiveAppendPockets ? ' + Pockets' : '';
+    const formatPageCount = (outerCount: number) => {
+      const total = effectiveAppendPockets ? outerCount + detachedInnerPlan.pageCount : outerCount;
+      return `${total} ${total === 1 ? 'page' : 'pages'}`;
+    };
     if (printMediaId === 'exact-auto') {
-      return `1 page • ${activeMediaSpec.shortLabel} (${roundTo(wrapW, 1)} × ${roundTo(wrapH, 1)} mm)${dpiSuffix}`;
+      return `${formatPageCount(1)} • ${activeMediaSpec.shortLabel} (${roundTo(wrapW, 1)} × ${roundTo(wrapH, 1)} mm)${pocketsSuffix}${dpiSuffix}`;
     }
     if (activeFit.status === 'fits-1-sheet' && activeFit.sheetPageWidthMm && activeFit.sheetPageHeightMm) {
       const orient =
         activeFit.sheetPageWidthMm > activeFit.sheetPageHeightMm ? 'Landscape' : 'Portrait';
-      return `1 page • ${activeMediaSpec.label} ${orient} (centered)${dpiSuffix}`;
+      return `${formatPageCount(1)} • ${activeMediaSpec.label} ${orient} (centered)${pocketsSuffix}${dpiSuffix}`;
     }
     if (
       activeFit.status === 'fits-2-sheet-tile' &&
@@ -323,9 +365,9 @@ export function PdfExportDialog({
     ) {
       const orient =
         activeFit.sheetPageWidthMm > activeFit.sheetPageHeightMm ? 'Landscape' : 'Portrait';
-      return `2 pages • ${activeMediaSpec.label} ${orient} (tiled, ${tileOverlapMm} mm overlap)${dpiSuffix}`;
+      return `${formatPageCount(2)} • ${activeMediaSpec.label} ${orient} (tiled, ${tileOverlapMm} mm overlap)${pocketsSuffix}${dpiSuffix}`;
     }
-    return `1 page • ${activeMediaSpec.label} (1:1 mm)${dpiSuffix}`;
+    return `${formatPageCount(1)} • ${activeMediaSpec.label} (1:1 mm)${pocketsSuffix}${dpiSuffix}`;
   }, [
     isOuterTarget,
     activeInnerPlan.pageCount,
@@ -336,6 +378,9 @@ export function PdfExportDialog({
     dpi,
     effectiveSplitMode,
     isBlockedUnfitted,
+    activeMediaSpec,
+    effectiveAppendPockets,
+    detachedInnerPlan.pageCount,
     activeFit,
     printMediaId,
     wrapW,
@@ -348,7 +393,7 @@ export function PdfExportDialog({
     const selection: PdfExportSelection = {
       target,
       printMediaId,
-      pageSizeId,
+      pageSizeId: effectiveAppendPockets ? resolvedInnerPageSizeId : pageSizeId,
       splitMode: effectiveSplitMode,
       includeGuides,
       includeScaleBar,
@@ -356,6 +401,7 @@ export function PdfExportDialog({
       dpi,
       tileOverlapMm,
       exportLayerMode,
+      appendInnerPocketsPage: effectiveAppendPockets,
     };
     setIsSubmitting(true);
     try {
@@ -571,6 +617,40 @@ export function PdfExportDialog({
                   <strong>Spine Strip</strong>, and <strong>Front Board</strong>).
                 </p>
               )}
+
+              {showDetachFlapsCallout && detachedSlipFit && onDetachSlipFlaps && (
+                <div
+                  data-testid="pdf-detach-flaps-callout"
+                  className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-emerald-700/35 bg-emerald-600/10 px-3.5 py-2.5 text-xs"
+                >
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <p className="flex items-center gap-1.5 font-semibold text-emerald-950 dark:text-emerald-200">
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+                      Zero-seam home print available on 1× {activeMediaSpec.shortLabel}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Detach side flaps into Sheet 2 inner pockets so the seamless{' '}
+                      <span className="font-mono">
+                        {UnitConverter.formatDimensions(
+                          detachedSlipFit.detachedWidthMm,
+                          detachedSlipFit.detachedHeightMm,
+                          unit,
+                        )}
+                      </span>{' '}
+                      outer cover prints cleanly on 1× {activeMediaSpec.shortLabel}.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    data-testid="pdf-detach-flaps-btn"
+                    onClick={onDetachSlipFlaps}
+                  >
+                    Detach Flaps → 1× {activeMediaSpec.shortLabel} + Separate Pockets
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Section 2: Live Mini Sheet-Layout Visual Preview */}
@@ -672,6 +752,28 @@ export function PdfExportDialog({
                     data-testid="pdf-opt-scale-bar"
                     checked={includeScaleBar}
                     onCheckedChange={setIncludeScaleBar}
+                  />
+                </div>
+              )}
+
+              {/* Include Detached Pockets (Page 2) for 2-Sheet Slip Cover */}
+              {isOuterTarget && effectiveSplitMode === 'single' && isSeparateSlipCover && (
+                <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-700/30 bg-emerald-600/8 px-3 py-2">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={appendPocketsSwitchId} className="text-xs">
+                      Include Detached Pockets (Page 2)
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Appends {detachedInnerPlan.pageCount}{' '}
+                      {detachedInnerPlan.pageCount === 1 ? 'page' : 'pages'} of 1:1 mm detached
+                      fore-edge pockets ({PAGE_SIZES[resolvedInnerPageSizeId].shortLabel}).
+                    </p>
+                  </div>
+                  <Switch
+                    id={appendPocketsSwitchId}
+                    data-testid="pdf-opt-append-pockets"
+                    checked={appendInnerPocketsPage}
+                    onCheckedChange={setAppendInnerPocketsPage}
                   />
                 </div>
               )}

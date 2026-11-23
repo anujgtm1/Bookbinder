@@ -1,6 +1,6 @@
 import { Printer, Ruler, Scissors } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { cn } from '@/lib/utils';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
@@ -12,8 +12,8 @@ export interface CutListCardProps {
 }
 
 export function CutListCard({ geometry, unit, className }: CutListCardProps) {
-  const { cutList, outerWrap, rollRecommendation, mediaFit, bindingStyle } = geometry;
-  const strategy = getBindingStrategy(bindingStyle);
+  const { cutList, outerWrap, rollRecommendation, mediaFit } = geometry;
+  const strategy = resolveBindingStrategy(geometry);
   const { capabilities } = strategy;
 
   const usesChipboard = capabilities.usesChipboard;
@@ -21,8 +21,9 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
   const hasFlaps = capabilities.hasFlaps;
   const hasGlueTabs = capabilities.hasGlueTabs;
   const isFlexibleBoard = usesChipboard && !hasRigidSpine;
+  const isSeparateSlipCover = !usesChipboard && hasGlueTabs && !hasFlaps;
   const isDustJacket = !usesChipboard && hasFlaps && !hasGlueTabs;
-  const isFlushPaperback = !usesChipboard && !hasFlaps;
+  const isFlushPaperback = !usesChipboard && !hasFlaps && !hasGlueTabs;
 
   const spineWidthLabel = `${roundTo(cutList.spineStrip.widthMm, 1)} mm`;
   const spacerLabel = isFlexibleBoard
@@ -46,29 +47,35 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
 
   const sectionHeading = usesChipboard
     ? 'Chipboard Cut List & Roll Sizing'
+    : isSeparateSlipCover
+      ? '2-Sheet Slip Cover & Sheet Sizing'
+      : hasGlueTabs
+        ? 'Fold-and-Glue Slip Cover & Sheet Sizing'
+        : `${strategy.shortLabel} & Sheet Sizing`;
+
+  const diagramTitle = isSeparateSlipCover
+    ? '2-Sheet Slip Cover Guide'
     : hasGlueTabs
-      ? 'Fold-and-Glue Slip Cover & Sheet Sizing'
-      : `${strategy.shortLabel} & Sheet Sizing`;
+      ? '1-Piece Fold & Glue Guide'
+      : isDustJacket
+        ? '4-Fold Dust Jacket Guide'
+        : isFlushPaperback
+          ? '2-Score Paperback Wrap Guide'
+          : isFlexibleBoard
+            ? 'Flexible Spine Assembly'
+            : 'Gluing Spacer Guide';
 
-  const diagramTitle = hasGlueTabs
-    ? '1-Piece Fold & Glue Guide'
-    : isDustJacket
-      ? '4-Fold Dust Jacket Guide'
-      : isFlushPaperback
-        ? '2-Score Paperback Wrap Guide'
-        : isFlexibleBoard
-          ? 'Flexible Spine Assembly'
-          : 'Gluing Spacer Guide';
-
-  const diagramBadge = hasGlueTabs
-    ? `${flapLabel} Flaps + 4 Tabs`
-    : isDustJacket
-      ? `${flapLabel} Flaps • 4 Folds`
-      : isFlushPaperback
-        ? `${spineWidthLabel} Spine • 2 Folds`
-        : isFlexibleBoard
-          ? `${spacerLabel} Gap`
-          : `${spacerLabel} Hinge`;
+  const diagramBadge = isSeparateSlipCover
+    ? '4 Tabs + Sheet 2 Pockets'
+    : hasGlueTabs
+      ? `${flapLabel} Flaps + 4 Tabs`
+      : isDustJacket
+        ? `${flapLabel} Flaps • 4 Folds`
+        : isFlushPaperback
+          ? `${spineWidthLabel} Spine • 2 Folds`
+          : isFlexibleBoard
+            ? `${spacerLabel} Gap`
+            : `${spacerLabel} Hinge`;
 
   return (
     <section
@@ -118,76 +125,88 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
             <p className="mt-0.5 text-[11px] text-muted-foreground">
               {usesChipboard
                 ? `${roundTo(cutList.boardThicknessMm, 1)} mm chipboard • Front & Back`
-                : isDustJacket
-                  ? 'Wraps over existing cover — no boards'
-                  : isFlushPaperback
-                    ? 'Flush cardstock trim — no boards or flaps'
-                    : 'Print on heavy cardstock, kraft, or bookcloth'}
+                : isSeparateSlipCover
+                  ? 'Seamless outer shell + Sheet 2 inner pockets'
+                  : isDustJacket
+                    ? 'Wraps over existing cover — no boards'
+                    : isFlushPaperback
+                      ? 'Flush cardstock trim — no boards or flaps'
+                      : 'Print on heavy cardstock, kraft, or bookcloth'}
             </p>
           </div>
 
           <div className="py-1.5 sm:px-3.5 sm:py-0" data-testid="cut-spine-strip">
             <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               <span>
-                {hasGlueTabs
-                  ? 'Slip-In Flaps'
-                  : isDustJacket
-                    ? 'Fold-In Flaps'
-                    : isFlushPaperback
-                      ? 'Spine Score'
-                      : 'Spine Strip'}
+                {isSeparateSlipCover
+                  ? 'Inner Pockets'
+                  : hasGlueTabs
+                    ? 'Slip-In Flaps'
+                    : isDustJacket
+                      ? 'Fold-In Flaps'
+                      : isFlushPaperback
+                        ? 'Spine Score'
+                        : 'Spine Strip'}
               </span>
               <Badge
                 variant={hasRigidSpine ? 'brass' : 'outline'}
                 className="font-mono text-[10px]"
               >
-                {hasFlaps
-                  ? 'Qty 2'
-                  : isFlushPaperback
-                    ? '2 Folds'
-                    : isFlexibleBoard
-                      ? 'Qty 0'
-                      : `Qty ${cutList.spineStrip.quantity}`}
+                {isSeparateSlipCover
+                  ? 'Sheet 2'
+                  : hasFlaps
+                    ? 'Qty 2'
+                    : isFlushPaperback
+                      ? '2 Folds'
+                      : isFlexibleBoard
+                        ? 'Qty 0'
+                        : `Qty ${cutList.spineStrip.quantity}`}
               </Badge>
             </div>
             <p className="mt-1 font-mono text-sm font-semibold text-foreground">
-              {hasGlueTabs
-                ? `${UnitConverter.format(outerWrap.jacketFlapWidthMm, unit)} Tuck Flaps`
-                : isDustJacket
-                  ? `${UnitConverter.format(outerWrap.jacketFlapWidthMm, unit)} Flaps`
-                  : isFlushPaperback
-                    ? `${UnitConverter.format(cutList.spineStrip.widthMm, unit)} Spine`
-                    : isFlexibleBoard
-                      ? `${UnitConverter.format(cutList.spineStrip.widthMm, unit)} Cloth Gap`
-                      : UnitConverter.formatDimensions(
-                          cutList.spineStrip.widthMm,
-                          cutList.spineStrip.heightMm,
-                          unit,
-                        )}
+              {isSeparateSlipCover
+                ? `${UnitConverter.format(geometry.frontPocket.pocketWidthMm, unit)} Pockets`
+                : hasGlueTabs
+                  ? `${UnitConverter.format(outerWrap.jacketFlapWidthMm, unit)} Tuck Flaps`
+                  : isDustJacket
+                    ? `${UnitConverter.format(outerWrap.jacketFlapWidthMm, unit)} Flaps`
+                    : isFlushPaperback
+                      ? `${UnitConverter.format(cutList.spineStrip.widthMm, unit)} Spine`
+                      : isFlexibleBoard
+                        ? `${UnitConverter.format(cutList.spineStrip.widthMm, unit)} Cloth Gap`
+                        : UnitConverter.formatDimensions(
+                            cutList.spineStrip.widthMm,
+                            cutList.spineStrip.heightMm,
+                            unit,
+                          )}
             </p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {hasGlueTabs
-                ? 'Integrated left & right slip-in pockets'
-                : isDustJacket
-                  ? '4 vertical fold stops • Zero glue tabs'
-                  : isFlushPaperback
-                    ? '2 spine score stops • Glue directly to spine'
-                    : isFlexibleBoard
-                      ? 'No rigid spine strip — opens flat'
-                      : 'Includes pocket clearance allowance'}
+              {isSeparateSlipCover
+                ? 'Detached fore-edge slip-in pockets (1-flap)'
+                : hasGlueTabs
+                  ? 'Integrated left & right slip-in pockets'
+                  : isDustJacket
+                    ? '4 vertical fold stops • Zero glue tabs'
+                    : isFlushPaperback
+                      ? '2 spine score stops • Glue directly to spine'
+                      : isFlexibleBoard
+                        ? 'No rigid spine strip — opens flat'
+                        : 'Includes pocket clearance allowance'}
             </p>
           </div>
 
           <div className="py-1.5 sm:pl-3.5 sm:py-0" data-testid="cut-outer-wrap">
             <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               <span>
-                {hasGlueTabs
-                  ? 'Jacket Sheet'
-                  : isDustJacket
-                    ? 'Dust Jacket Sheet'
-                    : isFlushPaperback
-                      ? 'Cover Trim Size'
-                      : 'Outer Wrap'}
+                {isSeparateSlipCover
+                  ? 'Outer Shell'
+                  : hasGlueTabs
+                    ? 'Jacket Sheet'
+                    : isDustJacket
+                      ? 'Dust Jacket Sheet'
+                      : isFlushPaperback
+                        ? 'Cover Trim Size'
+                        : 'Outer Wrap'}
               </span>
               <Badge variant="outline" className="font-mono text-[10px]">
                 1:1 mm
@@ -197,13 +216,15 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
               {UnitConverter.formatDimensions(outerWrap.widthMm, outerWrap.heightMm, unit)}
             </p>
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              {hasGlueTabs
-                ? `Fold ${tabLabel} glue tabs & ${flapLabel} flaps inward`
-                : isDustJacket
-                  ? `Flat cut • ${spineWidthLabel} spine • ${flapLabel} flaps`
-                  : isFlushPaperback
-                    ? 'Flush cardstock trim • Back + Spine + Front'
-                    : `Turn-in ${UnitConverter.format(outerWrap.turnInMm, unit)} • 45° miters`}
+              {isSeparateSlipCover
+                ? `Glue detached pockets inside, fold ${tabLabel} tabs over`
+                : hasGlueTabs
+                  ? `Fold ${tabLabel} glue tabs & ${flapLabel} flaps inward`
+                  : isDustJacket
+                    ? `Flat cut • ${spineWidthLabel} spine • ${flapLabel} flaps`
+                    : isFlushPaperback
+                      ? 'Flush cardstock trim • Back + Spine + Front'
+                      : `Turn-in ${UnitConverter.format(outerWrap.turnInMm, unit)} • 45° miters`}
             </p>
           </div>
         </div>
@@ -217,7 +238,97 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
             </span>
             <span className="font-mono text-[11px] text-brass">{diagramBadge}</span>
           </div>
-          {hasGlueTabs ? (
+          {isSeparateSlipCover ? (
+            <svg
+              role="img"
+              viewBox="0 0 320 66"
+              className="h-14 w-full"
+              aria-label="2-sheet slip cover diagram showing seamless Back Cover, Spine, and Front Cover with 4 wrap-over glue tabs for detached Sheet 2 inner pockets"
+            >
+              <title>
+                1. Glue detached fore-edge pockets inside Front &amp; Back covers. 2. Fold &amp; glue
+                4 wrap-over tabs over pockets.
+              </title>
+              {/* Back Cover top & bottom wrap-over glue tabs */}
+              <polygon
+                points="22,13 22,5 138,5 148,13"
+                fill="var(--brass-bright)"
+                fillOpacity="0.34"
+                stroke="var(--brass)"
+                strokeWidth="1"
+              />
+              <polygon
+                points="22,53 148,53 138,61 22,61"
+                fill="var(--brass-bright)"
+                fillOpacity="0.34"
+                stroke="var(--brass)"
+                strokeWidth="1"
+              />
+              {/* Front Cover top & bottom wrap-over glue tabs */}
+              <polygon
+                points="172,13 182,5 298,5 298,13"
+                fill="var(--brass-bright)"
+                fillOpacity="0.34"
+                stroke="var(--brass)"
+                strokeWidth="1"
+              />
+              <polygon
+                points="172,53 298,53 298,61 182,61"
+                fill="var(--brass-bright)"
+                fillOpacity="0.34"
+                stroke="var(--brass)"
+                strokeWidth="1"
+              />
+              <rect
+                x="22"
+                y="13"
+                width="126"
+                height="40"
+                fill="currentColor"
+                fillOpacity="0.08"
+                stroke="currentColor"
+                strokeOpacity="0.5"
+              />
+              <text x="85" y="36" textAnchor="middle" fontSize="9.5" fontWeight="600" fill="currentColor">
+                Back Cover
+              </text>
+              <rect
+                x="148"
+                y="13"
+                width="24"
+                height="40"
+                fill="var(--brass-bright)"
+                fillOpacity="0.14"
+                stroke="var(--brass)"
+                strokeWidth="1"
+                strokeDasharray="3 2"
+              />
+              <text
+                x="160"
+                y="36"
+                textAnchor="middle"
+                fontSize="7.5"
+                fontWeight="700"
+                fill="currentColor"
+                transform="rotate(-90 160 36)"
+              >
+                Spine
+              </text>
+              <rect
+                x="172"
+                y="13"
+                width="126"
+                height="40"
+                fill="currentColor"
+                fillOpacity="0.08"
+                stroke="currentColor"
+                strokeOpacity="0.5"
+              />
+              <text x="235" y="36" textAnchor="middle" fontSize="9.5" fontWeight="600" fill="currentColor">
+                Front Cover
+              </text>
+            </svg>
+          ) : hasGlueTabs ? (
             <svg
               role="img"
               viewBox="0 0 320 66"
@@ -688,7 +799,13 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
             </svg>
           )}
           <figcaption className="text-[11px] text-muted-foreground">
-            {hasGlueTabs ? (
+            {isSeparateSlipCover ? (
+              <>
+                <strong className="text-foreground">1.</strong> Glue detached pockets inside Front
+                &amp; Back · <strong className="text-foreground">2.</strong> Fold &amp; glue 4 tabs
+                over pockets.
+              </>
+            ) : hasGlueTabs ? (
               <>
                 <strong className="text-foreground">1.</strong> Fold {flapLabel} flaps inward ·{' '}
                 <strong className="text-foreground">2.</strong> Glue blank back of 4 tabs ·{' '}

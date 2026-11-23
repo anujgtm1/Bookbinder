@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, Layers } from 'lucide-react';
 import { useId } from 'react';
 import { Button } from '@/components/ui/button';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import type { InnerPdfLayoutPlan, InnerPieceKind } from '@/core/pdfExport';
 import { ROLL_TOTAL_MARGIN_MM, getPrintMediaSpec } from '@/resources/paperSpecs';
@@ -58,7 +58,7 @@ function computeReducibleFlapMm(
   geometry: CaseGeometry,
   mediaId: PrintMediaId,
 ): number | null {
-  const strategy = getBindingStrategy(geometry.bindingStyle);
+  const strategy = resolveBindingStrategy(geometry);
   if (
     !strategy.capabilities.hasFlaps ||
     !strategy.flapConfig ||
@@ -200,7 +200,7 @@ export function PdfSheetPreviewSvg({
   const uid = useId().replace(/:/g, '');
   const tile1ClipId = `${uid}-tile-1`;
   const tile2ClipId = `${uid}-tile-2`;
-  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const bindingStrategy = resolveBindingStrategy(geometry);
   const wrapW = geometry.outerWrap.widthMm;
   const wrapH = geometry.outerWrap.heightMm;
 

@@ -124,4 +124,22 @@ describe('App', () => {
       screen.getByText('Classic Dust Jacket — No Separate Inner Pockets'),
     ).toBeInTheDocument();
   });
+
+  it('unlocks Inner Pockets tab cleanly when switching Fold-and-Glue Slip Cover to Separate Pockets (2-Sheet)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    // Select Fold-and-Glue Slip Cover (1-Piece default -> Built-In badge on Inner Pockets tab)
+    await user.click(screen.getByTestId('binding-style-select'));
+    await user.click(screen.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }));
+    expect(screen.getByTestId('pockets-builtin-badge')).toHaveTextContent('Built-In');
+
+    // Switch to Separate Pockets (2-Sheet) -> Built-In badge disappears and Inner Pockets studio renders
+    await user.click(screen.getByTestId('softcover-pocket-mode-separate'));
+    expect(screen.queryByTestId('pockets-builtin-badge')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('nav-pockets'));
+    expect(screen.getByTestId('inner-pockets-studio')).toBeInTheDocument();
+    expect(screen.queryByTestId('pockets-not-needed-notice')).not.toBeInTheDocument();
+  });
 });

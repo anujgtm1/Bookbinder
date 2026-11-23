@@ -14,7 +14,7 @@ import {
   type PdfExportSelection,
 } from '@/components/PdfExportDialog';
 import { Button } from '@/components/ui/button';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
@@ -35,6 +35,7 @@ export interface MeasureAndCutPanelProps {
   readonly onChangePageSize?: (sizeId: PageSizeId) => void;
   readonly onChangeSplitMode?: (mode: SplitMode) => void;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
+  readonly onDetachSlipFlaps?: () => void;
   readonly onDownloadOuterSvg: () => void;
   readonly onDownloadOuterPdf: (options?: OuterPdfExportOptions) => void | Promise<void>;
 }
@@ -50,6 +51,7 @@ export function MeasureAndCutPanel({
   onChangePageSize,
   onChangeSplitMode,
   onReduceFlapWidth,
+  onDetachSlipFlaps,
   onDownloadOuterSvg,
   onDownloadOuterPdf,
 }: MeasureAndCutPanelProps) {
@@ -62,7 +64,7 @@ export function MeasureAndCutPanel({
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(splitMode);
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
-  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const bindingStrategy = resolveBindingStrategy(geometry);
   const { capabilities } = bindingStrategy;
   const effectivePrintMedia = onChangePrintMedia ? printMediaId : localPrintMedia;
   const effectivePageSize = onChangePageSize ? pageSizeId : localPageSize;
@@ -78,6 +80,8 @@ export function MeasureAndCutPanel({
       printMediaId: selection.printMediaId,
       tileOverlapMm: selection.tileOverlapMm,
       includeScaleBar: selection.includeScaleBar,
+      appendInnerPocketsPage: selection.appendInnerPocketsPage,
+      innerPageSizeId: selection.pageSizeId,
     });
   };
 
@@ -296,6 +300,7 @@ export function MeasureAndCutPanel({
           onChangeSplitMode?.(mode);
         }}
         onReduceFlapWidth={onReduceFlapWidth}
+        onDetachSlipFlaps={onDetachSlipFlaps}
         exporting={exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}
         onClose={() => setPdfDialogOpen(false)}
