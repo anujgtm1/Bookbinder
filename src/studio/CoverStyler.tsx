@@ -1,4 +1,5 @@
 import {
+  Bookmark,
   BookOpen,
   Box,
   Compass,
@@ -35,6 +36,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  exportDesignPresetsJson,
+  importDesignPresetsJson,
+  loadSavedDesignPresets,
+  saveDesignPresets,
+} from '@/core/presetStorage';
+import {
   triggerBlobDownload,
   triggerBytesDownload,
   triggerTextDownload,
@@ -54,6 +61,11 @@ import {
   type CoverTextLayer,
   type CoverTextPresetKind,
 } from '@/types/coverElements';
+import {
+  BUILT_IN_DESIGN_PRESETS,
+  CoverDesignPresetModel,
+  type CoverDesignPreset,
+} from '@/types/designPreset';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import {
   CoverStudioModel,
@@ -73,6 +85,7 @@ import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCar
 import { Book3DPreview } from './Book3DPreview';
 import { CoverElementsCard } from './CoverElementsCard';
 import { CricutExportDialog } from './CricutExportDialog';
+import { DesignPresetsCard } from './DesignPresetsCard';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
@@ -137,7 +150,7 @@ export interface CoverStylerProps {
 }
 
 type StudioViewMode = '2d' | 'blueprint' | '3d';
-type StudioToolTab = 'artwork' | 'text' | 'designs' | 'spine' | 'preflight';
+type StudioToolTab = 'artwork' | 'text' | 'designs' | 'spine' | 'presets' | 'preflight';
 
 function rgbToHex(r: number, g: number, b: number): string {
   return (
@@ -190,6 +203,9 @@ export function CoverStyler({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
   const [cricutDialogOpen, setCricutDialogOpen] = useState(false);
+  const [savedPresets, setSavedPresets] = useState<readonly CoverDesignPreset[]>(() =>
+    loadSavedDesignPresets(),
+  );
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -679,6 +695,75 @@ export function CoverStyler({
     onChange({ ...studio, ornaments: remaining });
     if (selectedOrnamentId === id) {
       setSelectedOrnamentId(remaining[remaining.length - 1]?.id ?? null);
+    }
+  };
+
+  const handleSaveDesignPreset = (name: string) => {
+    const created = CoverDesignPresetModel.captureFromStudio(name, geometry, studio);
+    setSavedPresets((prev) => {
+      const next = [created, ...prev];
+      saveDesignPresets(next);
+      return next;
+    });
+    onStatusMessage(`Saved series design preset "${created.name}"`);
+  };
+
+  const handleApplyDesignPreset = (preset: CoverDesignPreset) => {
+    const nextStudio = CoverDesignPresetModel.applyToStudio(preset, geometry, studio);
+    onChange(nextStudio);
+    setSelectedLayerId(null);
+    setSelectedTextId(null);
+    setSelectedOrnamentId(null);
+    onStatusMessage(`Applied "${preset.name}" — adapted to current book size`);
+  };
+
+  const handleDeleteDesignPreset = (id: string) => {
+    const target = savedPresets.find((p) => p.id === id);
+    setSavedPresets((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      saveDesignPresets(next);
+      return next;
+    });
+    if (target) {
+      onStatusMessage(`Deleted series preset "${target.name}"`);
+    }
+  };
+
+  const handleExportDesignPresets = () => {
+    if (savedPresets.length === 0) {
+      onStatusMessage('No saved design presets to export yet.');
+      return;
+    }
+    triggerTextDownload(
+      exportDesignPresetsJson(savedPresets),
+      'bookbinder-series-presets.json',
+      'application/json',
+    );
+    onStatusMessage(`Exported ${savedPresets.length} series design preset(s) to JSON`);
+  };
+
+  const handleImportDesignPresets = async (file: File) => {
+    try {
+      const text = await file.text();
+      const result = importDesignPresetsJson(text);
+      if (!result.ok) {
+        onStatusMessage(result.error);
+        return;
+      }
+      setSavedPresets((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const deduped = result.presets.map((p) =>
+          existingIds.has(p.id)
+            ? { ...p, id: `${p.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
+            : p,
+        );
+        const next = [...deduped, ...prev];
+        saveDesignPresets(next);
+        return next;
+      });
+      onStatusMessage(`Imported ${result.presets.length} series design preset(s)`);
+    } catch {
+      onStatusMessage('Failed to read series presets JSON file.');
     }
   };
 
@@ -2108,6 +2193,24 @@ export function CoverStyler({
             </TabsTrigger>
 
             <TabsTrigger
+              value="presets"
+              data-testid="studio-tool-presets"
+              className="px-3 py-1.5 text-xs"
+            >
+              <Bookmark className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+              Presets
+              {savedPresets.length > 0 && (
+                <Badge
+                  variant="outline"
+                  data-testid="studio-tool-presets-badge"
+                  className="ml-0.5 h-4 px-1 font-mono text-[10px]"
+                >
+                  {savedPresets.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
               value="preflight"
               data-testid="studio-tool-preflight"
               className="px-3 py-1.5 text-xs"
@@ -2278,6 +2381,18 @@ export function CoverStyler({
             customFont={customFont}
             onUpdateSpineText={updateSpineText}
             onCustomFontSelected={(file) => void handleCustomFontUpload(file)}
+          />
+        </TabsContent>
+
+        <TabsContent value="presets" className="mt-0">
+          <DesignPresetsCard
+            savedPresets={savedPresets}
+            builtInPresets={BUILT_IN_DESIGN_PRESETS}
+            onSaveCurrent={handleSaveDesignPreset}
+            onApplyPreset={handleApplyDesignPreset}
+            onDeletePreset={handleDeleteDesignPreset}
+            onExportPresets={handleExportDesignPresets}
+            onImportPresets={(file) => void handleImportDesignPresets(file)}
           />
         </TabsContent>
 
