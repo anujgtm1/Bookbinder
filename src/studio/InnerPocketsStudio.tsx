@@ -1543,7 +1543,7 @@ export function InnerPocketsStudio({
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
                   className="visually-hidden"
                   aria-label="Upload artwork images for inner pockets"
                   data-testid="pocket-upload-image-input"

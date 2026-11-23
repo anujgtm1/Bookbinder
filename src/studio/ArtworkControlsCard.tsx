@@ -139,7 +139,7 @@ export function ArtworkControlsCard({
             ref={imageInputRef}
             type="file"
             multiple
-            accept="image/png,image/jpeg,image/webp"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
             className="visually-hidden"
             aria-label="Add cover artwork images"
             data-testid="studio-upload-image-input"

@@ -1,4 +1,10 @@
 import {
+  CoverOrnamentLayerModel,
+  CoverTextLayerModel,
+  type CoverOrnamentLayer,
+  type CoverTextLayer,
+} from './coverElements';
+import {
   CoverImageLayerModel,
   type CoverImageLayer,
 } from './studioLayer';
@@ -77,6 +83,10 @@ export interface SpineTypographyConfig {
 export interface CoverStudioState {
   /** Free-form stack of uploaded artwork images rendered bottom-to-top */
   layers: readonly CoverImageLayer[];
+  /** Draggable Front/Back/Spine cover text layers (rendered in 2D, 3D, PDF, and Cricut HTV) */
+  textLayers: readonly CoverTextLayer[];
+  /** Parametric classic bookbindery vector ornaments & frames (recolorable & Cricut HTV-ready) */
+  ornaments: readonly CoverOrnamentLayer[];
   frontBgColor: string;
   spineBgColor: string;
   backBgColor: string;
@@ -109,6 +119,8 @@ export const DEFAULT_POCKET_STYLE: Readonly<PocketStyleConfig> = {
 
 export const DEFAULT_COVER_STUDIO_STATE: Readonly<CoverStudioState> = {
   layers: [],
+  textLayers: [],
+  ornaments: [],
   frontBgColor: '#1f3a52',
   spineBgColor: '#1f3a52',
   backBgColor: '#1f3a52',
@@ -147,6 +159,8 @@ export const CoverStudioModel = {
     return {
       ...DEFAULT_COVER_STUDIO_STATE,
       layers: [],
+      textLayers: [],
+      ornaments: [],
       spineText: { ...DEFAULT_COVER_STUDIO_STATE.spineText },
       pocketStyle: { ...DEFAULT_POCKET_STYLE },
     };
@@ -217,6 +231,8 @@ export const CoverStudioModel = {
     return {
       ...state,
       layers: includeImageData ? state.layers.map((layer) => ({ ...layer })) : [],
+      textLayers: (state.textLayers ?? []).map((layer) => ({ ...layer })),
+      ornaments: (state.ornaments ?? []).map((orn) => ({ ...orn })),
       spineText: { ...state.spineText },
       pocketStyle: {
         ...state.pocketStyle,
@@ -248,6 +264,22 @@ export const CoverStudioModel = {
       }
     }
 
+    const textLayers: CoverTextLayer[] = [];
+    if (Array.isArray(obj.textLayers)) {
+      for (const item of obj.textLayers) {
+        const parsed = CoverTextLayerModel.deserialize(item);
+        if (parsed) textLayers.push(parsed);
+      }
+    }
+
+    const ornaments: CoverOrnamentLayer[] = [];
+    if (Array.isArray(obj.ornaments)) {
+      for (const item of obj.ornaments) {
+        const parsed = CoverOrnamentLayerModel.deserialize(item);
+        if (parsed) ornaments.push(parsed);
+      }
+    }
+
     const pocketLayers: CoverImageLayer[] = [];
     if (Array.isArray(rawPocket.layers)) {
       for (const item of rawPocket.layers) {
@@ -262,6 +294,8 @@ export const CoverStudioModel = {
 
     return {
       layers,
+      textLayers,
+      ornaments,
       frontBgColor: parseHexColor(obj.frontBgColor, defaults.frontBgColor),
       spineBgColor: parseHexColor(obj.spineBgColor, defaults.spineBgColor),
       backBgColor: parseHexColor(obj.backBgColor, defaults.backBgColor),

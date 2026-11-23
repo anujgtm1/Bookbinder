@@ -29,7 +29,10 @@ export type LayerDragInteraction =
     };
 
 export function isSupportedImageFile(file: File): boolean {
-  return /^image\/(png|jpeg|webp)$/i.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name);
+  return (
+    /^image\/(png|jpeg|webp|svg\+xml)$/i.test(file.type) ||
+    /\.(png|jpe?g|webp|svg)$/i.test(file.name)
+  );
 }
 
 export function readImageFile(
@@ -40,7 +43,13 @@ export function readImageFile(
     reader.onload = () => {
       const dataUrl = String(reader.result);
       const img = new Image();
-      img.onload = () => resolve({ dataUrl, width: img.naturalWidth, height: img.naturalHeight });
+      img.onload = () =>
+        resolve({
+          dataUrl,
+          // SVGs without explicit width/height attributes may report 0 naturalWidth; default cleanly to 1000×1000
+          width: img.naturalWidth > 0 ? img.naturalWidth : 1000,
+          height: img.naturalHeight > 0 ? img.naturalHeight : 1000,
+        });
       img.onerror = () => reject(new Error('Unsupported or unreadable image file.'));
       img.src = dataUrl;
     };
