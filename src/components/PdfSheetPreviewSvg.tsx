@@ -291,7 +291,8 @@ export function PdfSheetPreviewSvg({
         {anyClipped && (
           <p className="flex items-center gap-1.5 rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            At least one piece exceeds printable bounds on this paper — try US Legal or Tabloid.
+            At least one piece exceeds printable bounds on this paper — try{' '}
+            {getPrintMediaSpec('legal').label} or {getPrintMediaSpec('tabloid').label}.
           </p>
         )}
       </div>
@@ -348,6 +349,9 @@ export function PdfSheetPreviewSvg({
   // 3. Outer "Does Not Fit" warning + 1-click quick-switch buttons (for specific sheets & rolls)
   if (activeFit.status === 'does-not-fit' && printMediaId !== 'exact-auto') {
     const selectedSpec = getPrintMediaSpec(printMediaId);
+    const legalSpec = getPrintMediaSpec('legal');
+    const tabloidSpec = getPrintMediaSpec('tabloid');
+    const exactAutoSpec = getPrintMediaSpec('exact-auto');
     const legalFit = evaluatePrintMediaFit('legal', wrapW, wrapH, tileOverlapMm);
     const tabloidFit = evaluatePrintMediaFit('tabloid', wrapW, wrapH, tileOverlapMm);
     const reducibleFlapMm = computeReducibleFlapMm(geometry, printMediaId);
@@ -369,11 +373,11 @@ export function PdfSheetPreviewSvg({
           <div className="space-y-1 text-xs">
             <p className="font-semibold text-destructive">
               Cover ({UnitConverter.formatDimensions(wrapW, wrapH, unit)}) does not fit on{' '}
-              {selectedSpec.shortLabel}
+              {selectedSpec.label}
             </p>
             <p className="text-muted-foreground">
               {selectedSpec.kind === 'sheet' && selectedSpec.shortMm && selectedSpec.longMm
-                ? `${selectedSpec.shortLabel} printable area is ${roundTo(selectedSpec.shortMm - ROLL_TOTAL_MARGIN_MM, 1)} × ${roundTo(selectedSpec.longMm - ROLL_TOTAL_MARGIN_MM, 1)} mm (exceeds even 2 tiled sheets). Choose a larger sheet or 1:1 exact size below:`
+                ? `${selectedSpec.label} printable area is ${roundTo(selectedSpec.shortMm - ROLL_TOTAL_MARGIN_MM, 1)} × ${roundTo(selectedSpec.longMm - ROLL_TOTAL_MARGIN_MM, 1)} mm (exceeds even 2 tiled sheets). Choose a larger sheet or 1:1 exact size below:`
                 : activeFit.summary}
             </p>
           </div>
@@ -388,7 +392,7 @@ export function PdfSheetPreviewSvg({
               data-testid="pdf-quick-switch-legal"
               onClick={() => onChangePrintMedia('legal')}
             >
-              Switch to 1× US Legal
+              Switch to 1× {legalSpec.label}
             </Button>
           )}
           {tabloidFit.status === 'fits-1-sheet' && (
@@ -399,7 +403,7 @@ export function PdfSheetPreviewSvg({
               data-testid="pdf-quick-switch-tabloid"
               onClick={() => onChangePrintMedia('tabloid')}
             >
-              Switch to 1× Tabloid
+              Switch to 1× {tabloidSpec.label}
             </Button>
           )}
           {suggestedOther && (
@@ -410,7 +414,7 @@ export function PdfSheetPreviewSvg({
               data-testid={`pdf-quick-switch-${suggestedOther.id}`}
               onClick={() => onChangePrintMedia(suggestedOther.id)}
             >
-              Switch to {suggestedOther.shortLabel}
+              Switch to {suggestedOther.label}
             </Button>
           )}
           {reducibleFlapMm !== null && onReduceFlapWidth && (
@@ -442,7 +446,7 @@ export function PdfSheetPreviewSvg({
             data-testid="pdf-quick-switch-exact-auto"
             onClick={() => onChangePrintMedia('exact-auto')}
           >
-            Use Exact 1:1 Size
+            Use {exactAutoSpec.shortLabel}
           </Button>
         </div>
       </div>
@@ -456,6 +460,7 @@ export function PdfSheetPreviewSvg({
     activeFit.sheetPageWidthMm === null ||
     activeFit.sheetPageHeightMm === null
   ) {
+    const exactAutoSpec = getPrintMediaSpec('exact-auto');
     const pad = 14;
     const vbW = wrapW + pad * 2;
     const vbH = wrapH + pad * 2;
@@ -468,7 +473,7 @@ export function PdfSheetPreviewSvg({
           <span className="flex items-center gap-1.5 font-medium text-foreground">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
             {printMediaId === 'exact-auto'
-              ? 'Exact 1:1 Wrap Page (Auto / Roll)'
+              ? `${exactAutoSpec.shortLabel} (${exactAutoSpec.dimensionsLabel})`
               : activeFit.summary}
           </span>
           <span className="font-mono text-[11px] text-muted-foreground">
@@ -519,6 +524,7 @@ export function PdfSheetPreviewSvg({
   }
 
   // 5. Outer Fits on 1 Sheet (Centered)
+  const activeMediaSpec = getPrintMediaSpec(printMediaId);
   const sheetW = activeFit.sheetPageWidthMm;
   const sheetH = activeFit.sheetPageHeightMm;
   if (activeFit.status === 'fits-1-sheet') {
@@ -534,7 +540,7 @@ export function PdfSheetPreviewSvg({
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-            1× {activeFit.mediaLabel} {orientationLabel} — Centered at 100%
+            1× {activeMediaSpec.label} {orientationLabel} — Centered at 100%
           </span>
           <span className="font-mono text-[11px] text-muted-foreground">
             {roundTo(sheetW, 1)} × {roundTo(sheetH, 1)} mm sheet
@@ -544,7 +550,7 @@ export function PdfSheetPreviewSvg({
         <div className="flex items-center justify-center py-1">
           <svg
             role="img"
-            aria-label={`Centered cover on 1 ${activeFit.mediaLabel} ${orientationLabel} sheet`}
+            aria-label={`Centered cover on 1 ${activeMediaSpec.label} ${orientationLabel} sheet`}
             viewBox={`0 0 ${sheetW} ${sheetH}`}
             className="h-40 max-w-full rounded border border-border/90 bg-[#fffdf9] shadow-xs"
           >
@@ -585,7 +591,7 @@ export function PdfSheetPreviewSvg({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <span className="font-medium text-amber-900 dark:text-amber-300">
-          2× {activeFit.mediaLabel} {orientationLabel} Tiled ({tileOverlapMm} mm overlap &amp; tape
+          2× {activeMediaSpec.label} {orientationLabel} Tiled ({tileOverlapMm} mm overlap &amp; tape
           zone)
         </span>
         <span className="font-mono text-[11px] text-muted-foreground">

@@ -178,7 +178,10 @@ export function evaluateRollWidth(
   wrapWidthMm: number,
   wrapHeightMm: number,
 ): RollRecommendation {
-  // Check standard desktop home-printer sheets first (US Letter 8.5×11" and A4)
+  // Check standard desktop home-printer sheets first (US Letter and A4)
+  const letterSpec = getPrintMediaSpec('letter');
+  const a4Spec = getPrintMediaSpec('a4');
+  const legalSpec = getPrintMediaSpec('legal');
   const fitsLetter = fitsDesktopSheet(
     wrapWidthMm,
     wrapHeightMm,
@@ -196,10 +199,10 @@ export function evaluateRollWidth(
     const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
     const sheetLabel =
       fitsLetter && fitsA4
-        ? '1× US Letter / A4 (8.5×11") home sheet'
+        ? `1× ${letterSpec.shortLabel} / ${a4Spec.shortLabel} (${letterSpec.dimensionsLabel}) home sheet`
         : fitsLetter
-          ? '1× US Letter (8.5×11") home sheet'
-          : '1× A4 (210×297 mm) home sheet';
+          ? `1× ${letterSpec.label} home sheet`
+          : `1× ${a4Spec.label} home sheet`;
 
     return {
       fits: true,
@@ -212,7 +215,7 @@ export function evaluateRollWidth(
     };
   }
 
-  // Check US Legal (8.5×14") home sheet before falling through to wide-format rolls
+  // Check US Legal home sheet before falling through to wide-format rolls
   const fitsLegal = fitsDesktopSheet(
     wrapWidthMm,
     wrapHeightMm,
@@ -234,7 +237,7 @@ export function evaluateRollWidth(
       orientation,
       usedWidthMm,
       spareWidthMm,
-      summary: 'Fits on 1× US Legal (8.5×14") home sheet (100% actual size)',
+      summary: `Fits on 1× ${legalSpec.label} home sheet (100% actual size)`,
     };
   }
 
@@ -292,7 +295,7 @@ export function evaluateRollWidth(
     orientation: wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated',
     usedWidthMm: minDimension,
     spareWidthMm: roundTo(maxPrintable - minDimension, 1),
-    summary: `Exceeds 44" roll printable width (${maxPrintable} mm); use 3-Piece Split mode`,
+    summary: `Exceeds ${maxRoll.label} roll printable width (${maxPrintable} mm); use 3-Piece Split mode`,
   };
 }
 
@@ -380,7 +383,7 @@ export function evaluatePrintMediaFit(
         tilePages: 1,
         tileOverlapMm: 0,
         suggestedMediaId: null,
-        summary: `Fits on ${spec.shortLabel} (${orientationLabel}) with ${Math.round(spare)} mm spare width`,
+        summary: `Fits on ${spec.label} (${orientationLabel}) with ${Math.round(spare)} mm spare width`,
       };
     }
 
@@ -393,7 +396,7 @@ export function evaluatePrintMediaFit(
       tilePages: 1,
       tileOverlapMm: 0,
       suggestedMediaId: findSuggestedMediaId(wrapWidthMm, wrapHeightMm, spec.id),
-      summary: `Does not fit on ${spec.shortLabel} (${roundTo(minDim, 1)} mm > ${printableWidthMm} mm printable)`,
+      summary: `Does not fit on ${spec.label} (${roundTo(minDim, 1)} mm > ${printableWidthMm} mm printable)`,
     };
   }
 
@@ -417,7 +420,7 @@ export function evaluatePrintMediaFit(
       tilePages: 1,
       tileOverlapMm: 0,
       suggestedMediaId: null,
-      summary: `Fits on 1× ${spec.shortLabel} (Landscape)`,
+      summary: `Fits on 1× ${spec.label} (Landscape)`,
     };
   }
 
@@ -434,7 +437,7 @@ export function evaluatePrintMediaFit(
       tilePages: 1,
       tileOverlapMm: 0,
       suggestedMediaId: null,
-      summary: `Fits on 1× ${spec.shortLabel} (Portrait)`,
+      summary: `Fits on 1× ${spec.label} (Portrait)`,
     };
   }
 
@@ -454,7 +457,7 @@ export function evaluatePrintMediaFit(
       tilePages: 2,
       tileOverlapMm: overlapMm,
       suggestedMediaId,
-      summary: `2× ${spec.shortLabel} tiled (Portrait, ${overlapMm} mm overlap)`,
+      summary: `2× ${spec.label} tiled (Portrait, ${overlapMm} mm overlap)`,
     };
   }
 
@@ -468,7 +471,7 @@ export function evaluatePrintMediaFit(
       tilePages: 2,
       tileOverlapMm: overlapMm,
       suggestedMediaId,
-      summary: `2× ${spec.shortLabel} tiled (Landscape, ${overlapMm} mm overlap)`,
+      summary: `2× ${spec.label} tiled (Landscape, ${overlapMm} mm overlap)`,
     };
   }
 
@@ -482,7 +485,7 @@ export function evaluatePrintMediaFit(
     tilePages: 1,
     tileOverlapMm: 0,
     suggestedMediaId,
-    summary: `Does not fit on ${spec.shortLabel} (even as 2 tiled sheets)`,
+    summary: `Does not fit on ${spec.label} (even as 2 tiled sheets)`,
   };
 }
 

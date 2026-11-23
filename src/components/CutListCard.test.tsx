@@ -46,8 +46,24 @@ describe('CutListCard', () => {
     rerender(<CutListCard geometry={softGeom} unit="mm" />);
     expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('0-Board Softcover');
     expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('Tuck Flaps');
-    expect(screen.getByTestId('roll-recommendation-badge')).toHaveTextContent('US Letter / A4');
+    expect(screen.getByTestId('roll-recommendation-badge')).toHaveTextContent(
+      'US Letter / A4 (8.5 × 11")',
+    );
     expect(screen.getByTestId('cut-list-card')).toHaveTextContent('Glue blank back of 4 tabs');
+
+    const legalSoftGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      jacketFlapWidthMm: 38,
+      printMedia: 'legal',
+    });
+    rerender(<CutListCard geometry={legalSoftGeom} unit="mm" />);
+    expect(screen.getByTestId('roll-recommendation-badge')).toHaveTextContent(
+      'US Legal (8.5 × 14")',
+    );
   });
 
   it('renders crisp 0-board cards, fold counts, and materialNote for paperback-wrap and dust-jacket', () => {

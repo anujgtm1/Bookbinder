@@ -92,7 +92,7 @@ describe('pdfSheetLayout (layoutPdfToPrintMedia)', () => {
     expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(215.9, 2);
 
     const stream = extractPageContentText(doc, 0);
-    expect(stream).toContain('US Legal');
+    expect(stream).toContain('US Legal (8.5 × 14")');
     expect(stream).toContain('50 mm Scale Check');
   });
 
@@ -115,6 +115,7 @@ describe('pdfSheetLayout (layoutPdfToPrintMedia)', () => {
     const p1Stream10 = extractPageContentText(doc10, 0);
     const p2Stream10 = extractPageContentText(doc10, 1);
     expect(p1Stream10).toContain('SHEET 1 OF 2');
+    expect(p1Stream10).toContain('US Letter (8.5 × 11")');
     expect(p1Stream10).toContain('OVERLAP & TAPE ZONE');
     expect(p1Stream10).toContain('10 mm');
     expect(p1Stream10).toContain('50 mm Scale Check');

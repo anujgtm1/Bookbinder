@@ -12,6 +12,7 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import { TILE_OVERLAP_MM, clampTileOverlapMm, evaluatePrintMediaFit } from '@/core/geometry';
+import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PrintMediaId } from '@/types/bookParams';
 import type { PrintMediaFitEvaluation } from '@/types/geometry';
 import { UnitConverter } from '@/types/units';
@@ -245,9 +246,10 @@ async function layoutSingleSheetCenteredPdf(
   sheetHMm: number,
   options: PdfSheetLayoutOptions,
 ): Promise<Uint8Array> {
+  const mediaLabel = getPrintMediaSpec(fit.mediaId).label;
   const outDoc = await PDFDocument.create();
   outDoc.setTitle(
-    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${fit.mediaLabel}, 1:1 mm)`,
+    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${mediaLabel}, 1:1 mm)`,
   );
   outDoc.setCreator('Bookbinder Studio');
 
@@ -282,7 +284,7 @@ async function layoutSingleSheetCenteredPdf(
     sheetPage,
     font,
     sheetWPt,
-    `100% Actual Size (1:1 mm) • Centered on ${fit.mediaLabel}`,
+    `100% Actual Size (1:1 mm) • Centered on ${mediaLabel}`,
   );
 
   if (options.includeScaleBar) {
@@ -302,9 +304,10 @@ async function layoutTwoSheetTiledPdf(
   sheetHMm: number,
   options: PdfSheetLayoutOptions,
 ): Promise<Uint8Array> {
+  const mediaLabel = getPrintMediaSpec(fit.mediaId).label;
   const outDoc = await PDFDocument.create();
   outDoc.setTitle(
-    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${fit.mediaLabel}, 1:1 mm)`,
+    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${mediaLabel}, 1:1 mm)`,
   );
   outDoc.setCreator('Bookbinder Studio');
 
@@ -358,7 +361,7 @@ async function layoutTwoSheetTiledPdf(
     page1,
     font,
     sheetWPt,
-    `SHEET 1 OF 2 (LEFT) — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${fit.mediaLabel})`,
+    `SHEET 1 OF 2 (LEFT) — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${mediaLabel})`,
   );
 
   if (options.includeScaleBar) {
@@ -397,7 +400,7 @@ async function layoutTwoSheetTiledPdf(
     page2,
     font,
     sheetWPt,
-    `SHEET 2 OF 2 (RIGHT) — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${fit.mediaLabel})`,
+    `SHEET 2 OF 2 (RIGHT) — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${mediaLabel})`,
   );
 
   return outDoc.save();

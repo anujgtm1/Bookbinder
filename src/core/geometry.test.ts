@@ -223,7 +223,7 @@ describe('calculateCaseGeometry', () => {
     // A slightly wider sheet (276 x 170 mm) fits A4 (287 mm printable) but not US Letter (269.4 mm)
     const a4Only = evaluateRollWidth(276, 170);
     expect(a4Only.fits).toBe(true);
-    expect(a4Only.summary).toContain('1× A4 (210×297 mm)');
+    expect(a4Only.summary).toContain('1× A4 (210 × 297 mm)');
   });
 
   it('supports custom jacketFlapWidthMm, computes sheet max slip flaps, and detects US Legal home sheets', () => {
@@ -246,13 +246,13 @@ describe('calculateCaseGeometry', () => {
     expect(deepGeom.outerWrap.heightMm).toBeCloseTo(170.0, 2);
     expect(deepGeom.rollRecommendation.fits).toBe(true);
     expect(deepGeom.rollRecommendation.summary).toBe(
-      'Fits on 1× US Legal (8.5×14") home sheet (100% actual size)',
+      'Fits on 1× US Legal (8.5 × 14") home sheet (100% actual size)',
     );
 
     // Direct evaluateRollWidth checks: 294 × 170 => US Legal; default hardcover 366 × 259 => 13" roll
     const legalRec = evaluateRollWidth(294, 170);
     expect(legalRec.fits).toBe(true);
-    expect(legalRec.summary).toBe('Fits on 1× US Legal (8.5×14") home sheet (100% actual size)');
+    expect(legalRec.summary).toBe('Fits on 1× US Legal (8.5 × 14") home sheet (100% actual size)');
 
     const hardcoverRec = evaluateRollWidth(366, 259);
     expect(hardcoverRec.fits).toBe(true);
@@ -273,6 +273,7 @@ describe('calculateCaseGeometry', () => {
     expect(a6Letter.tilePages).toBe(1);
     expect(a6Letter.tileOverlapMm).toBe(0);
     expect(a6Letter.suggestedMediaId).toBeNull();
+    expect(a6Letter.summary).toContain('US Letter (8.5 × 11")');
 
     // Portrait 1-sheet fit (180 x 250 mm on US Letter -> Portrait 215.9 x 279.4 mm)
     const tallLetter = evaluatePrintMediaFit('letter', 180, 250);

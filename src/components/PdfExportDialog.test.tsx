@@ -164,8 +164,10 @@ describe('PdfExportDialog', () => {
     const confirmBtn = screen.getByTestId('pdf-export-confirm-btn');
     expect(confirmBtn).toBeDisabled();
 
-    // 1-click quick-switch buttons are rendered
-    expect(screen.getByTestId('pdf-quick-switch-tabloid')).toBeInTheDocument();
+    // 1-click quick-switch buttons are rendered with canonical dimensions
+    expect(screen.getByTestId('pdf-quick-switch-tabloid')).toHaveTextContent(
+      'Switch to 1× Tabloid (11 × 17")',
+    );
     expect(screen.getByTestId('pdf-quick-switch-three-piece')).toBeInTheDocument();
     expect(screen.getByTestId('pdf-quick-switch-exact-auto')).toBeInTheDocument();
 

@@ -896,7 +896,9 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('print-media-select').click();
     await page.getByRole('option', { name: /US Letter/i }).click();
 
-    await expect(page.getByTestId('studio-roll-badge')).toContainText('2× US Letter tiled');
+    await expect(page.getByTestId('studio-roll-badge')).toContainText(
+      '2× US Letter (8.5 × 11") tiled',
+    );
 
     // Preflight shows print-media-tiled-2-pages warning with 1-click Switch to Tabloid fix
     await page.getByTestId('studio-tool-preflight').click();

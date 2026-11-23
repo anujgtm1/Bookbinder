@@ -10,7 +10,9 @@ import { evaluatePrintMediaFit } from '@/core/geometry';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import {
   PAGE_SIZES,
+  PRIMARY_SHEET_MEDIA_IDS,
   PRINT_MEDIA_OPTIONS,
+  getPrintMediaSpec,
   type PageSizeId,
   type PrintMediaId,
   type SplitMode,
@@ -67,29 +69,9 @@ export interface PdfExportDialogProps {
   readonly onClose: () => void;
 }
 
-interface PrimaryOuterMediaCard {
-  readonly id: PrintMediaId;
-  readonly title: string;
-  readonly sublabel: string;
-}
-
-const PRIMARY_OUTER_MEDIA_CARDS: readonly PrimaryOuterMediaCard[] = [
-  { id: 'letter', title: 'US Letter', sublabel: '8.5 × 11 in' },
-  { id: 'a4', title: 'A4', sublabel: '210 × 297 mm' },
-  { id: 'legal', title: 'US Legal', sublabel: '8.5 × 14 in' },
-  { id: 'tabloid', title: 'Tabloid', sublabel: '11 × 17 in' },
-  { id: 'exact-auto', title: 'Exact 1:1 Size', sublabel: 'Auto / Roll' },
-];
-
-const INNER_PAGE_CARDS: readonly {
-  readonly id: PageSizeId;
-  readonly title: string;
-  readonly sublabel: string;
-}[] = [
-  { id: 'letter', title: 'US Letter', sublabel: '8.5 × 11 in' },
-  { id: 'a4', title: 'A4', sublabel: '210 × 297 mm' },
-  { id: 'legal', title: 'US Legal', sublabel: '8.5 × 14 in' },
-  { id: 'tabloid', title: 'Tabloid', sublabel: '11 × 17 in' },
+const PRIMARY_OUTER_MEDIA_IDS: readonly PrintMediaId[] = [
+  ...PRIMARY_SHEET_MEDIA_IDS,
+  'exact-auto',
 ];
 
 const ROLL_MEDIA_OPTIONS = PRINT_MEDIA_OPTIONS.filter((opt) => opt.kind === 'roll');
@@ -277,8 +259,8 @@ export function PdfExportDialog({
 
   const innerPlansByPage = useMemo(() => {
     const map = new Map<PageSizeId, ReturnType<typeof planInnerTemplateLayout>>();
-    for (const card of INNER_PAGE_CARDS) {
-      map.set(card.id, planInnerTemplateLayout(geometry, card.id, { includeLegend }));
+    for (const id of PRIMARY_SHEET_MEDIA_IDS) {
+      map.set(id, planInnerTemplateLayout(geometry, id, { includeLegend }));
     }
     return map;
   }, [geometry, includeLegend]);
@@ -311,16 +293,17 @@ export function PdfExportDialog({
     if (effectiveSplitMode === 'three-piece') {
       return `3 pages • 3-Piece Split (Back, Spine, Front)${dpiSuffix}`;
     }
+    const activeMediaSpec = getPrintMediaSpec(printMediaId);
     if (isBlockedUnfitted) {
-      return `Cover exceeds ${activeFit.mediaLabel} — choose a larger paper or split layout`;
+      return `Cover exceeds ${activeMediaSpec.label} — choose a larger paper or split layout`;
     }
     if (printMediaId === 'exact-auto') {
-      return `1 page • Exact 1:1 Size (${roundTo(wrapW, 1)} × ${roundTo(wrapH, 1)} mm)${dpiSuffix}`;
+      return `1 page • ${activeMediaSpec.shortLabel} (${roundTo(wrapW, 1)} × ${roundTo(wrapH, 1)} mm)${dpiSuffix}`;
     }
     if (activeFit.status === 'fits-1-sheet' && activeFit.sheetPageWidthMm && activeFit.sheetPageHeightMm) {
       const orient =
         activeFit.sheetPageWidthMm > activeFit.sheetPageHeightMm ? 'Landscape' : 'Portrait';
-      return `1 page • ${activeFit.mediaLabel} ${orient} (centered)${dpiSuffix}`;
+      return `1 page • ${activeMediaSpec.label} ${orient} (centered)${dpiSuffix}`;
     }
     if (
       activeFit.status === 'fits-2-sheet-tile' &&
@@ -329,9 +312,9 @@ export function PdfExportDialog({
     ) {
       const orient =
         activeFit.sheetPageWidthMm > activeFit.sheetPageHeightMm ? 'Landscape' : 'Portrait';
-      return `2 pages • ${activeFit.mediaLabel} ${orient} (tiled, ${tileOverlapMm} mm overlap)${dpiSuffix}`;
+      return `2 pages • ${activeMediaSpec.label} ${orient} (tiled, ${tileOverlapMm} mm overlap)${dpiSuffix}`;
     }
-    return `1 page • ${activeFit.mediaLabel} (1:1 mm)${dpiSuffix}`;
+    return `1 page • ${activeMediaSpec.label} (1:1 mm)${dpiSuffix}`;
   }, [
     isOuterTarget,
     activeInnerPlan.pageCount,
@@ -488,17 +471,18 @@ export function PdfExportDialog({
                   data-testid="pdf-export-media-grid"
                   className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
                 >
-                  {PRIMARY_OUTER_MEDIA_CARDS.map((card, index) => {
-                    const fit = outerFitsByMedia.get(card.id)!;
-                    const selected = printMediaId === card.id;
+                  {PRIMARY_OUTER_MEDIA_IDS.map((mediaId, index) => {
+                    const spec = getPrintMediaSpec(mediaId);
+                    const fit = outerFitsByMedia.get(mediaId)!;
+                    const selected = printMediaId === mediaId;
                     return (
                       <button
-                        key={card.id}
+                        key={mediaId}
                         type="button"
                         autoFocus={index === 0}
                         aria-pressed={selected}
-                        data-testid={`pdf-media-option-${card.id}`}
-                        onClick={() => onChangePrintMedia(card.id)}
+                        data-testid={`pdf-media-option-${mediaId}`}
+                        onClick={() => onChangePrintMedia(mediaId)}
                         className={`flex cursor-pointer flex-col items-start justify-between gap-1.5 rounded-lg border p-2.5 text-left transition-colors ${
                           selected
                             ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
@@ -506,9 +490,11 @@ export function PdfExportDialog({
                         }`}
                       >
                         <div>
-                          <div className="text-xs font-semibold text-foreground">{card.title}</div>
+                          <div className="text-xs font-semibold text-foreground">
+                            {spec.shortLabel}
+                          </div>
                           <div className="font-mono text-[10px] text-muted-foreground">
-                            {card.sublabel}
+                            {spec.dimensionsLabel}
                           </div>
                         </div>
                         {renderFitBadge(fit)}
@@ -521,18 +507,19 @@ export function PdfExportDialog({
                   data-testid="pdf-export-media-grid"
                   className="grid grid-cols-2 gap-2 sm:grid-cols-4"
                 >
-                  {INNER_PAGE_CARDS.map((card, index) => {
-                    const plan = innerPlansByPage.get(card.id)!;
+                  {PRIMARY_SHEET_MEDIA_IDS.map((sizeId, index) => {
+                    const pageSpec = PAGE_SIZES[sizeId];
+                    const plan = innerPlansByPage.get(sizeId)!;
                     const hasClipped = plan.placements.some((p) => p.clipped);
-                    const selected = pageSizeId === card.id;
+                    const selected = pageSizeId === sizeId;
                     return (
                       <button
-                        key={card.id}
+                        key={sizeId}
                         type="button"
                         autoFocus={index === 0}
                         aria-pressed={selected}
-                        data-testid={`pdf-page-option-${card.id}`}
-                        onClick={() => onChangePageSize(card.id)}
+                        data-testid={`pdf-page-option-${sizeId}`}
+                        onClick={() => onChangePageSize(sizeId)}
                         className={`flex cursor-pointer flex-col items-start justify-between gap-1.5 rounded-lg border p-2.5 text-left transition-colors ${
                           selected
                             ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
@@ -540,9 +527,11 @@ export function PdfExportDialog({
                         }`}
                       >
                         <div>
-                          <div className="text-xs font-semibold text-foreground">{card.title}</div>
+                          <div className="text-xs font-semibold text-foreground">
+                            {pageSpec.shortLabel}
+                          </div>
                           <div className="font-mono text-[10px] text-muted-foreground">
-                            {card.sublabel}
+                            {pageSpec.dimensionsLabel}
                           </div>
                         </div>
                         {hasClipped ? (
