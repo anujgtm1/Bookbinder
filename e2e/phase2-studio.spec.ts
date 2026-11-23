@@ -520,8 +520,15 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     // Switch to 0-Board 1-Piece Fold-and-Glue Slip Cover via sidebar selector
     await page.getByTestId('binding-style-select').click();
     await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
+    await expect(page.getByTestId('softcover-flap-controls')).toBeVisible();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('0-Board Softcover');
     await expect(page.getByTestId('cut-spine-strip')).toContainText('Tuck Flaps');
+    await expect(page.getByTestId('roll-recommendation-badge')).toContainText('US Letter / A4');
+
+    // Adjust Slip Flap Width via quick presets: Deep (38 mm) -> US Legal, Fit Letter -> US Letter / A4
+    await page.getByTestId('flap-preset-deep').click();
+    await expect(page.getByTestId('roll-recommendation-badge')).toContainText('US Legal');
+    await page.getByTestId('flap-preset-letter').click();
     await expect(page.getByTestId('roll-recommendation-badge')).toContainText('US Letter / A4');
 
     // Verify Blueprint on Measure & Cut renders the 4 mitered flap glue tabs cleanly
