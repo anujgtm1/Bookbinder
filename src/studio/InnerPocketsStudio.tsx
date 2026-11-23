@@ -7,6 +7,7 @@ import {
   EyeOff,
   FileCode2,
   FileText,
+  Grid2x2,
   ImagePlus,
   Layers,
   Magnet,
@@ -514,6 +515,34 @@ export function InnerPocketsStudio({
     updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, rect, 'none'));
   };
 
+  const handleToggleLayerTile = (layer: CoverImageLayer) => {
+    const nextTiled = !layer.tiled;
+    updateLayer(layer.id, (current) => {
+      if (!nextTiled) {
+        return { ...current, tiled: false };
+      }
+      // If the layer is very large, scale down to a crisp swatch size so the repeat pattern shows immediately
+      const maxTileW = 48;
+      if (current.widthMm > maxTileW) {
+        const ratio = maxTileW / current.widthMm;
+        const newW = roundTo(maxTileW, 2);
+        const newH = roundTo(Math.max(12, current.heightMm * ratio), 2);
+        return {
+          ...current,
+          widthMm: newW,
+          heightMm: newH,
+          tiled: true,
+        };
+      }
+      return { ...current, tiled: true };
+    });
+    onStatusMessage(
+      nextTiled
+        ? `Tiled "${layer.fileName}" as a seamless endpaper pattern (pull corners to resize repeat)`
+        : `Switched "${layer.fileName}" back to single image`,
+    );
+  };
+
   const handleCopyToOtherPocket = (layer: CoverImageLayer) => {
     const layerCenterX = layer.xMm + layer.widthMm / 2;
     const midX = innerLayout.linerX + innerLayout.linerRect.width / 2;
@@ -813,6 +842,33 @@ export function InnerPocketsStudio({
                   )}
                 </clipPath>
                 {viewMode === 'styled' &&
+                  layers
+                    .filter((layer) => layer.tiled)
+                    .map((layer) => {
+                      const tileW = Math.max(8, layer.widthMm);
+                      const tileH = Math.max(8, layer.heightMm);
+                      return (
+                        <pattern
+                          key={`tile-def-${layer.id}`}
+                          id={`${uniquePrefix}-layer-tile-${layer.id}`}
+                          x={layer.xMm}
+                          y={layer.yMm}
+                          width={tileW}
+                          height={tileH}
+                          patternUnits="userSpaceOnUse"
+                        >
+                          <image
+                            href={layer.dataUrl}
+                            x={0}
+                            y={0}
+                            width={tileW}
+                            height={tileH}
+                            preserveAspectRatio="none"
+                          />
+                        </pattern>
+                      );
+                    })}
+                {viewMode === 'styled' &&
                   pocketStyle.imageDataUrl &&
                   pocketStyle.imageFitMode === 'tile' &&
                   linerImgPlacement && (
@@ -899,27 +955,49 @@ export function InnerPocketsStudio({
                   clipPath={`url(#${uniquePrefix}-all-shapes-clip)`}
                   opacity={pocketStyle.imageOpacity}
                 >
-                  {layers.map((layer, index) => (
-                    <image
-                      key={layer.id}
-                      href={layer.dataUrl}
-                      x={layer.xMm}
-                      y={layer.yMm}
-                      width={layer.widthMm}
-                      height={layer.heightMm}
-                      preserveAspectRatio="none"
-                      data-testid={`pocket-layer-${index}`}
-                      className="cursor-grab active:cursor-grabbing"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLayerId(layer.id);
-                      }}
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        startMoveDrag(layer, e.clientX, e.clientY);
-                      }}
-                    />
-                  ))}
+                  {layers.map((layer, index) =>
+                    layer.tiled ? (
+                      <rect
+                        key={layer.id}
+                        x={0}
+                        y={0}
+                        width={innerLayout.totalWidthMm}
+                        height={innerLayout.totalHeightMm}
+                        fill={`url(#${uniquePrefix}-layer-tile-${layer.id})`}
+                        data-testid={`pocket-layer-${index}`}
+                        data-tiled="true"
+                        className="cursor-grab active:cursor-grabbing"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedLayerId(layer.id);
+                        }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          startMoveDrag(layer, e.clientX, e.clientY);
+                        }}
+                      />
+                    ) : (
+                      <image
+                        key={layer.id}
+                        href={layer.dataUrl}
+                        x={layer.xMm}
+                        y={layer.yMm}
+                        width={layer.widthMm}
+                        height={layer.heightMm}
+                        preserveAspectRatio="none"
+                        data-testid={`pocket-layer-${index}`}
+                        className="cursor-grab active:cursor-grabbing"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedLayerId(layer.id);
+                        }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          startMoveDrag(layer, e.clientX, e.clientY);
+                        }}
+                      />
+                    ),
+                  )}
                 </g>
               )}
 
@@ -1313,6 +1391,18 @@ export function InnerPocketsStudio({
                       {opt.label}
                     </Button>
                   ))}
+                  <Button
+                    variant={selectedLayer.tiled ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    aria-pressed={Boolean(selectedLayer.tiled)}
+                    data-testid="pocket-tile-toggle-btn"
+                    title="Repeat this image seamlessly across all inner pockets (drag corners to adjust tile size)"
+                    onClick={() => handleToggleLayerTile(selectedLayer)}
+                  >
+                    <Grid2x2 className="h-3 w-3" aria-hidden="true" />
+                    {selectedLayer.tiled ? 'Tiled Pattern' : 'Tile Pattern'}
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

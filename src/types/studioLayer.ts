@@ -23,6 +23,8 @@ export interface CoverImageLayer {
   readonly originalHeight?: number;
   readonly stubExtensionMode?: StubExtensionMode;
   readonly stubExtensionSide?: 'front' | 'back';
+  /** When true (Inner Pockets), repeats this layer seamlessly as an endpaper tile pattern */
+  readonly tiled?: boolean;
 }
 
 export const LAYER_MIN_SIZE_MM = 12;
@@ -110,6 +112,7 @@ export const CoverImageLayerModel = {
       originalHeight: layer.originalHeight,
       stubExtensionMode: layer.stubExtensionMode,
       stubExtensionSide: layer.stubExtensionSide,
+      tiled: layer.tiled,
     };
   },
 
@@ -256,6 +259,7 @@ export const CoverImageLayerModel = {
         obj.stubExtensionSide === 'front' || obj.stubExtensionSide === 'back'
           ? obj.stubExtensionSide
           : undefined,
+      tiled: obj.tiled === true ? true : undefined,
     };
   },
 } as const;

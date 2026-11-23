@@ -281,13 +281,29 @@ async function renderStyledPiecePng(
     for (const { layer, image } of loadedLayers) {
       const localX = layer.xMm - piece.offsetX;
       const localY = layer.yMm - piece.offsetY;
-      ctx.drawImage(
-        image,
-        localX * pxPerMm,
-        localY * pxPerMm,
-        layer.widthMm * pxPerMm,
-        layer.heightMm * pxPerMm,
-      );
+      if (layer.tiled) {
+        const tileW = Math.max(8, layer.widthMm) * pxPerMm;
+        const tileH = Math.max(8, layer.heightMm) * pxPerMm;
+        const originX = (((localX * pxPerMm) % tileW) + tileW) % tileW;
+        const originY = (((localY * pxPerMm) % tileH) + tileH) % tileH;
+        const startX = originX > 0 ? originX - tileW : 0;
+        const startY = originY > 0 ? originY - tileH : 0;
+        const endX = piece.widthMm * pxPerMm;
+        const endY = piece.heightMm * pxPerMm;
+        for (let y = startY; y < endY; y += tileH) {
+          for (let x = startX; x < endX; x += tileW) {
+            ctx.drawImage(image, x, y, tileW, tileH);
+          }
+        }
+      } else {
+        ctx.drawImage(
+          image,
+          localX * pxPerMm,
+          localY * pxPerMm,
+          layer.widthMm * pxPerMm,
+          layer.heightMm * pxPerMm,
+        );
+      }
     }
     ctx.restore();
   }

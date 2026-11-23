@@ -133,5 +133,26 @@ describe('InnerPocketsStudio', () => {
     // Quick-fit the copied layer cleanly to Spine Liner
     await user.click(screen.getByTestId('pocket-quick-fit-liner'));
     expect(pocketStyle.layers[1].widthMm).toBeGreaterThanOrEqual(layout.linerRect.width - 0.5);
+
+    // Toggle Tile Pattern ON -> scales tile swatch down cleanly and marks tiled=true
+    await user.click(screen.getByTestId('pocket-tile-toggle-btn'));
+    expect(pocketStyle.layers[1].tiled).toBe(true);
+    expect(pocketStyle.layers[1].widthMm).toBeLessThanOrEqual(48);
+
+    rerender(
+      <InnerPocketsStudio
+        geometry={geom}
+        pocketStyle={pocketStyle}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        unit="mm"
+        onChangePocketStyle={onChangePocketStyle}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('pocket-layer-1')).toHaveAttribute('data-tiled', 'true');
+    expect(screen.getByTestId('pocket-tile-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
   });
 });
