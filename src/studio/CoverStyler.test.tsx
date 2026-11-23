@@ -189,8 +189,18 @@ describe('CoverStyler', () => {
     await user.click(screen.getByTestId('download-outer-svg-btn'));
     expect(onDownloadOuterSvg).toHaveBeenCalledTimes(1);
 
+    // Cut-Only PDF button opens the unified Export Dialog first
     await user.click(screen.getByTestId('download-outer-pdf-btn'));
+    expect(screen.getByTestId('pdf-export-dialog')).toHaveAttribute('open');
+    expect(onDownloadOuterPdf).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
     expect(onDownloadOuterPdf).toHaveBeenCalledTimes(1);
+    expect(onDownloadOuterPdf).toHaveBeenCalledWith(
+      expect.objectContaining({
+        splitMode: 'three-piece',
+      }),
+    );
   });
 
   it('fits artwork cleanly to Front Zone with front clipZone after the book is resized', async () => {

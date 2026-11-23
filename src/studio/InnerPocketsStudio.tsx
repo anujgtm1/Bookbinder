@@ -21,6 +21,11 @@ import {
   HudGroup,
   HudSeparator,
 } from '@/components/FloatingHudToolbar';
+import {
+  PdfExportDialog,
+  type InnerPdfExportOptions,
+  type PdfExportSelection,
+} from '@/components/PdfExportDialog';
 import { Button } from '@/components/ui/button';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import { triggerBytesDownload } from '@/core/storage';
@@ -29,7 +34,7 @@ import {
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
-import { PAGE_SIZES, type PageSizeId } from '@/types/bookParams';
+import { PAGE_SIZES, type PageSizeId, type PrintMediaId } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { PocketStyleConfig } from '@/types/studio';
 import { CoverImageLayerModel, type CoverImageLayer } from '@/types/studioLayer';
@@ -62,11 +67,13 @@ export interface InnerPocketsStudioProps {
   readonly pocketStyle: PocketStyleConfig;
   readonly coverMatchColor: string;
   readonly pdfPageSize: PageSizeId;
+  readonly printMediaId?: PrintMediaId;
   readonly unit: UnitSystem;
   readonly exportingInnerPdf?: boolean;
   readonly onChangePocketStyle: (next: PocketStyleConfig) => void;
+  readonly onChangePageSize?: (sizeId: PageSizeId) => void;
   readonly onDownloadInnerSvg: () => void;
-  readonly onDownloadInnerPdf: (includeLegend?: boolean) => void;
+  readonly onDownloadInnerPdf: (options?: InnerPdfExportOptions) => void | Promise<void>;
   readonly onStatusMessage: (message: string) => void;
 }
 
@@ -79,9 +86,11 @@ export function InnerPocketsStudio({
   pocketStyle,
   coverMatchColor,
   pdfPageSize,
+  printMediaId = 'exact-auto',
   unit,
   exportingInnerPdf = false,
   onChangePocketStyle,
+  onChangePageSize,
   onDownloadInnerSvg,
   onDownloadInnerPdf,
   onStatusMessage,
@@ -94,6 +103,10 @@ export function InnerPocketsStudio({
   const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
   const [includePdfGuides, setIncludePdfGuides] = useState(true);
   const [includePdfLegend, setIncludePdfLegend] = useState(false);
+  const [pdfDialogTarget, setPdfDialogTarget] = useState<'inner-styled' | 'inner-blueprint' | null>(
+    null,
+  );
+  const [localPageSize, setLocalPageSize] = useState<PageSizeId>(pdfPageSize);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => layers[layers.length - 1]?.id ?? null,
@@ -103,6 +116,8 @@ export function InnerPocketsStudio({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [exportingStyledPdf, setExportingStyledPdf] = useState(false);
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
+
+  const activePageSize = onChangePageSize ? pdfPageSize : localPageSize;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const panDragRef = useRef<{
@@ -121,8 +136,8 @@ export function InnerPocketsStudio({
   }, [pocketStyle, onChangePocketStyle]);
 
   const pdfPlan = useMemo(
-    () => planInnerTemplateLayout(geometry, pdfPageSize, { includeLegend: includePdfLegend }),
-    [geometry, pdfPageSize, includePdfLegend],
+    () => planInnerTemplateLayout(geometry, activePageSize, { includeLegend: includePdfLegend }),
+    [geometry, activePageSize, includePdfLegend],
   );
 
   const { backPocket, spineLiner, frontPocket } = geometry;
@@ -314,25 +329,51 @@ export function InnerPocketsStudio({
     );
   };
 
-  const handleDownloadStyledPdf = async () => {
+  const handleDownloadStyledPdf = async (options?: {
+    readonly pageSizeId?: PageSizeId;
+    readonly includeGuides?: boolean;
+    readonly includeLegend?: boolean;
+  }) => {
+    const effectivePageSize = options?.pageSizeId ?? activePageSize;
+    const effectiveGuides = options?.includeGuides ?? includePdfGuides;
+    const effectiveLegend = options?.includeLegend ?? includePdfLegend;
+    setIncludePdfGuides(effectiveGuides);
+    setIncludePdfLegend(effectiveLegend);
     setExportingStyledPdf(true);
     try {
       const { bytes, plan } = await generateStyledInnerTemplatesPdf(
         geometry,
-        pdfPageSize,
+        effectivePageSize,
         pocketStyle,
         undefined,
-        { includeLegend: includePdfLegend, includeGuides: includePdfGuides },
+        { includeLegend: effectiveLegend, includeGuides: effectiveGuides },
       );
       triggerBytesDownload(bytes, 'inner_pockets_styled.pdf', 'application/pdf');
       onStatusMessage(
-        `Exported inner_pockets_styled.pdf (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'}, 300 DPI${includePdfLegend ? ' with legend' : ''})`,
+        `Exported inner_pockets_styled.pdf (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'}, 300 DPI${effectiveLegend ? ' with legend' : ''})`,
       );
     } catch {
       onStatusMessage('Failed to generate Styled Pockets PDF.');
     } finally {
       setExportingStyledPdf(false);
     }
+  };
+
+  const handleConfirmPdfExport = async (selection: PdfExportSelection) => {
+    setIncludePdfGuides(selection.includeGuides);
+    setIncludePdfLegend(selection.includeLegend);
+    if (selection.target === 'inner-styled') {
+      await handleDownloadStyledPdf({
+        pageSizeId: selection.pageSizeId,
+        includeGuides: selection.includeGuides,
+        includeLegend: selection.includeLegend,
+      });
+      return;
+    }
+    await onDownloadInnerPdf({
+      pageSizeId: selection.pageSizeId,
+      includeLegend: selection.includeLegend,
+    });
   };
 
   const handleCornerSize = Math.max(7, innerLayout.totalWidthMm * 0.018);
@@ -385,57 +426,25 @@ export function InnerPocketsStudio({
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
-              variant={includePdfGuides ? 'secondary' : 'outline'}
-              size="sm"
-              className={`h-8 px-2.5 text-xs ${
-                includePdfGuides
-                  ? 'border-brass/60 text-foreground'
-                  : 'border-dashed text-muted-foreground'
-              }`}
-              aria-pressed={includePdfGuides}
-              data-testid="pocket-pdf-guides-toggle"
-              title="Include red cut lines and dashed blue fold lines on the Styled Pockets PDF (on by default)"
-              onClick={() => setIncludePdfGuides((v) => !v)}
-            >
-              <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
-              {includePdfGuides ? 'Cut & Fold Lines: On' : 'Cut & Fold Lines: Off'}
-            </Button>
-            <Button
-              variant={includePdfLegend ? 'secondary' : 'outline'}
-              size="sm"
-              className={`h-8 px-2.5 text-xs ${
-                includePdfLegend
-                  ? 'border-brass/60 text-foreground'
-                  : 'border-dashed text-muted-foreground'
-              }`}
-              aria-pressed={includePdfLegend}
-              data-testid="pocket-pdf-legend-toggle"
-              title="Include 50 × 50 mm scale square & cut/score legend in PDF (off by default to fit more pieces per page)"
-              onClick={() => setIncludePdfLegend((v) => !v)}
-            >
-              <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
-              {includePdfLegend ? 'PDF Legend: On' : 'PDF Legend: Off'}
-            </Button>
-            <Button
               variant="default"
               size="sm"
-              onClick={() => void handleDownloadStyledPdf()}
+              onClick={() => setPdfDialogTarget('inner-styled')}
               disabled={exportingStyledPdf}
               data-testid="download-styled-inner-pdf-btn"
             >
               <Sparkles className="h-4 w-4" aria-hidden="true" />
-              {exportingStyledPdf ? 'Rendering PDF…' : 'Styled Pockets PDF'}
+              {exportingStyledPdf ? 'Rendering PDF…' : 'Styled Pockets PDF…'}
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onDownloadInnerPdf(includePdfLegend)}
+              onClick={() => setPdfDialogTarget('inner-blueprint')}
               disabled={exportingInnerPdf}
-              aria-label="Download Inner Pockets and Spine Liner as Plain Cut PDF"
+              aria-label="Open Inner Pockets Plain Cut PDF export dialog"
               data-testid="download-inner-pdf-btn"
             >
               <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-              {exportingInnerPdf ? '…' : 'Cut PDF (1:1 mm)'}
+              {exportingInnerPdf ? '…' : 'Plain Cut PDF…'}
             </Button>
             <Button
               variant="outline"
@@ -524,7 +533,7 @@ export function InnerPocketsStudio({
               <Download className="h-3 w-3 text-brass-bright" aria-hidden="true" />
               <span>
                 {pdfPlan.pageCount} {pdfPlan.pageCount === 1 ? 'page' : 'pages'} •{' '}
-                {PAGE_SIZES[pdfPageSize].id.toUpperCase()}
+                {PAGE_SIZES[activePageSize].id.toUpperCase()}
               </span>
             </div>
             {isExpanded && (
@@ -1019,6 +1028,27 @@ export function InnerPocketsStudio({
         onToggleLayerTile={handleToggleLayerTile}
         onCopyToOtherPocket={handleCopyToOtherPocket}
         onStatusMessage={onStatusMessage}
+      />
+
+      {/* Unified Print & Export PDF Modal */}
+      <PdfExportDialog
+        open={pdfDialogTarget !== null}
+        target={pdfDialogTarget ?? 'inner-styled'}
+        geometry={geometry}
+        unit={unit}
+        printMediaId={printMediaId}
+        onChangePrintMedia={() => {}}
+        pageSizeId={activePageSize}
+        onChangePageSize={(sizeId) => {
+          setLocalPageSize(sizeId);
+          onChangePageSize?.(sizeId);
+        }}
+        splitMode="single"
+        defaultIncludeGuides={includePdfGuides}
+        defaultIncludeLegend={includePdfLegend}
+        exporting={exportingStyledPdf || exportingInnerPdf}
+        onConfirmExport={handleConfirmPdfExport}
+        onClose={() => setPdfDialogTarget(null)}
       />
     </div>
   );

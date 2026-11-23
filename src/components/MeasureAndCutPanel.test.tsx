@@ -31,8 +31,20 @@ describe('MeasureAndCutPanel', () => {
     await user.click(screen.getByTestId('measure-download-svg-btn'));
     expect(onDownloadOuterSvg).toHaveBeenCalledTimes(1);
 
+    // Clicking Cut PDF opens the unified Export Dialog before downloading
     await user.click(screen.getByTestId('measure-download-pdf-btn'));
+    expect(screen.getByTestId('pdf-export-dialog')).toHaveAttribute('open');
+    expect(onDownloadOuterPdf).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
     expect(onDownloadOuterPdf).toHaveBeenCalledTimes(1);
+    expect(onDownloadOuterPdf).toHaveBeenCalledWith(
+      expect.objectContaining({
+        splitMode: 'single',
+        printMediaId: 'exact-auto',
+        includeScaleBar: true,
+      }),
+    );
   });
 
   it('toggles CAD dimensions and updates zoom level via the Floating HUD toolbar', async () => {

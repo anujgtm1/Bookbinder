@@ -61,25 +61,28 @@ describe('InnerPocketsStudio', () => {
     expect(screen.queryByTestId('styled-front-pocket-fill')).not.toBeInTheDocument();
     expect(screen.getByText('SPINE LINER')).toBeInTheDocument();
 
-    // Download buttons invoke callbacks (PDF legend defaults to OFF for tighter sheet packing)
+    // Download buttons invoke callbacks (PDF buttons open the unified Export Dialog)
     await user.click(screen.getByTestId('download-inner-svg-btn'));
     expect(onDownloadInnerSvg).toHaveBeenCalledTimes(1);
 
-    const guidesToggle = screen.getByTestId('pocket-pdf-guides-toggle');
-    expect(guidesToggle).toHaveAttribute('aria-pressed', 'true');
-    await user.click(guidesToggle);
-    expect(guidesToggle).toHaveAttribute('aria-pressed', 'false');
-
-    const legendToggle = screen.getByTestId('pocket-pdf-legend-toggle');
-    expect(legendToggle).toHaveAttribute('aria-pressed', 'false');
+    // Open Plain Cut PDF dialog -> legend defaults to OFF for tighter sheet packing
     await user.click(screen.getByTestId('download-inner-pdf-btn'));
-    expect(onDownloadInnerPdf).toHaveBeenLastCalledWith(false);
+    expect(screen.getByTestId('pdf-export-dialog')).toHaveAttribute('open');
+    expect(onDownloadInnerPdf).not.toHaveBeenCalled();
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onDownloadInnerPdf).toHaveBeenLastCalledWith({
+      pageSizeId: 'tabloid',
+      includeLegend: false,
+    });
 
-    // Opt in to printing legend -> passes includeLegend=true
-    await user.click(legendToggle);
-    expect(legendToggle).toHaveAttribute('aria-pressed', 'true');
+    // Reopen dialog, opt in to printing 50x50 mm calibration & legend -> passes includeLegend=true
     await user.click(screen.getByTestId('download-inner-pdf-btn'));
-    expect(onDownloadInnerPdf).toHaveBeenLastCalledWith(true);
+    await user.click(screen.getByTestId('pdf-opt-legend'));
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onDownloadInnerPdf).toHaveBeenLastCalledWith({
+      pageSizeId: 'tabloid',
+      includeLegend: true,
+    });
   });
 
   it('supports interactive multi-layer quick-fit, copy to opposite pocket, and removal', async () => {

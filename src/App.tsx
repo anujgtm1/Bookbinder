@@ -2,6 +2,10 @@ import { BookMarked, CheckCircle2, FolderOpen, Ruler } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Header } from '@/components/Header';
 import { MeasureAndCutPanel } from '@/components/MeasureAndCutPanel';
+import type {
+  InnerPdfExportOptions,
+  OuterPdfExportOptions,
+} from '@/components/PdfExportDialog';
 import { SidebarControls } from '@/components/SidebarControls';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -68,6 +72,12 @@ export function App() {
     }));
   };
 
+  const handlePatchParams = (patch: Partial<BookParameters>) => {
+    handleParamsChange(
+      BookParametersModel.clampAndNormalize({ ...project.parameters, ...patch }),
+    );
+  };
+
   const handleDownloadOuterSvg = () => {
     const svg = generateOuterWrapSvg(geometry, project.parameters.splitMode);
     const filename =
@@ -78,12 +88,18 @@ export function App() {
     setStatusMessage(`Exported ${filename}`);
   };
 
-  const handleDownloadOuterPdf = async () => {
+  const handleDownloadOuterPdf = async (options?: OuterPdfExportOptions) => {
     setExportingTarget('outer-pdf');
     try {
-      const bytes = await generateOuterWrapPdf(geometry, project.parameters.splitMode);
+      const effectiveSplitMode = options?.splitMode ?? project.parameters.splitMode;
+      const effectiveMediaId = options?.printMediaId ?? project.parameters.printMedia;
+      const bytes = await generateOuterWrapPdf(geometry, effectiveSplitMode, {
+        printMediaId: effectiveMediaId,
+        tileOverlapMm: options?.tileOverlapMm,
+        includeScaleBar: options?.includeScaleBar,
+      });
       const filename =
-        project.parameters.splitMode === 'three-piece'
+        effectiveSplitMode === 'three-piece'
           ? 'outer_case_wrap_3piece.pdf'
           : 'outer_case_wrap.pdf';
       triggerBytesDownload(bytes, filename, 'application/pdf');
@@ -101,12 +117,14 @@ export function App() {
     setStatusMessage('Exported inner_pockets_and_liner.svg (1:1 mm)');
   };
 
-  const handleDownloadInnerPdf = async (includeLegend = false) => {
+  const handleDownloadInnerPdf = async (options?: InnerPdfExportOptions) => {
     setExportingTarget('inner-pdf');
     try {
+      const effectivePageSize = options?.pageSizeId ?? project.parameters.pdfPageSize;
+      const includeLegend = options?.includeLegend ?? false;
       const { bytes, plan } = await generateInnerTemplatesPdf(
         geometry,
-        project.parameters.pdfPageSize,
+        effectivePageSize,
         { includeLegend },
       );
       triggerBytesDownload(bytes, 'inner_pockets_and_liner.pdf', 'application/pdf');
@@ -233,8 +251,14 @@ export function App() {
               <MeasureAndCutPanel
                 geometry={geometry}
                 splitMode={project.parameters.splitMode}
+                printMediaId={project.parameters.printMedia}
+                pageSizeId={project.parameters.pdfPageSize}
                 unit={project.parameters.unit}
                 exportingOuterPdf={exportingTarget === 'outer-pdf'}
+                onChangePrintMedia={(printMedia) => handlePatchParams({ printMedia })}
+                onChangePageSize={(pdfPageSize) => handlePatchParams({ pdfPageSize })}
+                onChangeSplitMode={(splitMode) => handlePatchParams({ splitMode })}
+                onReduceFlapWidth={(jacketFlapWidthMm) => handlePatchParams({ jacketFlapWidthMm })}
                 onDownloadOuterSvg={handleDownloadOuterSvg}
                 onDownloadOuterPdf={handleDownloadOuterPdf}
               />
@@ -247,11 +271,7 @@ export function App() {
                 studio={project.studio}
                 exportingOuterPdf={exportingTarget === 'outer-pdf'}
                 onChange={handleStudioChange}
-                onUpdateParams={(patch) =>
-                  handleParamsChange(
-                    BookParametersModel.clampAndNormalize({ ...project.parameters, ...patch }),
-                  )
-                }
+                onUpdateParams={handlePatchParams}
                 onDownloadOuterSvg={handleDownloadOuterSvg}
                 onDownloadOuterPdf={handleDownloadOuterPdf}
                 onOpenMeasureAndCut={() => setActiveTab('measure')}
@@ -317,11 +337,13 @@ export function App() {
                   pocketStyle={project.studio.pocketStyle}
                   coverMatchColor={project.studio.spineBgColor}
                   pdfPageSize={project.parameters.pdfPageSize}
+                  printMediaId={project.parameters.printMedia}
                   unit={project.parameters.unit}
                   exportingInnerPdf={exportingTarget === 'inner-pdf'}
                   onChangePocketStyle={(pocketStyle) =>
                     handleStudioChange({ ...project.studio, pocketStyle })
                   }
+                  onChangePageSize={(pdfPageSize) => handlePatchParams({ pdfPageSize })}
                   onDownloadInnerSvg={handleDownloadInnerSvg}
                   onDownloadInnerPdf={handleDownloadInnerPdf}
                   onStatusMessage={setStatusMessage}

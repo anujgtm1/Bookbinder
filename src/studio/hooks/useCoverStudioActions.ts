@@ -1,4 +1,5 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { evaluatePrintMediaFit } from '@/core/geometry';
 import {
   exportDesignPresetsJson,
   importDesignPresetsJson,
@@ -11,7 +12,12 @@ import {
   triggerTextDownload,
 } from '@/core/storage';
 import { rgbToHex } from '@/lib/color';
-import { getPrintMediaSpec, type BookParameters } from '@/types/bookParams';
+import {
+  getPrintMediaSpec,
+  type BookParameters,
+  type PrintMediaId,
+  type SplitMode,
+} from '@/types/bookParams';
 import {
   CoverOrnamentLayerModel,
   CoverTextLayerModel,
@@ -653,20 +659,44 @@ export function useCoverStudioActions({
     }
   };
 
-  const handleExportPrintPdf = async () => {
+  const handleExportPrintPdf = async (options?: {
+    readonly includeGuides?: boolean;
+    readonly printMediaId?: PrintMediaId;
+    readonly dpi?: 300 | 600;
+    readonly tileOverlapMm?: number;
+    readonly includeScaleBar?: boolean;
+    readonly splitMode?: SplitMode;
+  }) => {
     setExportingKind('pdf');
     try {
+      const effectiveMediaId = options?.printMediaId ?? effectiveParams.printMedia;
+      const effectiveDpi = options?.dpi ?? 300;
+      if (options?.includeGuides !== undefined) {
+        const nextCutLineMode = options.includeGuides ? 'full-cut-miter' : 'bleed-registration';
+        if (nextCutLineMode !== studio.cutLineMode) {
+          updateStudio({ cutLineMode: nextCutLineMode });
+        }
+      }
       const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
-        printMedia: effectiveParams.printMedia,
+        includeGuides: options?.includeGuides,
+        printMediaId: effectiveMediaId,
+        dpi: effectiveDpi,
+        tileOverlapMm: options?.tileOverlapMm,
+        includeScaleBar: options?.includeScaleBar,
       });
       triggerBytesDownload(bytes, 'outer_cover_print.pdf', 'application/pdf');
-      const fit = geometry.mediaFit;
+      const fit = evaluatePrintMediaFit(
+        effectiveMediaId,
+        geometry.outerWrap.widthMm,
+        geometry.outerWrap.heightMm,
+        options?.tileOverlapMm,
+      );
       onStatusMessage(
         fit.status === 'fits-1-sheet'
-          ? `Exported outer_cover_print.pdf (100% actual size, centered on 1× ${fit.mediaLabel})`
+          ? `Exported outer_cover_print.pdf (100% actual size, centered on 1× ${fit.mediaLabel}, ${effectiveDpi} DPI)`
           : fit.status === 'fits-2-sheet-tile'
-            ? `Exported outer_cover_print.pdf (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap)`
-            : 'Exported outer_cover_print.pdf (300 DPI + vector spine text)',
+            ? `Exported outer_cover_print.pdf (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap, ${effectiveDpi} DPI)`
+            : `Exported outer_cover_print.pdf (${effectiveDpi} DPI + vector spine text)`,
       );
     } catch {
       onStatusMessage('Failed to generate Print-Ready Roll PDF.');

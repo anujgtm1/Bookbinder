@@ -1,7 +1,6 @@
-import { FileCode2, FileImage, FileText, Printer, Ruler, Scissors } from 'lucide-react';
+import { FileCode2, FileImage, FileText, Printer, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CaseGeometry } from '@/types/geometry';
-import type { CoverStudioState } from '@/types/studio';
 import { UnitConverter, type UnitSystem } from '@/types/units';
 import type { StudioCanvasSpec } from './renderEngine';
 
@@ -9,11 +8,9 @@ export interface CoverWorkbenchHeaderProps {
   readonly geometry: CaseGeometry;
   readonly spec: StudioCanvasSpec;
   readonly unit: UnitSystem;
-  readonly cutLineMode: CoverStudioState['cutLineMode'];
   readonly exportingKind: 'pdf' | 'png' | 'svg' | null;
   readonly exportingOuterPdf: boolean;
   readonly onOpenMeasureAndCut?: () => void;
-  readonly onToggleCutLineMode: () => void;
   readonly onExportPrintPdf: () => void;
   readonly onExportAffinityPng: () => void;
   readonly onExportAffinitySvg: () => void;
@@ -26,11 +23,9 @@ export function CoverWorkbenchHeader({
   geometry,
   spec,
   unit,
-  cutLineMode,
   exportingKind,
   exportingOuterPdf,
   onOpenMeasureAndCut,
-  onToggleCutLineMode,
   onExportPrintPdf,
   onExportAffinityPng,
   onExportAffinitySvg,
@@ -88,24 +83,8 @@ export function CoverWorkbenchHeader({
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {/* Styled 300 DPI Artwork Exports */}
+        {/* Styled Artwork Exports */}
         <div className="flex flex-wrap items-center gap-1.5">
-          <Button
-            variant={cutLineMode === 'full-cut-miter' ? 'secondary' : 'outline'}
-            size="sm"
-            className={`h-8 px-2.5 text-xs ${
-              cutLineMode === 'full-cut-miter'
-                ? 'border-brass/60 text-foreground'
-                : 'border-dashed text-muted-foreground'
-            }`}
-            aria-pressed={cutLineMode === 'full-cut-miter'}
-            data-testid="outer-pdf-guides-toggle"
-            title="Include solid cut lines and dashed fold lines on the exported Print PDF (on by default)"
-            onClick={onToggleCutLineMode}
-          >
-            <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
-            {cutLineMode === 'full-cut-miter' ? 'Cut & Fold Lines: On' : 'Cut & Fold Lines: Off'}
-          </Button>
           <Button
             variant="default"
             size="sm"
@@ -114,7 +93,7 @@ export function CoverWorkbenchHeader({
             data-testid="studio-export-pdf-btn"
           >
             <FileText className="h-4 w-4" aria-hidden="true" />
-            {exportingKind === 'pdf' ? 'Rendering…' : 'Print PDF (300 DPI)'}
+            {exportingKind === 'pdf' ? 'Rendering…' : 'Print PDF…'}
           </Button>
           <Button
             variant="secondary"
@@ -176,10 +155,10 @@ export function CoverWorkbenchHeader({
                 className="h-6 px-2 text-xs"
                 onClick={onDownloadOuterPdf}
                 disabled={exportingOuterPdf}
-                aria-label="Download Outer Case Wrap as PDF"
+                aria-label="Open Outer Case Wrap Cut PDF export dialog"
                 data-testid="download-outer-pdf-btn"
               >
-                {exportingOuterPdf ? '…' : 'PDF'}
+                {exportingOuterPdf ? '…' : 'PDF…'}
               </Button>
             )}
           </div>

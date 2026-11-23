@@ -8,37 +8,71 @@ import {
   HudSeparator,
 } from '@/components/FloatingHudToolbar';
 import { OuterBlueprintCanvas } from '@/components/OuterBlueprintCanvas';
+import {
+  PdfExportDialog,
+  type OuterPdfExportOptions,
+  type PdfExportSelection,
+} from '@/components/PdfExportDialog';
 import { Button } from '@/components/ui/button';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
-import type { SplitMode } from '@/types/bookParams';
+import type { PageSizeId, PrintMediaId, SplitMode } from '@/types/bookParams';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export interface MeasureAndCutPanelProps {
   readonly geometry: CaseGeometry;
   readonly splitMode: SplitMode;
+  readonly printMediaId?: PrintMediaId;
+  readonly pageSizeId?: PageSizeId;
   readonly unit: UnitSystem;
   readonly exportingOuterPdf?: boolean;
+  readonly onChangePrintMedia?: (mediaId: PrintMediaId) => void;
+  readonly onChangePageSize?: (sizeId: PageSizeId) => void;
+  readonly onChangeSplitMode?: (mode: SplitMode) => void;
+  readonly onReduceFlapWidth?: (widthMm: number) => void;
   readonly onDownloadOuterSvg: () => void;
-  readonly onDownloadOuterPdf: () => void;
+  readonly onDownloadOuterPdf: (options?: OuterPdfExportOptions) => void | Promise<void>;
 }
 
 export function MeasureAndCutPanel({
   geometry,
   splitMode,
+  printMediaId = 'exact-auto',
+  pageSizeId = 'letter',
   unit,
   exportingOuterPdf = false,
+  onChangePrintMedia,
+  onChangePageSize,
+  onChangeSplitMode,
+  onReduceFlapWidth,
   onDownloadOuterSvg,
   onDownloadOuterPdf,
 }: MeasureAndCutPanelProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showDimensions, setShowDimensions] = useState(true);
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(printMediaId);
+  const [localPageSize, setLocalPageSize] = useState<PageSizeId>(pageSizeId);
+  const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(splitMode);
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
+
+  const effectivePrintMedia = onChangePrintMedia ? printMediaId : localPrintMedia;
+  const effectivePageSize = onChangePageSize ? pageSizeId : localPageSize;
+  const effectiveSplitMode = onChangeSplitMode ? splitMode : localSplitMode;
+
+  const handleConfirmPdfExport = async (selection: PdfExportSelection) => {
+    await onDownloadOuterPdf({
+      splitMode: selection.splitMode,
+      printMediaId: selection.printMediaId,
+      tileOverlapMm: selection.tileOverlapMm,
+      includeScaleBar: selection.includeScaleBar,
+    });
+  };
 
   const adjustZoom = (delta: number) => {
     setZoom((prev) => roundTo(Math.min(3.5, Math.max(0.5, prev + delta)), 2));
@@ -83,13 +117,13 @@ export function MeasureAndCutPanel({
             <Button
               variant="default"
               size="sm"
-              onClick={onDownloadOuterPdf}
+              onClick={() => setPdfDialogOpen(true)}
               disabled={exportingOuterPdf}
-              aria-label="Download Outer Case Wrap Cut PDF (1:1 mm)"
+              aria-label="Open Cutting Blueprint PDF export dialog"
               data-testid="measure-download-pdf-btn"
             >
               <FileText className="h-4 w-4" aria-hidden="true" />
-              {exportingOuterPdf ? 'Rendering…' : 'Cut PDF (1:1 mm)'}
+              {exportingOuterPdf ? 'Rendering…' : 'Cut PDF…'}
             </Button>
           </div>
         </div>
@@ -224,10 +258,36 @@ export function MeasureAndCutPanel({
               geometry.outerWrap.heightMm,
               unit,
             )}
-            {splitMode === 'three-piece' ? ' • 3-Piece Split' : ' • Single Wrap'}
+            {effectiveSplitMode === 'three-piece' ? ' • 3-Piece Split' : ' • Single Wrap'}
           </span>
         </div>
       </section>
+
+      <PdfExportDialog
+        open={pdfDialogOpen}
+        target="outer-blueprint"
+        geometry={geometry}
+        unit={unit}
+        printMediaId={effectivePrintMedia}
+        onChangePrintMedia={(mediaId) => {
+          setLocalPrintMedia(mediaId);
+          onChangePrintMedia?.(mediaId);
+        }}
+        pageSizeId={effectivePageSize}
+        onChangePageSize={(sizeId) => {
+          setLocalPageSize(sizeId);
+          onChangePageSize?.(sizeId);
+        }}
+        splitMode={effectiveSplitMode}
+        onChangeSplitMode={(mode) => {
+          setLocalSplitMode(mode);
+          onChangeSplitMode?.(mode);
+        }}
+        onReduceFlapWidth={onReduceFlapWidth}
+        exporting={exportingOuterPdf}
+        onConfirmExport={handleConfirmPdfExport}
+        onClose={() => setPdfDialogOpen(false)}
+      />
     </div>
   );
 }

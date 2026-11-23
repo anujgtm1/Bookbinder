@@ -23,13 +23,24 @@ import {
   HudSeparator,
 } from '@/components/FloatingHudToolbar';
 import { OuterBlueprintCanvas } from '@/components/OuterBlueprintCanvas';
+import {
+  PdfExportDialog,
+  type OuterPdfExportOptions,
+  type PdfExportSelection,
+} from '@/components/PdfExportDialog';
 import { Badge } from '@/components/ui/badge';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
-import { BookParametersModel, type BookParameters } from '@/types/bookParams';
+import {
+  BookParametersModel,
+  type BookParameters,
+  type PageSizeId,
+  type PrintMediaId,
+  type SplitMode,
+} from '@/types/bookParams';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { CoverImageLayerModel } from '@/types/studioLayer';
@@ -62,7 +73,7 @@ export interface CoverStylerProps {
   readonly onChange: (next: CoverStudioState) => void;
   readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
   readonly onDownloadOuterSvg?: () => void;
-  readonly onDownloadOuterPdf?: () => void;
+  readonly onDownloadOuterPdf?: (options?: OuterPdfExportOptions) => void | Promise<void>;
   readonly onOpenMeasureAndCut?: () => void;
   readonly onStatusMessage: (message: string) => void;
 }
@@ -107,7 +118,17 @@ export function CoverStyler({
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [cricutDialogOpen, setCricutDialogOpen] = useState(false);
+  const [pdfDialogTarget, setPdfDialogTarget] = useState<'cover-styled' | 'outer-blueprint' | null>(
+    null,
+  );
+  const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(effectiveParams.printMedia);
+  const [localPageSize, setLocalPageSize] = useState<PageSizeId>(effectiveParams.pdfPageSize);
+  const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(effectiveParams.splitMode);
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
+
+  const activePrintMedia = onUpdateParams ? effectiveParams.printMedia : localPrintMedia;
+  const activePageSize = onUpdateParams ? effectiveParams.pdfPageSize : localPageSize;
+  const activeSplitMode = onUpdateParams ? effectiveParams.splitMode : localSplitMode;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const studioRef = useRef(studio);
@@ -251,6 +272,31 @@ export function CoverStyler({
     setBlueprintPan({ x: 0, y: 0 });
   };
 
+  const handleConfirmPdfExport = async (selection: PdfExportSelection) => {
+    if (
+      selection.target === 'outer-blueprint' ||
+      (selection.target === 'cover-styled' && selection.splitMode === 'three-piece')
+    ) {
+      if (onDownloadOuterPdf) {
+        await onDownloadOuterPdf({
+          splitMode: selection.splitMode,
+          printMediaId: selection.printMediaId,
+          tileOverlapMm: selection.tileOverlapMm,
+          includeScaleBar: selection.includeScaleBar,
+        });
+        return;
+      }
+    }
+    await actions.handleExportPrintPdf({
+      includeGuides: selection.includeGuides,
+      printMediaId: selection.printMediaId,
+      dpi: selection.dpi,
+      tileOverlapMm: selection.tileOverlapMm,
+      includeScaleBar: selection.includeScaleBar,
+      splitMode: selection.splitMode,
+    });
+  };
+
   return (
     <div className="flex flex-col gap-4" data-testid="cover-styler">
       {/* Edge-to-Edge Unified Outer Case Wrap Workbench connected flush under the Folio Index Tabs */}
@@ -262,24 +308,17 @@ export function CoverStyler({
           geometry={geometry}
           spec={spec}
           unit={effectiveParams.unit}
-          cutLineMode={studio.cutLineMode}
           exportingKind={actions.exportingKind}
           exportingOuterPdf={exportingOuterPdf}
           onOpenMeasureAndCut={onOpenMeasureAndCut}
-          onToggleCutLineMode={() =>
-            actions.updateStudio({
-              cutLineMode:
-                studio.cutLineMode === 'full-cut-miter'
-                  ? 'bleed-registration'
-                  : 'full-cut-miter',
-            })
-          }
-          onExportPrintPdf={() => void actions.handleExportPrintPdf()}
+          onExportPrintPdf={() => setPdfDialogTarget('cover-styled')}
           onExportAffinityPng={() => void actions.handleExportAffinityPng()}
           onExportAffinitySvg={() => void actions.handleExportAffinitySvg()}
           onOpenCricutDialog={() => setCricutDialogOpen(true)}
           onDownloadOuterSvg={onDownloadOuterSvg}
-          onDownloadOuterPdf={onDownloadOuterPdf}
+          onDownloadOuterPdf={
+            onDownloadOuterPdf ? () => setPdfDialogTarget('outer-blueprint') : undefined
+          }
         />
 
         {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage */}
@@ -714,6 +753,38 @@ export function CoverStyler({
         unit={effectiveParams.unit}
         onOpenChange={setCricutDialogOpen}
         onStatusMessage={onStatusMessage}
+      />
+
+      {/* Unified Print & Export PDF Modal */}
+      <PdfExportDialog
+        open={pdfDialogTarget !== null}
+        target={pdfDialogTarget ?? 'cover-styled'}
+        geometry={geometry}
+        unit={effectiveParams.unit}
+        printMediaId={activePrintMedia}
+        onChangePrintMedia={(mediaId) => {
+          setLocalPrintMedia(mediaId);
+          onUpdateParams?.({ printMedia: mediaId });
+        }}
+        pageSizeId={activePageSize}
+        onChangePageSize={(sizeId) => {
+          setLocalPageSize(sizeId);
+          onUpdateParams?.({ pdfPageSize: sizeId });
+        }}
+        splitMode={activeSplitMode}
+        onChangeSplitMode={(mode) => {
+          setLocalSplitMode(mode);
+          onUpdateParams?.({ splitMode: mode });
+        }}
+        onReduceFlapWidth={
+          onUpdateParams
+            ? (widthMm) => onUpdateParams({ jacketFlapWidthMm: widthMm })
+            : undefined
+        }
+        defaultIncludeGuides={studio.cutLineMode === 'full-cut-miter'}
+        exporting={actions.exportingKind === 'pdf' || exportingOuterPdf}
+        onConfirmExport={handleConfirmPdfExport}
+        onClose={() => setPdfDialogTarget(null)}
       />
     </div>
   );
