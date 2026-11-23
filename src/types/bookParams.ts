@@ -152,6 +152,8 @@ export interface BookParameters {
   quarterBoundOverlapMm: number;
   /** Sheet size for paginated inner envelopes & liner PDF */
   pdfPageSize: PageSizeId;
+  /** Optional custom slip-cover flap width in mm for softcover-jacket (undefined = auto default) */
+  jacketFlapWidthMm?: number;
   /** UI display unit (exports remain strictly 1:1 mm) */
   unit: UnitSystem;
 }
@@ -177,6 +179,7 @@ export const BOOK_PARAM_BOUNDS = {
   pocketDepthPct: { min: 65, max: 80 },
   pocketFlapMm: { min: 6, max: 25 },
   quarterBoundOverlapMm: { min: 10, max: 50 },
+  jacketFlapWidthMm: { min: 20, max: 65 },
 } as const;
 
 export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
@@ -240,6 +243,16 @@ export const BookParametersModel = {
       spineAllowanceLinked && partial.spineAllowanceMm === undefined
         ? boardThicknessMm
         : partial.spineAllowanceMm;
+
+    const jacketFlapWidthMm =
+      typeof partial.jacketFlapWidthMm === 'number' && Number.isFinite(partial.jacketFlapWidthMm)
+        ? clampFinite(
+            partial.jacketFlapWidthMm,
+            b.jacketFlapWidthMm.min,
+            b.jacketFlapWidthMm.min,
+            b.jacketFlapWidthMm.max,
+          )
+        : undefined;
 
     return {
       bindingStyle: parseBindingStyle(partial.bindingStyle),
@@ -306,6 +319,7 @@ export const BookParametersModel = {
         b.quarterBoundOverlapMm.max,
       ),
       pdfPageSize: parsePageSize(partial.pdfPageSize),
+      ...(jacketFlapWidthMm !== undefined ? { jacketFlapWidthMm } : {}),
       unit: UnitConverter.parseUnitSystem(partial.unit, d.unit),
     };
   },

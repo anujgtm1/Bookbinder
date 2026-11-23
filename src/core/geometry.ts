@@ -22,6 +22,25 @@ const US_LETTER_SHORT_MM = 215.9;
 const US_LETTER_LONG_MM = 279.4;
 const A4_SHORT_MM = 210.0;
 const A4_LONG_MM = 297.0;
+const US_LEGAL_SHORT_MM = 215.9;
+const US_LEGAL_LONG_MM = 355.6;
+
+export function resolveSlipFlapWidthMm(params: BookParameters): number {
+  const defaultFlap = roundTo(Math.min(48, Math.max(24, params.pbWidthMm * 0.23)), 1);
+  return typeof params.jacketFlapWidthMm === 'number' && Number.isFinite(params.jacketFlapWidthMm)
+    ? roundTo(Math.min(65, Math.max(20, params.jacketFlapWidthMm)), 1)
+    : defaultFlap;
+}
+
+export function calculateMaxSlipFlapForSheetMm(
+  params: BookParameters,
+  sheetLongMm: number,
+): number {
+  const innerW = (params.pbWidthMm + 1.0) * 2 + (params.pbThicknessMm + 1.0);
+  const maxFlap =
+    Math.floor(((sheetLongMm - ROLL_TOTAL_MARGIN_MM - innerW) / 2) * 10 + 1e-9) / 10;
+  return roundTo(Math.min(65, Math.max(20, maxFlap)), 1);
+}
 
 export function calculateChipboardCutList(params: BookParameters): ChipboardCutList {
   const style = params.bindingStyle ?? 'rigid-case';
@@ -141,9 +160,7 @@ export function calculateOuterWrap(
   const spineW = cutList.spineStrip.widthMm;
   const hingeW = cutList.hingeSpacerMm;
   const isSoftcover = style === 'softcover-jacket';
-  const jacketFlapWidthMm = isSoftcover
-    ? roundTo(Math.min(48, Math.max(24, params.pbWidthMm * 0.23)), 1)
-    : 0;
+  const jacketFlapWidthMm = isSoftcover ? resolveSlipFlapWidthMm(params) : 0;
   const jacketGlueTabHeightMm = isSoftcover ? SOFTCOVER_GLUE_TAB_H_MM : 0;
   const turnIn = isSoftcover ? 0 : params.turnInMm;
   const sideMargin = isSoftcover ? jacketFlapWidthMm : turnIn;
@@ -412,6 +429,32 @@ export function evaluateRollWidth(
       usedWidthMm,
       spareWidthMm,
       summary: `Fits on ${sheetLabel} (100% actual size)`,
+    };
+  }
+
+  // Check US Legal (8.5×14") home sheet before falling through to wide-format rolls
+  const fitsLegal = fitsDesktopSheet(
+    wrapWidthMm,
+    wrapHeightMm,
+    US_LEGAL_SHORT_MM,
+    US_LEGAL_LONG_MM,
+  );
+
+  if (fitsLegal) {
+    const orientation: RollFeedOrientation =
+      wrapHeightMm <= wrapWidthMm ? 'rotated-90' : 'unrotated';
+    const usedWidthMm = Math.min(wrapWidthMm, wrapHeightMm);
+    const printableWidthMm = US_LEGAL_SHORT_MM - ROLL_TOTAL_MARGIN_MM;
+    const spareWidthMm = roundTo(printableWidthMm - usedWidthMm, 1);
+
+    return {
+      fits: true,
+      roll: STANDARD_ROLL_WIDTHS[0],
+      printableWidthMm,
+      orientation,
+      usedWidthMm,
+      spareWidthMm,
+      summary: 'Fits on 1× US Legal home sheet (100% actual size)',
     };
   }
 

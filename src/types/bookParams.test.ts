@@ -70,6 +70,20 @@ describe('BookParametersModel', () => {
     expect(restored.splitMode).toBe('three-piece');
     expect(restored.pdfPageSize).toBe('a4');
     expect(restored.unit).toBe('in');
+    expect(restored.jacketFlapWidthMm).toBeUndefined();
+
+    const withFlap = BookParametersModel.deserialize({
+      bindingStyle: 'softcover-jacket',
+      jacketFlapWidthMm: 38,
+    });
+    expect(withFlap.jacketFlapWidthMm).toBe(38);
+
+    expect(
+      BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 12 }).jacketFlapWidthMm,
+    ).toBe(20);
+    expect(
+      BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 90 }).jacketFlapWidthMm,
+    ).toBe(65);
   });
 
   it('falls back to defaults on invalid raw input and round-trips serialization', () => {

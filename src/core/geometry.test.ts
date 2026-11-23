@@ -4,6 +4,7 @@ import { GeometryPrimitives } from '@/types/geometry';
 import {
   calculateCaseGeometry,
   calculateChipboardCutList,
+  calculateMaxSlipFlapForSheetMm,
   evaluateRollWidth,
 } from './geometry';
 
@@ -221,5 +222,43 @@ describe('calculateCaseGeometry', () => {
     const a4Only = evaluateRollWidth(276, 170);
     expect(a4Only.fits).toBe(true);
     expect(a4Only.summary).toContain('1× A4 home sheet');
+  });
+
+  it('supports custom jacketFlapWidthMm, computes sheet max slip flaps, and detects US Legal home sheets', () => {
+    const a6Soft = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+    };
+
+    // Max slip flap helpers for 5 mm A6 (innerW = 218 mm, margin = 10 mm)
+    expect(calculateMaxSlipFlapForSheetMm(a6Soft, 279.4)).toBeCloseTo(25.7, 1);
+    expect(calculateMaxSlipFlapForSheetMm(a6Soft, 297.0)).toBeCloseTo(34.5, 1);
+
+    // Custom 38 mm deep slip flap => width = 218 + 76 = 294 mm, height = 170 mm => US Legal
+    const deepGeom = calculateCaseGeometry({ ...a6Soft, jacketFlapWidthMm: 38 });
+    expect(deepGeom.outerWrap.jacketFlapWidthMm).toBeCloseTo(38.0, 2);
+    expect(deepGeom.outerWrap.widthMm).toBeCloseTo(294.0, 2);
+    expect(deepGeom.outerWrap.heightMm).toBeCloseTo(170.0, 2);
+    expect(deepGeom.rollRecommendation.fits).toBe(true);
+    expect(deepGeom.rollRecommendation.summary).toBe(
+      'Fits on 1× US Legal home sheet (100% actual size)',
+    );
+
+    // Direct evaluateRollWidth checks: 294 × 170 => US Legal; default hardcover 366 × 259 => 13" roll
+    const legalRec = evaluateRollWidth(294, 170);
+    expect(legalRec.fits).toBe(true);
+    expect(legalRec.summary).toBe('Fits on 1× US Legal home sheet (100% actual size)');
+
+    const hardcoverRec = evaluateRollWidth(366, 259);
+    expect(hardcoverRec.fits).toBe(true);
+    expect(hardcoverRec.roll?.inches).toBe(13);
+    expect(hardcoverRec.summary).toContain('13" roll');
+
+    // Custom flap clamped to 20..65 mm bounds
+    expect(calculateCaseGeometry({ ...a6Soft, jacketFlapWidthMm: 10 }).outerWrap.jacketFlapWidthMm).toBe(20);
+    expect(calculateCaseGeometry({ ...a6Soft, jacketFlapWidthMm: 95 }).outerWrap.jacketFlapWidthMm).toBe(65);
   });
 });
