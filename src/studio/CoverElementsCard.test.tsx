@@ -78,11 +78,16 @@ describe('CoverElementsCard', () => {
     });
     expect(onCustomFontSelected).toHaveBeenCalledWith(fontFile, titleLayer.id);
 
-    // Flip H / Flip V buttons for Cover Text
+    // Flip H / Flip V / Rotate 90° buttons for Cover Text
     fireEvent.click(screen.getByTestId('cover-text-flip-h-btn'));
     expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { flipX: true });
     fireEvent.click(screen.getByTestId('cover-text-flip-v-btn'));
     expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { flipY: true });
+    const rotateTextBtn = screen.getByTestId('cover-text-rotate-90-btn');
+    expect(rotateTextBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(rotateTextBtn).toHaveTextContent('90°');
+    fireEvent.click(rotateTextBtn);
+    expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { rotationDeg: 90 });
   });
 
   it('switches to Classic Designs gallery and inserts parametric ornaments', () => {
@@ -136,10 +141,23 @@ describe('CoverElementsCard', () => {
     fireEvent.click(screen.getByTestId('ornament-center-btn'));
     expect(onCenterOrnament).toHaveBeenCalledWith(frame.id);
 
-    // Flip H / Flip V buttons for Ornament / Custom SVG Stamp
+    // Flip H / Flip V / Rotate 90° buttons for Ornament / Custom SVG Stamp
     fireEvent.click(screen.getByTestId('ornament-flip-h-btn'));
     expect(onUpdateOrnament).toHaveBeenCalledWith(frame.id, { flipX: true });
     fireEvent.click(screen.getByTestId('ornament-flip-v-btn'));
     expect(onUpdateOrnament).toHaveBeenCalledWith(frame.id, { flipY: true });
+    const rotateOrnBtn = screen.getByTestId('ornament-rotate-90-btn');
+    expect(rotateOrnBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(rotateOrnBtn).toHaveTextContent('90°');
+    fireEvent.click(rotateOrnBtn);
+    const frameCx = frame.xMm + frame.widthMm / 2;
+    const frameCy = frame.yMm + frame.heightMm / 2;
+    expect(onUpdateOrnament).toHaveBeenCalledWith(frame.id, {
+      xMm: expect.closeTo(frameCx - frame.heightMm / 2, 1),
+      yMm: expect.closeTo(frameCy - frame.widthMm / 2, 1),
+      widthMm: frame.heightMm,
+      heightMm: frame.widthMm,
+      rotationDeg: 90,
+    });
   });
 });

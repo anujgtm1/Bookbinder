@@ -263,6 +263,7 @@ export function CoverCanvas2D({
                   layer.heightMm,
                   layer.flipX,
                   layer.flipY,
+                  layer.rotationDeg,
                 )}
                 preserveAspectRatio="none"
                 data-testid={`studio-layer-${index}`}
@@ -392,7 +393,13 @@ export function CoverCanvas2D({
             <g
               key={layer.id}
               data-testid={`studio-cover-text-${index}`}
-              transform={buildPointFlipTransform(layer.xMm, layer.yMm, layer.flipX, layer.flipY)}
+              transform={buildPointFlipTransform(
+                layer.xMm,
+                layer.yMm,
+                layer.flipX,
+                layer.flipY,
+                layer.rotationDeg,
+              )}
               className={
                 eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
               }

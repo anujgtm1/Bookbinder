@@ -4,6 +4,7 @@ import {
   Maximize2,
   Minus,
   Plus,
+  RotateCw,
   Sparkles,
   Trash2,
   Upload,
@@ -17,12 +18,14 @@ import { Separator } from '@/components/ui/separator';
 import { FOIL_SWATCHES } from '@/resources/palettes';
 import {
   COVER_ORNAMENT_BOUNDS,
+  rotateOrnament90,
   type ClassicOrnamentCategory,
   type ClassicOrnamentId,
   type CoverElementZone,
   type CoverOrnamentLayer,
   type CustomSvgRenderMode,
 } from '@/types/coverElements';
+import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 import {
   CLASSIC_ORNAMENTS,
@@ -357,6 +360,37 @@ export function ClassicDesignsCard({
                 <FlipVertical2 className="h-3.5 w-3.5" aria-hidden="true" />
                 Flip V
               </Button>
+              {(() => {
+                const rotDeg = normalizeQuarterTurn(selectedOrnament.rotationDeg);
+                return (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={rotDeg ? 'secondary' : 'outline'}
+                    className="h-7 px-2 text-[11px]"
+                    aria-pressed={Boolean(rotDeg)}
+                    title={
+                      rotDeg
+                        ? `Rotated ${rotDeg}° — click to rotate 90° clockwise`
+                        : 'Rotate design 90° clockwise'
+                    }
+                    data-testid="ornament-rotate-90-btn"
+                    onClick={() => {
+                      const rotated = rotateOrnament90(selectedOrnament);
+                      onUpdateOrnament(selectedOrnament.id, {
+                        xMm: rotated.xMm,
+                        yMm: rotated.yMm,
+                        widthMm: rotated.widthMm,
+                        heightMm: rotated.heightMm,
+                        rotationDeg: rotated.rotationDeg,
+                      });
+                    }}
+                  >
+                    <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    {rotDeg ? `${rotDeg}°` : '90°'}
+                  </Button>
+                );
+              })()}
               <Button
                 type="button"
                 size="icon"

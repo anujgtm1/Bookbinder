@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
+import { getLayerVisualRect, normalizeQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
 import {
   Book3DModel,
@@ -139,6 +140,7 @@ function CoverFaceSvg({
               layer.heightMm,
               layer.flipX,
               layer.flipY,
+              layer.rotationDeg,
             )}
             preserveAspectRatio="none"
           />
@@ -170,7 +172,13 @@ function CoverFaceSvg({
         return (
           <g
             key={layer.id}
-            transform={buildPointFlipTransform(layer.xMm, layer.yMm, layer.flipX, layer.flipY)}
+            transform={buildPointFlipTransform(
+              layer.xMm,
+              layer.yMm,
+              layer.flipX,
+              layer.flipY,
+              layer.rotationDeg,
+            )}
           >
             {computeCoverTextLinePlacements(layer).map((item, idx) => (
               <text
@@ -265,25 +273,39 @@ function InnerFrontPocketSvg({
           pocketLayers
             .filter((layer) => layer.tiled)
             .map((layer) => {
-              const tileW = Math.max(8, layer.widthMm);
-              const tileH = Math.max(8, layer.heightMm);
+              const imgW = Math.max(8, layer.widthMm);
+              const imgH = Math.max(8, layer.heightMm);
+              const rot = normalizeQuarterTurn(layer.rotationDeg);
+              const cellW = rot === 90 || rot === 270 ? imgH : imgW;
+              const cellH = rot === 90 || rot === 270 ? imgW : imgH;
+              const vis = getLayerVisualRect(layer);
+              const offsetX = (cellW - imgW) / 2;
+              const offsetY = (cellH - imgH) / 2;
               return (
                 <pattern
                   key={`inside-tile-${layer.id}`}
                   id={`${prefix}-inside-tile-${layer.id}`}
-                  x={layer.xMm - pocketFace.x}
-                  y={layer.yMm - pocketFace.y + insetY}
-                  width={tileW}
-                  height={tileH}
+                  x={vis.x - pocketFace.x}
+                  y={vis.y - pocketFace.y + insetY}
+                  width={cellW}
+                  height={cellH}
                   patternUnits="userSpaceOnUse"
                 >
                   <image
                     href={layer.dataUrl}
-                    x={0}
-                    y={0}
-                    width={tileW}
-                    height={tileH}
-                    transform={buildLayerFlipTransform(0, 0, tileW, tileH, layer.flipX, layer.flipY)}
+                    x={offsetX}
+                    y={offsetY}
+                    width={imgW}
+                    height={imgH}
+                    transform={buildLayerFlipTransform(
+                      offsetX,
+                      offsetY,
+                      imgW,
+                      imgH,
+                      layer.flipX,
+                      layer.flipY,
+                      layer.rotationDeg,
+                    )}
                     preserveAspectRatio="none"
                   />
                 </pattern>
@@ -346,6 +368,7 @@ function InnerFrontPocketSvg({
                         layer.heightMm,
                         layer.flipX,
                         layer.flipY,
+                        layer.rotationDeg,
                       )}
                       preserveAspectRatio="none"
                     />

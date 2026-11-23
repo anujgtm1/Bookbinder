@@ -6,6 +6,7 @@ import {
   FlipVertical2,
   Pencil,
   Plus,
+  RotateCw,
   Trash2,
   Type,
   Upload,
@@ -31,6 +32,7 @@ import {
   type TextAlign,
 } from '@/types/coverElements';
 import type { StudioFontId } from '@/types/studio';
+import { nextQuarterTurn, normalizeQuarterTurn } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 import { CURATED_FONTS, type CustomFontAsset } from './fonts';
 
@@ -370,7 +372,7 @@ export function CoverTextCard({
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             {/* Alignment & Uppercase */}
-            <div className="flex items-center gap-1" role="group" aria-label="Text alignment">
+            <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Text alignment">
               {(['left', 'center', 'right'] as const satisfies readonly TextAlign[]).map((align) => (
                 <Button
                   key={align}
@@ -433,6 +435,32 @@ export function CoverTextCard({
                 <FlipVertical2 className="h-3.5 w-3.5" aria-hidden="true" />
                 Flip V
               </Button>
+              {(() => {
+                const rotDeg = normalizeQuarterTurn(selectedText.rotationDeg);
+                return (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={rotDeg ? 'secondary' : 'outline'}
+                    className="h-7 px-2 text-[11px]"
+                    aria-pressed={Boolean(rotDeg)}
+                    title={
+                      rotDeg
+                        ? `Rotated ${rotDeg}° — click to rotate 90° clockwise`
+                        : 'Rotate text 90° clockwise'
+                    }
+                    data-testid="cover-text-rotate-90-btn"
+                    onClick={() =>
+                      onUpdateTextLayer(selectedText.id, {
+                        rotationDeg: nextQuarterTurn(selectedText.rotationDeg),
+                      })
+                    }
+                  >
+                    <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    {rotDeg ? `${rotDeg}°` : '90°'}
+                  </Button>
+                );
+              })()}
             </div>
 
             {/* Quick Vertical Board Alignment */}

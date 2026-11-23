@@ -294,6 +294,7 @@ export function useCoverStudioActions({
           strokeWidthMm: o.strokeWidthMm,
           flipX: o.flipX,
           flipY: o.flipY,
+          rotationDeg: o.rotationDeg,
         };
       }),
     });

@@ -38,7 +38,12 @@ import {
 import { PAGE_SIZES, type PageSizeId, type PrintMediaId } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { PocketStyleConfig } from '@/types/studio';
-import { CoverImageLayerModel, type CoverImageLayer } from '@/types/studioLayer';
+import {
+  CoverImageLayerModel,
+  getLayerVisualRect,
+  normalizeQuarterTurn,
+  type CoverImageLayer,
+} from '@/types/studioLayer';
 import { roundTo, type UnitSystem } from '@/types/units';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import {
@@ -665,31 +670,38 @@ export function InnerPocketsStudio({
                   layers
                     .filter((layer) => layer.tiled)
                     .map((layer) => {
-                      const tileW = Math.max(8, layer.widthMm);
-                      const tileH = Math.max(8, layer.heightMm);
+                      const imgW = Math.max(8, layer.widthMm);
+                      const imgH = Math.max(8, layer.heightMm);
+                      const rot = normalizeQuarterTurn(layer.rotationDeg);
+                      const cellW = rot === 90 || rot === 270 ? imgH : imgW;
+                      const cellH = rot === 90 || rot === 270 ? imgW : imgH;
+                      const vis = getLayerVisualRect(layer);
+                      const offsetX = (cellW - imgW) / 2;
+                      const offsetY = (cellH - imgH) / 2;
                       return (
                         <pattern
                           key={`tile-def-${layer.id}`}
                           id={`${uniquePrefix}-layer-tile-${layer.id}`}
-                          x={layer.xMm}
-                          y={layer.yMm}
-                          width={tileW}
-                          height={tileH}
+                          x={vis.x}
+                          y={vis.y}
+                          width={cellW}
+                          height={cellH}
                           patternUnits="userSpaceOnUse"
                         >
                           <image
                             href={layer.dataUrl}
-                            x={0}
-                            y={0}
-                            width={tileW}
-                            height={tileH}
+                            x={offsetX}
+                            y={offsetY}
+                            width={imgW}
+                            height={imgH}
                             transform={buildLayerFlipTransform(
-                              0,
-                              0,
-                              tileW,
-                              tileH,
+                              offsetX,
+                              offsetY,
+                              imgW,
+                              imgH,
                               layer.flipX,
                               layer.flipY,
+                              layer.rotationDeg,
                             )}
                             preserveAspectRatio="none"
                           />
@@ -791,6 +803,7 @@ export function InnerPocketsStudio({
                           layer.heightMm,
                           layer.flipX,
                           layer.flipY,
+                          layer.rotationDeg,
                         )}
                         preserveAspectRatio="none"
                         data-testid={`pocket-layer-${index}`}

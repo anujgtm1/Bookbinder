@@ -700,6 +700,9 @@ export function CoverStyler({
             axis === 'x' ? { ...layer, flipX: !layer.flipX } : { ...layer, flipY: !layer.flipY },
           )
         }
+        onUpdateLayer={(id, patch) =>
+          actions.updateLayer(id, (layer) => ({ ...layer, ...patch }))
+        }
         onReorderLayer={(id, direction) =>
           onChange({ ...studio, layers: CoverImageLayerModel.reorder(studio.layers, id, direction) })
         }

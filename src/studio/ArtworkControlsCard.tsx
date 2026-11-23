@@ -8,6 +8,7 @@ import {
   Minus,
   Pipette,
   Plus,
+  RotateCw,
   Sparkles,
   Trash2,
   Upload,
@@ -26,11 +27,14 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import type { CoverStudioState, CutLineExportMode } from '@/types/studio';
-import type {
-  CoverImageLayer,
-  LayerClipZone,
-  QuickFitTarget,
-  StubExtensionMode,
+import {
+  getLayerVisualRect,
+  nextQuarterTurn,
+  normalizeQuarterTurn,
+  type CoverImageLayer,
+  type LayerClipZone,
+  type QuickFitTarget,
+  type StubExtensionMode,
 } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 
@@ -50,6 +54,7 @@ export interface ArtworkControlsCardProps {
   readonly onSetLayerClip: (id: string, clipZone: LayerClipZone) => void;
   readonly onScaleLayer: (id: string, factor: number) => void;
   readonly onToggleLayerFlip?: (id: string, axis: 'x' | 'y') => void;
+  readonly onUpdateLayer?: (id: string, patch: Partial<CoverImageLayer>) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
@@ -100,6 +105,7 @@ export function ArtworkControlsCard({
   onSetLayerClip,
   onScaleLayer,
   onToggleLayerFlip,
+  onUpdateLayer,
   onReorderLayer,
   onDeleteLayer,
   onUpdateStudio,
@@ -229,7 +235,10 @@ export function ArtworkControlsCard({
         )}
 
         {/* Selected Image Quick-Fit, Clip Mask & Scale Controls */}
-        {selectedLayer && (
+        {selectedLayer && (() => {
+          const selectedVisualRect = getLayerVisualRect(selectedLayer);
+          const selectedRotationDeg = normalizeQuarterTurn(selectedLayer.rotationDeg);
+          return (
           <div
             className="space-y-2.5 rounded-md border border-primary/30 bg-primary/5 p-2.5"
             data-testid="selected-layer-controls"
@@ -239,7 +248,7 @@ export function ArtworkControlsCard({
                 Selected: {selectedLayer.fileName}
               </span>
               <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                {roundTo(selectedLayer.widthMm, 1)} × {roundTo(selectedLayer.heightMm, 1)} mm
+                {roundTo(selectedVisualRect.width, 1)} × {roundTo(selectedVisualRect.height, 1)} mm
               </span>
             </div>
 
@@ -279,7 +288,7 @@ export function ArtworkControlsCard({
                 </Select>
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 {onToggleLayerFlip && (
                   <>
                     <Button
@@ -311,6 +320,30 @@ export function ArtworkControlsCard({
                       Flip V
                     </Button>
                   </>
+                )}
+                {onUpdateLayer && (
+                  <Button
+                    type="button"
+                    variant={selectedRotationDeg ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    aria-label="Rotate selected image 90° clockwise"
+                    aria-pressed={Boolean(selectedRotationDeg)}
+                    title={
+                      selectedRotationDeg
+                        ? `Rotated ${selectedRotationDeg}° — click to rotate 90° clockwise`
+                        : 'Rotate image 90° clockwise'
+                    }
+                    data-testid="layer-rotate-90-btn"
+                    onClick={() =>
+                      onUpdateLayer(selectedLayer.id, {
+                        rotationDeg: nextQuarterTurn(selectedLayer.rotationDeg),
+                      })
+                    }
+                  >
+                    <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    {selectedRotationDeg ? `${selectedRotationDeg}°` : '90°'}
+                  </Button>
                 )}
                 <Button
                   variant="outline"
@@ -397,7 +430,8 @@ export function ArtworkControlsCard({
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         <Separator />
 
