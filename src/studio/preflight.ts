@@ -1,4 +1,5 @@
 import { calculateMaxSlipFlapForSheetMm, evaluatePrintMediaFit } from '@/core/geometry';
+import { contrastRatio, parseHexRgb, relativeLuminance } from '@/lib/color';
 import {
   BookParametersModel,
   getPrintMediaSpec,
@@ -209,44 +210,10 @@ function computeUncoveredEdges(
   return strips;
 }
 
-function parseHexRgb(hex: string): { r: number; g: number; b: number } | null {
-  const normalized = hex.trim().replace(/^#/, '');
-  if (/^[0-9a-f]{3}$/i.test(normalized)) {
-    return {
-      r: Number.parseInt(normalized[0] + normalized[0], 16),
-      g: Number.parseInt(normalized[1] + normalized[1], 16),
-      b: Number.parseInt(normalized[2] + normalized[2], 16),
-    };
-  }
-  if (/^[0-9a-f]{6}$/i.test(normalized)) {
-    return {
-      r: Number.parseInt(normalized.slice(0, 2), 16),
-      g: Number.parseInt(normalized.slice(2, 4), 16),
-      b: Number.parseInt(normalized.slice(4, 6), 16),
-    };
-  }
-  return null;
-}
-
-function relativeLuminance(rgb: { r: number; g: number; b: number }): number {
-  const channel = (v: number) => {
-    const s = v / 255;
-    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b);
-}
-
 export const PreflightEngine = {
   /** Computes WCAG 2.1 contrast ratio between two hex colors (1.0 to 21.0). */
   contrastRatio(hexA: string, hexB: string): number | null {
-    const a = parseHexRgb(hexA);
-    const b = parseHexRgb(hexB);
-    if (!a || !b) return null;
-    const l1 = relativeLuminance(a);
-    const l2 = relativeLuminance(b);
-    const lighter = Math.max(l1, l2);
-    const darker = Math.min(l1, l2);
-    return roundTo((lighter + 0.05) / (darker + 0.05), 2);
+    return contrastRatio(hexA, hexB);
   },
 
   /** Suggests high-contrast bookbinding ink color (warm cream or lampblack) for a background hex. */

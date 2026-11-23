@@ -1,3 +1,4 @@
+import { fmtMm } from '@/lib/svgFormat';
 import { roundTo } from '@/types/units';
 
 export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
@@ -10,8 +11,6 @@ export interface ParsedSvgStamp {
   /** Suggested initial render mode detected from the source SVG's fill/stroke attributes */
   readonly suggestedMode: CustomSvgRenderMode;
 }
-
-const fmt = (n: number): string => String(roundTo(n, 3));
 
 const COMMAND_RE = /[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g;
 
@@ -143,8 +142,8 @@ export function normalizeSvgPathD(d: string, vbX = 0, vbY = 0): string {
 
   const hasNum = () => idx < tokens.length && !/^[a-zA-Z]$/.test(tokens[idx]);
   const nextNum = () => Number.parseFloat(tokens[idx++] ?? '0') || 0;
-  const mx = (x: number) => fmt(x - vbX);
-  const my = (y: number) => fmt(y - vbY);
+  const mx = (x: number) => fmtMm(x - vbX);
+  const my = (y: number) => fmtMm(y - vbY);
 
   while (idx < tokens.length) {
     if (/^[a-zA-Z]$/.test(tokens[idx])) {
@@ -291,11 +290,11 @@ function ellipseToPathD(cx: number, cy: number, rx: number, ry: number): string 
   const ox = rx * k;
   const oy = ry * k;
   return [
-    `M ${fmt(cx - rx)} ${fmt(cy)}`,
-    `C ${fmt(cx - rx)} ${fmt(cy - oy)} ${fmt(cx - ox)} ${fmt(cy - ry)} ${fmt(cx)} ${fmt(cy - ry)}`,
-    `C ${fmt(cx + ox)} ${fmt(cy - ry)} ${fmt(cx + rx)} ${fmt(cy - oy)} ${fmt(cx + rx)} ${fmt(cy)}`,
-    `C ${fmt(cx + rx)} ${fmt(cy + oy)} ${fmt(cx + ox)} ${fmt(cy + ry)} ${fmt(cx)} ${fmt(cy + ry)}`,
-    `C ${fmt(cx - ox)} ${fmt(cy + ry)} ${fmt(cx - rx)} ${fmt(cy + oy)} ${fmt(cx - rx)} ${fmt(cy)}`,
+    `M ${fmtMm(cx - rx)} ${fmtMm(cy)}`,
+    `C ${fmtMm(cx - rx)} ${fmtMm(cy - oy)} ${fmtMm(cx - ox)} ${fmtMm(cy - ry)} ${fmtMm(cx)} ${fmtMm(cy - ry)}`,
+    `C ${fmtMm(cx + ox)} ${fmtMm(cy - ry)} ${fmtMm(cx + rx)} ${fmtMm(cy - oy)} ${fmtMm(cx + rx)} ${fmtMm(cy)}`,
+    `C ${fmtMm(cx + rx)} ${fmtMm(cy + oy)} ${fmtMm(cx + ox)} ${fmtMm(cy + ry)} ${fmtMm(cx)} ${fmtMm(cy + ry)}`,
+    `C ${fmtMm(cx - ox)} ${fmtMm(cy + ry)} ${fmtMm(cx - rx)} ${fmtMm(cy + oy)} ${fmtMm(cx - rx)} ${fmtMm(cy)}`,
     'Z',
   ].join(' ');
 }
@@ -465,11 +464,11 @@ export function mapNormalizedPathsToMm(
   const mapX = (px: number): string => {
     const fx = flipX ? viewBoxWidth - px : px;
     const raw = targetRect.xMm + fx * scaleX - ox;
-    return fmt(mirrorX ? canvasW - raw : raw);
+    return fmtMm(mirrorX ? canvasW - raw : raw);
   };
   const mapY = (py: number): string => {
     const fy = flipY ? viewBoxHeight - py : py;
-    return fmt(targetRect.yMm + fy * scaleY - oy);
+    return fmtMm(targetRect.yMm + fy * scaleY - oy);
   };
 
   return paths.map((d) => {

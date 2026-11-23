@@ -1,3 +1,4 @@
+import { parseHexColor } from '@/lib/color';
 import type { Rect2D } from './geometry';
 import type { CuratedFontId, StudioFontId } from './studio';
 import type { ResizeCorner } from './studioLayer';
@@ -116,17 +117,11 @@ export const COVER_ORNAMENT_BOUNDS = {
   strokeWidthMm: { min: 0.35, max: 3.0 },
 } as const;
 
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-
 function generateElementId(prefix: string): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function parseHex(value: unknown, fallback: string): string {
-  return typeof value === 'string' && HEX_COLOR_RE.test(value) ? value.toLowerCase() : fallback;
 }
 
 function parseZone(value: unknown): CoverElementZone {
@@ -290,7 +285,7 @@ export const CoverTextLayerModel = {
         COVER_TEXT_BOUNDS.lineHeight.max,
       ),
       align: parseAlign(obj.align),
-      color: parseHex(obj.color, '#f5efe2'),
+      color: parseHexColor(obj.color, '#f5efe2'),
       uppercase: obj.uppercase === true ? true : undefined,
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
@@ -619,7 +614,7 @@ export const CoverOrnamentLayerModel = {
         COVER_ORNAMENT_BOUNDS.minSizeMm,
         COVER_ORNAMENT_BOUNDS.maxSizeMm,
       ),
-      color: parseHex(obj.color, '#d9b566'),
+      color: parseHexColor(obj.color, '#d9b566'),
       strokeWidthMm: clampFinite(
         obj.strokeWidthMm,
         0.7,

@@ -1,3 +1,5 @@
+import { loadHtmlImage } from '@/lib/canvasImage';
+import { rgbToHex } from '@/lib/color';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import type { CoverImageLayer, StubExtensionMode } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
@@ -101,24 +103,6 @@ export function detectLayerCoverSide(
   const centerX = layer.xMm + layer.widthMm / 2;
   const spineMidX = spec.spineZoneRect.x + spec.spineZoneRect.width / 2;
   return centerX < spineMidX ? 'back' : 'front';
-}
-
-function loadImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Could not decode cover artwork for edge extension.'));
-    img.src = dataUrl;
-  });
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  return (
-    '#' +
-    [r, g, b]
-      .map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0'))
-      .join('')
-  );
 }
 
 /**
@@ -349,7 +333,10 @@ export async function applyStubExtensionToLayer(
     };
   }
 
-  const img = await loadImage(sourceDataUrl);
+  const img = await loadHtmlImage(
+    sourceDataUrl,
+    'Could not decode cover artwork for edge extension.',
+  );
   const boardCanvas = renderBoardSourceCanvas(img, plan.boardWidthPx, plan.boardHeightPx);
 
   const outCanvas = document.createElement('canvas');

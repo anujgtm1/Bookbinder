@@ -14,7 +14,9 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import { evaluatePrintMediaFit } from '@/core/geometry';
-import { escapeXml } from '@/lib/utils';
+import { canvasToPngBytes, loadHtmlImage } from '@/lib/canvasImage';
+import { hexToRgb01 } from '@/lib/color';
+import { escapeXml, fmtMm } from '@/lib/svgFormat';
 import type { PrintMediaId } from '@/types/bookParams';
 import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import {
@@ -55,17 +57,7 @@ export interface SpineTextPlacement {
   readonly kind: 'inline' | 'title' | 'author';
 }
 
-export function hexToRgb01(hex: string): { r: number; g: number; b: number } {
-  const clean = hex.replace('#', '');
-  if (!/^[0-9a-fA-F]{6}$/.test(clean)) {
-    return { r: 0.12, g: 0.23, b: 0.32 };
-  }
-  return {
-    r: Number.parseInt(clean.slice(0, 2), 16) / 255,
-    g: Number.parseInt(clean.slice(2, 4), 16) / 255,
-    b: Number.parseInt(clean.slice(4, 6), 16) / 255,
-  };
-}
+export { hexToRgb01 };
 
 /** Builds an SVG transform attribute flipping a rectangular layer around its center. */
 export function buildLayerFlipTransform(
@@ -295,15 +287,6 @@ export function computeCoverTextLinePlacements(
   }));
 }
 
-function loadHtmlImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Failed to decode cover artwork image.'));
-    img.src = src;
-  });
-}
-
 export async function renderCoverArtworkCanvas(
   geometry: CaseGeometry,
   studio: CoverStudioState,
@@ -473,13 +456,6 @@ export async function exportCoverPng300Dpi(
       else reject(new Error('Failed to encode 300 DPI PNG blob.'));
     }, 'image/png');
   });
-}
-
-async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Canvas PNG export failed.'))), 'image/png');
-  });
-  return new Uint8Array(await blob.arrayBuffer());
 }
 
 async function embedFontByIdInPdf(
@@ -1078,7 +1054,6 @@ export function generateAffinityCoverSvg(
   const spec = computeStudioCanvasSpec(geometry, PRINT_DPI);
   const { outerWrap } = geometry;
   const bleed = spec.bleedMm;
-  const fmt = (n: number) => String(roundTo(n, 3));
 
   const shiftedCutPoly = GeometryPrimitives.translatePolygon(
     outerWrap.outerCutPolygon,
@@ -1091,10 +1066,10 @@ export function generateAffinityCoverSvg(
   const textPlacements = computeSpineTextPlacements(geometry, studio);
 
   const artworkLayer = artworkPngDataUrl
-    ? `    <image x="0" y="0" width="${fmt(spec.totalWidthMm)}" height="${fmt(spec.totalHeightMm)}" href="${artworkPngDataUrl}" preserveAspectRatio="none" />`
-    : `    <rect x="${fmt(spec.backZoneRect.x)}" y="0" width="${fmt(spec.backZoneRect.width)}" height="${fmt(spec.totalHeightMm)}" fill="${studio.backBgColor}" />
-    <rect x="${fmt(spec.spineZoneRect.x)}" y="0" width="${fmt(spec.spineZoneRect.width)}" height="${fmt(spec.totalHeightMm)}" fill="${studio.spineBgColor}" />
-    <rect x="${fmt(spec.frontZoneRect.x)}" y="0" width="${fmt(spec.frontZoneRect.width)}" height="${fmt(spec.totalHeightMm)}" fill="${studio.frontBgColor}" />`;
+    ? `    <image x="0" y="0" width="${fmtMm(spec.totalWidthMm)}" height="${fmtMm(spec.totalHeightMm)}" href="${artworkPngDataUrl}" preserveAspectRatio="none" />`
+    : `    <rect x="${fmtMm(spec.backZoneRect.x)}" y="0" width="${fmtMm(spec.backZoneRect.width)}" height="${fmtMm(spec.totalHeightMm)}" fill="${studio.backBgColor}" />
+    <rect x="${fmtMm(spec.spineZoneRect.x)}" y="0" width="${fmtMm(spec.spineZoneRect.width)}" height="${fmtMm(spec.totalHeightMm)}" fill="${studio.spineBgColor}" />
+    <rect x="${fmtMm(spec.frontZoneRect.x)}" y="0" width="${fmtMm(spec.frontZoneRect.width)}" height="${fmtMm(spec.totalHeightMm)}" fill="${studio.frontBgColor}" />`;
 
   const ornamentNodes = (studio.ornaments ?? [])
     .map((orn) => {
@@ -1103,7 +1078,7 @@ export function generateAffinityCoverSvg(
       const style = getOrnamentSvgStyle(orn);
       const strokeAttrs =
         style.stroke !== 'none' && style.strokeWidthMm > 0
-          ? ` stroke="${escapeXml(style.stroke)}" stroke-width="${fmt(style.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round"`
+          ? ` stroke="${escapeXml(style.stroke)}" stroke-width="${fmtMm(style.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round"`
           : '';
       return `    <path d="${d}" fill="${escapeXml(style.fill)}"${strokeAttrs} />`;
     })
@@ -1122,9 +1097,9 @@ export function generateAffinityCoverSvg(
           const fontSizeMm = UnitConverter.pointsToMm(item.fontSizePt);
           const trackingAttr =
             Math.abs(item.letterSpacingEm) > 0.001
-              ? ` letter-spacing="${fmt(item.letterSpacingEm)}em"`
+              ? ` letter-spacing="${fmtMm(item.letterSpacingEm)}em"`
               : '';
-          return `${indent}<text x="${fmt(item.anchorXMm)}" y="${fmt(item.anchorYMm)}" font-family="${layerFont}" font-size="${fmt(fontSizeMm)}"${trackingAttr} fill="${escapeXml(item.color)}" text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(item.text)}</text>`;
+          return `${indent}<text x="${fmtMm(item.anchorXMm)}" y="${fmtMm(item.anchorYMm)}" font-family="${layerFont}" font-size="${fmtMm(fontSizeMm)}"${trackingAttr} fill="${escapeXml(item.color)}" text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(item.text)}</text>`;
         });
       if (lines.length === 0) return '';
       if (flipTransform) {
@@ -1138,7 +1113,7 @@ export function generateAffinityCoverSvg(
   const textNodes = textPlacements
     .map((item) => {
       const fontSizeMm = UnitConverter.pointsToMm(item.fontSizePt);
-      return `    <text x="${fmt(item.anchorXMm)}" y="${fmt(item.anchorYMm)}" font-family="${fontFamily}" font-size="${fmt(fontSizeMm)}" fill="${studio.spineText.textColor}" text-anchor="middle" dominant-baseline="middle" transform="rotate(${item.rotationDegCss} ${fmt(item.anchorXMm)} ${fmt(item.anchorYMm)})">${escapeXml(item.text)}</text>`;
+      return `    <text x="${fmtMm(item.anchorXMm)}" y="${fmtMm(item.anchorYMm)}" font-family="${fontFamily}" font-size="${fmtMm(fontSizeMm)}" fill="${studio.spineText.textColor}" text-anchor="middle" dominant-baseline="middle" transform="rotate(${item.rotationDegCss} ${fmtMm(item.anchorXMm)} ${fmtMm(item.anchorYMm)})">${escapeXml(item.text)}</text>`;
     })
     .join('\n');
 
@@ -1149,15 +1124,15 @@ export function generateAffinityCoverSvg(
   ]
     .map(
       (r) =>
-        `    <rect x="${fmt(r.x + bleed)}" y="${fmt(r.y + bleed)}" width="${fmt(r.width)}" height="${fmt(r.height)}" />`,
+        `    <rect x="${fmtMm(r.x + bleed)}" y="${fmtMm(r.y + bleed)}" width="${fmtMm(r.width)}" height="${fmtMm(r.height)}" />`,
     )
     .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${fmt(spec.totalWidthMm)}mm"
-     height="${fmt(spec.totalHeightMm)}mm"
-     viewBox="0 0 ${fmt(spec.totalWidthMm)} ${fmt(spec.totalHeightMm)}">
+     width="${fmtMm(spec.totalWidthMm)}mm"
+     height="${fmtMm(spec.totalHeightMm)}mm"
+     viewBox="0 0 ${fmtMm(spec.totalWidthMm)} ${fmtMm(spec.totalHeightMm)}">
   <title>Composed Outer Cover — Affinity Round-Trip (1:1 mm, 300 DPI)</title>
   <g id="artwork-layer">
 ${artworkLayer}

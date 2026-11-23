@@ -41,6 +41,7 @@ import {
   loadSavedDesignPresets,
   saveDesignPresets,
 } from '@/core/presetStorage';
+import { rgbToHex } from '@/lib/color';
 import {
   triggerBlobDownload,
   triggerBytesDownload,
@@ -155,15 +156,6 @@ export interface CoverStylerProps {
 
 type StudioViewMode = '2d' | 'blueprint' | '3d';
 type StudioToolTab = 'artwork' | 'text' | 'designs' | 'spine' | 'presets' | 'preflight';
-
-function rgbToHex(r: number, g: number, b: number): string {
-  return (
-    '#' +
-    [r, g, b]
-      .map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, '0'))
-      .join('')
-  );
-}
 
 export function CoverStyler({
   params,

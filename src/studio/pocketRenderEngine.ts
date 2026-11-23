@@ -4,6 +4,7 @@ import {
   type InnerPdfLayoutPlan,
   type InnerPieceKind,
 } from '@/core/pdfExport';
+import { canvasToPngBytes, loadHtmlImage } from '@/lib/canvasImage';
 import type { PageSizeId } from '@/types/bookParams';
 import type { CaseGeometry, Polygon2D, Rect2D } from '@/types/geometry';
 import type { PocketImageFitMode, PocketStyleConfig } from '@/types/studio';
@@ -139,32 +140,6 @@ export function computePocketImagePlacement(
     width,
     height,
   };
-}
-
-function loadImageElement(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Failed to decode pocket artwork image.'));
-    img.src = dataUrl;
-  });
-}
-
-async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<Uint8Array> {
-  if (typeof canvas.toBlob === 'function') {
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-    if (blob) {
-      return new Uint8Array(await blob.arrayBuffer());
-    }
-  }
-  const dataUrl = canvas.toDataURL('image/png');
-  const base64 = dataUrl.split(',')[1] ?? '';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }
 
 interface PieceRenderSpec {
@@ -342,7 +317,10 @@ export async function generateStyledInnerTemplatesPdf(
   let loadedImage: HTMLImageElement | null = null;
   if (pocketStyle.imageDataUrl) {
     try {
-      loadedImage = await loadImageElement(pocketStyle.imageDataUrl);
+      loadedImage = await loadHtmlImage(
+        pocketStyle.imageDataUrl,
+        'Failed to decode pocket artwork image.',
+      );
     } catch {
       loadedImage = null;
     }
@@ -351,7 +329,7 @@ export async function generateStyledInnerTemplatesPdf(
   const loadedLayers: { readonly layer: CoverImageLayer; readonly image: HTMLImageElement }[] = [];
   for (const layer of pocketStyle.layers ?? []) {
     try {
-      const image = await loadImageElement(layer.dataUrl);
+      const image = await loadHtmlImage(layer.dataUrl, 'Failed to decode pocket artwork image.');
       loadedLayers.push({ layer, image });
     } catch {
       // Skip unreadable layer gracefully

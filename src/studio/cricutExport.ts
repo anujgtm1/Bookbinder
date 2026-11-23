@@ -1,4 +1,5 @@
 import fontkit from '@pdf-lib/fontkit';
+import { fmtMm } from '@/lib/svgFormat';
 import type { CoverTextLayer } from '@/types/coverElements';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { CoverStudioState, CuratedFontId, StudioFontId } from '@/types/studio';
@@ -84,8 +85,6 @@ interface FontkitFont {
 interface FontkitModule {
   create(bytes: Uint8Array): FontkitFont;
 }
-
-const fmt = (n: number): string => String(roundTo(n, 3));
 
 function slugifyTitle(title: string): string {
   const cleaned = title
@@ -222,18 +221,18 @@ function bakeGlyphRunsToPaths(
         switch (cmd.command) {
           case 'moveTo': {
             const p = mapPt(cmd.args[0], cmd.args[1]);
-            segments.push(`M ${fmt(p.x)} ${fmt(p.y)}`);
+            segments.push(`M ${fmtMm(p.x)} ${fmtMm(p.y)}`);
             break;
           }
           case 'lineTo': {
             const p = mapPt(cmd.args[0], cmd.args[1]);
-            segments.push(`L ${fmt(p.x)} ${fmt(p.y)}`);
+            segments.push(`L ${fmtMm(p.x)} ${fmtMm(p.y)}`);
             break;
           }
           case 'quadraticCurveTo': {
             const c = mapPt(cmd.args[0], cmd.args[1]);
             const p = mapPt(cmd.args[2], cmd.args[3]);
-            segments.push(`Q ${fmt(c.x)} ${fmt(c.y)} ${fmt(p.x)} ${fmt(p.y)}`);
+            segments.push(`Q ${fmtMm(c.x)} ${fmtMm(c.y)} ${fmtMm(p.x)} ${fmtMm(p.y)}`);
             break;
           }
           case 'bezierCurveTo': {
@@ -241,7 +240,7 @@ function bakeGlyphRunsToPaths(
             const c2 = mapPt(cmd.args[2], cmd.args[3]);
             const p = mapPt(cmd.args[4], cmd.args[5]);
             segments.push(
-              `C ${fmt(c1.x)} ${fmt(c1.y)} ${fmt(c2.x)} ${fmt(c2.y)} ${fmt(p.x)} ${fmt(p.y)}`,
+              `C ${fmtMm(c1.x)} ${fmtMm(c1.y)} ${fmtMm(c2.x)} ${fmtMm(c2.y)} ${fmtMm(p.x)} ${fmtMm(p.y)}`,
             );
             break;
           }
@@ -355,7 +354,7 @@ function buildCornerBracketsPath(
   const rectPoly = (x: number, y: number, w: number, h: number): string => {
     const x1 = mirrorX ? canvasWidthMm - (x + w) : x;
     const x2 = x1 + w;
-    return `M ${fmt(x1)} ${fmt(y)} L ${fmt(x2)} ${fmt(y)} L ${fmt(x2)} ${fmt(y + h)} L ${fmt(x1)} ${fmt(y + h)} Z`;
+    return `M ${fmtMm(x1)} ${fmtMm(y)} L ${fmtMm(x2)} ${fmtMm(y)} L ${fmtMm(x2)} ${fmtMm(y + h)} L ${fmtMm(x1)} ${fmtMm(y + h)} Z`;
   };
 
   for (const r of rects) {
@@ -382,7 +381,7 @@ function buildRectStrokePath(rect: Rect2D): string {
   const y1 = rect.y;
   const x2 = rect.x + rect.width;
   const y2 = rect.y + rect.height;
-  return `M ${fmt(x1)} ${fmt(y1)} L ${fmt(x2)} ${fmt(y1)} L ${fmt(x2)} ${fmt(y2)} L ${fmt(x1)} ${fmt(y2)} Z`;
+  return `M ${fmtMm(x1)} ${fmtMm(y1)} L ${fmtMm(x2)} ${fmtMm(y1)} L ${fmtMm(x2)} ${fmtMm(y2)} L ${fmtMm(x1)} ${fmtMm(y2)} Z`;
 }
 
 /**
@@ -503,7 +502,7 @@ export async function generateCricutHtvSvg(
       }
       if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
         strokedOrnamentEls.push(
-          `  <path id="custom-svg-stroke-${orn.id}" d="${d}" fill="none" stroke="#222222" stroke-width="${fmt(style.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
+          `  <path id="custom-svg-stroke-${orn.id}" d="${d}" fill="none" stroke="#222222" stroke-width="${fmtMm(style.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
         );
       }
       const rawX = orn.xMm - originXMm;
@@ -588,9 +587,9 @@ export async function generateCricutHtvSvg(
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="${fmt(widthMm)}mm"
-     height="${fmt(heightMm)}mm"
-     viewBox="0 0 ${fmt(widthMm)} ${fmt(heightMm)}">
+     width="${fmtMm(widthMm)}mm"
+     height="${fmtMm(heightMm)}mm"
+     viewBox="0 0 ${fmtMm(widthMm)} ${fmtMm(heightMm)}">
 ${pathElements.join('\n')}
 </svg>
 `;
