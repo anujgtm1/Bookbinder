@@ -145,7 +145,8 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('studio-spine-fill')).toHaveAttribute('fill', '#c82832');
     await expect(page.getByTestId('studio-back-fill')).toHaveAttribute('fill', '#c82832');
 
-    // Add spine title & author and switch layout to Stacked + European orientation
+    // Switch to Spine tab in Studio Tool Dock -> add spine title & author and switch layout to Stacked + European orientation
+    await page.getByTestId('studio-tool-spine').click();
     await page.getByTestId('studio-spine-title-input').fill('Dune');
     await page.getByTestId('studio-spine-author-input').fill('Frank Herbert');
     await expect(page.getByTestId('studio-spine-typography')).toContainText('Dune');
@@ -175,6 +176,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
       mimeType: 'image/png',
       buffer: pngBuffer,
     });
+    await page.getByTestId('studio-tool-spine').click();
     await page.getByTestId('studio-spine-title-input').fill('Piranesi');
     await page.getByTestId('studio-spine-author-input').fill('Susanna Clarke');
 
@@ -220,6 +222,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('input-pb-width')).toBeVisible();
 
     // Populate spine title & author, then switch to 3D Book Preview via the Floating HUD
+    await page.getByTestId('studio-tool-spine').click();
     await page.getByTestId('studio-spine-title-input').fill('Twenty Thousand Leagues');
     await page.getByTestId('studio-spine-author-input').fill('Jules Verne');
     await page.getByTestId('author-orientation-horizontal').click();
@@ -265,6 +268,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
 
     // Red preflight warning overlay appears on canvas AND PreflightCard reports front-board-gap
     await expect(page.getByTestId('studio-preflight-overlays')).toBeVisible();
+    await page.getByTestId('studio-tool-preflight').click();
     await expect(page.getByTestId('preflight-issue-front-board-gap')).toBeVisible();
 
     // One-click Fit to Front clears the red coverage gap immediately
@@ -273,8 +277,10 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
 
     // Trigger low-contrast spine text error, verify red spine highlight, then resolve with one-click ink fix
+    await page.getByTestId('studio-tool-spine').click();
     await page.getByTestId('studio-spine-title-input').fill('DUNE');
     await page.getByTestId('studio-spine-text-color').fill('#243f57');
+    await page.getByTestId('studio-tool-preflight').click();
     await expect(page.getByTestId('preflight-issue-spine-low-contrast-error')).toBeVisible();
     await expect(page.getByTestId('studio-preflight-overlays')).toBeVisible();
 
@@ -375,7 +381,10 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(extendedH).toBeGreaterThanOrEqual(264);
 
     // Preflight passes with zero coverage or DPI errors
+    await expect(page.getByTestId('studio-tool-preflight-badge')).toHaveText('OK');
+    await page.getByTestId('studio-tool-preflight').click();
     await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
+    await page.getByTestId('studio-tool-artwork').click();
 
     // Match Spine & Back color to sampled cover edge (#164a58)
     await page.getByTestId('match-spine-back-edge-btn').click();
@@ -441,6 +450,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('studio-layer-0')).toBeVisible();
 
     // 1. Optional DPI check toggle turns off DPI warnings without touching other checks
+    await page.getByTestId('studio-tool-preflight').click();
     const dpiIssueLocator = page.locator('[data-testid^="preflight-issue-low-dpi-"]');
     await expect(dpiIssueLocator).toBeVisible();
     await expect(page.getByTestId('preflight-dpi-toggle')).toHaveAttribute('aria-pressed', 'true');
@@ -472,13 +482,15 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await widthInput.fill('190');
     await heightInput.fill('275');
 
+    await page.getByTestId('studio-tool-artwork').click();
     await page.getByTestId('quick-fit-front').click();
+    await expect(page.getByTestId('layer-clip-select')).toContainText('Clip to Front Cover');
 
     // Front cover should now pass coverage cleanly, expand to resized book, and clip to Front Cover
+    await page.getByTestId('studio-tool-preflight').click();
     await expect(page.getByTestId('preflight-issue-front-board-gap')).toBeHidden();
     await expect(page.getByTestId('preflight-issue-front-turnin-gap')).toBeHidden();
     await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
-    await expect(page.getByTestId('layer-clip-select')).toContainText('Clip to Front Cover');
 
     const resizedLayer = page.getByTestId('studio-layer-0');
     const resizedW = Number(await resizedLayer.getAttribute('width'));
@@ -496,9 +508,12 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('input-pb-thickness').fill('5');
 
     // Preflight recommends Flexible Spine for thin (<8 mm) notebook -> one-click switch
+    await page.getByTestId('studio-tool-preflight').click();
     await expect(page.getByTestId('preflight-issue-thin-book-rigid-spine')).toBeVisible();
     await page.getByTestId('preflight-fix-thin-book-rigid-spine').click();
 
+    // Inspect Cut List on Measure & Cut tab
+    await page.getByTestId('nav-measure').click();
     await expect(page.getByTestId('cut-spine-strip')).toContainText('Qty 0');
     await expect(page.getByTestId('cut-spine-strip')).toContainText('Cloth Gap');
 
@@ -509,16 +524,17 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('cut-spine-strip')).toContainText('Tuck Flaps');
     await expect(page.getByTestId('roll-recommendation-badge')).toContainText('US Letter / A4');
 
-    // Verify Blueprint renders the 4 mitered flap glue tabs cleanly
-    await page.getByTestId('studio-view-blueprint-btn').click();
+    // Verify Blueprint on Measure & Cut renders the 4 mitered flap glue tabs cleanly
     await expect(page.getByTestId('blueprint-softcover-flaps-and-tabs')).toBeVisible();
-    await page.getByTestId('studio-view-2d-btn').click();
 
-    // Switch back to Flexible Spine to style Inner Pockets with Tile Pattern & peek inside 3D Book
-    await page.getByTestId('binding-style-select').click();
-    await page.getByRole('option', { name: /Flexible Spine/i }).click();
-
+    // Inner Pockets tab displays Built-In badge and shows calm notice when clicked
+    await expect(page.getByTestId('pockets-builtin-badge')).toHaveText('Built-In');
     await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('pockets-not-needed-notice')).toBeVisible();
+
+    // Switch back to Flexible Spine via the notice button -> reveals Inner Pockets Studio
+    await page.getByTestId('pockets-switch-flexible-btn').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
     const swatchPng = createSolidPngBuffer(64, 64, 195, 155, 72);
     await page.getByTestId('pocket-upload-image-input').setInputFiles({
       name: 'marbled-swatch.png',
@@ -574,6 +590,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
   test('exports Cricut / Silhouette / ScanNCut 1:1 mm HTV SVG with flattened vector glyph paths and zero <text> tags', async ({
     page,
   }) => {
+    await page.getByTestId('studio-tool-spine').click();
     await page.getByTestId('studio-spine-title-input').fill('Dune');
     await page.getByTestId('studio-spine-author-input').fill('Frank Herbert');
     await page.getByTestId('author-orientation-horizontal').click();
@@ -603,14 +620,15 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
   test('supports draggable Front/Back cover text layers, Classic Bookbindery vector designs, 3D preview, and Front Cover Cricut HTV SVG export', async ({
     page,
   }) => {
-    // 1. Add a Front Title text layer and customize its text
+    // 1. Open Cover Text tool dock tab, add a Front Title text layer, and customize its text
+    await page.getByTestId('studio-tool-text').click();
     await page.getByTestId('add-front-title-btn').click();
     await expect(page.getByTestId('studio-cover-text-0')).toBeVisible();
     await page.getByTestId('cover-text-textarea').fill('THE ODYSSEY');
     await expect(page.getByTestId('studio-cover-text-0')).toContainText('THE ODYSSEY');
 
-    // 2. Switch to Classic Designs tab, add a Double Rule Frame, Spine Botanical Vine, and custom vector SVG stamp
-    await page.getByTestId('elements-tab-ornaments').click();
+    // 2. Switch to Classic Designs tool dock tab, add a Double Rule Frame, Spine Botanical Vine, and custom vector SVG stamp
+    await page.getByTestId('studio-tool-designs').click();
     await page.getByTestId('add-ornament-frame-double-rule').click();
     await page.getByTestId('ornament-cat-spine').click();
     await page.getByTestId('add-ornament-spine-botanical-vine').click();
@@ -652,5 +670,50 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(frontSvgText).toContain('id="htv-weeding-box"');
     expect(frontSvgText).not.toContain('<text');
     expect(frontSvgText).not.toContain('transform=');
+  });
+
+  test('navigates 3-tab hybrid workbench (Measure & Cut, Cover Studio Tool Dock, and Built-In Softcover Inner Pockets)', async ({
+    page,
+  }) => {
+    // 1. Lands on Cover Studio by default with clickable Roll/Spec badge & compact 5-tab Tool Dock
+    await expect(page.getByTestId('studio-roll-badge')).toBeVisible();
+    await expect(page.getByTestId('studio-tool-dock')).toBeVisible();
+
+    // Switch through all 5 Cover Studio tool dock tabs in 1 click each
+    await page.getByTestId('studio-tool-text').click();
+    await expect(page.getByTestId('add-front-title-btn')).toBeVisible();
+
+    await page.getByTestId('studio-tool-designs').click();
+    await expect(page.getByTestId('classic-ornament-gallery')).toBeVisible();
+
+    await page.getByTestId('studio-tool-spine').click();
+    await expect(page.getByTestId('studio-spine-title-input')).toBeVisible();
+
+    await page.getByTestId('studio-tool-preflight').click();
+    await expect(page.getByTestId('preflight-card')).toBeVisible();
+
+    await page.getByTestId('studio-tool-artwork').click();
+    await expect(page.getByTestId('studio-eyedropper-both-btn')).toBeVisible();
+
+    // 2. Clicking the Roll/Spec badge switches straight to Measure & Cut (full Cut List + CAD Blueprint)
+    await page.getByTestId('studio-roll-badge').click();
+    await expect(page.getByTestId('measure-and-cut-panel')).toBeVisible();
+    await expect(page.getByTestId('cut-list-card')).toBeVisible();
+    await expect(page.getByTestId('outer-blueprint-dimensions')).toBeVisible();
+
+    // 3. Switch to Inner Pockets, then change binding style to Fold-and-Glue Slip Cover -> auto-switches to Cover Studio
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
+
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
+    await expect(page.getByTestId('cover-styler')).toBeVisible();
+    await expect(page.getByTestId('pockets-builtin-badge')).toHaveText('Built-In');
+
+    // Clicking Inner Pockets while Fold-and-Glue Slip Cover is active renders calm Built-In notice
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('pockets-not-needed-notice')).toBeVisible();
+    await page.getByTestId('pockets-return-studio-btn').click();
+    await expect(page.getByTestId('cover-styler')).toBeVisible();
   });
 });

@@ -9,6 +9,10 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
   });
 
   test('updates cut list and persists paperback dimensions across reload', async ({ page }) => {
+    // Open Measure & Cut tab to inspect full Chipboard Cut List & 1:1 mm Blueprint
+    await page.getByTestId('nav-measure').click();
+    await expect(page.getByTestId('measure-and-cut-panel')).toBeVisible();
+    await expect(page.getByTestId('outer-blueprint-dimensions')).toBeVisible();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('143.0 × 223.0 mm');
     await expect(page.getByTestId('cut-spine-strip')).toContainText('26.0 × 223.0 mm');
 
@@ -18,14 +22,16 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
 
     await expect(page.getByTestId('cut-cover-boards')).toContainText('153.0 × 223.0 mm');
 
-    // Reload verifies localStorage auto-save
+    // Reload verifies localStorage auto-save (lands on Cover Studio, then open Measure & Cut)
     await page.reload();
+    await page.getByTestId('nav-measure').click();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('153.0 × 223.0 mm');
   });
 
   test('applies presets, converts units mm <-> in, and toggles 3-piece split mode', async ({
     page,
   }) => {
+    await page.getByTestId('nav-measure').click();
     await page.getByTestId('unit-toggle-in').click();
     await expect(page.getByTestId('cut-cover-boards')).toContainText('5.63 × 8.78 in');
 
@@ -39,10 +45,9 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     // Open collapsible settings, enable 3-piece split, and inspect Blueprint CAD mode
     await page.getByTestId('construction-settings-toggle').click();
     await page.getByTestId('split-mode-toggle').click();
-    await page.getByTestId('studio-view-blueprint-btn').click();
     await expect(page.getByTestId('blueprint-split-panels')).toBeVisible();
 
-    // Switch physical tab to Inner Pockets & Liner
+    // Switch physical tab to Inner Pockets
     await page.getByTestId('nav-pockets').click();
     await expect(page.getByTestId('inner-blueprint-svg')).toBeVisible();
   });
@@ -93,6 +98,9 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
   });
 
   test('exports and re-imports project JSON and persists theme override', async ({ page }) => {
+    // Open Measure & Cut to observe Cut List spine strip changes
+    await page.getByTestId('nav-measure').click();
+
     // Modify thickness to 32 mm, export JSON, reset, then import back
     const thickInput = page.getByTestId('input-pb-thickness');
     await thickInput.fill('32');
