@@ -54,6 +54,7 @@ import {
   type CoverImageLayer,
   type LayerClipZone,
   type QuickFitTarget,
+  type ResizeCorner,
   type StubExtensionMode,
 } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
@@ -70,7 +71,12 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
-import { buildOrnamentCompoundPath, getClassicOrnamentSpec } from './classicOrnaments';
+import {
+  buildOrnamentCompoundPath,
+  getClassicOrnamentSpec,
+  getOrnamentSvgStyle,
+} from './classicOrnaments';
+import { parseSvgStampText } from './svgStampParser';
 import {
   applyStubExtensionToLayer,
   detectLayerCoverSide,
@@ -284,6 +290,12 @@ export function CoverStyler({
         readonly widthMm: number;
         readonly heightMm: number;
       }
+    | {
+        readonly kind: 'ornament-resize';
+        readonly id: string;
+        readonly corner: ResizeCorner;
+        readonly origOrnament: CoverOrnamentLayer;
+      }
   >({ kind: 'none' });
 
   useEffect(() => {
@@ -313,6 +325,27 @@ export function CoverStyler({
       if (drag.kind === 'none') return;
       const pt = toSvgMm(e.clientX, e.clientY);
       if (!pt) return;
+      if (drag.kind === 'ornament-resize') {
+        const lockAspect =
+          drag.origOrnament.presetId === 'custom-svg' ||
+          drag.origOrnament.presetId.startsWith('emblem-') ||
+          drag.origOrnament.presetId.startsWith('divider-');
+        const resized = CoverOrnamentLayerModel.resizeFromCorner(
+          drag.origOrnament,
+          drag.corner,
+          pt.xMm,
+          pt.yMm,
+          lockAspect,
+        );
+        const cur = studioRef.current;
+        onChangeRef.current({
+          ...cur,
+          ornaments: (cur.ornaments ?? []).map((o) => (o.id === drag.id ? resized : o)),
+        });
+        suppressNextClickRef.current = true;
+        return;
+      }
+
       const dx = pt.xMm - drag.startXMm;
       const dy = pt.yMm - drag.startYMm;
       const allowSnap = snapEnabled && !e.altKey;
@@ -510,11 +543,59 @@ export function CoverStyler({
     });
   };
 
+  const handleImportSvgStamp = async (
+    file: File,
+    zone: CoverElementZone,
+    color: string,
+  ) => {
+    try {
+      const svgText = await file.text();
+      const parsed = parseSvgStampText(svgText);
+      if (!parsed) {
+        onStatusMessage('Could not find vector shapes/paths in that SVG file.');
+        return;
+      }
+      const created = CoverOrnamentLayerModel.createCustomSvg({
+        name: file.name.replace(/\.svg$/i, '') || 'Custom SVG',
+        paths: parsed.paths,
+        viewBoxWidth: parsed.viewBoxWidth,
+        viewBoxHeight: parsed.viewBoxHeight,
+        renderMode: parsed.suggestedMode,
+        targetBoardRectMm: getBoardRectInCanvas(zone),
+        zone,
+        color,
+      });
+      onChange({ ...studio, ornaments: [...(studio.ornaments ?? []), created] });
+      setSelectedLayerId(null);
+      setSelectedTextId(null);
+      setSelectedOrnamentId(created.id);
+      setViewMode('2d');
+      onStatusMessage(
+        `Imported vector SVG stamp "${created.customSvgName}" (${parsed.paths.length} paths) on ${zone}`,
+      );
+    } catch {
+      onStatusMessage('Failed to read SVG stamp file.');
+    }
+  };
+
   const handleFitOrnamentToBoard = (id: string) => {
     onChange({
       ...studio,
       ornaments: (studio.ornaments ?? []).map((o) => {
         if (o.id !== id) return o;
+        if (o.presetId === 'custom-svg' && o.customSvgPaths && o.customSvgViewBox) {
+          const fitted = CoverOrnamentLayerModel.createCustomSvg({
+            name: o.customSvgName ?? 'Custom SVG',
+            paths: o.customSvgPaths,
+            viewBoxWidth: o.customSvgViewBox.width,
+            viewBoxHeight: o.customSvgViewBox.height,
+            renderMode: o.customSvgRenderMode ?? 'fill',
+            targetBoardRectMm: getBoardRectInCanvas(o.zone),
+            zone: o.zone,
+            color: o.color,
+          });
+          return { ...fitted, id: o.id, strokeWidthMm: o.strokeWidthMm };
+        }
         const fitted = CoverOrnamentLayerModel.createForZone(
           o.presetId,
           getBoardRectInCanvas(o.zone),
@@ -1211,11 +1292,29 @@ export function CoverStyler({
                   );
                 })}
 
-                {/* Classic Bookbindery Vector Ornaments (draggable with magnetic snap guides) */}
+                {/* Classic Bookbindery Vector Ornaments & Custom SVG Stamps (draggable & 4-corner resizable) */}
                 {(studio.ornaments ?? []).map((orn, index) => {
                   const compoundD = buildOrnamentCompoundPath(orn);
                   if (!compoundD) return null;
+                  const style = getOrnamentSvgStyle(orn);
                   const isSelected = orn.id === selectedOrnamentId && !eyedropperTarget;
+                  const ornHandleHalf = Math.min(3.2, handleCornerSize * 0.42);
+                  const ornCorners: readonly {
+                    readonly corner: ResizeCorner;
+                    readonly cx: number;
+                    readonly cy: number;
+                    readonly cursor: string;
+                  }[] = [
+                    { corner: 'nw', cx: orn.xMm, cy: orn.yMm, cursor: 'nwse-resize' },
+                    { corner: 'ne', cx: orn.xMm + orn.widthMm, cy: orn.yMm, cursor: 'nesw-resize' },
+                    {
+                      corner: 'se',
+                      cx: orn.xMm + orn.widthMm,
+                      cy: orn.yMm + orn.heightMm,
+                      cursor: 'nwse-resize',
+                    },
+                    { corner: 'sw', cx: orn.xMm, cy: orn.yMm + orn.heightMm, cursor: 'nesw-resize' },
+                  ];
                   return (
                     <g
                       key={orn.id}
@@ -1258,19 +1357,53 @@ export function CoverStyler({
                         height={orn.heightMm}
                         fill="transparent"
                       />
-                      <path d={compoundD} fill={orn.color} />
+                      <path
+                        d={compoundD}
+                        fill={style.fill}
+                        stroke={style.stroke !== 'none' ? style.stroke : undefined}
+                        strokeWidth={style.strokeWidthMm > 0 ? style.strokeWidthMm : undefined}
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
                       {isSelected && (
-                        <rect
-                          x={orn.xMm - 1.5}
-                          y={orn.yMm - 1.5}
-                          width={orn.widthMm + 3}
-                          height={orn.heightMm + 3}
-                          fill="none"
-                          stroke="#facc15"
-                          strokeWidth="0.9"
-                          strokeDasharray="3.5 2"
-                          pointerEvents="none"
-                        />
+                        <>
+                          <rect
+                            x={orn.xMm - 1.5}
+                            y={orn.yMm - 1.5}
+                            width={orn.widthMm + 3}
+                            height={orn.heightMm + 3}
+                            fill="none"
+                            stroke="#facc15"
+                            strokeWidth="0.9"
+                            strokeDasharray="3.5 2"
+                            pointerEvents="none"
+                          />
+                          {ornCorners.map(({ corner, cx, cy, cursor }) => (
+                            <rect
+                              key={corner}
+                              x={cx - ornHandleHalf}
+                              y={cy - ornHandleHalf}
+                              width={ornHandleHalf * 2}
+                              height={ornHandleHalf * 2}
+                              rx={0.8}
+                              fill="#faf6ee"
+                              stroke="#b48327"
+                              strokeWidth="0.85"
+                              style={{ cursor }}
+                              data-testid={`ornament-resize-${corner}`}
+                              onClick={(e) => e.stopPropagation()}
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                elementDragRef.current = {
+                                  kind: 'ornament-resize',
+                                  id: orn.id,
+                                  corner,
+                                  origOrnament: orn,
+                                };
+                              }}
+                            />
+                          ))}
+                        </>
                       )}
                     </g>
                   );
@@ -1846,6 +1979,7 @@ export function CoverStyler({
         onQuickAlignText={handleQuickAlignText}
         onDeleteTextLayer={handleDeleteTextLayer}
         onAddOrnament={handleAddOrnament}
+        onImportSvgStamp={(file, zone, color) => void handleImportSvgStamp(file, zone, color)}
         onUpdateOrnament={handleUpdateOrnament}
         onScaleOrnament={handleScaleOrnament}
         onFitOrnamentToBoard={handleFitOrnamentToBoard}

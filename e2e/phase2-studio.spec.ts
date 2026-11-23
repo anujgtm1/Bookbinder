@@ -609,12 +609,26 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('cover-text-textarea').fill('THE ODYSSEY');
     await expect(page.getByTestId('studio-cover-text-0')).toContainText('THE ODYSSEY');
 
-    // 2. Switch to Classic Designs tab and add a Double Rule Frame + Aldus Fleuron divider
+    // 2. Switch to Classic Designs tab, add a Double Rule Frame, Spine Botanical Vine, and custom vector SVG stamp
     await page.getByTestId('elements-tab-ornaments').click();
     await page.getByTestId('add-ornament-frame-double-rule').click();
-    await page.getByTestId('add-ornament-divider-fleuron-leaf').click();
+    await page.getByTestId('ornament-cat-spine').click();
+    await page.getByTestId('add-ornament-spine-botanical-vine').click();
+
+    const customSvgStamp = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,5 65,40 95,50 65,60 50,95 35,60 5,50 35,40" fill="#000"/></svg>',
+      'utf-8',
+    );
+    await page.getByTestId('ornament-cat-all').click();
+    await page.getByTestId('import-svg-stamp-input').setInputFiles({
+      name: 'north-star.svg',
+      mimeType: 'image/svg+xml',
+      buffer: customSvgStamp,
+    });
     await expect(page.getByTestId('studio-ornament-0')).toBeVisible();
     await expect(page.getByTestId('studio-ornament-1')).toBeVisible();
+    await expect(page.getByTestId('studio-ornament-2')).toBeVisible();
+    await expect(page.getByTestId('ornament-resize-se')).toBeVisible();
 
     // 3. Verify Front Cover text renders live in 3D Book Preview
     await page.getByTestId('studio-view-3d-btn').click();

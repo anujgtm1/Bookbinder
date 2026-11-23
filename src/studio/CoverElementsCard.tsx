@@ -8,8 +8,9 @@ import {
   Sparkles,
   Trash2,
   Type,
+  Upload,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,11 +26,13 @@ import { Separator } from '@/components/ui/separator';
 import {
   COVER_ORNAMENT_BOUNDS,
   COVER_TEXT_BOUNDS,
+  type ClassicOrnamentCategory,
   type ClassicOrnamentId,
   type CoverElementZone,
   type CoverOrnamentLayer,
   type CoverTextLayer,
   type CoverTextPresetKind,
+  type CustomSvgRenderMode,
   type TextAlign,
 } from '@/types/coverElements';
 import type { CoverStudioState, StudioFontId } from '@/types/studio';
@@ -63,25 +66,38 @@ export interface CoverElementsCardProps {
   readonly onQuickAlignText: (id: string, verticalSlot: 'upper' | 'center' | 'lower') => void;
   readonly onDeleteTextLayer: (id: string) => void;
   readonly onAddOrnament: (presetId: ClassicOrnamentId, zone: CoverElementZone, color: string) => void;
+  readonly onImportSvgStamp?: (file: File, zone: CoverElementZone, color: string) => void;
   readonly onUpdateOrnament: (id: string, patch: Partial<CoverOrnamentLayer>) => void;
   readonly onScaleOrnament: (id: string, factor: number) => void;
   readonly onFitOrnamentToBoard: (id: string) => void;
   readonly onDeleteOrnament: (id: string) => void;
 }
 
+const ORNAMENT_CATEGORY_TABS: readonly {
+  readonly id: 'all' | ClassicOrnamentCategory;
+  readonly label: string;
+}[] = [
+  { id: 'all', label: 'All' },
+  { id: 'frames', label: 'Frames' },
+  { id: 'corners', label: 'Corners' },
+  { id: 'dividers', label: 'Dividers' },
+  { id: 'emblems', label: 'Emblems' },
+  { id: 'spine', label: 'Spine (6)' },
+];
+
 function OrnamentThumb({ presetId }: { readonly presetId: ClassicOrnamentId }) {
   const isDivider = presetId.startsWith('divider-');
-  const isSpine = presetId === 'spine-classic-bands';
+  const isSpine = presetId.startsWith('spine-');
   const previewLayer: CoverOrnamentLayer = {
     id: `thumb-${presetId}`,
     presetId,
-    zone: 'front',
+    zone: isSpine ? 'spine' : 'front',
     xMm: isSpine ? 14 : 4,
     yMm: isDivider ? 14 : 4,
     widthMm: isSpine ? 12 : 32,
     heightMm: isDivider ? 12 : 32,
     color: 'currentColor',
-    strokeWidthMm: isDivider ? 1.1 : 1.35,
+    strokeWidthMm: isSpine ? 1.05 : isDivider ? 1.1 : 1.35,
   };
   const d = buildOrnamentCompoundPath(previewLayer);
   return (
@@ -107,14 +123,17 @@ export function CoverElementsCard({
   onQuickAlignText,
   onDeleteTextLayer,
   onAddOrnament,
+  onImportSvgStamp,
   onUpdateOrnament,
   onScaleOrnament,
   onFitOrnamentToBoard,
   onDeleteOrnament,
 }: CoverElementsCardProps) {
   const [activeTab, setActiveTab] = useState<CoverElementsTab>('text');
+  const [ornamentCategory, setOrnamentCategory] = useState<'all' | ClassicOrnamentCategory>('all');
   const [ornamentZone, setOrnamentZone] = useState<CoverElementZone>('front');
   const [defaultFoilColor, setDefaultFoilColor] = useState<string>('#d9b566');
+  const svgStampInputRef = useRef<HTMLInputElement>(null);
 
   const textLayers = studio.textLayers ?? [];
   const ornaments = studio.ornaments ?? [];
@@ -508,30 +527,86 @@ export function CoverElementsCard({
                   </Button>
                 ))}
               </div>
-              <div className="flex items-center gap-1">
-                {FOIL_SWATCHES.slice(0, 4).map((swatch) => (
-                  <button
-                    key={swatch.hex}
-                    type="button"
-                    title={`Default ornament foil color: ${swatch.label}`}
-                    aria-label={`Default foil color ${swatch.label}`}
-                    onClick={() => setDefaultFoilColor(swatch.hex)}
-                    className={`h-4 w-4 rounded-full border cursor-pointer ${
-                      defaultFoilColor === swatch.hex
-                        ? 'ring-2 ring-primary ring-offset-1 border-foreground'
-                        : 'border-border'
-                    }`}
-                    style={{ backgroundColor: swatch.hex }}
-                  />
-                ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1">
+                  {FOIL_SWATCHES.slice(0, 4).map((swatch) => (
+                    <button
+                      key={swatch.hex}
+                      type="button"
+                      title={`Default ornament foil color: ${swatch.label}`}
+                      aria-label={`Default foil color ${swatch.label}`}
+                      onClick={() => setDefaultFoilColor(swatch.hex)}
+                      className={`h-4 w-4 rounded-full border cursor-pointer ${
+                        defaultFoilColor === swatch.hex
+                          ? 'ring-2 ring-primary ring-offset-1 border-foreground'
+                          : 'border-border'
+                      }`}
+                      style={{ backgroundColor: swatch.hex }}
+                    />
+                  ))}
+                </div>
+                {onImportSvgStamp && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      data-testid="import-svg-stamp-btn"
+                      onClick={() => svgStampInputRef.current?.click()}
+                    >
+                      <Upload className="h-3 w-3" aria-hidden="true" />
+                      Import SVG Stamp
+                    </Button>
+                    <input
+                      ref={svgStampInputRef}
+                      type="file"
+                      accept=".svg,image/svg+xml"
+                      className="visually-hidden"
+                      aria-label="Import custom vector SVG stamp"
+                      data-testid="import-svg-stamp-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          onImportSvgStamp(file, ornamentZone, defaultFoilColor);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </>
+                )}
               </div>
+            </div>
+
+            {/* Category Filter Pills (All / Frames / Corners / Dividers / Emblems / Spine) */}
+            <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter classic designs by category">
+              {ORNAMENT_CATEGORY_TABS.map((cat) => (
+                <Button
+                  key={cat.id}
+                  type="button"
+                  size="sm"
+                  variant={ornamentCategory === cat.id ? 'secondary' : 'ghost'}
+                  className="h-6 px-2 text-[11px]"
+                  data-testid={`ornament-cat-${cat.id}`}
+                  onClick={() => {
+                    setOrnamentCategory(cat.id);
+                    if (cat.id === 'spine') {
+                      setOrnamentZone('spine');
+                    }
+                  }}
+                >
+                  {cat.label}
+                </Button>
+              ))}
             </div>
 
             <div
               className="grid grid-cols-2 gap-1.5 sm:grid-cols-3"
               data-testid="classic-ornament-gallery"
             >
-              {CLASSIC_ORNAMENTS.map((spec) => (
+              {CLASSIC_ORNAMENTS.filter(
+                (spec) => ornamentCategory === 'all' || spec.category === ornamentCategory,
+              ).map((spec) => (
                 <button
                   key={spec.id}
                   type="button"
@@ -540,7 +615,7 @@ export function CoverElementsCard({
                   onClick={() =>
                     onAddOrnament(
                       spec.id,
-                      spec.id === 'spine-classic-bands' ? 'spine' : ornamentZone,
+                      spec.category === 'spine' ? 'spine' : ornamentZone,
                       defaultFoilColor,
                     )
                   }
@@ -565,6 +640,10 @@ export function CoverElementsCard({
                 >
                   {ornaments.map((orn, idx) => {
                     const spec = getClassicOrnamentSpec(orn.presetId);
+                    const displayLabel =
+                      orn.presetId === 'custom-svg' && orn.customSvgName
+                        ? orn.customSvgName
+                        : spec.label;
                     const isSelected = orn.id === selectedOrnamentId;
                     return (
                       <li
@@ -585,7 +664,7 @@ export function CoverElementsCard({
                             className="h-2.5 w-2.5 shrink-0 rounded-full border border-border"
                             style={{ backgroundColor: orn.color }}
                           />
-                          <span className="truncate font-medium">{spec.label}</span>
+                          <span className="truncate font-medium">{displayLabel}</span>
                           <Badge variant="outline" className="ml-auto shrink-0 font-mono text-[9px] uppercase">
                             {orn.zone}
                           </Badge>
@@ -595,7 +674,7 @@ export function CoverElementsCard({
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 text-destructive hover:text-destructive"
-                          aria-label={`Remove ornament ${spec.label}`}
+                          aria-label={`Remove ornament ${displayLabel}`}
                           data-testid={`ornament-delete-${idx}`}
                           onClick={() => onDeleteOrnament(orn.id)}
                         >
@@ -679,28 +758,71 @@ export function CoverElementsCard({
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <Label htmlFor="ornament-stroke">Rule / Line Weight</Label>
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                      {roundTo(selectedOrnament.strokeWidthMm, 2)} mm
+                {selectedOrnament.presetId === 'custom-svg' && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      SVG Render Mode
                     </span>
+                    <div className="flex items-center gap-1" role="group" aria-label="Custom SVG render mode">
+                      {(
+                        [
+                          { id: 'fill', label: 'Fill' },
+                          { id: 'stroke', label: 'Outline' },
+                          { id: 'fill-and-stroke', label: 'Fill + Thicken' },
+                        ] as const satisfies readonly { readonly id: CustomSvgRenderMode; readonly label: string }[]
+                      ).map((mode) => (
+                        <Button
+                          key={mode.id}
+                          type="button"
+                          size="sm"
+                          variant={
+                            (selectedOrnament.customSvgRenderMode ?? 'fill') === mode.id
+                              ? 'default'
+                              : 'outline'
+                          }
+                          className="h-6 px-2 text-[11px]"
+                          onClick={() =>
+                            onUpdateOrnament(selectedOrnament.id, {
+                              customSvgRenderMode: mode.id,
+                            })
+                          }
+                        >
+                          {mode.label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                  <input
-                    id="ornament-stroke"
-                    type="range"
-                    min={COVER_ORNAMENT_BOUNDS.strokeWidthMm.min}
-                    max={COVER_ORNAMENT_BOUNDS.strokeWidthMm.max}
-                    step={0.05}
-                    value={selectedOrnament.strokeWidthMm}
-                    onChange={(e) =>
-                      onUpdateOrnament(selectedOrnament.id, {
-                        strokeWidthMm: Number(e.target.value),
-                      })
-                    }
-                    className="h-2 w-full accent-primary cursor-pointer"
-                  />
-                </div>
+                )}
+
+                {(selectedOrnament.presetId !== 'custom-svg' ||
+                  (selectedOrnament.customSvgRenderMode ?? 'fill') !== 'fill') && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <Label htmlFor="ornament-stroke">
+                        {selectedOrnament.presetId === 'custom-svg'
+                          ? 'Stroke / Outline Thickness'
+                          : 'Rule / Line Weight'}
+                      </Label>
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {roundTo(selectedOrnament.strokeWidthMm, 2)} mm
+                      </span>
+                    </div>
+                    <input
+                      id="ornament-stroke"
+                      type="range"
+                      min={COVER_ORNAMENT_BOUNDS.strokeWidthMm.min}
+                      max={COVER_ORNAMENT_BOUNDS.strokeWidthMm.max}
+                      step={0.05}
+                      value={selectedOrnament.strokeWidthMm}
+                      onChange={(e) =>
+                        onUpdateOrnament(selectedOrnament.id, {
+                          strokeWidthMm: Number(e.target.value),
+                        })
+                      }
+                      className="h-2 w-full accent-primary cursor-pointer"
+                    />
+                  </div>
+                )}
               </div>
             )}
           </>
