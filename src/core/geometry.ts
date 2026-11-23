@@ -1,4 +1,9 @@
-import type { BookParameters } from '@/types/bookParams';
+import {
+  PRINT_MEDIA_OPTIONS,
+  getPrintMediaSpec,
+  type BookParameters,
+  type PrintMediaId,
+} from '@/types/bookParams';
 import {
   ROLL_TOTAL_MARGIN_MM,
   STANDARD_ROLL_WIDTHS,
@@ -7,12 +12,16 @@ import {
   type OuterWrapGeometry,
   type PocketEnvelopeGeometry,
   type Polygon2D,
+  type PrintMediaFitEvaluation,
+  type PrintMediaFitStatus,
   type RollFeedOrientation,
   type RollRecommendation,
   type SpineLinerGeometry,
   type SplitWrapPanel,
 } from '@/types/geometry';
 import { roundTo } from '@/types/units';
+
+export type { PrintMediaFitEvaluation, PrintMediaFitStatus };
 
 const LINER_OVERLAP_PER_SIDE_MM = 15.0;
 const INNER_VERTICAL_INSET_MM = 1.0; // 1.0 mm inset top & bottom => -2.0 mm height
@@ -516,6 +525,184 @@ export function evaluateRollWidth(
   };
 }
 
+const FIT_EPS_MM = 1e-6;
+const TILE_OVERLAP_MM = 10;
+
+function findSuggestedMediaId(
+  wrapWidthMm: number,
+  wrapHeightMm: number,
+  excludeId?: PrintMediaId,
+): PrintMediaId | null {
+  // 1. Narrowest desktop sheet that fits cleanly on 1 sheet
+  for (const opt of PRINT_MEDIA_OPTIONS) {
+    if (opt.kind !== 'sheet' || opt.id === excludeId || opt.shortMm === null || opt.longMm === null) {
+      continue;
+    }
+    const shortPrintable = opt.shortMm - ROLL_TOTAL_MARGIN_MM + FIT_EPS_MM;
+    const longPrintable = opt.longMm - ROLL_TOTAL_MARGIN_MM + FIT_EPS_MM;
+    const fitsLandscape = wrapWidthMm <= longPrintable && wrapHeightMm <= shortPrintable;
+    const fitsPortrait = wrapWidthMm <= shortPrintable && wrapHeightMm <= longPrintable;
+    if (fitsLandscape || fitsPortrait) {
+      return opt.id;
+    }
+  }
+
+  // 2. Narrowest wide-format roll that fits cleanly
+  const minDim = Math.min(wrapWidthMm, wrapHeightMm);
+  for (const opt of PRINT_MEDIA_OPTIONS) {
+    if (opt.kind !== 'roll' || opt.id === excludeId || opt.rollWidthMm === null) {
+      continue;
+    }
+    const printableWidth = opt.rollWidthMm - ROLL_TOTAL_MARGIN_MM + FIT_EPS_MM;
+    if (minDim <= printableWidth) {
+      return opt.id;
+    }
+  }
+
+  return null;
+}
+
+export function evaluatePrintMediaFit(
+  mediaId: PrintMediaId,
+  wrapWidthMm: number,
+  wrapHeightMm: number,
+): PrintMediaFitEvaluation {
+  const spec = getPrintMediaSpec(mediaId);
+
+  if (spec.kind === 'auto') {
+    const rollRec = evaluateRollWidth(wrapWidthMm, wrapHeightMm);
+    return {
+      mediaId: 'exact-auto',
+      mediaLabel: spec.shortLabel,
+      status: rollRec.fits ? 'fits-roll' : 'does-not-fit',
+      sheetPageWidthMm: null,
+      sheetPageHeightMm: null,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: null,
+      summary: rollRec.summary,
+    };
+  }
+
+  if (spec.kind === 'roll' && spec.rollWidthMm !== null) {
+    const printableWidthMm = spec.rollWidthMm - ROLL_TOTAL_MARGIN_MM;
+    const minDim = Math.min(wrapWidthMm, wrapHeightMm);
+    if (minDim <= printableWidthMm + FIT_EPS_MM) {
+      const orientationLabel = wrapHeightMm <= wrapWidthMm ? 'rotated 90°' : 'unrotated';
+      const spare = Math.max(0, roundTo(printableWidthMm - minDim, 1));
+      return {
+        mediaId: spec.id,
+        mediaLabel: spec.shortLabel,
+        status: 'fits-roll',
+        sheetPageWidthMm: null,
+        sheetPageHeightMm: null,
+        tilePages: 1,
+        tileOverlapMm: 0,
+        suggestedMediaId: null,
+        summary: `Fits on ${spec.shortLabel} (${orientationLabel}) with ${Math.round(spare)} mm spare width`,
+      };
+    }
+
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'does-not-fit',
+      sheetPageWidthMm: null,
+      sheetPageHeightMm: null,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: findSuggestedMediaId(wrapWidthMm, wrapHeightMm, spec.id),
+      summary: `Does not fit on ${spec.shortLabel} (${roundTo(minDim, 1)} mm > ${printableWidthMm} mm printable)`,
+    };
+  }
+
+  // Desktop sheet evaluation: 3-state ('fits-1-sheet' | 'fits-2-sheet-tile' | 'does-not-fit')
+  const shortMm = spec.shortMm ?? US_LETTER_SHORT_MM;
+  const longMm = spec.longMm ?? US_LETTER_LONG_MM;
+  const shortPrintable = shortMm - ROLL_TOTAL_MARGIN_MM;
+  const longPrintable = longMm - ROLL_TOTAL_MARGIN_MM;
+
+  // State 1: Fits on 1 sheet (check Landscape first, then Portrait)
+  if (
+    wrapWidthMm <= longPrintable + FIT_EPS_MM &&
+    wrapHeightMm <= shortPrintable + FIT_EPS_MM
+  ) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-1-sheet',
+      sheetPageWidthMm: longMm,
+      sheetPageHeightMm: shortMm,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: null,
+      summary: `Fits on 1× ${spec.shortLabel} (Landscape)`,
+    };
+  }
+
+  if (
+    wrapWidthMm <= shortPrintable + FIT_EPS_MM &&
+    wrapHeightMm <= longPrintable + FIT_EPS_MM
+  ) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-1-sheet',
+      sheetPageWidthMm: shortMm,
+      sheetPageHeightMm: longMm,
+      tilePages: 1,
+      tileOverlapMm: 0,
+      suggestedMediaId: null,
+      summary: `Fits on 1× ${spec.shortLabel} (Portrait)`,
+    };
+  }
+
+  // State 2: Horizontal 2-sheet tile with 10 mm overlap (check Portrait first, then Landscape)
+  const halfW = wrapWidthMm / 2 + TILE_OVERLAP_MM / 2;
+  const suggestedMediaId = findSuggestedMediaId(wrapWidthMm, wrapHeightMm, spec.id);
+
+  if (halfW <= shortPrintable + FIT_EPS_MM && wrapHeightMm <= longPrintable + FIT_EPS_MM) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-2-sheet-tile',
+      sheetPageWidthMm: shortMm,
+      sheetPageHeightMm: longMm,
+      tilePages: 2,
+      tileOverlapMm: TILE_OVERLAP_MM,
+      suggestedMediaId,
+      summary: `2× ${spec.shortLabel} tiled (Portrait, ${TILE_OVERLAP_MM} mm overlap)`,
+    };
+  }
+
+  if (halfW <= longPrintable + FIT_EPS_MM && wrapHeightMm <= shortPrintable + FIT_EPS_MM) {
+    return {
+      mediaId: spec.id,
+      mediaLabel: spec.shortLabel,
+      status: 'fits-2-sheet-tile',
+      sheetPageWidthMm: longMm,
+      sheetPageHeightMm: shortMm,
+      tilePages: 2,
+      tileOverlapMm: TILE_OVERLAP_MM,
+      suggestedMediaId,
+      summary: `2× ${spec.shortLabel} tiled (Landscape, ${TILE_OVERLAP_MM} mm overlap)`,
+    };
+  }
+
+  // State 3: Does not fit even as 2 tiled sheets
+  return {
+    mediaId: spec.id,
+    mediaLabel: spec.shortLabel,
+    status: 'does-not-fit',
+    sheetPageWidthMm: null,
+    sheetPageHeightMm: null,
+    tilePages: 1,
+    tileOverlapMm: 0,
+    suggestedMediaId,
+    summary: `Does not fit on ${spec.shortLabel} (even as 2 tiled sheets)`,
+  };
+}
+
 export function calculateSpineLiner(cutList: ChipboardCutList): SpineLinerGeometry {
   const spineW = cutList.spineStrip.widthMm;
   const hingeW = cutList.hingeSpacerMm;
@@ -684,6 +871,11 @@ export function calculateCaseGeometry(params: BookParameters): CaseGeometry {
   const outerWrap = calculateOuterWrap(params, cutList);
   const splitPanels = calculateSplitWrapPanels(params, cutList, outerWrap);
   const rollRecommendation = evaluateRollWidth(outerWrap.widthMm, outerWrap.heightMm);
+  const mediaFit = evaluatePrintMediaFit(
+    params.printMedia ?? 'exact-auto',
+    outerWrap.widthMm,
+    outerWrap.heightMm,
+  );
   const spineLiner = calculateSpineLiner(cutList);
   const frontPocket = calculatePocketEnvelope('front', params, cutList);
   const backPocket = calculatePocketEnvelope('back', params, cutList);
@@ -694,6 +886,7 @@ export function calculateCaseGeometry(params: BookParameters): CaseGeometry {
     outerWrap,
     splitPanels,
     rollRecommendation,
+    mediaFit,
     spineLiner,
     frontPocket,
     backPocket,

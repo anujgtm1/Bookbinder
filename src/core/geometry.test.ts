@@ -5,6 +5,7 @@ import {
   calculateCaseGeometry,
   calculateChipboardCutList,
   calculateMaxSlipFlapForSheetMm,
+  evaluatePrintMediaFit,
   evaluateRollWidth,
 } from './geometry';
 
@@ -260,5 +261,64 @@ describe('calculateCaseGeometry', () => {
     // Custom flap clamped to 20..65 mm bounds
     expect(calculateCaseGeometry({ ...a6Soft, jacketFlapWidthMm: 10 }).outerWrap.jacketFlapWidthMm).toBe(20);
     expect(calculateCaseGeometry({ ...a6Soft, jacketFlapWidthMm: 95 }).outerWrap.jacketFlapWidthMm).toBe(65);
+  });
+
+  it('evaluates 3-state Target Print Media fit (1-sheet, 2-sheet tile, roll, and does-not-fit)', () => {
+    // 1. State 1: fits-1-sheet (A6 softcover 266.4 x 170 mm on US Letter -> Landscape 279.4 x 215.9 mm)
+    const a6Letter = evaluatePrintMediaFit('letter', 266.4, 170);
+    expect(a6Letter.status).toBe('fits-1-sheet');
+    expect(a6Letter.sheetPageWidthMm).toBeCloseTo(279.4, 2);
+    expect(a6Letter.sheetPageHeightMm).toBeCloseTo(215.9, 2);
+    expect(a6Letter.tilePages).toBe(1);
+    expect(a6Letter.tileOverlapMm).toBe(0);
+    expect(a6Letter.suggestedMediaId).toBeNull();
+
+    // Portrait 1-sheet fit (180 x 250 mm on US Letter -> Portrait 215.9 x 279.4 mm)
+    const tallLetter = evaluatePrintMediaFit('letter', 180, 250);
+    expect(tallLetter.status).toBe('fits-1-sheet');
+    expect(tallLetter.sheetPageWidthMm).toBeCloseTo(215.9, 2);
+    expect(tallLetter.sheetPageHeightMm).toBeCloseTo(279.4, 2);
+    expect(tallLetter.tilePages).toBe(1);
+
+    // 2. State 2: fits-2-sheet-tile (default Trade Digest 366 x 259 mm on US Letter -> 2 Portrait sheets, 10 mm overlap)
+    const digestLetter = evaluatePrintMediaFit('letter', 366, 259);
+    expect(digestLetter.status).toBe('fits-2-sheet-tile');
+    expect(digestLetter.sheetPageWidthMm).toBeCloseTo(215.9, 2);
+    expect(digestLetter.sheetPageHeightMm).toBeCloseTo(279.4, 2);
+    expect(digestLetter.tilePages).toBe(2);
+    expect(digestLetter.tileOverlapMm).toBe(10);
+    expect(digestLetter.suggestedMediaId).toBe('tabloid');
+
+    // Landscape 2-sheet tile (wide short cover 450 x 170 mm on US Letter -> 2 Landscape sheets)
+    const wideShortLetter = evaluatePrintMediaFit('letter', 450, 170);
+    expect(wideShortLetter.status).toBe('fits-2-sheet-tile');
+    expect(wideShortLetter.sheetPageWidthMm).toBeCloseTo(279.4, 2);
+    expect(wideShortLetter.sheetPageHeightMm).toBeCloseTo(215.9, 2);
+    expect(wideShortLetter.tilePages).toBe(2);
+    expect(wideShortLetter.tileOverlapMm).toBe(10);
+
+    // 3. State 3: does-not-fit (oversized 480 x 310 mm on US Letter -> height exceeds 269.4 mm printable)
+    const oversizedLetter = evaluatePrintMediaFit('letter', 480, 310);
+    expect(oversizedLetter.status).toBe('does-not-fit');
+    expect(oversizedLetter.sheetPageWidthMm).toBeNull();
+    expect(oversizedLetter.sheetPageHeightMm).toBeNull();
+    expect(oversizedLetter.tilePages).toBe(1);
+    expect(oversizedLetter.suggestedMediaId).toBe('roll-13');
+
+    // 4. Explicit roll checks
+    const roll13Fit = evaluatePrintMediaFit('roll-13', 366, 259);
+    expect(roll13Fit.status).toBe('fits-roll');
+    expect(roll13Fit.suggestedMediaId).toBeNull();
+
+    const roll13Overflow = evaluatePrintMediaFit('roll-13', 460, 350);
+    expect(roll13Overflow.status).toBe('does-not-fit');
+    expect(roll13Overflow.suggestedMediaId).toBe('roll-17');
+
+    // 5. exact-auto delegates to evaluateRollWidth
+    const autoFit = evaluatePrintMediaFit('exact-auto', 366, 259);
+    expect(autoFit.status).toBe('fits-roll');
+    expect(autoFit.sheetPageWidthMm).toBeNull();
+    expect(autoFit.tilePages).toBe(1);
+    expect(autoFit.summary).toContain('13" roll');
   });
 });

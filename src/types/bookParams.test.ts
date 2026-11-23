@@ -23,6 +23,7 @@ describe('BookParametersModel', () => {
     expect(defaults.pocketDepthPct).toBe(72);
     expect(defaults.pocketFlapMm).toBe(12.0);
     expect(defaults.splitMode).toBe('single');
+    expect(defaults.printMedia).toBe('exact-auto');
     expect(defaults.unit).toBe('mm');
   });
 
@@ -84,6 +85,12 @@ describe('BookParametersModel', () => {
     expect(
       BookParametersModel.clampAndNormalize({ jacketFlapWidthMm: 90 }).jacketFlapWidthMm,
     ).toBe(65);
+    expect(BookParametersModel.clampAndNormalize({ printMedia: 'tabloid' }).printMedia).toBe(
+      'tabloid',
+    );
+    expect(
+      BookParametersModel.deserialize({ printMedia: 'not-a-real-media' }).printMedia,
+    ).toBe('exact-auto');
   });
 
   it('falls back to defaults on invalid raw input and round-trips serialization', () => {

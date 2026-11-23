@@ -3,6 +3,17 @@ import { UnitConverter, clampFinite, type UnitSystem } from './units';
 export type BindingStyle = 'rigid-case' | 'flexible-spine' | 'softcover-jacket';
 export type SplitMode = 'single' | 'three-piece';
 export type PageSizeId = 'letter' | 'a4' | 'tabloid';
+export type PrintMediaId =
+  | 'exact-auto'
+  | 'letter'
+  | 'a4'
+  | 'legal'
+  | 'tabloid'
+  | 'roll-13'
+  | 'roll-17'
+  | 'roll-24'
+  | 'roll-36'
+  | 'roll-44';
 export type PaperbackPresetId =
   | 'mass-market'
   | 'us-trade-digest'
@@ -10,6 +21,113 @@ export type PaperbackPresetId =
   | 'manga-b6'
   | 'a6-notebook'
   | 'custom';
+
+export interface PrintMediaSpec {
+  readonly id: PrintMediaId;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly kind: 'auto' | 'sheet' | 'roll';
+  readonly shortMm: number | null;
+  readonly longMm: number | null;
+  readonly rollWidthMm: number | null;
+}
+
+export const PRINT_MEDIA_OPTIONS: readonly PrintMediaSpec[] = [
+  {
+    id: 'exact-auto',
+    label: 'Exact Wrap Size (Auto)',
+    shortLabel: 'Exact Wrap Size (Auto)',
+    kind: 'auto',
+    shortMm: null,
+    longMm: null,
+    rollWidthMm: null,
+  },
+  {
+    id: 'letter',
+    label: 'US Letter (8.5 × 11")',
+    shortLabel: 'US Letter',
+    kind: 'sheet',
+    shortMm: 215.9,
+    longMm: 279.4,
+    rollWidthMm: null,
+  },
+  {
+    id: 'a4',
+    label: 'A4 (210 × 297 mm)',
+    shortLabel: 'A4',
+    kind: 'sheet',
+    shortMm: 210.0,
+    longMm: 297.0,
+    rollWidthMm: null,
+  },
+  {
+    id: 'legal',
+    label: 'US Legal (8.5 × 14")',
+    shortLabel: 'US Legal',
+    kind: 'sheet',
+    shortMm: 215.9,
+    longMm: 355.6,
+    rollWidthMm: null,
+  },
+  {
+    id: 'tabloid',
+    label: 'Tabloid (11 × 17")',
+    shortLabel: 'Tabloid',
+    kind: 'sheet',
+    shortMm: 279.4,
+    longMm: 431.8,
+    rollWidthMm: null,
+  },
+  {
+    id: 'roll-13',
+    label: '13" Roll (330 mm)',
+    shortLabel: '13" Roll',
+    kind: 'roll',
+    shortMm: null,
+    longMm: null,
+    rollWidthMm: 330,
+  },
+  {
+    id: 'roll-17',
+    label: '17" Roll (432 mm)',
+    shortLabel: '17" Roll',
+    kind: 'roll',
+    shortMm: null,
+    longMm: null,
+    rollWidthMm: 432,
+  },
+  {
+    id: 'roll-24',
+    label: '24" Roll (610 mm)',
+    shortLabel: '24" Roll',
+    kind: 'roll',
+    shortMm: null,
+    longMm: null,
+    rollWidthMm: 610,
+  },
+  {
+    id: 'roll-36',
+    label: '36" Roll (914 mm)',
+    shortLabel: '36" Roll',
+    kind: 'roll',
+    shortMm: null,
+    longMm: null,
+    rollWidthMm: 914,
+  },
+  {
+    id: 'roll-44',
+    label: '44" Roll (1118 mm)',
+    shortLabel: '44" Roll',
+    kind: 'roll',
+    shortMm: null,
+    longMm: null,
+    rollWidthMm: 1118,
+  },
+] as const;
+
+export function getPrintMediaSpec(id: PrintMediaId): PrintMediaSpec {
+  return PRINT_MEDIA_OPTIONS.find((opt) => opt.id === id) ?? PRINT_MEDIA_OPTIONS[0];
+}
 
 export interface BindingStyleOption {
   readonly id: BindingStyle;
@@ -152,6 +270,8 @@ export interface BookParameters {
   quarterBoundOverlapMm: number;
   /** Sheet size for paginated inner envelopes & liner PDF */
   pdfPageSize: PageSizeId;
+  /** Target output paper sheet or roll width for outer cover Print PDF & paper-fit preflight */
+  printMedia: PrintMediaId;
   /** Optional custom slip-cover flap width in mm for softcover-jacket (undefined = auto default) */
   jacketFlapWidthMm?: number;
   /** UI display unit (exports remain strictly 1:1 mm) */
@@ -202,8 +322,11 @@ export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
   splitMode: 'single',
   quarterBoundOverlapMm: 20.0,
   pdfPageSize: 'letter',
+  printMedia: 'exact-auto',
   unit: 'mm',
 };
+
+const VALID_PRINT_MEDIA_IDS = new Set<string>(PRINT_MEDIA_OPTIONS.map((o) => o.id));
 
 function parseBindingStyle(value: unknown): BindingStyle {
   if (value === 'flexible-spine' || value === 'softcover-jacket') {
@@ -218,6 +341,13 @@ function parseSplitMode(value: unknown): SplitMode {
 
 function parsePageSize(value: unknown): PageSizeId {
   return value === 'a4' || value === 'tabloid' ? value : 'letter';
+}
+
+function parsePrintMedia(value: unknown): PrintMediaId {
+  if (typeof value === 'string' && VALID_PRINT_MEDIA_IDS.has(value)) {
+    return value as PrintMediaId;
+  }
+  return DEFAULT_BOOK_PARAMETERS.printMedia;
 }
 
 export const BookParametersModel = {
@@ -319,6 +449,7 @@ export const BookParametersModel = {
         b.quarterBoundOverlapMm.max,
       ),
       pdfPageSize: parsePageSize(partial.pdfPageSize),
+      printMedia: parsePrintMedia(partial.printMedia),
       ...(jacketFlapWidthMm !== undefined ? { jacketFlapWidthMm } : {}),
       unit: UnitConverter.parseUnitSystem(partial.unit, d.unit),
     };

@@ -1,4 +1,4 @@
-import type { BindingStyle } from './bookParams';
+import type { BindingStyle, PrintMediaId } from './bookParams';
 import { roundTo } from './units';
 
 export interface Point2D {
@@ -133,6 +133,27 @@ export interface RollRecommendation {
   readonly summary: string;
 }
 
+export type PrintMediaFitStatus =
+  | 'fits-1-sheet'
+  | 'fits-2-sheet-tile'
+  | 'fits-roll'
+  | 'does-not-fit';
+
+export interface PrintMediaFitEvaluation {
+  readonly mediaId: PrintMediaId;
+  readonly mediaLabel: string;
+  readonly status: PrintMediaFitStatus;
+  /** Concrete PDF page size (mm) when outputting onto a desktop sheet (auto-oriented Portrait or Landscape) */
+  readonly sheetPageWidthMm: number | null;
+  readonly sheetPageHeightMm: number | null;
+  /** For 'fits-2-sheet-tile', number of tiled sheets (2) and overlap width in mm (10 mm) */
+  readonly tilePages: 1 | 2;
+  readonly tileOverlapMm: number;
+  /** Recommended larger PrintMediaId if current media cannot fit on 1 sheet */
+  readonly suggestedMediaId: PrintMediaId | null;
+  readonly summary: string;
+}
+
 export interface OuterWrapGeometry {
   readonly bindingStyle: BindingStyle;
   readonly widthMm: number;
@@ -198,6 +219,7 @@ export interface CaseGeometry {
   readonly outerWrap: OuterWrapGeometry;
   readonly splitPanels: readonly SplitWrapPanel[];
   readonly rollRecommendation: RollRecommendation;
+  readonly mediaFit: PrintMediaFitEvaluation;
   readonly spineLiner: SpineLinerGeometry;
   readonly frontPocket: PocketEnvelopeGeometry;
   readonly backPocket: PocketEnvelopeGeometry;
