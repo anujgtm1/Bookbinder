@@ -11,6 +11,7 @@ import {
   Layers,
   Magnet,
   Maximize2,
+  Minimize2,
   Pipette,
   Printer,
   Ruler,
@@ -38,6 +39,11 @@ import {
   triggerBytesDownload,
   triggerTextDownload,
 } from '@/core/storage';
+import {
+  FULL_PAGE_EXIT_BUTTON_CLASS,
+  getFullPageStageClass,
+  useFullPageCanvas,
+} from '@/hooks/useFullPageCanvas';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import {
   CoverOrnamentLayerModel,
@@ -182,6 +188,7 @@ export function CoverStyler({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
   const [cricutDialogOpen, setCricutDialogOpen] = useState(false);
+  const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const svgRef = useRef<SVGSVGElement>(null);
   const studioRef = useRef(studio);
@@ -1114,7 +1121,8 @@ export function CoverStyler({
         {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage */}
         <div
           id="studio-mat-viewport"
-          data-testid="studio-canvas-dropzone"
+          data-testid="studio-canvas-stage"
+          data-expanded={isExpanded ? 'true' : 'false'}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDraggingOver(true);
@@ -1129,7 +1137,7 @@ export function CoverStyler({
               viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
             void handleAddImageFiles(files, dropPt);
           }}
-          className={`cutting-mat-surface relative flex h-[470px] w-full items-center justify-center overflow-hidden border-y transition-colors sm:h-[510px] ${
+          className={`cutting-mat-surface flex items-center justify-center overflow-hidden transition-colors ${getFullPageStageClass(isExpanded)} ${
             isDraggingOver
               ? 'border-brass-bright ring-2 ring-inset ring-brass-bright/70'
               : eyedropperTarget
@@ -1137,7 +1145,7 @@ export function CoverStyler({
                 : 'border-border/80'
           }`}
         >
-          {/* Contextual Top Banner (Eyedropper active or helpful status pill) */}
+          {/* Contextual Top Banner (Eyedropper active & Full-Page Exit Pill) */}
           <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
             {eyedropperTarget && (
               <Badge
@@ -1148,6 +1156,24 @@ export function CoverStyler({
                 <Pipette className="h-3.5 w-3.5" aria-hidden="true" />
                 Click anywhere on the cover preview to sample color for {eyedropperTarget}
               </Badge>
+            )}
+            {isExpanded && (
+              <button
+                type="button"
+                onClick={exitExpanded}
+                onPointerDown={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
+                data-testid="studio-exit-fullscreen-btn"
+                aria-label="Exit full screen canvas"
+                title="Exit full screen (Esc)"
+                className={FULL_PAGE_EXIT_BUTTON_CLASS}
+              >
+                <Minimize2 className="h-3.5 w-3.5 text-brass-bright" aria-hidden="true" />
+                <span>Exit Full Screen</span>
+                <kbd className="rounded border border-[#f6efe2]/25 bg-white/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#f6efe2]/80">
+                  Esc
+                </kbd>
+              </button>
             )}
           </div>
 
@@ -1910,6 +1936,24 @@ export function CoverStyler({
                   </HudGroup>
                 </>
               )}
+
+              <HudSeparator />
+
+              <HudGroup label="Canvas size">
+                <HudButton
+                  pressed={isExpanded}
+                  onClick={toggleExpanded}
+                  title="Expand canvas to full page (Esc to exit)"
+                  data-testid="studio-fullscreen-btn"
+                >
+                  {isExpanded ? (
+                    <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  {isExpanded ? 'Exit' : 'Full Screen'}
+                </HudButton>
+              </HudGroup>
             </FloatingHudToolbar>
           </div>
         </div>

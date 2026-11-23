@@ -88,4 +88,39 @@ describe('MeasureAndCutPanel', () => {
 
     expect(screen.getByTestId('blueprint-split-panels')).toBeInTheDocument();
   });
+
+  it('expands the cutting-mat canvas to full page and exits via Escape or Exit Full Screen pill', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    render(
+      <MeasureAndCutPanel
+        geometry={geom}
+        splitMode="single"
+        unit="mm"
+        onDownloadOuterSvg={vi.fn()}
+        onDownloadOuterPdf={vi.fn()}
+      />,
+    );
+
+    const stage = screen.getByTestId('measure-canvas-stage');
+    const toggleBtn = screen.getByTestId('measure-fullscreen-btn');
+    expect(stage).toHaveAttribute('data-expanded', 'false');
+    expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('measure-exit-fullscreen-btn')).not.toBeInTheDocument();
+
+    await user.click(toggleBtn);
+    expect(stage).toHaveAttribute('data-expanded', 'true');
+    expect(toggleBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('measure-exit-fullscreen-btn')).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(stage).toHaveAttribute('data-expanded', 'false');
+    expect(screen.queryByTestId('measure-exit-fullscreen-btn')).not.toBeInTheDocument();
+
+    await user.click(toggleBtn);
+    expect(stage).toHaveAttribute('data-expanded', 'true');
+    await user.click(screen.getByTestId('measure-exit-fullscreen-btn'));
+    expect(stage).toHaveAttribute('data-expanded', 'false');
+  });
 });

@@ -12,6 +12,7 @@ import {
   Layers,
   Magnet,
   Maximize2,
+  Minimize2,
   Minus,
   Palette,
   Plus,
@@ -47,6 +48,11 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import { triggerBytesDownload } from '@/core/storage';
+import {
+  FULL_PAGE_EXIT_BUTTON_CLASS,
+  getFullPageStageClass,
+  useFullPageCanvas,
+} from '@/hooks/useFullPageCanvas';
 import { PAGE_SIZES, type PageSizeId } from '@/types/bookParams';
 import {
   GeometryPrimitives,
@@ -362,6 +368,7 @@ export function InnerPocketsStudio({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [exportingStyledPdf, setExportingStyledPdf] = useState(false);
+  const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const svgRef = useRef<SVGSVGElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -709,7 +716,8 @@ export function InnerPocketsStudio({
         {/* Full-Bleed Cutting Mat Viewport */}
         <div
           id="pockets-mat-viewport"
-          data-testid="pockets-canvas-dropzone"
+          data-testid="pockets-canvas-stage"
+          data-expanded={isExpanded ? 'true' : 'false'}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDraggingOver(true);
@@ -757,7 +765,7 @@ export function InnerPocketsStudio({
             panDragRef.current.active = false;
           }}
           style={{ touchAction: 'none' }}
-          className={`cutting-mat-surface relative h-[470px] w-full overflow-hidden border-y select-none transition-colors sm:h-[510px] ${
+          className={`cutting-mat-surface overflow-hidden select-none transition-colors ${getFullPageStageClass(isExpanded)} ${
             viewMode === 'blueprint' ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
           } ${
             isDraggingOver
@@ -773,13 +781,33 @@ export function InnerPocketsStudio({
             POCKETS &amp; LINER • 1:1 mm
           </div>
 
-          {/* Top-right pagination badge */}
-          <div className="pointer-events-none absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-brass-bright/40 bg-black/35 px-2.5 py-0.5 font-mono text-[11px] text-[#f6efe2]">
-            <Download className="h-3 w-3 text-brass-bright" aria-hidden="true" />
-            <span>
-              {pdfPlan.pageCount} {pdfPlan.pageCount === 1 ? 'page' : 'pages'} •{' '}
-              {PAGE_SIZES[pdfPageSize].id.toUpperCase()}
-            </span>
+          {/* Top-right pagination badge & full-page exit button */}
+          <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-brass-bright/40 bg-black/35 px-2.5 py-0.5 font-mono text-[11px] text-[#f6efe2]">
+              <Download className="h-3 w-3 text-brass-bright" aria-hidden="true" />
+              <span>
+                {pdfPlan.pageCount} {pdfPlan.pageCount === 1 ? 'page' : 'pages'} •{' '}
+                {PAGE_SIZES[pdfPageSize].id.toUpperCase()}
+              </span>
+            </div>
+            {isExpanded && (
+              <button
+                type="button"
+                onClick={exitExpanded}
+                onPointerDown={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
+                data-testid="pockets-exit-fullscreen-btn"
+                aria-label="Exit full screen canvas"
+                title="Exit full screen (Esc)"
+                className={FULL_PAGE_EXIT_BUTTON_CLASS}
+              >
+                <Minimize2 className="h-3.5 w-3.5 text-brass-bright" aria-hidden="true" />
+                <span>Exit Full Screen</span>
+                <kbd className="rounded border border-[#f6efe2]/25 bg-white/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#f6efe2]/80">
+                  Esc
+                </kbd>
+              </button>
+            )}
           </div>
 
           {/* Dropzone visual cue */}
@@ -1385,6 +1413,24 @@ export function InnerPocketsStudio({
                   className="px-2"
                 >
                   <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </HudButton>
+              </HudGroup>
+
+              <HudSeparator />
+
+              <HudGroup label="Canvas size">
+                <HudButton
+                  pressed={isExpanded}
+                  onClick={toggleExpanded}
+                  title="Expand canvas to full page (Esc to exit)"
+                  data-testid="pockets-fullscreen-btn"
+                >
+                  {isExpanded ? (
+                    <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  {isExpanded ? 'Exit' : 'Full Screen'}
                 </HudButton>
               </HudGroup>
             </FloatingHudToolbar>

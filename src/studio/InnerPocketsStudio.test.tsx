@@ -168,4 +168,33 @@ describe('InnerPocketsStudio', () => {
     expect(screen.getByTestId('pocket-layer-1')).toHaveAttribute('data-tiled', 'true');
     expect(screen.getByTestId('pocket-tile-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
   });
+
+  it('expands inner pockets cutting-mat canvas to full page and exits cleanly', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    render(
+      <InnerPocketsStudio
+        geometry={geom}
+        pocketStyle={DEFAULT_POCKET_STYLE}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    const stage = screen.getByTestId('pockets-canvas-stage');
+    expect(stage).toHaveAttribute('data-expanded', 'false');
+
+    await user.click(screen.getByTestId('pockets-fullscreen-btn'));
+    expect(stage).toHaveAttribute('data-expanded', 'true');
+    expect(screen.getByTestId('pockets-exit-fullscreen-btn')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('pockets-exit-fullscreen-btn'));
+    expect(stage).toHaveAttribute('data-expanded', 'false');
+  });
 });

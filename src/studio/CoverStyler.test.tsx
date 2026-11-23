@@ -322,4 +322,36 @@ describe('CoverStyler', () => {
     await user.click(screen.getByTestId('studio-ornament-0'));
     expect(screen.getByTestId('studio-tool-designs')).toHaveAttribute('data-state', 'active');
   });
+
+  it('toggles full-page canvas focus mode across view modes and exits on Escape', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    render(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={CoverStudioModel.createDefault()}
+        onChange={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    const stage = screen.getByTestId('studio-canvas-stage');
+    expect(stage).toHaveAttribute('data-expanded', 'false');
+
+    await user.click(screen.getByTestId('studio-fullscreen-btn'));
+    expect(stage).toHaveAttribute('data-expanded', 'true');
+    expect(screen.getByTestId('studio-exit-fullscreen-btn')).toBeInTheDocument();
+
+    // Full-screen HUD button remains available across Blueprint and 3D views while expanded
+    await user.click(screen.getByTestId('studio-view-blueprint-btn'));
+    expect(screen.getByTestId('studio-fullscreen-btn')).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByTestId('studio-view-3d-btn'));
+    expect(screen.getByTestId('studio-fullscreen-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    await user.keyboard('{Escape}');
+    expect(stage).toHaveAttribute('data-expanded', 'false');
+    expect(screen.queryByTestId('studio-exit-fullscreen-btn')).not.toBeInTheDocument();
+  });
 });

@@ -1,4 +1,4 @@
-import { FileCode2, FileText, Maximize2, Ruler, ZoomIn, ZoomOut } from 'lucide-react';
+import { FileCode2, FileText, Maximize2, Minimize2, Ruler, ZoomIn, ZoomOut } from 'lucide-react';
 import { useState } from 'react';
 import { CutListCard } from '@/components/CutListCard';
 import {
@@ -9,6 +9,11 @@ import {
 } from '@/components/FloatingHudToolbar';
 import { OuterBlueprintCanvas } from '@/components/OuterBlueprintCanvas';
 import { Button } from '@/components/ui/button';
+import {
+  FULL_PAGE_EXIT_BUTTON_CLASS,
+  getFullPageStageClass,
+  useFullPageCanvas,
+} from '@/hooks/useFullPageCanvas';
 import type { SplitMode } from '@/types/bookParams';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
@@ -33,6 +38,7 @@ export function MeasureAndCutPanel({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showDimensions, setShowDimensions] = useState(true);
+  const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const adjustZoom = (delta: number) => {
     setZoom((prev) => roundTo(Math.min(3.5, Math.max(0.5, prev + delta)), 2));
@@ -91,8 +97,31 @@ export function MeasureAndCutPanel({
         {/* Full-Bleed Cutting Mat Viewport */}
         <div
           id="measure-mat-viewport"
-          className="cutting-mat-surface relative flex h-[470px] w-full items-center justify-center overflow-hidden border-y border-border/80 sm:h-[510px]"
+          data-testid="measure-canvas-stage"
+          data-expanded={isExpanded ? 'true' : 'false'}
+          className={`cutting-mat-surface flex items-center justify-center overflow-hidden border-border/80 ${getFullPageStageClass(isExpanded)}`}
         >
+          {isExpanded && (
+            <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={exitExpanded}
+                onPointerDown={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
+                data-testid="measure-exit-fullscreen-btn"
+                aria-label="Exit full screen canvas"
+                title="Exit full screen (Esc)"
+                className={FULL_PAGE_EXIT_BUTTON_CLASS}
+              >
+                <Minimize2 className="h-3.5 w-3.5 text-brass-bright" aria-hidden="true" />
+                <span>Exit Full Screen</span>
+                <kbd className="rounded border border-[#f6efe2]/25 bg-white/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-[#f6efe2]/80">
+                  Esc
+                </kbd>
+              </button>
+            </div>
+          )}
+
           <OuterBlueprintCanvas
             geometry={geometry}
             splitMode={splitMode}
@@ -159,6 +188,24 @@ export function MeasureAndCutPanel({
                   data-testid="measure-zoom-reset-btn"
                 >
                   <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                </HudButton>
+              </HudGroup>
+
+              <HudSeparator />
+
+              <HudGroup label="Canvas size">
+                <HudButton
+                  pressed={isExpanded}
+                  onClick={toggleExpanded}
+                  title="Expand canvas to full page (Esc to exit)"
+                  data-testid="measure-fullscreen-btn"
+                >
+                  {isExpanded ? (
+                    <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  {isExpanded ? 'Exit' : 'Full Screen'}
                 </HudButton>
               </HudGroup>
             </FloatingHudToolbar>
