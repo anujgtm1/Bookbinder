@@ -186,10 +186,10 @@ src/
 
 ### 7.3 Dual High-Resolution Exports (Exact `WRAP_W × WRAP_H` Physical Scale)
 1. **Print-Ready Roll PDF (`outer_cover_print.pdf`):**
-   - Composited at **300 DPI** (`pixels = mm / 25.4 * 300`) for uploaded raster artwork, with true vector typography and cut/registration marks via `pdf-lib`.
-   - **Cut-Line Toggle:**
-     - *Full Cut & Miter Guides* (thin hairline cut polygon + 45° corner miters overlaid for manual cutting).
-     - *Bleed + Outer Corner Registration Marks Only* (keeps cut lines outside the artwork area so slight hand-cutting variance never leaves visible lines on the finished book).
+   - Composited at **300 DPI** (`pixels = mm / 25.4 * 300`) for uploaded raster artwork, with true vector typography and cut/fold marks via `pdf-lib`.
+   - **Cut & Fold Lines Toggle (On by Default):**
+     - *On (`full-cut-miter`, Default):* Overlays hairline red outer cut lines (including 45° corner miters) plus subtle dashed fold/score lines for turn-ins, board edges, spine hinges, and softcover tuck flaps so printed sheets can be cut and folded straight off the printer.
+     - *Off (`bleed-registration`):* Keeps only outer corner registration/crop marks in the bleed zone with zero lines over the artwork.
 2. **Affinity Round-Trip Export (`outer_cover_300dpi.png` / `.svg`):**
    - Exports the composed 300 DPI flat cover + centered spine strip at exact `1:1` millimeter scale so it can be dropped straight into Affinity for advanced graphic textures, foil overlays, or custom back-cover layouts.
 
