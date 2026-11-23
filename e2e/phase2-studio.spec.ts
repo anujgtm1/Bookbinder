@@ -723,4 +723,42 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('pockets-return-studio-btn').click();
     await expect(page.getByTestId('cover-styler')).toBeVisible();
   });
+
+  test('expands cutting-mat canvas to full-page focus mode and exits via Escape or Exit Full Screen pill', async ({
+    page,
+  }) => {
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+
+    // 1. Cover Studio full-page expand -> fills viewport -> Escape exits cleanly
+    const studioStage = page.getByTestId('studio-canvas-stage');
+    await expect(studioStage).toHaveAttribute('data-expanded', 'false');
+
+    await page.getByTestId('studio-fullscreen-btn').click();
+    await expect(studioStage).toHaveAttribute('data-expanded', 'true');
+    await expect(page.getByTestId('studio-exit-fullscreen-btn')).toBeVisible();
+
+    const expandedStudioBox = await studioStage.boundingBox();
+    expect(expandedStudioBox).not.toBeNull();
+    expect(expandedStudioBox!.height).toBeGreaterThanOrEqual(viewport!.height - 2);
+
+    await page.keyboard.press('Escape');
+    await expect(studioStage).toHaveAttribute('data-expanded', 'false');
+    await expect(page.getByTestId('studio-exit-fullscreen-btn')).toBeHidden();
+
+    // 2. Measure & Cut full-page expand -> exits via top-right Exit Full Screen pill
+    await page.getByTestId('nav-measure').click();
+    const measureStage = page.getByTestId('measure-canvas-stage');
+    await expect(measureStage).toHaveAttribute('data-expanded', 'false');
+
+    await page.getByTestId('measure-fullscreen-btn').click();
+    await expect(measureStage).toHaveAttribute('data-expanded', 'true');
+    const expandedMeasureBox = await measureStage.boundingBox();
+    expect(expandedMeasureBox).not.toBeNull();
+    expect(expandedMeasureBox!.height).toBeGreaterThanOrEqual(viewport!.height - 2);
+
+    await page.getByTestId('measure-exit-fullscreen-btn').click();
+    await expect(measureStage).toHaveAttribute('data-expanded', 'false');
+    await expect(page.getByTestId('measure-exit-fullscreen-btn')).toBeHidden();
+  });
 });
