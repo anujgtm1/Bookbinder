@@ -175,4 +175,61 @@ describe('cricutExport — Cricut / Silhouette / ScanNCut HTV Vector SVG', () =>
     expect(flippedResult.svg).not.toContain('transform=');
     expect(flippedResult.svg).not.toContain('NaN');
   });
+
+  it('groups filled paths by normalized foil color when groupByColor is true and populates foilColors', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const bleed = geom.outerWrap.bleedMm;
+    const frontRect = {
+      x: geom.outerWrap.frontBoardRect.x + bleed,
+      y: geom.outerWrap.frontBoardRect.y + bleed,
+      width: geom.outerWrap.frontBoardRect.width,
+      height: geom.outerWrap.frontBoardRect.height,
+    };
+    const goldTitle = {
+      ...CoverTextLayerModel.createPreset('front-title', frontRect),
+      text: 'ILIAD',
+      color: '#d4af37',
+    };
+    const creamFrame = CoverOrnamentLayerModel.createForZone(
+      'frame-double-rule',
+      frontRect,
+      'front',
+      '#f5efe2',
+    );
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      textLayers: [goldTitle],
+      ornaments: [creamFrame],
+    };
+
+    const result = await generateCricutHtvSvg(
+      geom,
+      studio,
+      null,
+      {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: 'front-cover',
+        includeLettering: true,
+        includeOrnaments: true,
+        groupByColor: true,
+      },
+      REAL_WOFF_BYTES,
+    );
+
+    expect(result.hasLettering).toBe(true);
+    expect(result.foilColors).toEqual(['#D4AF37', '#F5EFE2']);
+    expect(result.fileName).toBe('iliad_cricut_htv_front_multicolor.svg');
+
+    // Distinct per-color compound paths with lowercase hex id and uppercase hex fill
+    expect(result.svg).toContain('id="foil-color-d4af37"');
+    expect(result.svg).toContain('fill="#D4AF37"');
+    expect(result.svg).toContain('id="foil-color-f5efe2"');
+    expect(result.svg).toContain('fill="#F5EFE2"');
+    expect(result.svg).not.toContain('id="classic-ornaments"');
+    expect(result.svg).not.toContain('id="spine-lettering"');
+
+    // Cricut hygiene preserved
+    expect(result.svg).not.toContain('<text');
+    expect(result.svg).not.toContain('transform=');
+  });
 });

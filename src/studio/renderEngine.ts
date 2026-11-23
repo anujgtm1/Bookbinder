@@ -14,6 +14,7 @@ export {
 export { generateAffinityCoverSvg } from './exporters/coverAffinitySvgExporter';
 export {
   generatePrintReadyRollPdf,
+  type CoverPdfLayerMode,
   type PrintReadyCoverPdfOptions,
 } from './exporters/coverPdfExporter';
 export { exportCoverPng300Dpi, renderCoverArtworkCanvas } from './exporters/coverRasterExporter';

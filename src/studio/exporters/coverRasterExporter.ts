@@ -15,7 +15,11 @@ export async function renderCoverArtworkCanvas(
   geometry: CaseGeometry,
   studio: CoverStudioState,
   customFont: CustomFontAsset | null,
-  options: { includeSpineText: boolean; dpi?: number },
+  options: {
+    readonly includeSpineText: boolean;
+    readonly includeTextAndOrnaments?: boolean;
+    readonly dpi?: number;
+  },
 ): Promise<HTMLCanvasElement> {
   const dpi = options.dpi ?? PRINT_DPI;
   const spec = computeStudioCanvasSpec(geometry, dpi);
@@ -90,7 +94,8 @@ export async function renderCoverArtworkCanvas(
   }
 
   // 3. Optional rasterized classic ornaments, cover text layers & spine typography (used for 300 DPI PNG export)
-  if (options.includeSpineText) {
+  const includeTextAndOrnaments = options.includeTextAndOrnaments ?? true;
+  if (options.includeSpineText && includeTextAndOrnaments) {
     // 3a. Classic Bookbindery Vector Ornaments & Custom SVG Stamps
     for (const orn of studio.ornaments ?? []) {
       const compoundD = buildOrnamentCompoundPath(orn);

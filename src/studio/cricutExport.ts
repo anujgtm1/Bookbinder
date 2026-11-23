@@ -29,6 +29,8 @@ export interface CricutExportOptions {
   readonly includeOuterCutOutline: boolean;
   /** Pre-mirror all coordinates horizontally for HTV iron-on (leave Off if mirroring in Cricut Design Space Make It) */
   readonly mirrorForHtv: boolean;
+  /** Group lettering & ornaments by their design foil color so Cricut splits mats automatically (default false) */
+  readonly groupByColor?: boolean;
 }
 
 export const DEFAULT_CRICUT_EXPORT_OPTIONS: Readonly<CricutExportOptions> = {
@@ -39,6 +41,7 @@ export const DEFAULT_CRICUT_EXPORT_OPTIONS: Readonly<CricutExportOptions> = {
   includeRegistrationMarks: true,
   includeOuterCutOutline: false,
   mirrorForHtv: false,
+  groupByColor: false,
 };
 
 export interface CricutExportResult {
@@ -47,6 +50,7 @@ export interface CricutExportResult {
   readonly heightMm: number;
   readonly pathCount: number;
   readonly hasLettering: boolean;
+  readonly foilColors: readonly string[];
   readonly fitsCricutJoy: boolean;
   readonly fitsStandard12x12: boolean;
   readonly fitsLarge12x24: boolean;
@@ -93,6 +97,38 @@ function slugifyTitle(title: string): string {
     .replace(/^_+|_+$/g, '')
     .slice(0, 32);
   return cleaned || 'bookbinder';
+}
+
+function normalizeFoilHex(raw: string | undefined, fallback = '#111111'): string {
+  const trimmed = (raw ?? '').trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(trimmed)) {
+    const expanded =
+      trimmed[0] + trimmed[0] + trimmed[1] + trimmed[1] + trimmed[2] + trimmed[2];
+    return `#${expanded.toUpperCase()}`;
+  }
+  if (/^[0-9a-f]{6}$/i.test(trimmed)) {
+    return `#${trimmed.toUpperCase()}`;
+  }
+  return fallback.toUpperCase();
+}
+
+function buildCricutFileName(
+  studio: CoverStudioState,
+  options: CricutExportOptions,
+): string {
+  const firstFrontText = (studio.textLayers ?? []).find((t) => t.zone === 'front')?.text ?? '';
+  const baseSlug = slugifyTitle(studio.spineText.title || firstFrontText);
+  const scopeSlug =
+    options.scope === 'spine-only'
+      ? 'spine'
+      : options.scope === 'front-cover'
+        ? 'front'
+        : options.scope === 'back-cover'
+          ? 'back'
+          : 'fullwrap';
+  const mirrorSlug = options.mirrorForHtv ? '_mirrored' : '';
+  const colorSlug = options.groupByColor ? '_multicolor' : '';
+  return `${baseSlug}_cricut_htv_${scopeSlug}${mirrorSlug}${colorSlug}.svg`;
 }
 
 /**
@@ -427,6 +463,18 @@ export async function generateCricutHtvSvg(
   };
 
   const letteringParts: string[] = [];
+  const foilColorSet = new Set<string>();
+  const filledPathsByColor = new Map<string, string[]>();
+  const appendColorPath = (hex: string, pathD: string) => {
+    foilColorSet.add(hex);
+    const existing = filledPathsByColor.get(hex);
+    if (existing) {
+      existing.push(pathD);
+    } else {
+      filledPathsByColor.set(hex, [pathD]);
+    }
+  };
+
   let designBounds: Rect2D | null = null;
   const fontBytesCache = new Map<StudioFontId, Uint8Array | null>();
 
@@ -454,7 +502,9 @@ export async function generateCricutHtvSvg(
           options.mirrorForHtv,
         );
         if (baked.compoundD) {
+          const spineHex = normalizeFoilHex(studio.spineText.textColor, '#111111');
           letteringParts.push(baked.compoundD);
+          appendColorPath(spineHex, baked.compoundD);
           designBounds = mergeBounds(designBounds, baked.bounds);
         }
       }
@@ -474,7 +524,9 @@ export async function generateCricutHtvSvg(
         options.mirrorForHtv,
       );
       if (baked.compoundD) {
+        const textHex = normalizeFoilHex(layer.color, '#111111');
         letteringParts.push(baked.compoundD);
+        appendColorPath(textHex, baked.compoundD);
         designBounds = mergeBounds(designBounds, baked.bounds);
       }
     }
@@ -484,8 +536,14 @@ export async function generateCricutHtvSvg(
 
   // 3. Classic Bookbindery Vector Ornaments & Custom SVG Stamps
   const includeOrnaments = options.includeOrnaments ?? true;
+  const groupByColor = Boolean(options.groupByColor);
   const filledOrnamentParts: string[] = [];
-  const strokedOrnamentEls: string[] = [];
+  const strokedOrnaments: {
+    readonly id: string;
+    readonly d: string;
+    readonly strokeWidthMm: number;
+    readonly hex: string;
+  }[] = [];
   if (includeOrnaments) {
     for (const orn of studio.ornaments ?? []) {
       if (!matchesScopeZone(orn.zone)) continue;
@@ -497,13 +555,19 @@ export async function generateCricutHtvSvg(
       });
       if (!d) continue;
       const style = getOrnamentSvgStyle(orn);
+      const ornHex = normalizeFoilHex(orn.color, '#222222');
       if (style.fill !== 'none') {
         filledOrnamentParts.push(d);
+        appendColorPath(ornHex, d);
       }
       if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
-        strokedOrnamentEls.push(
-          `  <path id="custom-svg-stroke-${orn.id}" d="${d}" fill="none" stroke="#222222" stroke-width="${fmtMm(style.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
-        );
+        foilColorSet.add(ornHex);
+        strokedOrnaments.push({
+          id: orn.id,
+          d,
+          strokeWidthMm: style.strokeWidthMm,
+          hex: ornHex,
+        });
       }
       const rawX = orn.xMm - originXMm;
       const ornX = options.mirrorForHtv ? widthMm - (rawX + orn.widthMm) : rawX;
@@ -568,21 +632,40 @@ export async function generateCricutHtvSvg(
     }
   }
 
-  // 4. Classic Bookbindery Vector Ornaments & Custom SVG Stamps (separate foil/HTV cut paths)
-  if (ornamentsD) {
-    pathElements.push(
-      `  <path id="classic-ornaments" d="${ornamentsD}" fill="#222222" fill-rule="nonzero" />`,
-    );
-  }
-  for (const el of strokedOrnamentEls) {
-    pathElements.push(el);
-  }
+  // 4 & 5. Ornaments and Outlined Lettering (grouped by foil color OR classic monochrome layers)
+  if (groupByColor) {
+    for (const [hex, parts] of filledPathsByColor.entries()) {
+      const compoundD = parts.join(' ');
+      if (!compoundD) continue;
+      const hexNoHash = hex.slice(1).toLowerCase();
+      pathElements.push(
+        `  <path id="foil-color-${hexNoHash}" d="${compoundD}" fill="${hex}" fill-rule="nonzero" />`,
+      );
+    }
+    for (const st of strokedOrnaments) {
+      pathElements.push(
+        `  <path id="custom-svg-stroke-${st.id}" d="${st.d}" fill="none" stroke="${st.hex}" stroke-width="${fmtMm(st.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
+      );
+    }
+  } else {
+    // Classic Bookbindery Vector Ornaments & Custom SVG Stamps (separate foil/HTV cut paths)
+    if (ornamentsD) {
+      pathElements.push(
+        `  <path id="classic-ornaments" d="${ornamentsD}" fill="#222222" fill-rule="nonzero" />`,
+      );
+    }
+    for (const st of strokedOrnaments) {
+      pathElements.push(
+        `  <path id="custom-svg-stroke-${st.id}" d="${st.d}" fill="none" stroke="#222222" stroke-width="${fmtMm(st.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
+      );
+    }
 
-  // 5. Outlined Compound Vector Lettering (solid lampblack fill — Cricut Basic Cut / HTV)
-  if (letteringD) {
-    pathElements.push(
-      `  <path id="spine-lettering" d="${letteringD}" fill="#111111" fill-rule="nonzero" />`,
-    );
+    // Outlined Compound Vector Lettering (solid lampblack fill — Cricut Basic Cut / HTV)
+    if (letteringD) {
+      pathElements.push(
+        `  <path id="spine-lettering" d="${letteringD}" fill="#111111" fill-rule="nonzero" />`,
+      );
+    }
   }
 
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
@@ -601,25 +684,15 @@ ${pathElements.join('\n')}
   const fitsStandard12x12 = widthMm <= 292 && heightMm <= 292;
   const fitsLarge12x24 = minSide <= 292 && maxSide <= 596;
 
-  const firstFrontText = (studio.textLayers ?? []).find((t) => t.zone === 'front')?.text ?? '';
-  const baseSlug = slugifyTitle(studio.spineText.title || firstFrontText);
-  const scopeSlug =
-    options.scope === 'spine-only'
-      ? 'spine'
-      : options.scope === 'front-cover'
-        ? 'front'
-        : options.scope === 'back-cover'
-          ? 'back'
-          : 'fullwrap';
-  const mirrorSlug = options.mirrorForHtv ? '_mirrored' : '';
-  const fileName = `${baseSlug}_cricut_htv_${scopeSlug}${mirrorSlug}.svg`;
+  const fileName = buildCricutFileName(studio, options);
 
   return {
     svg,
     widthMm,
     heightMm,
     pathCount: pathElements.length,
-    hasLettering: Boolean(letteringD || ornamentsD || strokedOrnamentEls.length > 0),
+    hasLettering: Boolean(letteringD || ornamentsD || strokedOrnaments.length > 0),
+    foilColors: Array.from(foilColorSet),
     fitsCricutJoy,
     fitsStandard12x12,
     fitsLarge12x24,
