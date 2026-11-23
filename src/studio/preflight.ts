@@ -1,4 +1,4 @@
-import { BookParametersModel, type BookParameters } from '@/types/bookParams';
+import { BookParametersModel, type BindingStyle, type BookParameters } from '@/types/bookParams';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import type { CoverImageLayer, QuickFitTarget } from '@/types/studioLayer';
@@ -42,6 +42,15 @@ export type PreflightQuickFix =
   | {
       readonly kind: 'select-layer';
       readonly layerId: string;
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'switch-binding-style';
+      readonly bindingStyle: BindingStyle;
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'apply-pocket-proportions';
       readonly label: string;
     };
 
@@ -605,7 +614,56 @@ export const PreflightEngine = {
       }
     }
 
-    // 4. Structural & Print Readiness Checks
+    // 4. Structural, Binding Style & Print Readiness Checks
+    const style = params.bindingStyle ?? 'rigid-case';
+    if (params.pbThicknessMm < 8 && style === 'rigid-case') {
+      allIssues.push({
+        id: 'thin-book-rigid-spine',
+        severity: 'warning',
+        category: 'structure',
+        title: `Thin book (${roundTo(params.pbThicknessMm, 1)} mm) — Flexible Spine recommended`,
+        detail:
+          'Rigid spine boards under 8 mm make thin notebooks stiff and stress the hinges. Switch to Flexible Spine (2-board, no spine strip) or Softcover Jacket — or click Ignore if you prefer a rigid spine.',
+        highlights: [],
+        quickFix: {
+          kind: 'switch-binding-style',
+          bindingStyle: 'flexible-spine',
+          label: 'Switch to Flexible Spine',
+        },
+      });
+    } else if (params.pbThicknessMm >= 18 && style !== 'rigid-case') {
+      allIssues.push({
+        id: 'thick-book-non-rigid',
+        severity: 'warning',
+        category: 'structure',
+        title: `Thick book (${roundTo(params.pbThicknessMm, 1)} mm) — Rigid 3-Board Spine recommended`,
+        detail:
+          'Books 18 mm and thicker hold their shape much better on a shelf with a rigid chipboard spine strip.',
+        highlights: [],
+        quickFix: {
+          kind: 'switch-binding-style',
+          bindingStyle: 'rigid-case',
+          label: 'Switch to Rigid Spine',
+        },
+      });
+    }
+
+    if (params.pbWidthMm <= 115 && style !== 'softcover-jacket' && params.boardThicknessMm >= 2.0) {
+      allIssues.push({
+        id: 'pocket-book-thick-board',
+        severity: 'warning',
+        category: 'structure',
+        title: 'Pocket-size book — slimmer 1.5 mm board & 14 mm turn-ins recommended',
+        detail:
+          'For compact A6 / pocket formats, 2.0 mm greyboard and 18 mm turn-ins can feel bulky. Slimming to 1.5 mm board, 14 mm turn-ins, and tighter overhang gives crisp pocket proportions.',
+        highlights: [],
+        quickFix: {
+          kind: 'apply-pocket-proportions',
+          label: 'Use Pocket Proportions',
+        },
+      });
+    }
+
     if (!params.includeBleed && studio.layers.length > 0) {
       allIssues.push({
         id: 'bleed-disabled',

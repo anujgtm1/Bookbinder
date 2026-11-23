@@ -22,10 +22,12 @@ import {
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import {
+  BINDING_STYLES,
   BOOK_PARAM_BOUNDS,
   BookParametersModel,
   PAGE_SIZES,
   PAPERBACK_PRESETS,
+  type BindingStyle,
   type BookParameters,
   type PageSizeId,
   type PaperbackPresetId,
@@ -169,6 +171,40 @@ export function SidebarControls({
             );
           })}
         </div>
+      </div>
+
+      {/* Binding Style Selector */}
+      <div className="space-y-1.5">
+        <Label htmlFor="binding-style">Binding Style</Label>
+        <Select
+          value={params.bindingStyle}
+          onValueChange={(val) => update({ bindingStyle: val as BindingStyle })}
+        >
+          <SelectTrigger id="binding-style" data-testid="binding-style-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {BINDING_STYLES.map((style) => (
+              <SelectItem key={style.id} value={style.id}>
+                {style.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] leading-snug text-muted-foreground">
+          {BINDING_STYLES.find((s) => s.id === params.bindingStyle)?.summary}
+        </p>
+        {params.pbThicknessMm < 8 && params.bindingStyle === 'rigid-case' && (
+          <button
+            type="button"
+            data-testid="recommend-flexible-spine-btn"
+            onClick={() => update({ bindingStyle: 'flexible-spine' })}
+            className="w-full cursor-pointer rounded-md border border-brass/50 bg-brass/10 px-2.5 py-1.5 text-left text-[11px] font-medium text-foreground transition-colors hover:bg-brass/20"
+          >
+            Tip: Thin book ({params.pbThicknessMm} mm) — switch to{' '}
+            <strong className="underline">Flexible Spine</strong>
+          </button>
+        )}
       </div>
 
       {/* Paperback Presets */}

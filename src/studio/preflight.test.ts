@@ -240,4 +240,46 @@ describe('PreflightEngine', () => {
     expect(ignoredAll.ignoredCount).toBe(2);
     expect(ignoredAll.status).toBe('pass');
   });
+
+  it('recommends Flexible Spine for thin (<8 mm) A6 notebooks, Pocket Proportions for narrow books, and Rigid Spine for thick (>=18 mm) books', () => {
+    const thinA6 = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'rigid-case',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      boardThicknessMm: 2.0,
+    });
+    const thinReport = PreflightEngine.evaluate(
+      thinA6,
+      calculateCaseGeometry(thinA6),
+      CoverStudioModel.createDefault(),
+    );
+    const flexRec = thinReport.issues.find((i) => i.id === 'thin-book-rigid-spine');
+    expect(flexRec?.quickFix).toEqual({
+      kind: 'switch-binding-style',
+      bindingStyle: 'flexible-spine',
+      label: 'Switch to Flexible Spine',
+    });
+    const pocketRec = thinReport.issues.find((i) => i.id === 'pocket-book-thick-board');
+    expect(pocketRec?.quickFix?.kind).toBe('apply-pocket-proportions');
+
+    // Thick 24 mm book on flexible-spine -> recommends Rigid Spine
+    const thickFlex = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'flexible-spine',
+      pbThicknessMm: 24,
+    });
+    const thickReport = PreflightEngine.evaluate(
+      thickFlex,
+      calculateCaseGeometry(thickFlex),
+      CoverStudioModel.createDefault(),
+    );
+    const rigidRec = thickReport.issues.find((i) => i.id === 'thick-book-non-rigid');
+    expect(rigidRec?.quickFix).toEqual({
+      kind: 'switch-binding-style',
+      bindingStyle: 'rigid-case',
+      label: 'Switch to Rigid Spine',
+    });
+  });
 });

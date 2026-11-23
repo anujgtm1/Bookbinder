@@ -327,6 +327,26 @@ export function CoverStyler({
         setViewMode('2d');
         setSelectedLayerId(fix.layerId);
         break;
+      case 'switch-binding-style':
+        onUpdateParams?.({ bindingStyle: fix.bindingStyle });
+        onStatusMessage(
+          fix.bindingStyle === 'flexible-spine'
+            ? 'Switched to Flexible Spine (2-board, no rigid spine strip)'
+            : fix.bindingStyle === 'softcover-jacket'
+              ? 'Switched to 0-Board Softcover Slip-In Jacket'
+              : 'Switched to Rigid 3-Board Hardcover Case',
+        );
+        break;
+      case 'apply-pocket-proportions':
+        onUpdateParams?.({
+          boardThicknessMm: 1.5,
+          spineAllowanceMm: 1.5,
+          turnInMm: 14,
+          overhangForeEdgeMm: 1.5,
+          overhangTopBottomMm: 3,
+        });
+        onStatusMessage('Applied compact pocket proportions (1.5 mm board, 14 mm turn-ins)');
+        break;
     }
   };
 

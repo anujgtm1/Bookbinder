@@ -597,8 +597,9 @@ export function InnerPocketsStudio({
               Inner Slip-In Pockets &amp; Spine Liner
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Drop images directly onto any pocket, drag and resize with magnetic guides, or inspect
-              1:1 mm fold flaps and auto-paginated print sheets.
+              {geometry.bindingStyle === 'softcover-jacket'
+                ? 'Note: Softcover Slip-In Jacket already includes built-in tuck flaps on the Outer Wrap — these separate inner pocket sheets are optional.'
+                : 'Drop images directly onto any pocket, drag and resize with magnetic guides, or inspect 1:1 mm fold flaps and auto-paginated print sheets.'}
             </p>
           </div>
 

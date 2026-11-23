@@ -23,4 +23,28 @@ describe('CutListCard', () => {
     expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('5.63 × 8.78 in');
     expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('1.02 × 8.78 in');
   });
+
+  it('adapts Cut List and assembly diagrams cleanly for Flexible Spine and Softcover Jacket styles', () => {
+    const flexGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'flexible-spine',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+    });
+    const { rerender } = render(<CutListCard geometry={flexGeom} unit="mm" />);
+    expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('Qty 0');
+    expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('Cloth Gap');
+
+    const softGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+    });
+    rerender(<CutListCard geometry={softGeom} unit="mm" />);
+    expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('0-Board Softcover');
+    expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('Tuck Flaps');
+  });
 });
