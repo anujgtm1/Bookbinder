@@ -816,4 +816,65 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(measureStage).toHaveAttribute('data-expanded', 'false');
     await expect(page.getByTestId('measure-exit-fullscreen-btn')).toBeHidden();
   });
+
+  test('applies starter Series Design Preset, saves custom preset across reload, and adapts proportionally to A6 Softcover Slip Cover', async ({
+    page,
+  }) => {
+    // 1. Open Presets tab and apply Classic Clothbound Gold
+    await page.getByTestId('studio-tool-presets').click();
+    await page.getByTestId('apply-builtin-preset-classic-clothbound-gold').click();
+
+    await expect(page.getByTestId('studio-ornament-0')).toBeVisible();
+    await expect(page.getByTestId('studio-ornament-1')).toBeVisible();
+    await expect(page.getByTestId('studio-ornament-2')).toBeVisible();
+    await expect(page.getByTestId('studio-cover-text-0')).toContainText('BOOK TITLE');
+    await expect(page.getByTestId('studio-cover-text-1')).toContainText('AUTHOR NAME');
+
+    const tradeFrameRect = page.getByTestId('studio-ornament-0').locator('rect').first();
+    const tradeFrameWidth = Number(await tradeFrameRect.getAttribute('width'));
+    expect(tradeFrameWidth).toBeGreaterThan(110);
+
+    // 2. Customize cloth color and save as "My A6 Series"
+    await page.getByTestId('studio-tool-artwork').click();
+    await page.getByTestId('studio-front-color-input').fill('#5a1f28');
+    await page.getByTestId('studio-spine-color-input').fill('#5a1f28');
+    await page.getByTestId('studio-back-color-input').fill('#5a1f28');
+    await expect(page.getByTestId('studio-front-fill')).toHaveAttribute('fill', '#5a1f28');
+
+    await page.getByTestId('studio-tool-presets').click();
+    await page.getByTestId('preset-name-input').fill('My A6 Series');
+    await page.getByTestId('save-design-preset-btn').click();
+    await expect(page.getByTestId('saved-preset-card-0')).toContainText('My A6 Series');
+    await expect(page.getByTestId('studio-tool-presets-badge')).toHaveText('1');
+
+    // Verify saved preset persists across full page reload
+    await page.reload();
+    await expect(page.getByTestId('cover-styler')).toBeVisible();
+    await page.getByTestId('studio-tool-presets').click();
+    await expect(page.getByTestId('saved-preset-card-0')).toContainText('My A6 Series');
+
+    // 3. Switch to A6 Pocket Notebook + Fold-and-Glue Slip Cover and give Book 2 its own spine title
+    await page.getByTestId('preset-select').click();
+    await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
+
+    await page.getByTestId('studio-tool-spine').click();
+    await page.getByTestId('studio-spine-title-input').fill('Pocket Field Notes');
+
+    // Apply saved "My A6 Series" preset onto the A6 Slip Cover
+    await page.getByTestId('studio-tool-presets').click();
+    await page.getByTestId('apply-saved-preset-0').click();
+
+    await expect(page.getByTestId('studio-front-fill')).toHaveAttribute('fill', '#5a1f28');
+    await expect(page.getByTestId('studio-spine-fill')).toHaveAttribute('fill', '#5a1f28');
+    await expect(page.getByTestId('studio-spine-typography')).toContainText('Pocket Field Notes');
+    await expect(page.getByTestId('studio-cover-text-0')).toContainText('BOOK TITLE');
+
+    const a6FrameRect = page.getByTestId('studio-ornament-0').locator('rect').first();
+    const a6FrameWidth = Number(await a6FrameRect.getAttribute('width'));
+    expect(a6FrameWidth).toBeGreaterThan(70);
+    expect(a6FrameWidth).toBeLessThan(100);
+    expect(a6FrameWidth).toBeLessThan(tradeFrameWidth - 20);
+  });
 });
