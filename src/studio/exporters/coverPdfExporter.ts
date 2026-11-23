@@ -10,6 +10,7 @@ import {
   type PDFFont,
   type PDFPage,
 } from 'pdf-lib';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import { layoutPdfToPrintMedia } from '@/core/pdfSheetLayout';
 import { canvasToPngBytes } from '@/lib/canvasImage';
 import { hexToRgb01 } from '@/lib/color';
@@ -107,7 +108,7 @@ async function drawCoverCutAndFoldOverlay(
     });
   }
 
-  // 3b. Subtle dashed fold / score lines for turn-ins, board seams, spine hinges & softcover flaps
+  // 3b. Subtle dashed fold / score lines supplied by the active binding strategy
   const drawFoldLine = (x1Mm: number, y1Mm: number, x2Mm: number, y2Mm: number) => {
     page.drawLine({
       start: { x: toPdfX(x1Mm), y: toPdfY(y1Mm) },
@@ -119,27 +120,14 @@ async function drawCoverCutAndFoldOverlay(
     });
   };
 
-  const w = outerWrap.widthMm;
-  const h = outerWrap.heightMm;
-  const isSoftcover = outerWrap.bindingStyle === 'softcover-jacket';
-
-  // Horizontal top & bottom turn-in fold lines (hardcover styles)
-  if (outerWrap.turnInMm > 0.2) {
-    const topFoldY = bleed + outerWrap.turnInMm;
-    const botFoldY = bleed + h - outerWrap.turnInMm;
-    drawFoldLine(bleed, topFoldY, bleed + w, topFoldY);
-    drawFoldLine(bleed, botFoldY, bleed + w, botFoldY);
+  for (const line of outerWrap.foldLines) {
+    drawFoldLine(bleed + line.x1, bleed + line.y1, bleed + line.x2, bleed + line.y2);
   }
 
-  // Horizontal glue-tab fold lines on Back & Front cover wrap-over tabs (1-piece fold-and-glue slip cover)
-  if (isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0) {
-    for (const tabPoly of outerWrap.jacketGlueTabPolygons) {
-      const bbox = GeometryPrimitives.boundingBox(tabPoly);
-      const isTopTab = bbox.y < h / 2;
-      const foldY = bleed + (isTopTab ? bbox.y + bbox.height : bbox.y);
-      drawFoldLine(bleed + bbox.x, foldY, bleed + bbox.x + bbox.width, foldY);
-    }
-
+  // 3c. Optional trim-waste fold & glue instructions for binding styles with mitered glue tabs
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  if (strategy.capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0) {
+    const w = outerWrap.widthMm;
     // Print concise 1-2-3 fold & glue instructions inside the top cut-off trim-waste gap
     // (strictly outside the red cut outline, so it trims cleanly away after cutting)
     const wasteStartX = bleed + outerWrap.jacketFlapWidthMm * 2 + 3;
@@ -171,28 +159,6 @@ async function drawCoverCutAndFoldOverlay(
         color: rgb(0.2, 0.2, 0.2),
       });
     }
-  }
-
-  // Deduplicated vertical fold / score X positions (fore-edge turn-ins/flaps, board edges & spine hinges)
-  const verticalStartY = isSoftcover ? bleed + outerWrap.jacketGlueTabHeightMm : bleed;
-  const verticalEndY = isSoftcover ? bleed + h - outerWrap.jacketGlueTabHeightMm : bleed + h;
-  const rawVerticalXs = [
-    outerWrap.backBoardRect.x,
-    outerWrap.backBoardRect.x + outerWrap.backBoardRect.width,
-    outerWrap.spineRect.x,
-    outerWrap.spineRect.x + outerWrap.spineRect.width,
-    outerWrap.frontBoardRect.x,
-    outerWrap.frontBoardRect.x + outerWrap.frontBoardRect.width,
-  ];
-  const uniqueVerticalXs: number[] = [];
-  for (const x of rawVerticalXs) {
-    if (x <= 0.2 || x >= w - 0.2) continue;
-    if (!uniqueVerticalXs.some((prev) => Math.abs(prev - x) < 0.2)) {
-      uniqueVerticalXs.push(x);
-    }
-  }
-  for (const vx of uniqueVerticalXs) {
-    drawFoldLine(bleed + vx, verticalStartY, bleed + vx, verticalEndY);
   }
 }
 
@@ -226,27 +192,29 @@ function drawOuterRegistrationMarks(
   const yB = bleed + h;
 
   // Top-left & Top-right & Bottom-left & Bottom-right miter start ticks in outer margin
-  drawMark({ x: xL + leg, y: 0 }, { x: xL + leg, y: Math.max(0.5, yT - 0.3) });
-  drawMark({ x: xR - leg, y: 0 }, { x: xR - leg, y: Math.max(0.5, yT - 0.3) });
-  drawMark(
-    { x: xL + leg, y: spec.totalHeightMm },
-    { x: xL + leg, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.3) },
-  );
-  drawMark(
-    { x: xR - leg, y: spec.totalHeightMm },
-    { x: xR - leg, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.3) },
-  );
+  if (leg > 0.2) {
+    drawMark({ x: xL + leg, y: 0 }, { x: xL + leg, y: Math.max(0.5, yT - 0.3) });
+    drawMark({ x: xR - leg, y: 0 }, { x: xR - leg, y: Math.max(0.5, yT - 0.3) });
+    drawMark(
+      { x: xL + leg, y: spec.totalHeightMm },
+      { x: xL + leg, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.3) },
+    );
+    drawMark(
+      { x: xR - leg, y: spec.totalHeightMm },
+      { x: xR - leg, y: Math.min(spec.totalHeightMm - 0.5, yB + 0.3) },
+    );
 
-  drawMark({ x: 0, y: yT + leg }, { x: Math.max(0.5, xL - 0.3), y: yT + leg });
-  drawMark({ x: 0, y: yB - leg }, { x: Math.max(0.5, xL - 0.3), y: yB - leg });
-  drawMark(
-    { x: spec.totalWidthMm, y: yT + leg },
-    { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.3), y: yT + leg },
-  );
-  drawMark(
-    { x: spec.totalWidthMm, y: yB - leg },
-    { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.3), y: yB - leg },
-  );
+    drawMark({ x: 0, y: yT + leg }, { x: Math.max(0.5, xL - 0.3), y: yT + leg });
+    drawMark({ x: 0, y: yB - leg }, { x: Math.max(0.5, xL - 0.3), y: yB - leg });
+    drawMark(
+      { x: spec.totalWidthMm, y: yT + leg },
+      { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.3), y: yT + leg },
+    );
+    drawMark(
+      { x: spec.totalWidthMm, y: yB - leg },
+      { x: Math.min(spec.totalWidthMm - 0.5, xR + 0.3), y: yB - leg },
+    );
+  }
 
   // Corner outer crop brackets if bleed >= 1mm
   if (markLen >= 1) {

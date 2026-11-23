@@ -1,4 +1,5 @@
-import { calculateMaxSlipFlapForSheetMm, evaluatePrintMediaFit } from '@/core/geometry';
+import { getBindingStrategy } from '@/core/bindingStyles';
+import { evaluatePrintMediaFit } from '@/core/geometry';
 import { contrastRatio, parseHexRgb, relativeLuminance } from '@/lib/color';
 import {
   BookParametersModel,
@@ -600,52 +601,57 @@ export const PreflightEngine = {
 
     // 4. Structural, Binding Style & Print Readiness Checks
     const style = params.bindingStyle ?? 'rigid-case';
-    if (params.pbThicknessMm < 8 && style === 'rigid-case') {
-      allIssues.push({
-        id: 'thin-book-rigid-spine',
-        severity: 'warning',
-        category: 'structure',
-        title: `Thin book (${roundTo(params.pbThicknessMm, 1)} mm) — Flexible Spine recommended`,
-        detail:
-          'Rigid spine boards under 8 mm make thin notebooks stiff and stress the hinges. Switch to Flexible Spine (2-board, no spine strip) or Softcover Jacket — or click Ignore if you prefer a rigid spine.',
-        highlights: [],
-        quickFix: {
-          kind: 'switch-binding-style',
-          bindingStyle: 'flexible-spine',
-          label: 'Switch to Flexible Spine',
-        },
-      });
-    } else if (params.pbThicknessMm >= 18 && style !== 'rigid-case') {
-      allIssues.push({
-        id: 'thick-book-non-rigid',
-        severity: 'warning',
-        category: 'structure',
-        title: `Thick book (${roundTo(params.pbThicknessMm, 1)} mm) — Rigid 3-Board Spine recommended`,
-        detail:
-          'Books 18 mm and thicker hold their shape much better on a shelf with a rigid chipboard spine strip.',
-        highlights: [],
-        quickFix: {
-          kind: 'switch-binding-style',
-          bindingStyle: 'rigid-case',
-          label: 'Switch to Rigid Spine',
-        },
-      });
-    }
+    const strategy = getBindingStrategy(style);
+    const { capabilities } = strategy;
 
-    if (params.pbWidthMm <= 115 && style !== 'softcover-jacket' && params.boardThicknessMm >= 2.0) {
-      allIssues.push({
-        id: 'pocket-book-thick-board',
-        severity: 'warning',
-        category: 'structure',
-        title: 'Pocket-size book — slimmer 1.5 mm board & 14 mm turn-ins recommended',
-        detail:
-          'For compact A6 / pocket formats, 2.0 mm greyboard and 18 mm turn-ins can feel bulky. Slimming to 1.5 mm board, 14 mm turn-ins, and tighter overhang gives crisp pocket proportions.',
-        highlights: [],
-        quickFix: {
-          kind: 'apply-pocket-proportions',
-          label: 'Use Pocket Proportions',
-        },
-      });
+    if (capabilities.usesChipboard) {
+      if (params.pbThicknessMm < 8 && capabilities.hasRigidSpine) {
+        allIssues.push({
+          id: 'thin-book-rigid-spine',
+          severity: 'warning',
+          category: 'structure',
+          title: `Thin book (${roundTo(params.pbThicknessMm, 1)} mm) — Flexible Spine recommended`,
+          detail:
+            'Rigid spine boards under 8 mm make thin notebooks stiff and stress the hinges. Switch to Flexible Spine (2-board, no spine strip) or Softcover Jacket — or click Ignore if you prefer a rigid spine.',
+          highlights: [],
+          quickFix: {
+            kind: 'switch-binding-style',
+            bindingStyle: 'flexible-spine',
+            label: 'Switch to Flexible Spine',
+          },
+        });
+      } else if (params.pbThicknessMm >= 18 && !capabilities.hasRigidSpine) {
+        allIssues.push({
+          id: 'thick-book-non-rigid',
+          severity: 'warning',
+          category: 'structure',
+          title: `Thick book (${roundTo(params.pbThicknessMm, 1)} mm) — Rigid 3-Board Spine recommended`,
+          detail:
+            'Books 18 mm and thicker hold their shape much better on a shelf with a rigid chipboard spine strip.',
+          highlights: [],
+          quickFix: {
+            kind: 'switch-binding-style',
+            bindingStyle: 'rigid-case',
+            label: 'Switch to Rigid Spine',
+          },
+        });
+      }
+
+      if (params.pbWidthMm <= 115 && params.boardThicknessMm >= 2.0) {
+        allIssues.push({
+          id: 'pocket-book-thick-board',
+          severity: 'warning',
+          category: 'structure',
+          title: 'Pocket-size book — slimmer 1.5 mm board & 14 mm turn-ins recommended',
+          detail:
+            'For compact A6 / pocket formats, 2.0 mm greyboard and 18 mm turn-ins can feel bulky. Slimming to 1.5 mm board, 14 mm turn-ins, and tighter overhang gives crisp pocket proportions.',
+          highlights: [],
+          quickFix: {
+            kind: 'apply-pocket-proportions',
+            label: 'Use Pocket Proportions',
+          },
+        });
+      }
     }
 
     if (!params.includeBleed && studio.layers.length > 0) {
@@ -696,7 +702,7 @@ export const PreflightEngine = {
                 printMedia: suggestedSpec.id,
                 label: `Switch to ${suggestedSpec.shortLabel}`,
               }
-            : params.splitMode === 'single'
+            : params.splitMode === 'single' && capabilities.supportsThreePieceSplit
               ? {
                   kind: 'enable-split-mode',
                   label: 'Enable 3-Piece Split',
@@ -714,25 +720,27 @@ export const PreflightEngine = {
           : undefined;
 
         if (
-          style === 'softcover-jacket' &&
+          capabilities.hasFlaps &&
+          strategy.computeMaxFlapWidthForSheet &&
           mediaSpec.shortMm !== null &&
           mediaSpec.longMm !== null
         ) {
-          const maxFlap = calculateMaxSlipFlapForSheetMm(params, mediaSpec.longMm);
-          const innerW = (params.pbWidthMm + 1.0) * 2 + (params.pbThicknessMm + 1.0);
-          const fitsHeightOnOneSheet =
-            geometry.outerWrap.heightMm <= mediaSpec.shortMm - ROLL_TOTAL_MARGIN_MM + 1e-6;
-          const fitsWidthWithMaxFlap =
-            innerW + maxFlap * 2 <= mediaSpec.longMm - ROLL_TOTAL_MARGIN_MM + 1e-6;
+          const printableLongMm = mediaSpec.longMm - ROLL_TOTAL_MARGIN_MM;
+          const printableShortMm = mediaSpec.shortMm - ROLL_TOTAL_MARGIN_MM;
+          const maxFlap = strategy.computeMaxFlapWidthForSheet(params, printableLongMm);
+          const innerW = geometry.outerWrap.innerWidthMm;
+          const fitsHeightOnOneSheet = geometry.outerWrap.heightMm <= printableShortMm + 1e-6;
+          const fitsWidthWithMaxFlap = innerW + maxFlap * 2 <= printableLongMm + 1e-6;
+          const flapNoun = capabilities.hasGlueTabs ? 'slip flaps' : 'fold-in flaps';
 
           if (maxFlap >= 22 && fitsHeightOnOneSheet && fitsWidthWithMaxFlap) {
-            detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap — or shrink slip flaps to ${maxFlap} mm to fit cleanly on 1 ${fit.mediaLabel} sheet.`;
+            detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap — or shrink ${flapNoun} to ${maxFlap} mm to fit cleanly on 1 ${fit.mediaLabel} sheet.`;
             quickFix = {
               kind: 'set-jacket-flap-width',
               flapWidthMm: maxFlap,
               label: `Fit Flaps to ${fit.mediaLabel} (${maxFlap} mm)`,
             };
-          } else {
+          } else if (capabilities.hasGlueTabs) {
             detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap. There isn't enough room for integrated flaps on 1 ${fit.mediaLabel} sheet — switch to a larger sheet/roll or use Flexible Spine with separate Inner Pockets.`;
             quickFix = suggestedSpec
               ? {
@@ -745,6 +753,15 @@ export const PreflightEngine = {
                   bindingStyle: 'flexible-spine',
                   label: 'Switch to Flexible Spine',
                 };
+          } else {
+            detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap. There isn't enough room for integrated flaps on 1 ${fit.mediaLabel} sheet — switch to a larger sheet or roll for single-sheet printing.`;
+            quickFix = suggestedSpec
+              ? {
+                  kind: 'set-print-media',
+                  printMedia: suggestedSpec.id,
+                  label: `Switch to ${suggestedSpec.shortLabel}`,
+                }
+              : undefined;
           }
         }
 
@@ -758,7 +775,11 @@ export const PreflightEngine = {
           quickFix,
         });
       }
-    } else if (!geometry.rollRecommendation.fits && params.splitMode === 'single') {
+    } else if (
+      !geometry.rollRecommendation.fits &&
+      params.splitMode === 'single' &&
+      capabilities.supportsThreePieceSplit
+    ) {
       allIssues.push({
         id: 'roll-width-exceeded',
         severity: 'warning',

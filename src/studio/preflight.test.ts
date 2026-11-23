@@ -385,4 +385,109 @@ describe('PreflightEngine', () => {
       label: 'Switch to 13" Roll',
     });
   });
+
+  it('skips board-only checks on paperback-wrap & dust-jacket, supports dust-jacket flap quick-fix, and never suggests flexible-spine', () => {
+    // 1. Thick pocket book on paperback-wrap -> zero board/hinge/rigid-spine/pocket warnings
+    const pbParams = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 24,
+      boardThicknessMm: 2.5,
+      hingeWidthMm: 3,
+      turnInMm: 8,
+      printMedia: 'letter',
+    });
+    const pbReport = PreflightEngine.evaluate(
+      pbParams,
+      calculateCaseGeometry(pbParams),
+      CoverStudioModel.createDefault(),
+    );
+    expect(pbReport.status).toBe('pass');
+    expect(pbReport.issues).toHaveLength(0);
+
+    // 2. Wide paperback-wrap tiling on US Letter -> suggests larger media (never flexible-spine or flap shrink)
+    const widePbParams = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 140,
+      pbHeightMm: 200,
+      pbThicknessMm: 24, // 304 x 200 mm -> 2 tiled sheets on Letter, fits Legal
+      printMedia: 'letter',
+    });
+    const widePbReport = PreflightEngine.evaluate(
+      widePbParams,
+      calculateCaseGeometry(widePbParams),
+      CoverStudioModel.createDefault(),
+    );
+    const widePbIssue = widePbReport.issues.find((i) => i.id === 'print-media-tiled-2-pages');
+    expect(widePbIssue).toBeDefined();
+    expect(widePbIssue?.quickFix).toEqual({
+      kind: 'set-print-media',
+      printMedia: 'legal',
+      label: 'Switch to US Legal',
+    });
+    expect(
+      widePbReport.issues.some(
+        (i) => i.quickFix?.kind === 'switch-binding-style' || i.id === 'thick-book-non-rigid',
+      ),
+    ).toBe(false);
+
+    // 3. Dust jacket on A6 with 50 mm flaps on US Letter -> 2-sheet tile + 1-click Fit Flaps quick fix (22.9 mm)
+    const djLetter = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 50,
+      printMedia: 'letter',
+    });
+    const djReport = PreflightEngine.evaluate(
+      djLetter,
+      calculateCaseGeometry(djLetter),
+      CoverStudioModel.createDefault(),
+    );
+    expect(djReport.issues.some((i) => i.id === 'pocket-book-thick-board')).toBe(false);
+    const djTileIssue = djReport.issues.find((i) => i.id === 'print-media-tiled-2-pages');
+    expect(djTileIssue).toBeDefined();
+    expect(djTileIssue?.quickFix).toEqual({
+      kind: 'set-jacket-flap-width',
+      flapWidthMm: 22.9,
+      label: 'Fit Flaps to US Letter (22.9 mm)',
+    });
+
+    // Applying the flap quick-fix resolves the tiling warning completely
+    const djFitted = BookParametersModel.clampAndNormalize({
+      ...djLetter,
+      jacketFlapWidthMm: 22.9,
+    });
+    const djFittedReport = PreflightEngine.evaluate(
+      djFitted,
+      calculateCaseGeometry(djFitted),
+      CoverStudioModel.createDefault(),
+    );
+    expect(djFittedReport.issues.some((i) => i.id === 'print-media-tiled-2-pages')).toBe(false);
+
+    // 4. Wide dust jacket (too wide for flaps on 1 Letter sheet) -> suggests larger sheet, never flexible-spine
+    const wideDjParams = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 140,
+      pbHeightMm: 200,
+      pbThicknessMm: 24,
+      jacketFlapWidthMm: 70,
+      printMedia: 'letter',
+    });
+    const wideDjReport = PreflightEngine.evaluate(
+      wideDjParams,
+      calculateCaseGeometry(wideDjParams),
+      CoverStudioModel.createDefault(),
+    );
+    const wideDjIssue = wideDjReport.issues.find((i) => i.id === 'print-media-tiled-2-pages');
+    expect(wideDjIssue).toBeDefined();
+    expect(wideDjIssue?.detail).not.toContain('Flexible Spine');
+    expect(wideDjIssue?.quickFix?.kind).toBe('set-print-media');
+  });
 });

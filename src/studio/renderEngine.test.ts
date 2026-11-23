@@ -313,4 +313,71 @@ describe('studio renderEngine', () => {
       expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(279.4, 2);
     }
   });
+
+  it('generates Print-Ready Roll & Sheet PDFs cleanly for paperback-wrap and dust-jacket', async () => {
+    const baseStudio = {
+      ...CoverStudioModel.createDefault(),
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'Pocket Classics',
+        author: 'A. Author',
+      },
+    };
+
+    // 1. Replacement Paperback Cover (A6 105×148×10 -> 220×148 mm) fits 1× US Letter Landscape
+    const pbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      includeBleed: false,
+    });
+    const pbExactBytes = await generatePrintReadyRollPdf(pbGeom, baseStudio, null, {
+      skipCanvasRaster: true,
+      includeGuides: true,
+    });
+    const pbExactPdf = await PDFDocument.load(pbExactBytes);
+    expect(pbExactPdf.getPageCount()).toBe(1);
+    const pbSz = pbExactPdf.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(pbSz.width)).toBeCloseTo(220, 2);
+    expect(UnitConverter.pointsToMm(pbSz.height)).toBeCloseTo(148, 2);
+
+    const pbLetterBytes = await generatePrintReadyRollPdf(pbGeom, baseStudio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+    });
+    const pbLetterPdf = await PDFDocument.load(pbLetterBytes);
+    expect(pbLetterPdf.getPageCount()).toBe(1);
+
+    // 2. Classic Dust Jacket (A6 105×148×10 with 50 mm flaps -> 323.5×148 mm)
+    const djGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 50,
+      includeBleed: false,
+    });
+    const djFullBytes = await generatePrintReadyRollPdf(djGeom, baseStudio, null, {
+      skipCanvasRaster: true,
+      includeGuides: true,
+    });
+    const djFullPdf = await PDFDocument.load(djFullBytes);
+    expect(djFullPdf.getPageCount()).toBe(1);
+    const djSz = djFullPdf.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(djSz.width)).toBeCloseTo(323.5, 2);
+    expect(UnitConverter.pointsToMm(djSz.height)).toBeCloseTo(148, 2);
+
+    // Registration-marks mode (bleed-registration) also exports cleanly
+    const djRegBytes = await generatePrintReadyRollPdf(
+      djGeom,
+      { ...baseStudio, cutLineMode: 'bleed-registration' },
+      null,
+      { skipCanvasRaster: true, printMediaId: 'legal' },
+    );
+    const djRegPdf = await PDFDocument.load(djRegBytes);
+    expect(djRegPdf.getPageCount()).toBe(1);
+  });
 });

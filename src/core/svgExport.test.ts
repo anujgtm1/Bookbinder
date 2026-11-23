@@ -87,4 +87,56 @@ describe('generateOuterWrapSvg', () => {
     expect(softSvg).not.toContain('HINGE 0 mm');
     expect(softSvg).not.toContain('Turn-In 0 mm');
   });
+
+  it('generates clean 4-vertex cut SVGs with zero glue tabs for paperback-wrap and dust-jacket', () => {
+    const pbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      includeBleed: false,
+    });
+    const pbSvg = generateOuterWrapSvg(pbGeom, 'single');
+    expect(pbSvg).toContain('width="220mm"');
+    expect(pbSvg).toContain('height="148mm"');
+    expect(pbSvg).toContain('d="M 0 0 L 220 0 L 220 148 L 0 148 Z"');
+    expect(pbSvg).toContain('data-label="Back Spine Fold"');
+    expect(pbSvg).toContain('data-label="Front Spine Fold"');
+    expect(pbSvg).toContain('BACK COVER');
+    expect(pbSvg).toContain('SPINE 10 × 148 mm');
+    expect(pbSvg).toContain('FRONT COVER');
+    expect(pbSvg).toContain(
+      'Paperback Cover 220 × 148 mm • Score 2 spine folds &amp; glue spine to textblock • Scale 1:1 mm',
+    );
+    expect(pbSvg).not.toContain('<g id="glue-tabs"');
+    expect(pbSvg).not.toContain('GLUE BACK');
+
+    const djGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 50,
+      includeBleed: false,
+    });
+    const djSvg = generateOuterWrapSvg(djGeom, 'single');
+    expect(djSvg).toContain('width="323.5mm"');
+    expect(djSvg).toContain('height="148mm"');
+    expect(djSvg).toContain('d="M 0 0 L 323.5 0 L 323.5 148 L 0 148 Z"');
+    expect(djSvg).toContain('data-label="Back Flap Fold"');
+    expect(djSvg).toContain('data-label="Back Spine Fold"');
+    expect(djSvg).toContain('data-label="Front Spine Fold"');
+    expect(djSvg).toContain('data-label="Front Flap Fold"');
+    expect(djSvg).toContain('BACK FLAP 50 mm');
+    expect(djSvg).toContain('FRONT FLAP 50 mm');
+    expect(djSvg).toContain('BACK COVER');
+    expect(djSvg).toContain('FRONT COVER');
+    expect(djSvg).toContain(
+      'Dust Jacket 323.5 × 148 mm • 50 mm fold-in flaps • Score 4 vertical folds (no glue) • Scale 1:1 mm',
+    );
+    expect(djSvg).not.toContain('<g id="glue-tabs"');
+    expect(djSvg).not.toContain('GLUE BACK');
+  });
 });

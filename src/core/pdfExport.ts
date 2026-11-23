@@ -10,6 +10,7 @@ import {
   type SpineLinerGeometry,
 } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
+import { getBindingStrategy } from './bindingStyles';
 import { layoutPdfToPrintMedia, type PdfSheetLayoutOptions } from './pdfSheetLayout';
 
 const PAGE_MARGIN_MM = 7.5;
@@ -765,10 +766,11 @@ export async function generateOuterWrapPdf(
   }
 
   const shiftedCut = GeometryPrimitives.translatePolygon(outerWrap.outerCutPolygon, bleed, bleed);
-  const isSoftcover = outerWrap.bindingStyle === 'softcover-jacket';
-  const isFlexible = outerWrap.bindingStyle === 'flexible-spine';
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const { capabilities, panelLabels } = strategy;
+  const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;
 
-  if (isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0) {
+  if (capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0) {
     const tabFoldStyle = { color: guideColor, thicknessPt: 0.65, dashArray: [3.5, 2] };
     for (const tabPoly of outerWrap.jacketGlueTabPolygons) {
       const shiftedTab = GeometryPrimitives.translatePolygon(tabPoly, bleed, bleed);
@@ -789,24 +791,72 @@ export async function generateOuterWrapPdf(
   }
 
   writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
+
+  const drawCenteredLabel = (
+    text: string,
+    centerXMm: number,
+    yMm: number,
+    useFont: PDFFont,
+    sizePt: number,
+    color: ReturnType<typeof rgb>,
+  ) => {
+    const textWidthMm = UnitConverter.pointsToMm(useFont.widthOfTextAtSize(text, sizePt));
+    writer.drawText(text, centerXMm - textWidthMm / 2, yMm, useFont, sizePt, color);
+  };
+
+  if (!usesPlacementRects) {
+    const foldStyle = { color: guideColor, thicknessPt: 0.75, dashArray: [5, 2.5] };
+    for (const line of outerWrap.foldLines) {
+      writer.drawLine(
+        { x: line.x1 + bleed, y: line.y1 + bleed },
+        { x: line.x2 + bleed, y: line.y2 + bleed },
+        foldStyle,
+      );
+    }
+  }
+
   const boardRects = [
-    { label: isSoftcover ? 'BACK COVER' : 'BACK BOARD', rect: outerWrap.backBoardRect },
-    { label: isFlexible ? 'FLEX SPINE' : 'SPINE', rect: outerWrap.spineRect },
-    { label: isSoftcover ? 'FRONT COVER' : 'FRONT BOARD', rect: outerWrap.frontBoardRect },
+    { label: panelLabels.back, rect: outerWrap.backBoardRect, isSpine: false },
+    { label: panelLabels.spine, rect: outerWrap.spineRect, isSpine: true },
+    { label: panelLabels.front, rect: outerWrap.frontBoardRect, isSpine: false },
   ];
-  for (const { label, rect } of boardRects) {
-    writer.drawRect(rect.x + bleed, rect.y + bleed, rect.width, rect.height, {
-      borderColor: guideColor,
-      borderWidthPt: 0.75,
-      dashArray: [5, 2.5],
-    });
+  for (const { label, rect, isSpine } of boardRects) {
+    if (usesPlacementRects) {
+      writer.drawRect(rect.x + bleed, rect.y + bleed, rect.width, rect.height, {
+        borderColor: guideColor,
+        borderWidthPt: 0.75,
+        dashArray: [5, 2.5],
+      });
+    }
     const c = GeometryPrimitives.rectCenter(rect);
     const dim = `${roundTo(rect.width, 1)} × ${roundTo(rect.height, 1)} mm`;
-    const isSpine = label === 'SPINE' || label === 'FLEX SPINE';
-    writer.drawText(label, c.x + bleed - 16, c.y + bleed - 3, boldFont, 8.5, guideColor);
+    drawCenteredLabel(label, c.x + bleed, c.y + bleed - 3, boldFont, 8.5, guideColor);
     if (!isSpine) {
-      writer.drawText(dim, c.x + bleed - 16, c.y + bleed + 4, font, 7.2, mutedColor);
+      drawCenteredLabel(dim, c.x + bleed, c.y + bleed + 4, font, 7.2, mutedColor);
     }
+  }
+
+  if (
+    capabilities.hasFlaps &&
+    outerWrap.jacketFlapWidthMm > 0 &&
+    panelLabels.leftFlap &&
+    panelLabels.rightFlap
+  ) {
+    const flapCenterY = bleed + outerWrap.heightMm / 2;
+    const flapDim = `${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm`;
+    const leftCenterX = bleed + outerWrap.jacketFlapWidthMm / 2;
+    const rightCenterX = bleed + outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2;
+    drawCenteredLabel(panelLabels.leftFlap, leftCenterX, flapCenterY - 2, boldFont, 7.2, guideColor);
+    drawCenteredLabel(flapDim, leftCenterX, flapCenterY + 4, font, 6.5, mutedColor);
+    drawCenteredLabel(
+      panelLabels.rightFlap,
+      rightCenterX,
+      flapCenterY - 2,
+      boldFont,
+      7.2,
+      guideColor,
+    );
+    drawCenteredLabel(flapDim, rightCenterX, flapCenterY + 4, font, 6.5, mutedColor);
   }
 
   if (cutList.hingeSpacerMm > 0) {
@@ -819,14 +869,29 @@ export async function generateOuterWrapPdf(
     }
   }
 
-  const headerNote = isSoftcover
-    ? `FOLD & GLUE: 1. Fold ${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm flaps inward  2. Glue blank back of 4 tabs  3. Fold tabs over flaps`
-    : isFlexible
-      ? `Flexible-Spine Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Cloth Spine Gap ${roundTo(cutList.spineStrip.widthMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`
-      : `Outer Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Hinge Spacer ${roundTo(cutList.hingeSpacerMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`;
-  const headerX = bleed + (isSoftcover ? outerWrap.jacketFlapWidthMm * 2 + 4 : outerWrap.turnInMm);
-  const headerY = bleed + (isSoftcover ? outerWrap.jacketGlueTabHeightMm * 0.65 : outerWrap.turnInMm * 0.6);
-  writer.drawText(headerNote, headerX, headerY, font, isSoftcover ? 6.5 : 7.5, mutedColor);
+  const headerNote = strategy.buildExportNote(outerWrap, cutList);
+  const headerX =
+    bleed +
+    (outerWrap.turnInMm > 0
+      ? outerWrap.turnInMm
+      : outerWrap.jacketGlueTabHeightMm > 0
+        ? outerWrap.jacketFlapWidthMm * 2 + 4
+        : outerWrap.jacketFlapWidthMm + 4);
+  const headerY =
+    bleed +
+    (outerWrap.turnInMm > 0
+      ? outerWrap.turnInMm * 0.6
+      : outerWrap.jacketGlueTabHeightMm > 0
+        ? outerWrap.jacketGlueTabHeightMm * 0.65
+        : 6);
+  writer.drawText(
+    headerNote,
+    headerX,
+    headerY,
+    font,
+    capabilities.hasTurnIns ? 7.5 : 6.5,
+    mutedColor,
+  );
 
   const baseBytes = await pdfDoc.save();
 

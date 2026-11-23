@@ -167,4 +167,47 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
       2,
     );
   });
+
+  it('generates exact 1:1 mm Outer Wrap PDFs for paperback-wrap and dust-jacket binding styles', async () => {
+    const pbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      includeBleed: false,
+    });
+    const pbBytes = await generateOuterWrapPdf(pbGeom, 'single');
+    const pbDoc = await PDFDocument.load(pbBytes);
+    expect(pbDoc.getPageCount()).toBe(1);
+    const pbSize = pbDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(pbSize.width)).toBeCloseTo(220, 2);
+    expect(UnitConverter.pointsToMm(pbSize.height)).toBeCloseTo(148, 2);
+
+    // Centered on 1× US Letter Landscape
+    const pbLetterBytes = await generateOuterWrapPdf(pbGeom, 'single', {
+      printMediaId: 'letter',
+    });
+    const pbLetterDoc = await PDFDocument.load(pbLetterBytes);
+    expect(pbLetterDoc.getPageCount()).toBe(1);
+    const pbLetterSize = pbLetterDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(pbLetterSize.width)).toBeCloseTo(279.4, 2);
+    expect(UnitConverter.pointsToMm(pbLetterSize.height)).toBeCloseTo(215.9, 2);
+
+    const djGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 50,
+      includeBleed: false,
+    });
+    const djBytes = await generateOuterWrapPdf(djGeom, 'single');
+    const djDoc = await PDFDocument.load(djBytes);
+    expect(djDoc.getPageCount()).toBe(1);
+    const djSize = djDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(djSize.width)).toBeCloseTo(323.5, 2);
+    expect(UnitConverter.pointsToMm(djSize.height)).toBeCloseTo(148, 2);
+  });
 });

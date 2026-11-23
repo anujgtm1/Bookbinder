@@ -2,6 +2,7 @@ import { escapeXml, fmtMm } from '@/lib/svgFormat';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import { roundTo } from '@/types/units';
+import { getBindingStrategy } from './bindingStyles';
 
 const SPLIT_PANEL_GAP_MM = 12;
 
@@ -25,15 +26,23 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
   </g>`
       : `  <g id="bleed-box" />`;
 
-  const boardGuides = [
-    svgRect(outerWrap.backBoardRect, 'data-label="Back Board"'),
-    svgRect(outerWrap.spineRect, 'data-label="Spine Strip"'),
-    svgRect(outerWrap.frontBoardRect, 'data-label="Front Board"'),
-  ].join('\n    ');
-
-  const isSoftcover = outerWrap.bindingStyle === 'softcover-jacket';
-  const isFlexible = outerWrap.bindingStyle === 'flexible-spine';
+  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const { capabilities, panelLabels } = strategy;
   const hasHinges = cutList.hingeSpacerMm > 0;
+  const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;
+
+  const boardGuides = usesPlacementRects
+    ? [
+        svgRect(outerWrap.backBoardRect, `data-label="${escapeXml(panelLabels.back)}"`),
+        svgRect(outerWrap.spineRect, `data-label="${escapeXml(panelLabels.spine)}"`),
+        svgRect(outerWrap.frontBoardRect, `data-label="${escapeXml(panelLabels.front)}"`),
+      ].join('\n    ')
+    : outerWrap.foldLines
+        .map(
+          (line) =>
+            `<line x1="${fmtMm(line.x1)}" y1="${fmtMm(line.y1)}" x2="${fmtMm(line.x2)}" y2="${fmtMm(line.y2)}"${line.label ? ` data-label="${escapeXml(line.label)}"` : ''} />`,
+        )
+        .join('\n    ');
 
   const hingeGuides = hasHinges
     ? [
@@ -43,7 +52,7 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
     : '';
 
   const flapGuides =
-    isSoftcover && outerWrap.jacketFlapWidthMm > 0
+    usesPlacementRects && capabilities.hasFlaps && outerWrap.jacketFlapWidthMm > 0
       ? [
           svgRect(
             {
@@ -52,7 +61,7 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
               width: outerWrap.jacketFlapWidthMm,
               height: cutList.coverBoards.heightMm,
             },
-            'stroke-dasharray="2 2" stroke-opacity="0.8" data-label="Back Tuck Flap"',
+            `stroke-dasharray="2 2" stroke-opacity="0.8" data-label="${escapeXml(panelLabels.leftFlap ?? 'Back Flap')}"`,
           ),
           svgRect(
             {
@@ -61,13 +70,13 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
               width: outerWrap.jacketFlapWidthMm,
               height: cutList.coverBoards.heightMm,
             },
-            'stroke-dasharray="2 2" stroke-opacity="0.8" data-label="Front Tuck Flap"',
+            `stroke-dasharray="2 2" stroke-opacity="0.8" data-label="${escapeXml(panelLabels.rightFlap ?? 'Front Flap')}"`,
           ),
         ].join('\n    ')
       : '';
 
   const glueTabGroup =
-    isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0
+    capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
       ? `  <g id="glue-tabs" fill="#e6dccb" fill-opacity="0.65" stroke="#A67B2E" stroke-width="0.25" stroke-dasharray="2 1.5">
     ${outerWrap.jacketGlueTabPolygons
       .map(
@@ -94,13 +103,16 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
     : '';
 
   const flapNotes =
-    isSoftcover && outerWrap.jacketFlapWidthMm > 0
-      ? `    <text x="${fmtMm(outerWrap.jacketFlapWidthMm / 2)}" y="${fmtMm(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmtMm(outerWrap.jacketFlapWidthMm / 2)} ${fmtMm(outerWrap.heightMm / 2)})">TUCK FLAP ${fmtMm(outerWrap.jacketFlapWidthMm)} mm</text>
-    <text x="${fmtMm(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)}" y="${fmtMm(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmtMm(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)} ${fmtMm(outerWrap.heightMm / 2)})">TUCK FLAP ${fmtMm(outerWrap.jacketFlapWidthMm)} mm</text>`
+    capabilities.hasFlaps &&
+    outerWrap.jacketFlapWidthMm > 0 &&
+    panelLabels.leftFlap &&
+    panelLabels.rightFlap
+      ? `    <text x="${fmtMm(outerWrap.jacketFlapWidthMm / 2)}" y="${fmtMm(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmtMm(outerWrap.jacketFlapWidthMm / 2)} ${fmtMm(outerWrap.heightMm / 2)})">${escapeXml(panelLabels.leftFlap)} ${fmtMm(outerWrap.jacketFlapWidthMm)} mm</text>
+    <text x="${fmtMm(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)}" y="${fmtMm(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmtMm(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)} ${fmtMm(outerWrap.heightMm / 2)})">${escapeXml(panelLabels.rightFlap)} ${fmtMm(outerWrap.jacketFlapWidthMm)} mm</text>`
       : '';
 
   const glueTabNotes =
-    isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0
+    capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
       ? outerWrap.jacketGlueTabPolygons
           .map((poly) => {
             const bbox = GeometryPrimitives.boundingBox(poly);
@@ -109,12 +121,13 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
           .join('\n')
       : '';
 
-  const headerNoteY = isSoftcover ? outerWrap.jacketGlueTabHeightMm / 2 : outerWrap.turnInMm / 2;
-  const headerNote = isSoftcover
-    ? `Fold-and-Glue Slip Cover ${escapeXml(wrapDim)} • 1. Fold ${fmtMm(outerWrap.jacketFlapWidthMm)} mm flaps inward • 2. Glue back of 4 tabs (${fmtMm(outerWrap.jacketGlueTabHeightMm)} mm) • 3. Fold tabs over flaps`
-    : isFlexible
-      ? `Flexible-Spine Wrap ${escapeXml(wrapDim)} • Cloth Spine Gap ${fmtMm(cutList.spineStrip.widthMm)} mm • Turn-In ${fmtMm(outerWrap.turnInMm)} mm • Scale 1:1 mm`
-      : `Outer Wrap ${escapeXml(wrapDim)} • Turn-In ${fmtMm(outerWrap.turnInMm)} mm • 45° Miter Clearance ${fmtMm(outerWrap.miterGapMm)} mm • Scale 1:1 mm`;
+  const headerNoteY =
+    outerWrap.turnInMm > 0
+      ? outerWrap.turnInMm / 2
+      : outerWrap.jacketGlueTabHeightMm > 0
+        ? outerWrap.jacketGlueTabHeightMm / 2
+        : 6;
+  const headerNote = escapeXml(strategy.buildExportNote(outerWrap, cutList));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
@@ -133,11 +146,11 @@ ${glueTabGroup}
     ${flapGuides}
   </g>
   <g id="dimensions-notes" font-family="sans-serif" fill="#0066FF" text-anchor="middle" dominant-baseline="middle">
-    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="6" font-weight="600">${isSoftcover ? 'BACK COVER' : 'BACK BOARD'}</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="6" font-weight="600">${escapeXml(panelLabels.back)}</text>
     <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
-    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y - 4)}" font-size="6" font-weight="600">${isSoftcover ? 'FRONT COVER' : 'FRONT BOARD'}</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y - 4)}" font-size="6" font-weight="600">${escapeXml(panelLabels.front)}</text>
     <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
-    <text x="${fmtMm(spineCenter.x)}" y="${fmtMm(spineCenter.y)}" font-size="4.2" font-weight="600" transform="rotate(-90 ${fmtMm(spineCenter.x)} ${fmtMm(spineCenter.y)})">${isFlexible ? 'FLEX SPINE' : 'SPINE'} ${escapeXml(spineDim)}</text>
+    <text x="${fmtMm(spineCenter.x)}" y="${fmtMm(spineCenter.y)}" font-size="4.2" font-weight="600" transform="rotate(-90 ${fmtMm(spineCenter.x)} ${fmtMm(spineCenter.y)})">${escapeXml(panelLabels.spine)} ${escapeXml(spineDim)}</text>
 ${hingeNotes}
 ${flapNotes}
 ${glueTabNotes}
