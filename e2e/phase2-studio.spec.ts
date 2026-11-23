@@ -1292,4 +1292,71 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     );
     await expect(pocketLayer).toHaveAttribute('transform', /scale\(-1 -1\)/);
   });
+
+  test('supports Replacement Paperback Cover (flush 1-sheet US Letter PDF) and Classic Dust Jacket (70 mm flaps, 4 folds, 0 glue tabs, Cut PDF)', async ({
+    page,
+  }) => {
+    // 1. Set A6 (105 x 148 x 10 mm) and switch to Replacement Paperback Cover
+    await page.getByTestId('preset-select').click();
+    await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
+    await page.getByTestId('input-pb-thickness').fill('10');
+
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Replacement Paperback Cover/i }).click();
+
+    await expect(page.getByTestId('studio-roll-badge')).toContainText('220.0 × 148.0 mm');
+    await expect(page.getByTestId('pockets-builtin-badge')).toHaveText('Not Needed');
+    await expect(page.getByTestId('softcover-flap-controls')).toBeHidden();
+
+    // Print PDF dialog shows 1 sheet on US Letter and downloads a valid 1-page US Letter PDF
+    await page.getByTestId('studio-export-pdf-btn').click();
+    const pdfDialog = page.getByTestId('pdf-export-dialog');
+    await expect(pdfDialog).toBeVisible();
+    await expect(page.getByTestId('pdf-media-option-letter')).toContainText('1 sheet');
+    await page.getByTestId('pdf-media-option-letter').click();
+
+    const pbPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const pbPdfDownload = await pbPdfPromise;
+    await expect(pdfDialog).toBeHidden();
+    const pbPdf = await PDFDocument.load(await readFile((await pbPdfDownload.path())!));
+    expect(pbPdf.getPageCount()).toBe(1);
+    const pbPageSize = pbPdf.getPage(0).getSize();
+    expect((pbPageSize.width * 25.4) / 72).toBeCloseTo(279.4, 0);
+    expect((pbPageSize.height * 25.4) / 72).toBeCloseTo(215.9, 0);
+
+    // 2. Switch to Classic Dust Jacket -> Jacket Flap Width controls + Classic (70 mm) preset
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Classic Dust Jacket/i }).click();
+
+    const flapControls = page.getByTestId('softcover-flap-controls');
+    await expect(flapControls).toBeVisible();
+    await expect(flapControls).toContainText('Jacket Flap Width');
+    await expect(page.getByTestId('pockets-builtin-badge')).toHaveText('Not Needed');
+
+    await page.getByTestId('flap-preset-deep').click();
+    await expect(page.getByTestId('jacket-flap-width-value')).toContainText('70.0 mm');
+    await expect(page.getByTestId('studio-roll-badge')).toContainText('363.5 × 148.0 mm');
+
+    // Measure & Cut blueprint shows BACK FLAP / FRONT FLAP, 4 vertical fold lines, and 0 GLUE tabs
+    await page.getByTestId('nav-measure').click();
+    const outerSvg = page.getByTestId('outer-blueprint-svg');
+    await expect(outerSvg).toContainText('BACK FLAP');
+    await expect(outerSvg).toContainText('FRONT FLAP');
+    await expect(outerSvg.getByTestId('blueprint-fold-line')).toHaveCount(4);
+    await expect(outerSvg.getByText('GLUE', { exact: true })).toHaveCount(0);
+
+    // Open Cut PDF dialog and download a valid Dust Jacket Cut PDF
+    await page.getByTestId('measure-download-pdf-btn').click();
+    await expect(pdfDialog).toBeVisible();
+    await expect(page.getByTestId('pdf-media-option-tabloid')).toContainText('1 sheet');
+    await page.getByTestId('pdf-media-option-tabloid').click();
+
+    const djPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const djPdfDownload = await djPdfPromise;
+    await expect(pdfDialog).toBeHidden();
+    const djPdf = await PDFDocument.load(await readFile((await djPdfDownload.path())!));
+    expect(djPdf.getPageCount()).toBe(1);
+  });
 });
