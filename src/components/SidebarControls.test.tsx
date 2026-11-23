@@ -246,15 +246,15 @@ describe('SidebarControls', () => {
       />,
     );
 
-    // 1. Softcover slip cover: 24 mm < 35.0 mm recommended -> shows warning & Use 35.0 mm button
-    expect(screen.getByTestId('flap-recommended-min')).toHaveTextContent('Rec. ≥ 35.0 mm');
+    // 1. Softcover slip cover: 24 mm < 49.0 mm recommended -> shows warning & Use 49.0 mm button
+    expect(screen.getByTestId('flap-recommended-min')).toHaveTextContent('Rec. ≥ 49.0 mm');
     const slipWarning = screen.getByTestId('flap-shallow-warning');
     expect(slipWarning).toHaveTextContent('17% of page width');
-    expect(slipWarning).toHaveTextContent('≥ 35.0 mm');
+    expect(slipWarning).toHaveTextContent('≥ 49.0 mm');
     expect(screen.queryByTestId('flap-depth-ok')).not.toBeInTheDocument();
 
     await user.click(screen.getByTestId('flap-set-recommended-btn'));
-    expect(latest.jacketFlapWidthMm).toBe(35);
+    expect(latest.jacketFlapWidthMm).toBe(49);
 
     rerender(
       <SidebarControls
@@ -266,10 +266,10 @@ describe('SidebarControls', () => {
       />,
     );
     expect(screen.queryByTestId('flap-shallow-warning')).not.toBeInTheDocument();
-    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('25% of page width');
-    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('meets ≥ 35.0 mm recommendation');
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('35% of page width');
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('meets ≥ 49.0 mm recommendation');
 
-    // 2. Classic dust jacket: 140 mm width with 35 mm flap -> below 53.2 mm recommendation
+    // 2. Classic dust jacket: 140 mm width with 35 mm flap -> below 63.0 mm recommendation
     latest = {
       ...DEFAULT_BOOK_PARAMETERS,
       bindingStyle: 'dust-jacket',
@@ -286,13 +286,13 @@ describe('SidebarControls', () => {
       />,
     );
 
-    expect(screen.getByTestId('flap-recommended-min')).toHaveTextContent('Rec. ≥ 53.2 mm');
+    expect(screen.getByTestId('flap-recommended-min')).toHaveTextContent('Rec. ≥ 63.0 mm');
     const djWarning = screen.getByTestId('flap-shallow-warning');
     expect(djWarning).toHaveTextContent('25% of page width');
-    expect(djWarning).toHaveTextContent('≥ 53.2 mm');
+    expect(djWarning).toHaveTextContent('≥ 63.0 mm');
 
     await user.click(screen.getByTestId('flap-set-recommended-btn'));
-    expect(latest.jacketFlapWidthMm).toBe(53.2);
+    expect(latest.jacketFlapWidthMm).toBe(63);
 
     rerender(
       <SidebarControls
@@ -304,7 +304,7 @@ describe('SidebarControls', () => {
       />,
     );
     expect(screen.queryByTestId('flap-shallow-warning')).not.toBeInTheDocument();
-    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('38% of page width');
-    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('meets ≥ 53.2 mm recommendation');
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('45% of page width');
+    expect(screen.getByTestId('flap-depth-ok')).toHaveTextContent('meets ≥ 63.0 mm recommendation');
   });
 });

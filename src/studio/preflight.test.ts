@@ -492,7 +492,7 @@ describe('PreflightEngine', () => {
   });
 
   it('flags shallow flaps for softcover-jacket and dust-jacket with 1-click recommended width quick fix and flap highlights', () => {
-    // 1. Softcover slip cover: 140 mm wide book with 24 mm flap -> recommends >= 35 mm
+    // 1. Softcover slip cover: 140 mm wide book with 24 mm flap -> recommends >= 49 mm
     const shallowSlip = BookParametersModel.clampAndNormalize({
       ...BookParametersModel.createDefault(),
       bindingStyle: 'softcover-jacket',
@@ -511,20 +511,20 @@ describe('PreflightEngine', () => {
     expect(slipIssue?.category).toBe('structure');
     expect(slipIssue?.title).toBe('Flap is too shallow for this page width');
     expect(slipIssue?.detail).toContain('24 mm');
-    expect(slipIssue?.detail).toContain('≥ 35 mm');
+    expect(slipIssue?.detail).toContain('≥ 49 mm');
     expect(slipIssue?.highlights).toHaveLength(2);
     expect(slipIssue?.highlights[0]?.rect.width).toBeCloseTo(24, 1);
     expect(slipIssue?.highlights[1]?.rect.width).toBeCloseTo(24, 1);
     expect(slipIssue?.quickFix).toEqual({
       kind: 'set-jacket-flap-width',
-      flapWidthMm: 35,
-      label: 'Set Flap to 35 mm (Recommended)',
+      flapWidthMm: 49,
+      label: 'Set Flap to 49 mm (Recommended)',
     });
 
-    // Applying the 35 mm quick fix clears flap-too-shallow
+    // Applying the 49 mm quick fix clears flap-too-shallow
     const fixedSlip = BookParametersModel.clampAndNormalize({
       ...shallowSlip,
-      jacketFlapWidthMm: 35,
+      jacketFlapWidthMm: 49,
     });
     const fixedSlipReport = PreflightEngine.evaluate(
       fixedSlip,
@@ -533,7 +533,7 @@ describe('PreflightEngine', () => {
     );
     expect(fixedSlipReport.issues.some((i) => i.id === 'flap-too-shallow')).toBe(false);
 
-    // 2. Classic dust jacket: 140 mm wide book with 35 mm flap -> recommends >= 53.2 mm
+    // 2. Classic dust jacket: 140 mm wide book with 35 mm flap -> recommends >= 63 mm
     const shallowDj = BookParametersModel.clampAndNormalize({
       ...BookParametersModel.createDefault(),
       bindingStyle: 'dust-jacket',
@@ -550,18 +550,18 @@ describe('PreflightEngine', () => {
     expect(djIssue).toBeDefined();
     expect(djIssue?.severity).toBe('warning');
     expect(djIssue?.detail).toContain('35 mm');
-    expect(djIssue?.detail).toContain('≥ 53.2 mm');
+    expect(djIssue?.detail).toContain('≥ 63 mm');
     expect(djIssue?.highlights).toHaveLength(2);
     expect(djIssue?.quickFix).toEqual({
       kind: 'set-jacket-flap-width',
-      flapWidthMm: 53.2,
-      label: 'Set Flap to 53.2 mm (Recommended)',
+      flapWidthMm: 63,
+      label: 'Set Flap to 63 mm (Recommended)',
     });
 
-    // Applying the 53.2 mm quick fix clears flap-too-shallow
+    // Applying the 63 mm quick fix clears flap-too-shallow
     const fixedDj = BookParametersModel.clampAndNormalize({
       ...shallowDj,
-      jacketFlapWidthMm: 53.2,
+      jacketFlapWidthMm: 63,
     });
     const fixedDjReport = PreflightEngine.evaluate(
       fixedDj,

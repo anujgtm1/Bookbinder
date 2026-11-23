@@ -249,8 +249,8 @@ const SOFTCOVER_FLAP_CONFIG: BindingStyleFlapConfig = {
   defaultRatio: 0.23,
   defaultMinMm: 24,
   defaultMaxMm: 48,
-  minRecommendedRatio: 0.25,
-  minRecommendedFloorMm: 25,
+  minRecommendedRatio: 0.35,
+  minRecommendedFloorMm: 35,
   presetLabel: 'Deep (38 mm)',
   presetMm: 38,
 };
@@ -262,8 +262,8 @@ const DUST_JACKET_FLAP_CONFIG: BindingStyleFlapConfig = {
   defaultRatio: 0.5,
   defaultMinMm: 40,
   defaultMaxMm: 75,
-  minRecommendedRatio: 0.38,
-  minRecommendedFloorMm: 40,
+  minRecommendedRatio: 0.45,
+  minRecommendedFloorMm: 45,
   presetLabel: 'Classic (70 mm)',
   presetMm: 70,
 };
