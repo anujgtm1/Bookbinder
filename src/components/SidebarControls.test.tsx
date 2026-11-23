@@ -87,4 +87,78 @@ describe('SidebarControls', () => {
     await user.click(screen.getByTestId('reset-defaults-btn'));
     expect(onResetDefaults).toHaveBeenCalledTimes(1);
   });
+
+  it('renders slip flap controls only for softcover-jacket and applies Deep (38 mm) and Fit Letter presets', async () => {
+    const user = userEvent.setup();
+    let latest: BookParameters = { ...DEFAULT_BOOK_PARAMETERS };
+    const onChange = vi.fn((next: BookParameters) => {
+      latest = next;
+    });
+
+    const { rerender } = render(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+
+    // Not rendered for rigid-case or flexible-spine
+    expect(screen.queryByTestId('softcover-flap-controls')).not.toBeInTheDocument();
+
+    latest = { ...DEFAULT_BOOK_PARAMETERS, bindingStyle: 'flexible-spine' };
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('softcover-flap-controls')).not.toBeInTheDocument();
+
+    // Rendered for softcover-jacket (5 mm A6 notebook)
+    latest = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+    };
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('softcover-flap-controls')).toBeInTheDocument();
+    expect(screen.getByTestId('slider-jacket-flap-width')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('flap-preset-deep'));
+    expect(latest.jacketFlapWidthMm).toBe(38);
+
+    rerender(
+      <SidebarControls
+        params={latest}
+        onChange={onChange}
+        onExportJson={vi.fn()}
+        onImportJson={vi.fn()}
+        onResetDefaults={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('jacket-flap-width-value')).toHaveTextContent('38.0 mm');
+
+    await user.click(screen.getByTestId('flap-preset-letter'));
+    expect(latest.jacketFlapWidthMm).toBeCloseTo(25.7, 1);
+
+    await user.click(screen.getByTestId('flap-preset-a4'));
+    expect(latest.jacketFlapWidthMm).toBeCloseTo(34.5, 1);
+  });
 });

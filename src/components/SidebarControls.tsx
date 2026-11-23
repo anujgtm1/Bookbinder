@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { calculateMaxSlipFlapForSheetMm, resolveSlipFlapWidthMm } from '@/core/geometry';
 import {
   BINDING_STYLES,
   BOOK_PARAM_BOUNDS,
@@ -123,6 +124,10 @@ export function SidebarControls({
 
   const activePreset = BookParametersModel.detectPreset(params);
   const validation = BookParametersModel.validate(params);
+  const effectiveFlapMm = resolveSlipFlapWidthMm(params);
+  const flapCoverPct = Math.round((effectiveFlapMm / Math.max(1, params.pbWidthMm)) * 100);
+  const letterFlapMm = calculateMaxSlipFlapForSheetMm(params, 279.4);
+  const a4FlapMm = calculateMaxSlipFlapForSheetMm(params, 297.0);
 
   const update = (patch: Partial<BookParameters>) => {
     onChange(BookParametersModel.clampAndNormalize({ ...params, ...patch }));
@@ -206,6 +211,83 @@ export function SidebarControls({
           </button>
         )}
       </div>
+
+      {/* Adjustable Slip Flap Width Controls (Fold-and-Glue Slip Cover only) */}
+      {params.bindingStyle === 'softcover-jacket' && (
+        <div
+          data-testid="softcover-flap-controls"
+          className="space-y-2 rounded-md border border-border/80 bg-secondary/35 p-2.5"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="jacket-flap-width-slider">Slip Flap Width</Label>
+            <span
+              className="font-mono text-[11px] text-foreground"
+              data-testid="jacket-flap-width-value"
+            >
+              {UnitConverter.format(effectiveFlapMm, params.unit)}{' '}
+              <span className="text-muted-foreground">({flapCoverPct}% of cover)</span>
+            </span>
+          </div>
+          <input
+            id="jacket-flap-width-slider"
+            type="range"
+            min={BOOK_PARAM_BOUNDS.jacketFlapWidthMm.min}
+            max={BOOK_PARAM_BOUNDS.jacketFlapWidthMm.max}
+            step={0.5}
+            value={effectiveFlapMm}
+            data-testid="slider-jacket-flap-width"
+            aria-label="Slip flap width"
+            onChange={(e) => {
+              const next = Number.parseFloat(e.target.value);
+              if (Number.isFinite(next)) {
+                update({ jacketFlapWidthMm: next });
+              }
+            }}
+            className="h-2 w-full accent-primary cursor-pointer"
+          />
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              type="button"
+              data-testid="flap-preset-letter"
+              onClick={() => update({ jacketFlapWidthMm: letterFlapMm })}
+              className={`cursor-pointer rounded border px-1.5 py-1 text-[11px] font-medium transition-colors ${
+                Math.abs(effectiveFlapMm - letterFlapMm) < 0.05
+                  ? 'border-primary bg-primary/15 text-primary'
+                  : 'border-border bg-card text-foreground hover:bg-muted'
+              }`}
+            >
+              Fit Letter
+            </button>
+            <button
+              type="button"
+              data-testid="flap-preset-a4"
+              onClick={() => update({ jacketFlapWidthMm: a4FlapMm })}
+              className={`cursor-pointer rounded border px-1.5 py-1 text-[11px] font-medium transition-colors ${
+                Math.abs(effectiveFlapMm - a4FlapMm) < 0.05
+                  ? 'border-primary bg-primary/15 text-primary'
+                  : 'border-border bg-card text-foreground hover:bg-muted'
+              }`}
+            >
+              Fit A4
+            </button>
+            <button
+              type="button"
+              data-testid="flap-preset-deep"
+              onClick={() => update({ jacketFlapWidthMm: 38 })}
+              className={`cursor-pointer rounded border px-1.5 py-1 text-[11px] font-medium transition-colors ${
+                Math.abs(effectiveFlapMm - 38) < 0.05
+                  ? 'border-primary bg-primary/15 text-primary'
+                  : 'border-border bg-card text-foreground hover:bg-muted'
+              }`}
+            >
+              Deep (38 mm)
+            </button>
+          </div>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            24–26 mm fits US Letter on A6; 35–42 mm grips floppy covers best on A4 / Legal.
+          </p>
+        </div>
+      )}
 
       {/* Paperback Presets */}
       <div className="space-y-1.5">
