@@ -1480,4 +1480,64 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const loadedPdf = await PDFDocument.load(pdfBytes);
     expect(loadedPdf.getPageCount()).toBeGreaterThanOrEqual(1);
   });
+
+  test('supports 2-Sheet Separate Glue-In Pockets on A6 Fold-and-Glue Slip Cover via Print PDF dialog', async ({
+    page,
+  }) => {
+    // 1. Configure A6 (105 × 148 × 8 mm) Fold-and-Glue Slip Cover with 50 mm flaps
+    await page.getByTestId('preset-select').click();
+    await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
+
+    const thicknessInput = page.getByTestId('input-pb-thickness');
+    await thicknessInput.fill('8');
+    await thicknessInput.blur();
+
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
+    await expect(page.getByTestId('pockets-builtin-badge')).toHaveText('Built-In');
+
+    const flapSlider = page.getByTestId('slider-jacket-flap-width');
+    await flapSlider.fill('50');
+
+    // 2. Open Print PDF dialog -> select US Letter -> shows 2 sheets (tiled) + pdf-detach-flaps-btn
+    await page.getByTestId('studio-export-pdf-btn').click();
+    const pdfDialog = page.getByTestId('pdf-export-dialog');
+    await expect(pdfDialog).toBeVisible();
+
+    await page.getByTestId('pdf-media-option-letter').click();
+    await expect(page.getByTestId('pdf-media-option-letter')).toContainText('2 sheets (tiled)');
+    const detachBtn = page.getByTestId('pdf-detach-flaps-btn');
+    await expect(detachBtn).toBeVisible();
+    await expect(detachBtn).toContainText('Detach Flaps → 1× US Letter + Separate Pockets');
+
+    // 3. Click Detach Flaps -> outer cover shrinks to 221 × 170 mm, flips immediately to 1 sheet, enables append-pockets
+    await detachBtn.click();
+    await expect(pdfDialog).toContainText('221.0 × 170.0 mm');
+    await expect(page.getByTestId('pdf-media-option-letter')).toContainText('1 sheet');
+    await expect(page.getByTestId('pdf-opt-append-pockets')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-export-summary')).toContainText('+ Pockets');
+
+    // 4. Confirm download -> verify 2-page PDF (Page 1 = US Letter Landscape outer shell, Page 2 = detached inner pockets)
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const download = await downloadPromise;
+    await expect(pdfDialog).toBeHidden();
+    expect(download.suggestedFilename()).toBe('outer_cover_print.pdf');
+
+    const pdfBytes = await readFile((await download.path())!);
+    expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    const mergedPdf = await PDFDocument.load(pdfBytes);
+    expect(mergedPdf.getPageCount()).toBe(2);
+    const p1 = mergedPdf.getPage(0).getSize();
+    expect(p1.width).toBeGreaterThan(p1.height); // US Letter Landscape outer shell
+    const p2 = mergedPdf.getPage(1).getSize();
+    expect(p2.height).toBeGreaterThan(p2.width); // US Letter Portrait detached inner pockets
+
+    // 5. Verify Inner Pockets tab no longer shows Built-In badge and renders detached 1-flap pockets
+    await expect(page.getByTestId('pockets-builtin-badge')).toBeHidden();
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
+    await expect(page.getByTestId('styled-front-pocket')).toBeVisible();
+    await expect(page.getByTestId('styled-back-pocket')).toBeVisible();
+  });
 });

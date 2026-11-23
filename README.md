@@ -12,7 +12,7 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 | --- | --- | --- | --- |
 | **Rigid 3-Board Hardcover** | Front, Back & Spine boards (`9 mm` hinges) | Separate slip-in pockets + spine liner | Removable heirloom hardcovers (`≥ 8 mm` spines) with zero damage to the paperback |
 | **Flexible-Spine 2-Board** | Front & Back boards + cloth spine gap | Separate slip-in pockets + spine liner | Thin `3–8 mm` notebooks & chapbooks that need to open completely flat |
-| **Fold-and-Glue Slip Cover** | None (`0` boards) | Built-in `20–65 mm` flaps + 4 wrap-over glue tabs | 1-piece printable slip-in covers with closed pockets (fits `1× US Legal` or `2× US Letter`, and `1× US Letter` on tight A6) |
+| **Fold-and-Glue Slip Cover** | None (`0` boards) | Built-in `20–65 mm` flaps **or** **Separate Glue-In Pockets (2-Sheet)** + 4 wrap-over glue tabs | 1-piece printable slip covers or seamless 2-sheet home prints (zero tape seam on `1× US Letter / A4` + detached fore-edge pockets on Page 2) |
 | **Classic Dust Jacket** | None (`0` boards) | Adjustable `20–100 mm` fold-in flaps (no glue) | Publisher-style wrap-around dust jackets with 4 vertical score folds |
 | **Replacement Paperback Cover** | None (`0` boards) | Flush trim (none needed) | 1-piece cardstock wraps (`Back + Spine + Front`) glued directly onto a paperback textblock spine |
 
@@ -50,7 +50,7 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 - **Mirrored Pockets & Spine Liner** — Auto-generated Front and Back slip-in pocket envelopes with **45° mitered glue flaps** plus a **Spine Reinforcement Liner**.
 - **Styled Endpapers & Seamless Patterns** — Pick from curated endpaper swatches, sync in one click with **Match Cover Color**, place draggable/flippable pocket art, or turn any motif into a 1-click seamless **Tile Pattern**.
 - **Auto-Paginated Printing** — Export **US Letter (`8.5 × 11"`)**, **A4 (`210 × 297 mm`)**, **US Legal (`8.5 × 14"`)**, or **Tabloid (`11 × 17"`)** PDFs with an optional **`50 × 50 mm` Calibration & Legend** block and **Cut & Fold** lines.
-- **Smart Cover-Style Handling** — Cleanly marked **Built-In** on Fold-and-Glue Slip Covers and **Not Needed** on Classic Dust Jackets & Replacement Paperback Covers so you never print extra pocket sheets.
+- **Smart Cover-Style Handling** — Cleanly marked **Built-In** on 1-piece Fold-and-Glue Slip Covers (automatically unlocking when switched to **Separate Glue-In Pockets** 2-sheet mode) and **Not Needed** on Classic Dust Jackets & Replacement Paperback Covers so you never print extra pocket sheets.
 
 ![Bookbinder Studio — Inner Slip-In Pockets & Seamless Tiled Endpapers](./docs/screenshots/inner-pockets.png)
 
