@@ -264,4 +264,53 @@ describe('studio renderEngine', () => {
     expect(UnitConverter.pointsToMm(oversizedSz.width)).toBeCloseTo(oversizedSpec.totalWidthMm, 2);
     expect(UnitConverter.pointsToMm(oversizedSz.height)).toBeCloseTo(oversizedSpec.totalHeightMm, 2);
   });
+
+  it('supports dpi: 600, tileOverlapMm: 15, includeScaleBar: true, and includeGuides override on generatePrintReadyRollPdf', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'Dune',
+        author: 'Frank Herbert',
+      },
+    };
+
+    // 600 DPI canvas spec doubles pixel resolution vs 300 DPI while keeping identical physical mm
+    const spec300 = computeStudioCanvasSpec(geom, 300);
+    const spec600 = computeStudioCanvasSpec(geom, 600);
+    expect(spec600.totalWidthMm).toBeCloseTo(spec300.totalWidthMm, 4);
+    expect(spec600.pixelWidth).toBe(UnitConverter.mmToPixels(spec300.totalWidthMm, 600));
+    expect(spec600.pixelHeight).toBe(UnitConverter.mmToPixels(spec300.totalHeightMm, 600));
+
+    // Unified options: printMediaId + dpi: 600 + tileOverlapMm: 15 + includeScaleBar: true + includeGuides: false
+    const bytesNoBar = await generatePrintReadyRollPdf(geom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      dpi: 600,
+      tileOverlapMm: 15,
+      includeScaleBar: false,
+      includeGuides: false,
+    });
+    const bytesWithBar = await generatePrintReadyRollPdf(geom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      dpi: 600,
+      tileOverlapMm: 15,
+      includeScaleBar: true,
+      includeGuides: true,
+    });
+
+    const pdfNoBar = await PDFDocument.load(bytesNoBar);
+    const pdfWithBar = await PDFDocument.load(bytesWithBar);
+    expect(pdfNoBar.getPageCount()).toBe(2);
+    expect(pdfWithBar.getPageCount()).toBe(2);
+    expect(bytesWithBar.byteLength).toBeGreaterThan(bytesNoBar.byteLength);
+
+    for (const idx of [0, 1]) {
+      const sz = pdfWithBar.getPage(idx).getSize();
+      expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(215.9, 2);
+      expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(279.4, 2);
+    }
+  });
 });

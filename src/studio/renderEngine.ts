@@ -12,5 +12,8 @@ export {
   type StudioCanvasSpec,
 } from './canvasSpec';
 export { generateAffinityCoverSvg } from './exporters/coverAffinitySvgExporter';
-export { generatePrintReadyRollPdf } from './exporters/coverPdfExporter';
+export {
+  generatePrintReadyRollPdf,
+  type PrintReadyCoverPdfOptions,
+} from './exporters/coverPdfExporter';
 export { exportCoverPng300Dpi, renderCoverArtworkCanvas } from './exporters/coverRasterExporter';

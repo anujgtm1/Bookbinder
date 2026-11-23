@@ -169,15 +169,16 @@ export async function exportCoverPng300Dpi(
   geometry: CaseGeometry,
   studio: CoverStudioState,
   customFont: CustomFontAsset | null,
+  dpi: 300 | 600 = PRINT_DPI,
 ): Promise<Blob> {
   const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
     includeSpineText: true,
-    dpi: PRINT_DPI,
+    dpi,
   });
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error('Failed to encode 300 DPI PNG blob.'));
+      else reject(new Error(`Failed to encode ${dpi} DPI PNG blob.`));
     }, 'image/png');
   });
 }
