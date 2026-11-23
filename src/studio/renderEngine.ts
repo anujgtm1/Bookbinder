@@ -2,14 +2,20 @@ import fontkit from '@pdf-lib/fontkit';
 import {
   PDFDocument,
   StandardFonts,
+  clip,
   concatTransformationMatrix,
   degrees,
+  endPath,
   popGraphicsState,
   pushGraphicsState,
+  rectangle,
   rgb,
   type PDFFont,
+  type PDFPage,
 } from 'pdf-lib';
+import { evaluatePrintMediaFit } from '@/core/geometry';
 import { escapeXml } from '@/lib/utils';
+import type { PrintMediaId } from '@/types/bookParams';
 import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import {
   GeometryPrimitives,
@@ -524,7 +530,7 @@ export async function generatePrintReadyRollPdf(
   geometry: CaseGeometry,
   studio: CoverStudioState,
   customFont: CustomFontAsset | null,
-  options?: { rasterDpi?: number; skipCanvasRaster?: boolean },
+  options?: { rasterDpi?: number; skipCanvasRaster?: boolean; printMedia?: PrintMediaId },
 ): Promise<Uint8Array> {
   const spec = computeStudioCanvasSpec(geometry, options?.rasterDpi ?? PRINT_DPI);
   const pdfDoc = await PDFDocument.create();
@@ -860,7 +866,202 @@ export async function generatePrintReadyRollPdf(
     }
   }
 
-  return pdfDoc.save();
+  const sourceBytes = await pdfDoc.save();
+  const printMedia = options?.printMedia ?? 'exact-auto';
+  const fit = evaluatePrintMediaFit(
+    printMedia,
+    geometry.outerWrap.widthMm,
+    geometry.outerWrap.heightMm,
+  );
+
+  // Case A: exact-auto, wide-format roll, or does-not-fit -> keep exact 1-page 1:1 mm wrap output
+  if (
+    (fit.status !== 'fits-1-sheet' && fit.status !== 'fits-2-sheet-tile') ||
+    fit.sheetPageWidthMm === null ||
+    fit.sheetPageHeightMm === null
+  ) {
+    return sourceBytes;
+  }
+
+  const outDoc = await PDFDocument.create();
+  outDoc.setTitle(`Bookbinder — Print-Ready Outer Cover (${fit.mediaLabel}, 1:1 mm)`);
+  outDoc.setCreator('Bookbinder Studio');
+  const [embeddedCover] = await outDoc.embedPdf(sourceBytes);
+  const footerFont = await outDoc.embedFont(StandardFonts.Helvetica);
+
+  const sheetWMm = fit.sheetPageWidthMm;
+  const sheetHMm = fit.sheetPageHeightMm;
+  const sheetWPt = UnitConverter.mmToPoints(sheetWMm);
+  const sheetHPt = UnitConverter.mmToPoints(sheetHMm);
+
+  const drawCenteredFooter = (targetPage: PDFPage, text: string) => {
+    const fontSizePt = 6.5;
+    const textW = footerFont.widthOfTextAtSize(text, fontSizePt);
+    targetPage.drawText(text, {
+      x: (sheetWPt - textW) / 2,
+      y: UnitConverter.mmToPoints(2.0),
+      size: fontSizePt,
+      font: footerFont,
+      color: rgb(0.32, 0.32, 0.32),
+    });
+  };
+
+  // Case B: Centered on 1 exact desktop sheet page at 100% scale
+  if (fit.status === 'fits-1-sheet') {
+    const sheetPage = outDoc.addPage([sheetWPt, sheetHPt]);
+    const offsetXPt = UnitConverter.mmToPoints((sheetWMm - spec.totalWidthMm) / 2);
+    const offsetYPt = UnitConverter.mmToPoints((sheetHMm - spec.totalHeightMm) / 2);
+
+    sheetPage.pushOperators(
+      pushGraphicsState(),
+      rectangle(0, 0, sheetWPt, sheetHPt),
+      clip(),
+      endPath(),
+    );
+    sheetPage.drawPage(embeddedCover, {
+      x: offsetXPt,
+      y: offsetYPt,
+      width: pageW,
+      height: pageH,
+    });
+    sheetPage.pushOperators(popGraphicsState());
+
+    drawCenteredFooter(sheetPage, `100% Actual Size • Centered on ${fit.mediaLabel}`);
+    return outDoc.save();
+  }
+
+  // Case C: 2-sheet horizontally tiled PDF with 10 mm overlap & alignment crosshairs
+  const overlapMm = fit.tileOverlapMm;
+  const halfOverlapMm = overlapMm / 2;
+  const wrapWMm = geometry.outerWrap.widthMm;
+  const wrapHalfWithOverlapMm = wrapWMm / 2 + halfOverlapMm;
+  const leftMarginMm = (sheetWMm - wrapHalfWithOverlapMm) / 2;
+  const drawOriginYMm = (sheetHMm - spec.totalHeightMm) / 2;
+  const drawOriginYPt = UnitConverter.mmToPoints(drawOriginYMm);
+  const midXMm = bleed + wrapWMm / 2;
+
+  const drawTileAlignmentMarks = (
+    tilePage: PDFPage,
+    seamXMm: number,
+    overlapEdgeXMm: number,
+  ) => {
+    const seamXPt = UnitConverter.mmToPoints(seamXMm);
+    const overlapEdgeXPt = UnitConverter.mmToPoints(overlapEdgeXMm);
+    const lineBottomPt = UnitConverter.mmToPoints(5.5);
+    const lineTopPt = UnitConverter.mmToPoints(sheetHMm - 5.5);
+
+    // Crisp dashed seam centerline where Page 1 & Page 2 align
+    tilePage.drawLine({
+      start: { x: seamXPt, y: lineBottomPt },
+      end: { x: seamXPt, y: lineTopPt },
+      color: rgb(0.12, 0.42, 0.88),
+      thickness: 0.55,
+      dashArray: [3.5, 2],
+    });
+
+    // Subtle dashed inner edge of the 10 mm overlap glue/tape strip
+    tilePage.drawLine({
+      start: { x: overlapEdgeXPt, y: lineBottomPt },
+      end: { x: overlapEdgeXPt, y: lineTopPt },
+      color: rgb(0.45, 0.45, 0.45),
+      thickness: 0.35,
+      dashArray: [2, 2.5],
+    });
+
+    // Top & bottom alignment crosshair targets along the seam centerline
+    const crossRadiusPt = UnitConverter.mmToPoints(2.0);
+    const crossArmPt = UnitConverter.mmToPoints(3.2);
+    const crossYPositionsMm = [6.5, sheetHMm - 3.8];
+    const crossColor = rgb(0.12, 0.42, 0.88);
+    for (const cyMm of crossYPositionsMm) {
+      const cyPt = UnitConverter.mmToPoints(cyMm);
+      tilePage.drawCircle({
+        x: seamXPt,
+        y: cyPt,
+        size: crossRadiusPt,
+        borderColor: crossColor,
+        borderWidth: 0.5,
+      });
+      tilePage.drawLine({
+        start: { x: seamXPt - crossArmPt, y: cyPt },
+        end: { x: seamXPt + crossArmPt, y: cyPt },
+        color: crossColor,
+        thickness: 0.45,
+      });
+      tilePage.drawLine({
+        start: { x: seamXPt, y: cyPt - crossArmPt },
+        end: { x: seamXPt, y: cyPt + crossArmPt },
+        color: crossColor,
+        thickness: 0.45,
+      });
+    }
+  };
+
+  // Page 1: Left half [0 .. midX + 5 mm]
+  const page1 = outDoc.addPage([sheetWPt, sheetHPt]);
+  const p1OriginXMm = leftMarginMm - bleed;
+  const p1ClipX1Mm = Math.max(0, p1OriginXMm);
+  const p1ClipX2Mm = leftMarginMm + wrapHalfWithOverlapMm;
+
+  page1.pushOperators(
+    pushGraphicsState(),
+    rectangle(
+      UnitConverter.mmToPoints(p1ClipX1Mm),
+      0,
+      UnitConverter.mmToPoints(Math.max(0, p1ClipX2Mm - p1ClipX1Mm)),
+      sheetHPt,
+    ),
+    clip(),
+    endPath(),
+  );
+  page1.drawPage(embeddedCover, {
+    x: UnitConverter.mmToPoints(p1OriginXMm),
+    y: drawOriginYPt,
+    width: pageW,
+    height: pageH,
+  });
+  page1.pushOperators(popGraphicsState());
+
+  const p1SeamXMm = leftMarginMm + wrapWMm / 2;
+  drawTileAlignmentMarks(page1, p1SeamXMm, p1SeamXMm - halfOverlapMm);
+  drawCenteredFooter(
+    page1,
+    `PAGE 1 OF 2 — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${fit.mediaLabel})`,
+  );
+
+  // Page 2: Right half [midX - 5 mm .. totalW]
+  const page2 = outDoc.addPage([sheetWPt, sheetHPt]);
+  const p2OriginXMm = leftMarginMm - (midXMm - halfOverlapMm);
+  const p2ClipX1Mm = leftMarginMm;
+  const p2ClipX2Mm = Math.min(sheetWMm, p2OriginXMm + spec.totalWidthMm);
+
+  page2.pushOperators(
+    pushGraphicsState(),
+    rectangle(
+      UnitConverter.mmToPoints(p2ClipX1Mm),
+      0,
+      UnitConverter.mmToPoints(Math.max(0, p2ClipX2Mm - p2ClipX1Mm)),
+      sheetHPt,
+    ),
+    clip(),
+    endPath(),
+  );
+  page2.drawPage(embeddedCover, {
+    x: UnitConverter.mmToPoints(p2OriginXMm),
+    y: drawOriginYPt,
+    width: pageW,
+    height: pageH,
+  });
+  page2.pushOperators(popGraphicsState());
+
+  const p2SeamXMm = leftMarginMm + halfOverlapMm;
+  drawTileAlignmentMarks(page2, p2SeamXMm, p2SeamXMm + halfOverlapMm);
+  drawCenteredFooter(
+    page2,
+    `PAGE 2 OF 2 — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${fit.mediaLabel})`,
+  );
+
+  return outDoc.save();
 }
 
 /**

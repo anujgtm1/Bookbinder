@@ -199,4 +199,69 @@ describe('studio renderEngine', () => {
     const loaded = await PDFDocument.load(pdfBytes);
     expect(loaded.getPageCount()).toBe(1);
   });
+
+  it('outputs centered 1-sheet Landscape PDF for A6 softcover and 2-sheet Portrait tiled PDF for Trade Digest on US Letter', async () => {
+    const baseStudio = {
+      ...CoverStudioModel.createDefault(),
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'Field Notes',
+        author: 'A. Binder',
+      },
+    };
+
+    // 1. A6 Softcover (266.4 x 170 mm) on US Letter -> 1 exact US Letter Landscape page (279.4 x 215.9 mm)
+    const a6SoftGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      printMedia: 'letter',
+    });
+    const a6Bytes = await generatePrintReadyRollPdf(a6SoftGeom, baseStudio, null, {
+      skipCanvasRaster: true,
+      printMedia: 'letter',
+    });
+    const a6Pdf = await PDFDocument.load(a6Bytes);
+    expect(a6Pdf.getPageCount()).toBe(1);
+    const a6PageSize = a6Pdf.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(a6PageSize.width)).toBeCloseTo(279.4, 2);
+    expect(UnitConverter.pointsToMm(a6PageSize.height)).toBeCloseTo(215.9, 2);
+
+    // 2. Default Trade Digest hardcover (366 x 259 mm) on US Letter -> 2 exact US Letter Portrait tiled pages (215.9 x 279.4 mm)
+    const digestGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      printMedia: 'letter',
+    });
+    const digestBytes = await generatePrintReadyRollPdf(digestGeom, baseStudio, null, {
+      skipCanvasRaster: true,
+      printMedia: 'letter',
+    });
+    const digestPdf = await PDFDocument.load(digestBytes);
+    expect(digestPdf.getPageCount()).toBe(2);
+    for (const idx of [0, 1]) {
+      const sz = digestPdf.getPage(idx).getSize();
+      expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(215.9, 2);
+      expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(279.4, 2);
+    }
+
+    // 3. Oversized book (height > 269.4 mm printable) on US Letter -> falls back to exact 1-page wrap size
+    const oversizedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      pbWidthMm: 190,
+      pbHeightMm: 275,
+      printMedia: 'letter',
+    });
+    const oversizedBytes = await generatePrintReadyRollPdf(oversizedGeom, baseStudio, null, {
+      skipCanvasRaster: true,
+      printMedia: 'letter',
+    });
+    const oversizedPdf = await PDFDocument.load(oversizedBytes);
+    expect(oversizedPdf.getPageCount()).toBe(1);
+    const oversizedSpec = computeStudioCanvasSpec(oversizedGeom, 300);
+    const oversizedSz = oversizedPdf.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(oversizedSz.width)).toBeCloseTo(oversizedSpec.totalWidthMm, 2);
+    expect(UnitConverter.pointsToMm(oversizedSz.height)).toBeCloseTo(oversizedSpec.totalHeightMm, 2);
+  });
 });

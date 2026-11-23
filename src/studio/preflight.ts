@@ -1,5 +1,12 @@
-import { BookParametersModel, type BindingStyle, type BookParameters } from '@/types/bookParams';
-import type { CaseGeometry, Rect2D } from '@/types/geometry';
+import { calculateMaxSlipFlapForSheetMm, evaluatePrintMediaFit } from '@/core/geometry';
+import {
+  BookParametersModel,
+  getPrintMediaSpec,
+  type BindingStyle,
+  type BookParameters,
+  type PrintMediaId,
+} from '@/types/bookParams';
+import { ROLL_TOTAL_MARGIN_MM, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import type { CoverImageLayer, QuickFitTarget } from '@/types/studioLayer';
 import { MM_PER_INCH, PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
@@ -51,6 +58,16 @@ export type PreflightQuickFix =
     }
   | {
       readonly kind: 'apply-pocket-proportions';
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'set-print-media';
+      readonly printMedia: PrintMediaId;
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'set-jacket-flap-width';
+      readonly flapWidthMm: number;
       readonly label: string;
     };
 
@@ -681,7 +698,100 @@ export const PreflightEngine = {
       });
     }
 
-    if (!geometry.rollRecommendation.fits && params.splitMode === 'single') {
+    if (params.printMedia && params.printMedia !== 'exact-auto') {
+      const fit = evaluatePrintMediaFit(
+        params.printMedia,
+        geometry.outerWrap.widthMm,
+        geometry.outerWrap.heightMm,
+      );
+      const mediaSpec = getPrintMediaSpec(params.printMedia);
+      const suggestedSpec = fit.suggestedMediaId
+        ? getPrintMediaSpec(fit.suggestedMediaId)
+        : null;
+
+      if (fit.status === 'does-not-fit') {
+        allIssues.push({
+          id: 'print-media-overflow',
+          severity: 'error',
+          category: 'structure',
+          title:
+            mediaSpec.kind === 'sheet'
+              ? `Cover does not fit on ${fit.mediaLabel} (even as 2 tiled sheets)`
+              : `Cover does not fit on ${fit.mediaLabel}`,
+          detail:
+            mediaSpec.kind === 'sheet'
+              ? `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable bounds even across 2 tiled pages. Switch to a larger sheet or roll for 100% scale printing.`
+              : `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable width.`,
+          highlights: [],
+          quickFix: suggestedSpec
+            ? {
+                kind: 'set-print-media',
+                printMedia: suggestedSpec.id,
+                label: `Switch to ${suggestedSpec.shortLabel}`,
+              }
+            : params.splitMode === 'single'
+              ? {
+                  kind: 'enable-split-mode',
+                  label: 'Enable 3-Piece Split',
+                }
+              : undefined,
+        });
+      } else if (fit.status === 'fits-2-sheet-tile') {
+        let detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap and alignment crosshairs — or switch to a larger sheet/roll to print on 1 page.`;
+        let quickFix: PreflightQuickFix | undefined = suggestedSpec
+          ? {
+              kind: 'set-print-media',
+              printMedia: suggestedSpec.id,
+              label: `Switch to ${suggestedSpec.shortLabel}`,
+            }
+          : undefined;
+
+        if (
+          style === 'softcover-jacket' &&
+          mediaSpec.shortMm !== null &&
+          mediaSpec.longMm !== null
+        ) {
+          const maxFlap = calculateMaxSlipFlapForSheetMm(params, mediaSpec.longMm);
+          const innerW = (params.pbWidthMm + 1.0) * 2 + (params.pbThicknessMm + 1.0);
+          const fitsHeightOnOneSheet =
+            geometry.outerWrap.heightMm <= mediaSpec.shortMm - ROLL_TOTAL_MARGIN_MM + 1e-6;
+          const fitsWidthWithMaxFlap =
+            innerW + maxFlap * 2 <= mediaSpec.longMm - ROLL_TOTAL_MARGIN_MM + 1e-6;
+
+          if (maxFlap >= 22 && fitsHeightOnOneSheet && fitsWidthWithMaxFlap) {
+            detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap — or shrink slip flaps to ${maxFlap} mm to fit cleanly on 1 ${fit.mediaLabel} sheet.`;
+            quickFix = {
+              kind: 'set-jacket-flap-width',
+              flapWidthMm: maxFlap,
+              label: `Fit Flaps to ${fit.mediaLabel} (${maxFlap} mm)`,
+            };
+          } else {
+            detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap. There isn't enough room for integrated flaps on 1 ${fit.mediaLabel} sheet — switch to a larger sheet/roll or use Flexible Spine with separate Inner Pockets.`;
+            quickFix = suggestedSpec
+              ? {
+                  kind: 'set-print-media',
+                  printMedia: suggestedSpec.id,
+                  label: `Switch to ${suggestedSpec.shortLabel}`,
+                }
+              : {
+                  kind: 'switch-binding-style',
+                  bindingStyle: 'flexible-spine',
+                  label: 'Switch to Flexible Spine',
+                };
+          }
+        }
+
+        allIssues.push({
+          id: 'print-media-tiled-2-pages',
+          severity: 'warning',
+          category: 'structure',
+          title: `Requires 2 tiled pages on ${fit.mediaLabel}`,
+          detail,
+          highlights: [],
+          quickFix,
+        });
+      }
+    } else if (!geometry.rollRecommendation.fits && params.splitMode === 'single') {
       allIssues.push({
         id: 'roll-width-exceeded',
         severity: 'warning',

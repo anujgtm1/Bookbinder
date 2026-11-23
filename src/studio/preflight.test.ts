@@ -282,4 +282,107 @@ describe('PreflightEngine', () => {
       label: 'Switch to Rigid Spine',
     });
   });
+
+  it('flags 2-sheet tiling with smart flap-shrink or media-switch quick fix, and flags print-media-overflow errors', () => {
+    // 1. A6 softcover with 38 mm deep flaps on US Letter -> 2-sheet tile warning + 1-click Fit Flaps quick fix (25.7 mm)
+    const a6DeepLetter = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      jacketFlapWidthMm: 38,
+      printMedia: 'letter',
+    });
+    const a6DeepReport = PreflightEngine.evaluate(
+      a6DeepLetter,
+      calculateCaseGeometry(a6DeepLetter),
+      CoverStudioModel.createDefault(),
+    );
+    const flapTileIssue = a6DeepReport.issues.find((i) => i.id === 'print-media-tiled-2-pages');
+    expect(flapTileIssue).toBeDefined();
+    expect(flapTileIssue?.severity).toBe('warning');
+    expect(flapTileIssue?.title).toContain('Requires 2 tiled pages on US Letter');
+    expect(flapTileIssue?.quickFix).toEqual({
+      kind: 'set-jacket-flap-width',
+      flapWidthMm: 25.7,
+      label: 'Fit Flaps to US Letter (25.7 mm)',
+    });
+
+    // Applying the flap quick fix resolves the tiling warning completely
+    const a6Fitted = BookParametersModel.clampAndNormalize({
+      ...a6DeepLetter,
+      jacketFlapWidthMm: 25.7,
+    });
+    const a6FittedReport = PreflightEngine.evaluate(
+      a6Fitted,
+      calculateCaseGeometry(a6Fitted),
+      CoverStudioModel.createDefault(),
+    );
+    expect(a6FittedReport.issues.some((i) => i.id === 'print-media-tiled-2-pages')).toBe(false);
+
+    // 2. Default Trade Digest hardcover (366 x 259 mm) on US Letter -> 2-sheet tile warning + Switch to Tabloid quick fix
+    const digestLetter = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      printMedia: 'letter',
+    });
+    const digestReport = PreflightEngine.evaluate(
+      digestLetter,
+      calculateCaseGeometry(digestLetter),
+      CoverStudioModel.createDefault(),
+    );
+    const digestTileIssue = digestReport.issues.find((i) => i.id === 'print-media-tiled-2-pages');
+    expect(digestTileIssue).toBeDefined();
+    expect(digestTileIssue?.severity).toBe('warning');
+    expect(digestTileIssue?.quickFix).toEqual({
+      kind: 'set-print-media',
+      printMedia: 'tabloid',
+      label: 'Switch to Tabloid',
+    });
+
+    // 3. Softcover too wide for 22 mm flaps on 1 US Letter sheet -> explains lack of room + suggests larger media
+    const wideSoftLetter = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 130,
+      pbHeightMm: 170,
+      pbThicknessMm: 10,
+      printMedia: 'letter',
+    });
+    const wideSoftReport = PreflightEngine.evaluate(
+      wideSoftLetter,
+      calculateCaseGeometry(wideSoftLetter),
+      CoverStudioModel.createDefault(),
+    );
+    const wideSoftIssue = wideSoftReport.issues.find((i) => i.id === 'print-media-tiled-2-pages');
+    expect(wideSoftIssue).toBeDefined();
+    expect(wideSoftIssue?.detail).toContain('integrated flaps');
+    expect(wideSoftIssue?.quickFix).toEqual({
+      kind: 'set-print-media',
+      printMedia: 'legal',
+      label: 'Switch to US Legal',
+    });
+
+    // 4. Oversized book whose height exceeds US Letter longest printable side -> print-media-overflow error + Switch to 13" Roll
+    const oversizedLetter = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      pbWidthMm: 190,
+      pbHeightMm: 275, // wrap height = 275 + 7 + 36 = 318 mm > 269.4 mm
+      printMedia: 'letter',
+    });
+    const overflowReport = PreflightEngine.evaluate(
+      oversizedLetter,
+      calculateCaseGeometry(oversizedLetter),
+      CoverStudioModel.createDefault(),
+    );
+    const overflowIssue = overflowReport.issues.find((i) => i.id === 'print-media-overflow');
+    expect(overflowIssue).toBeDefined();
+    expect(overflowIssue?.severity).toBe('error');
+    expect(overflowIssue?.title).toContain('Cover does not fit on US Letter');
+    expect(overflowIssue?.quickFix).toEqual({
+      kind: 'set-print-media',
+      printMedia: 'roll-13',
+      label: 'Switch to 13" Roll',
+    });
+  });
 });
