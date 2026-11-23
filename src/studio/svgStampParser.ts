@@ -449,20 +449,28 @@ export function mapNormalizedPathsToMm(
     readonly originYMm?: number;
     readonly canvasWidthMm?: number;
     readonly mirrorX?: boolean;
+    readonly flipX?: boolean;
+    readonly flipY?: boolean;
   },
 ): readonly string[] {
   const ox = transform?.originXMm ?? 0;
   const oy = transform?.originYMm ?? 0;
   const mirrorX = transform?.mirrorX ?? false;
+  const flipX = transform?.flipX ?? false;
+  const flipY = transform?.flipY ?? false;
   const canvasW = transform?.canvasWidthMm ?? 0;
   const scaleX = targetRect.widthMm / Math.max(1e-4, viewBoxWidth);
   const scaleY = targetRect.heightMm / Math.max(1e-4, viewBoxHeight);
 
   const mapX = (px: number): string => {
-    const raw = targetRect.xMm + px * scaleX - ox;
+    const fx = flipX ? viewBoxWidth - px : px;
+    const raw = targetRect.xMm + fx * scaleX - ox;
     return fmt(mirrorX ? canvasW - raw : raw);
   };
-  const mapY = (py: number): string => fmt(targetRect.yMm + py * scaleY - oy);
+  const mapY = (py: number): string => {
+    const fy = flipY ? viewBoxHeight - py : py;
+    return fmt(targetRect.yMm + fy * scaleY - oy);
+  };
 
   return paths.map((d) => {
     const tokens = tokenizePath(d);

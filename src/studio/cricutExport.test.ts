@@ -154,5 +154,25 @@ describe('cricutExport — Cricut / Silhouette / ScanNCut HTV Vector SVG', () =>
     expect(result.svg).toContain('id="htv-weeding-box"');
     expect(result.svg).not.toContain('<text');
     expect(result.svg).not.toContain('transform=');
+
+    const flippedStudio = {
+      ...studio,
+      textLayers: [{ ...frontTitle, flipX: true, flipY: true }],
+    };
+    const flippedResult = await generateCricutHtvSvg(
+      geom,
+      flippedStudio,
+      null,
+      {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: 'front-cover',
+        includeLettering: true,
+        includeOrnaments: true,
+      },
+      REAL_WOFF_BYTES,
+    );
+    expect(flippedResult.svg).not.toBe(result.svg);
+    expect(flippedResult.svg).not.toContain('transform=');
+    expect(flippedResult.svg).not.toContain('NaN');
   });
 });

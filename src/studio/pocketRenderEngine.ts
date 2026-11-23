@@ -281,6 +281,17 @@ async function renderStyledPiecePng(
     for (const { layer, image } of loadedLayers) {
       const localX = layer.xMm - piece.offsetX;
       const localY = layer.yMm - piece.offsetY;
+      const drawLayerImage = (dx: number, dy: number, dw: number, dh: number) => {
+        if (layer.flipX || layer.flipY) {
+          ctx.save();
+          ctx.translate(dx + dw / 2, dy + dh / 2);
+          ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+          ctx.drawImage(image, -dw / 2, -dh / 2, dw, dh);
+          ctx.restore();
+        } else {
+          ctx.drawImage(image, dx, dy, dw, dh);
+        }
+      };
       if (layer.tiled) {
         const tileW = Math.max(8, layer.widthMm) * pxPerMm;
         const tileH = Math.max(8, layer.heightMm) * pxPerMm;
@@ -292,12 +303,11 @@ async function renderStyledPiecePng(
         const endY = piece.heightMm * pxPerMm;
         for (let y = startY; y < endY; y += tileH) {
           for (let x = startX; x < endX; x += tileW) {
-            ctx.drawImage(image, x, y, tileW, tileH);
+            drawLayerImage(x, y, tileW, tileH);
           }
         }
       } else {
-        ctx.drawImage(
-          image,
+        drawLayerImage(
           localX * pxPerMm,
           localY * pxPerMm,
           layer.widthMm * pxPerMm,

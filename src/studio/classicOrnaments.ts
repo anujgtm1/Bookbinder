@@ -338,15 +338,19 @@ export function buildOrnamentClosedPaths(
   const mirrorX = transform?.mirrorX ?? false;
   const canvasW = transform?.canvasWidthMm ?? 0;
 
-  const mapX = (localX: number): number => {
-    const raw = ornament.xMm + localX - ox;
-    return mirrorX ? canvasW - raw : raw;
-  };
-  const mapY = (localY: number): number => ornament.yMm + localY - oy;
-
   const w = ornament.widthMm;
   const h = ornament.heightMm;
   const t = Math.max(0.35, ornament.strokeWidthMm);
+
+  const mapX = (localX: number): number => {
+    const lx = ornament.flipX ? w - localX : localX;
+    const raw = ornament.xMm + lx - ox;
+    return mirrorX ? canvasW - raw : raw;
+  };
+  const mapY = (localY: number): number => {
+    const ly = ornament.flipY ? h - localY : localY;
+    return ornament.yMm + ly - oy;
+  };
 
   switch (ornament.presetId) {
     case 'frame-single-rule':
@@ -756,7 +760,7 @@ export function buildOrnamentClosedPaths(
         vbW,
         vbH,
         { xMm: ornament.xMm, yMm: ornament.yMm, widthMm: ornament.widthMm, heightMm: ornament.heightMm },
-        transform,
+        { ...transform, flipX: ornament.flipX, flipY: ornament.flipY },
       );
     }
   }

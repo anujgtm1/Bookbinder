@@ -33,4 +33,34 @@ describe('classicOrnaments parametric vector library', () => {
       expect(compound).not.toContain('NaN');
     }
   });
+
+  it('bakes flipX and flipY cleanly into ornament and custom SVG stamp coordinates with zero NaN', () => {
+    const sprig = CoverOrnamentLayerModel.createForZone('emblem-botanical-sprig', board, 'front');
+    const baseD = buildOrnamentCompoundPath(sprig);
+    const flippedYD = buildOrnamentCompoundPath({ ...sprig, flipY: true });
+    expect(flippedYD).not.toBe(baseD);
+    expect(flippedYD).not.toContain('NaN');
+
+    const cartouche = CoverOrnamentLayerModel.createForZone('spine-title-cartouche', board, 'spine');
+    const flippedBothD = buildOrnamentCompoundPath({ ...cartouche, flipX: true, flipY: true });
+    expect(flippedBothD).not.toBe(buildOrnamentCompoundPath(cartouche));
+    expect(flippedBothD).not.toContain('NaN');
+
+    const customStamp = CoverOrnamentLayerModel.createCustomSvg({
+      name: 'asymmetric-arrow',
+      paths: ['M 10 20 L 90 30 L 20 80 Z'],
+      viewBoxWidth: 100,
+      viewBoxHeight: 100,
+      renderMode: 'fill',
+      targetBoardRectMm: board,
+      zone: 'front',
+    });
+    const stampBase = buildOrnamentCompoundPath(customStamp);
+    const stampFlipX = buildOrnamentCompoundPath({ ...customStamp, flipX: true });
+    const stampFlipY = buildOrnamentCompoundPath({ ...customStamp, flipY: true });
+    expect(stampFlipX).not.toBe(stampBase);
+    expect(stampFlipY).not.toBe(stampBase);
+    expect(stampFlipX).not.toContain('NaN');
+    expect(stampFlipY).not.toContain('NaN');
+  });
 });

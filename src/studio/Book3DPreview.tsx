@@ -11,6 +11,8 @@ import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnamen
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
 import { computeInnerPocketsLayout } from './pocketRenderEngine';
 import {
+  buildLayerFlipTransform,
+  buildPointFlipTransform,
   computeCoverTextLinePlacements,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
@@ -129,6 +131,14 @@ function CoverFaceSvg({
             y={layer.yMm}
             width={layer.widthMm}
             height={layer.heightMm}
+            transform={buildLayerFlipTransform(
+              layer.xMm,
+              layer.yMm,
+              layer.widthMm,
+              layer.heightMm,
+              layer.flipX,
+              layer.flipY,
+            )}
             preserveAspectRatio="none"
           />
         </g>
@@ -157,7 +167,10 @@ function CoverFaceSvg({
         const layerFamily = resolveFontCssFamily(layer.fontId, customFont);
         const anchor = layer.align === 'left' ? 'start' : layer.align === 'right' ? 'end' : 'middle';
         return (
-          <g key={layer.id}>
+          <g
+            key={layer.id}
+            transform={buildPointFlipTransform(layer.xMm, layer.yMm, layer.flipX, layer.flipY)}
+          >
             {computeCoverTextLinePlacements(layer).map((item, idx) => (
               <text
                 key={`${layer.id}-${idx}`}
@@ -261,6 +274,7 @@ function InnerFrontPocketSvg({
                   y={0}
                   width={tileW}
                   height={tileH}
+                  transform={buildLayerFlipTransform(0, 0, tileW, tileH, layer.flipX, layer.flipY)}
                   preserveAspectRatio="none"
                 />
               </pattern>
@@ -308,6 +322,14 @@ function InnerFrontPocketSvg({
                   y={layer.yMm - pocketFace.y + insetY}
                   width={layer.widthMm}
                   height={layer.heightMm}
+                  transform={buildLayerFlipTransform(
+                    layer.xMm - pocketFace.x,
+                    layer.yMm - pocketFace.y + insetY,
+                    layer.widthMm,
+                    layer.heightMm,
+                    layer.flipX,
+                    layer.flipY,
+                  )}
                   preserveAspectRatio="none"
                 />
               ),

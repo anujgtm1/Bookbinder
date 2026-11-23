@@ -1,5 +1,14 @@
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont } from 'pdf-lib';
+import {
+  PDFDocument,
+  StandardFonts,
+  concatTransformationMatrix,
+  degrees,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  type PDFFont,
+} from 'pdf-lib';
 import { escapeXml } from '@/lib/utils';
 import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import {
@@ -50,6 +59,38 @@ export function hexToRgb01(hex: string): { r: number; g: number; b: number } {
     g: Number.parseInt(clean.slice(2, 4), 16) / 255,
     b: Number.parseInt(clean.slice(4, 6), 16) / 255,
   };
+}
+
+/** Builds an SVG transform attribute flipping a rectangular layer around its center. */
+export function buildLayerFlipTransform(
+  xMm: number,
+  yMm: number,
+  widthMm: number,
+  heightMm: number,
+  flipX?: boolean,
+  flipY?: boolean,
+): string | undefined {
+  if (!flipX && !flipY) return undefined;
+  const cx = roundTo(xMm + widthMm / 2, 3);
+  const cy = roundTo(yMm + heightMm / 2, 3);
+  const sx = flipX ? -1 : 1;
+  const sy = flipY ? -1 : 1;
+  return `translate(${cx} ${cy}) scale(${sx} ${sy}) translate(${-cx} ${-cy})`;
+}
+
+/** Builds an SVG transform attribute flipping an element around a point (cx, cy). */
+export function buildPointFlipTransform(
+  cx: number,
+  cy: number,
+  flipX?: boolean,
+  flipY?: boolean,
+): string | undefined {
+  if (!flipX && !flipY) return undefined;
+  const rx = roundTo(cx, 3);
+  const ry = roundTo(cy, 3);
+  const sx = flipX ? -1 : 1;
+  const sy = flipY ? -1 : 1;
+  return `translate(${rx} ${ry}) scale(${sx} ${sy}) translate(${-rx} ${-ry})`;
 }
 
 export function computeStudioCanvasSpec(
@@ -315,13 +356,23 @@ export async function renderCoverArtworkCanvas(
       toPx(clipRect.height),
     );
     ctx.clip();
-    ctx.drawImage(
-      img,
-      toPx(layer.xMm),
-      toPx(layer.yMm),
-      toPx(layer.widthMm),
-      toPx(layer.heightMm),
-    );
+    if (layer.flipX || layer.flipY) {
+      const cx = toPx(layer.xMm + layer.widthMm / 2);
+      const cy = toPx(layer.yMm + layer.heightMm / 2);
+      const wPx = toPx(layer.widthMm);
+      const hPx = toPx(layer.heightMm);
+      ctx.translate(cx, cy);
+      ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+      ctx.drawImage(img, -wPx / 2, -hPx / 2, wPx, hPx);
+    } else {
+      ctx.drawImage(
+        img,
+        toPx(layer.xMm),
+        toPx(layer.yMm),
+        toPx(layer.widthMm),
+        toPx(layer.heightMm),
+      );
+    }
     ctx.restore();
   }
 
@@ -353,6 +404,14 @@ export async function renderCoverArtworkCanvas(
     for (const textLayer of studio.textLayers ?? []) {
       const fontFamily = resolveFontCssFamily(textLayer.fontId, customFont);
       const lineItems = computeCoverTextLinePlacements(textLayer);
+      ctx.save();
+      if (textLayer.flipX || textLayer.flipY) {
+        const cx = toPx(textLayer.xMm);
+        const cy = toPx(textLayer.yMm);
+        ctx.translate(cx, cy);
+        ctx.scale(textLayer.flipX ? -1 : 1, textLayer.flipY ? -1 : 1);
+        ctx.translate(-cx, -cy);
+      }
       ctx.fillStyle = textLayer.color;
       ctx.textAlign = textLayer.align;
       ctx.textBaseline = 'middle';
@@ -369,6 +428,7 @@ export async function renderCoverArtworkCanvas(
         ctx.fillText(item.text, toPx(item.anchorXMm), toPx(item.anchorYMm));
         ctx.restore();
       }
+      ctx.restore();
     }
 
     // 3c. Dedicated Spine Typography
@@ -537,6 +597,20 @@ export async function generatePrintReadyRollPdf(
     const pdfFont = await embedFontByIdInPdf(pdfDoc, textLayer.fontId, customFont, fontCache);
     const tc = hexToRgb01(textLayer.color);
     const textColor = rgb(tc.r, tc.g, tc.b);
+    const isFlipped = Boolean(textLayer.flipX || textLayer.flipY);
+
+    if (isFlipped) {
+      const layerAnchorXPt = toPdfX(textLayer.xMm);
+      const layerAnchorYPt = toPdfY(textLayer.yMm);
+      const sx = textLayer.flipX ? -1 : 1;
+      const sy = textLayer.flipY ? -1 : 1;
+      const tx = layerAnchorXPt * (1 - sx);
+      const ty = layerAnchorYPt * (1 - sy);
+      page.pushOperators(
+        pushGraphicsState(),
+        concatTransformationMatrix(sx, 0, 0, sy, tx, ty),
+      );
+    }
 
     for (const item of lineItems) {
       if (!item.text.trim()) continue;
@@ -583,6 +657,10 @@ export async function generatePrintReadyRollPdf(
           color: textColor,
         });
       }
+    }
+
+    if (isFlipped) {
+      page.pushOperators(popGraphicsState());
     }
   }
 
@@ -832,10 +910,12 @@ export function generateAffinityCoverSvg(
     .join('\n');
 
   const coverTextNodes = (studio.textLayers ?? [])
-    .flatMap((layer) => {
+    .map((layer) => {
       const layerFont = escapeXml(resolveFontCssFamily(layer.fontId, customFont));
       const anchor = layer.align === 'left' ? 'start' : layer.align === 'right' ? 'end' : 'middle';
-      return computeCoverTextLinePlacements(layer)
+      const flipTransform = buildPointFlipTransform(layer.xMm, layer.yMm, layer.flipX, layer.flipY);
+      const indent = flipTransform ? '      ' : '    ';
+      const lines = computeCoverTextLinePlacements(layer)
         .filter((item) => item.text.trim().length > 0)
         .map((item) => {
           const fontSizeMm = UnitConverter.pointsToMm(item.fontSizePt);
@@ -843,9 +923,15 @@ export function generateAffinityCoverSvg(
             Math.abs(item.letterSpacingEm) > 0.001
               ? ` letter-spacing="${fmt(item.letterSpacingEm)}em"`
               : '';
-          return `    <text x="${fmt(item.anchorXMm)}" y="${fmt(item.anchorYMm)}" font-family="${layerFont}" font-size="${fmt(fontSizeMm)}"${trackingAttr} fill="${escapeXml(item.color)}" text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(item.text)}</text>`;
+          return `${indent}<text x="${fmt(item.anchorXMm)}" y="${fmt(item.anchorYMm)}" font-family="${layerFont}" font-size="${fmt(fontSizeMm)}"${trackingAttr} fill="${escapeXml(item.color)}" text-anchor="${anchor}" dominant-baseline="middle">${escapeXml(item.text)}</text>`;
         });
+      if (lines.length === 0) return '';
+      if (flipTransform) {
+        return `    <g transform="${flipTransform}">\n${lines.join('\n')}\n    </g>`;
+      }
+      return lines.join('\n');
     })
+    .filter(Boolean)
     .join('\n');
 
   const textNodes = textPlacements

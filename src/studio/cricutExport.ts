@@ -138,6 +138,8 @@ interface GlyphRunPlacement {
   readonly rotationDegCss: number;
   readonly align: 'left' | 'center' | 'right';
   readonly letterSpacingEm: number;
+  readonly flipX?: boolean;
+  readonly flipY?: boolean;
 }
 
 function bakeGlyphRunsToPaths(
@@ -203,8 +205,10 @@ function bakeGlyphRunsToPaths(
       const cmds = glyph.path?.commands ?? [];
 
       const mapPt = (fx: number, fy: number): { readonly x: number; readonly y: number } => {
-        const lx = (cursorX + pos.xOffset + fx - alignOffsetUnits) * scale;
-        const ly = -(pos.yOffset + fy - verticalCenterFontUnits) * scale;
+        const rawLx = (cursorX + pos.xOffset + fx - alignOffsetUnits) * scale;
+        const rawLy = -(pos.yOffset + fy - verticalCenterFontUnits) * scale;
+        const lx = placement.flipX ? -rawLx : rawLx;
+        const ly = placement.flipY ? -rawLy : rawLy;
         const rx = lx * cos - ly * sin;
         const ry = lx * sin + ly * cos;
         const rawX = anchorX + rx;
@@ -313,11 +317,13 @@ export function bakeCoverTextLayerToPaths(
     lineItems.map((item) => ({
       text: item.text,
       anchorXMm: item.anchorXMm,
-      anchorYMm: item.anchorYMm,
+      anchorYMm: layer.flipY ? roundTo(2 * layer.yMm - item.anchorYMm, 2) : item.anchorYMm,
       fontSizePt: item.fontSizePt,
       rotationDegCss: 0,
       align: item.align,
       letterSpacingEm: item.letterSpacingEm,
+      flipX: layer.flipX,
+      flipY: layer.flipY,
     })),
     fontBytes,
     originXMm,

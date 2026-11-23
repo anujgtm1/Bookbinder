@@ -2,9 +2,12 @@ import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
+import { CoverTextLayerModel } from '@/types/coverElements';
 import { CoverStudioModel } from '@/types/studio';
 import { UnitConverter } from '@/types/units';
 import {
+  buildLayerFlipTransform,
+  buildPointFlipTransform,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   generateAffinityCoverSvg,
@@ -164,5 +167,36 @@ describe('studio renderEngine', () => {
     expect(svg).toContain('<g id="board-guides"');
     expect(hexToRgb01('#ff8000').r).toBeCloseTo(1, 4);
     expect(hexToRgb01('invalid').r).toBeCloseTo(0.12, 2);
+  });
+
+  it('builds flip SVG transforms and renders flipped cover text in Print PDF & Affinity SVG', async () => {
+    expect(buildLayerFlipTransform(10, 20, 100, 50, false, false)).toBeUndefined();
+    expect(buildLayerFlipTransform(10, 20, 100, 50, true, false)).toBe(
+      'translate(60 45) scale(-1 1) translate(-60 -45)',
+    );
+    expect(buildPointFlipTransform(200, 100, false, true)).toBe(
+      'translate(200 100) scale(1 -1) translate(-200 -100)',
+    );
+
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const flippedTitle = {
+      ...CoverTextLayerModel.createPreset('front-title', geom.outerWrap.frontBoardRect),
+      text: 'MIRRORED',
+      flipX: true,
+    };
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      textLayers: [flippedTitle],
+    };
+
+    const svg = generateAffinityCoverSvg(geom, studio, null);
+    expect(svg).toContain('scale(-1 1)');
+    expect(svg).toContain('MIRRORED');
+
+    const pdfBytes = await generatePrintReadyRollPdf(geom, studio, null, {
+      skipCanvasRaster: true,
+    });
+    const loaded = await PDFDocument.load(pdfBytes);
+    expect(loaded.getPageCount()).toBe(1);
   });
 });

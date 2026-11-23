@@ -49,6 +49,16 @@ describe('svgStampParser', () => {
       { originXMm: 0, originYMm: 0, canvasWidthMm: 100, mirrorX: true },
     );
     expect(mirrored[1]).toBe('M 55 35 L 50 50 L 60 50 Z');
+
+    // Local flipX / flipY baked into mm coordinates
+    const flipped = mapNormalizedPathsToMm(
+      ['M 10 20 L 30 80 Z'],
+      100,
+      100,
+      { xMm: 0, yMm: 0, widthMm: 100, heightMm: 100 },
+      { flipX: true, flipY: true },
+    );
+    expect(flipped[0]).toBe('M 90 80 L 70 20 Z');
   });
 
   it('detects stroke-only line-art SVGs automatically', () => {
