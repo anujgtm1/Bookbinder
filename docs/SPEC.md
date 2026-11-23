@@ -68,6 +68,9 @@ src/
 - `POCKET_DEPTH_PCT` — Inner Pocket Width Ratio (default: `72%` of `BOARD_W`, slider `65%–80%`)
 - `POCKET_FLAP` — Pocket Glue Flap Width (default: `12.0 mm`)
 - `SPLIT_MODE` — Default: `Single-Piece Continuous Wrap` (optimized for large-format roll printers). Secondary toggle: `3-Piece / Quarter-Bound Split` (separate Front, Back, and Spine wraps for standard desktop sheet printers).
+- `PRINT_MEDIA` — User's target printer media / paper size (`exact-auto` default, or desktop sheets `letter` `8.5×11"`, `a4` `210×297 mm`, `legal` `8.5×14"`, `tabloid` `11×17"`, or large-format rolls `roll-13`, `roll-17`, `roll-24`, `roll-36`, `roll-44`):
+  - When a desktop sheet is selected and the cover fits, **Print PDF (300 DPI)** and **Cut-Only Outer PDF** output on an exact centered sheet page (auto-oriented Portrait or Landscape at strict `1:1 mm` / 100% scale).
+  - When a cover exceeds the selected desktop sheet, **Print Preflight** flags a paper-fit error with smart 1-click Quick Fixes: shrink softcover flaps to fit the sheet (when `≥ 22 mm` flaps fit), switch to a larger compatible sheet/roll, switch to **Flexible Spine + Separate Inner Pockets + 3-Piece Split**, or export a **Tiled 2-Sheet PDF** (with a `10 mm` glue/tape overlap strip and alignment crosshairs).
 
 ---
 
