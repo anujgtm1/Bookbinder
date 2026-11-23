@@ -75,6 +75,8 @@ export interface CoverElementsCardProps {
   readonly onUpdateOrnament: (id: string, patch: Partial<CoverOrnamentLayer>) => void;
   readonly onScaleOrnament: (id: string, factor: number) => void;
   readonly onFitOrnamentToBoard: (id: string) => void;
+  readonly onFitOrnamentWithMargin?: (id: string, marginMm: number) => void;
+  readonly onCenterOrnament?: (id: string) => void;
   readonly onDeleteOrnament: (id: string) => void;
 }
 
@@ -134,6 +136,8 @@ export function CoverElementsCard({
   onUpdateOrnament,
   onScaleOrnament,
   onFitOrnamentToBoard,
+  onFitOrnamentWithMargin,
+  onCenterOrnament,
   onDeleteOrnament,
 }: CoverElementsCardProps) {
   const [activeTab, setActiveTab] = useState<CoverElementsTab>('text');
@@ -875,15 +879,75 @@ export function CoverElementsCard({
                     >
                       <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
+                  </div>
+                </div>
+
+                {/* 1-Click Margin Fit Presets & Center */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                    <Maximize2 className="h-3 w-3 text-brass" aria-hidden="true" />
+                    Snap to Margin
+                  </span>
+                  <div
+                    className="flex flex-wrap items-center gap-1"
+                    role="group"
+                    aria-label="Snap ornament to board margin"
+                  >
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="h-7 px-2 text-[11px]"
-                      onClick={() => onFitOrnamentToBoard(selectedOrnament.id)}
+                      className="h-6 px-2 text-[11px]"
+                      title="Fit inside board with a tight 6 mm margin"
+                      data-testid="ornament-fit-tight"
+                      onClick={() =>
+                        onFitOrnamentWithMargin
+                          ? onFitOrnamentWithMargin(selectedOrnament.id, 6)
+                          : onFitOrnamentToBoard(selectedOrnament.id)
+                      }
                     >
-                      <Maximize2 className="h-3 w-3" aria-hidden="true" />
-                      Fit Board
+                      Tight (6 mm)
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      title="Fit inside board with a classic 12 mm margin"
+                      data-testid="ornament-fit-classic"
+                      onClick={() =>
+                        onFitOrnamentWithMargin
+                          ? onFitOrnamentWithMargin(selectedOrnament.id, 12)
+                          : onFitOrnamentToBoard(selectedOrnament.id)
+                      }
+                    >
+                      Classic (12 mm)
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      title="Fit inside board with a wide 18 mm margin"
+                      data-testid="ornament-fit-wide"
+                      onClick={() =>
+                        onFitOrnamentWithMargin
+                          ? onFitOrnamentWithMargin(selectedOrnament.id, 18)
+                          : onFitOrnamentToBoard(selectedOrnament.id)
+                      }
+                    >
+                      Wide (18 mm)
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      title="Center ornament horizontally and vertically on its board"
+                      data-testid="ornament-center-btn"
+                      onClick={() => onCenterOrnament?.(selectedOrnament.id)}
+                    >
+                      Center
                     </Button>
                   </div>
                 </div>

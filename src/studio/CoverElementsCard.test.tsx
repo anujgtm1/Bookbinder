@@ -80,6 +80,8 @@ describe('CoverElementsCard', () => {
     const onAddOrnament = vi.fn();
     const onUpdateOrnament = vi.fn();
     const onScaleOrnament = vi.fn();
+    const onFitOrnamentWithMargin = vi.fn();
+    const onCenterOrnament = vi.fn();
     const frontBoard = { x: 200, y: 21, width: 143, height: 223 };
     const frame = CoverOrnamentLayerModel.createForZone('frame-double-rule', frontBoard, 'front');
     const studio = {
@@ -103,6 +105,8 @@ describe('CoverElementsCard', () => {
         onUpdateOrnament={onUpdateOrnament}
         onScaleOrnament={onScaleOrnament}
         onFitOrnamentToBoard={vi.fn()}
+        onFitOrnamentWithMargin={onFitOrnamentWithMargin}
+        onCenterOrnament={onCenterOrnament}
         onDeleteOrnament={vi.fn()}
       />,
     );
@@ -112,6 +116,16 @@ describe('CoverElementsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Scale ornament up/i }));
     expect(onScaleOrnament).toHaveBeenCalledWith(frame.id, 1.1);
+
+    // 1-Click Snap to Margin presets + Center
+    fireEvent.click(screen.getByTestId('ornament-fit-tight'));
+    expect(onFitOrnamentWithMargin).toHaveBeenCalledWith(frame.id, 6);
+    fireEvent.click(screen.getByTestId('ornament-fit-classic'));
+    expect(onFitOrnamentWithMargin).toHaveBeenCalledWith(frame.id, 12);
+    fireEvent.click(screen.getByTestId('ornament-fit-wide'));
+    expect(onFitOrnamentWithMargin).toHaveBeenCalledWith(frame.id, 18);
+    fireEvent.click(screen.getByTestId('ornament-center-btn'));
+    expect(onCenterOrnament).toHaveBeenCalledWith(frame.id);
 
     // Flip H / Flip V buttons for Ornament / Custom SVG Stamp
     fireEvent.click(screen.getByTestId('ornament-flip-h-btn'));

@@ -357,11 +357,28 @@ export function CoverStyler({
           drag.origOrnament.presetId === 'custom-svg' ||
           drag.origOrnament.presetId.startsWith('emblem-') ||
           drag.origOrnament.presetId.startsWith('divider-');
+        const allowSnap = snapEnabled && !e.altKey;
+        let snappedX = pt.xMm;
+        let snappedY = pt.yMm;
+        const guides: ActiveSnapGuide[] = [];
+        if (allowSnap) {
+          const sx = findBestSnap([pt.xMm], snapTargets.vertical, 'x');
+          const sy = findBestSnap([pt.yMm], snapTargets.horizontal, 'y');
+          if (sx.guide) {
+            snappedX = sx.guide.positionMm;
+            guides.push(sx.guide);
+          }
+          if (sy.guide) {
+            snappedY = sy.guide.positionMm;
+            guides.push(sy.guide);
+          }
+        }
+        setElementSnapGuides(guides);
         const resized = CoverOrnamentLayerModel.resizeFromCorner(
           drag.origOrnament,
           drag.corner,
-          pt.xMm,
-          pt.yMm,
+          snappedX,
+          snappedY,
           lockAspect,
         );
         const cur = studioRef.current;
@@ -634,6 +651,26 @@ export function CoverStyler({
         );
         return { ...fitted, id: o.id, strokeWidthMm: o.strokeWidthMm, flipX: o.flipX, flipY: o.flipY };
       }),
+    });
+  };
+
+  const handleFitOrnamentWithMargin = (id: string, marginMm: number) => {
+    onChange({
+      ...studio,
+      ornaments: (studio.ornaments ?? []).map((o) =>
+        o.id === id
+          ? CoverOrnamentLayerModel.fitInsideBoardWithMargin(o, getBoardRectInCanvas(o.zone), marginMm)
+          : o,
+      ),
+    });
+  };
+
+  const handleCenterOrnament = (id: string) => {
+    onChange({
+      ...studio,
+      ornaments: (studio.ornaments ?? []).map((o) =>
+        o.id === id ? CoverOrnamentLayerModel.centerInBoard(o, getBoardRectInCanvas(o.zone)) : o,
+      ),
     });
   };
 
@@ -2190,6 +2227,8 @@ export function CoverStyler({
             onUpdateOrnament={handleUpdateOrnament}
             onScaleOrnament={handleScaleOrnament}
             onFitOrnamentToBoard={handleFitOrnamentToBoard}
+            onFitOrnamentWithMargin={handleFitOrnamentWithMargin}
+            onCenterOrnament={handleCenterOrnament}
             onDeleteOrnament={handleDeleteOrnament}
           />
         </TabsContent>
@@ -2225,6 +2264,8 @@ export function CoverStyler({
             onUpdateOrnament={handleUpdateOrnament}
             onScaleOrnament={handleScaleOrnament}
             onFitOrnamentToBoard={handleFitOrnamentToBoard}
+            onFitOrnamentWithMargin={handleFitOrnamentWithMargin}
+            onCenterOrnament={handleCenterOrnament}
             onDeleteOrnament={handleDeleteOrnament}
           />
         </TabsContent>
