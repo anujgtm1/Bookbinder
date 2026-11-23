@@ -100,6 +100,8 @@ import {
 } from './fonts';
 import { PreflightEngine, type PreflightQuickFix } from './preflight';
 import {
+  buildLayerFlipTransform,
+  buildPointFlipTransform,
   computeCoverTextLinePlacements,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
@@ -622,7 +624,7 @@ export function CoverStyler({
             zone: o.zone,
             color: o.color,
           });
-          return { ...fitted, id: o.id, strokeWidthMm: o.strokeWidthMm };
+          return { ...fitted, id: o.id, strokeWidthMm: o.strokeWidthMm, flipX: o.flipX, flipY: o.flipY };
         }
         const fitted = CoverOrnamentLayerModel.createForZone(
           o.presetId,
@@ -630,7 +632,7 @@ export function CoverStyler({
           o.zone,
           o.color,
         );
-        return { ...fitted, id: o.id, strokeWidthMm: o.strokeWidthMm };
+        return { ...fitted, id: o.id, strokeWidthMm: o.strokeWidthMm, flipX: o.flipX, flipY: o.flipY };
       }),
     });
   };
@@ -844,11 +846,25 @@ export function CoverStyler({
     }
   };
 
-  const handleCustomFontUpload = async (file: File) => {
+  const handleCustomFontUpload = async (file: File, targetTextLayerId?: string) => {
     try {
       const asset = await loadCustomFontFromFile(file);
       setCustomFont(asset);
-      updateSpineText({ fontId: 'custom', customFontName: asset.fileName });
+      const latest = studioRef.current;
+      if (targetTextLayerId) {
+        onChangeRef.current({
+          ...latest,
+          spineText: { ...latest.spineText, customFontName: asset.fileName },
+          textLayers: (latest.textLayers ?? []).map((t) =>
+            t.id === targetTextLayerId ? { ...t, fontId: 'custom' } : t,
+          ),
+        });
+      } else {
+        onChangeRef.current({
+          ...latest,
+          spineText: { ...latest.spineText, fontId: 'custom', customFontName: asset.fileName },
+        });
+      }
       onStatusMessage(
         asset.pdfEmbeddable
           ? `Loaded custom font "${asset.fileName}"`
@@ -1342,6 +1358,14 @@ export function CoverStyler({
                         y={layer.yMm}
                         width={layer.widthMm}
                         height={layer.heightMm}
+                        transform={buildLayerFlipTransform(
+                          layer.xMm,
+                          layer.yMm,
+                          layer.widthMm,
+                          layer.heightMm,
+                          layer.flipX,
+                          layer.flipY,
+                        )}
                         preserveAspectRatio="none"
                         data-testid={`studio-layer-${index}`}
                         className={
@@ -1496,6 +1520,7 @@ export function CoverStyler({
                     <g
                       key={layer.id}
                       data-testid={`studio-cover-text-${index}`}
+                      transform={buildPointFlipTransform(layer.xMm, layer.yMm, layer.flipX, layer.flipY)}
                       className={
                         eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
                       }
@@ -2108,6 +2133,11 @@ export function CoverStyler({
             onScaleLayer={(id, factor) =>
               updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
             }
+            onToggleLayerFlip={(id, axis) =>
+              updateLayer(id, (layer) =>
+                axis === 'x' ? { ...layer, flipX: !layer.flipX } : { ...layer, flipY: !layer.flipY },
+              )
+            }
             onReorderLayer={(id, direction) =>
               onChange({
                 ...studio,
@@ -2154,6 +2184,7 @@ export function CoverStyler({
             onUpdateTextLayer={handleUpdateTextLayer}
             onQuickAlignText={handleQuickAlignText}
             onDeleteTextLayer={handleDeleteTextLayer}
+            onCustomFontSelected={(file, textLayerId) => void handleCustomFontUpload(file, textLayerId)}
             onAddOrnament={handleAddOrnament}
             onImportSvgStamp={(file, zone, color) => void handleImportSvgStamp(file, zone, color)}
             onUpdateOrnament={handleUpdateOrnament}
@@ -2188,6 +2219,7 @@ export function CoverStyler({
             onUpdateTextLayer={handleUpdateTextLayer}
             onQuickAlignText={handleQuickAlignText}
             onDeleteTextLayer={handleDeleteTextLayer}
+            onCustomFontSelected={(file, textLayerId) => void handleCustomFontUpload(file, textLayerId)}
             onAddOrnament={handleAddOrnament}
             onImportSvgStamp={(file, zone, color) => void handleImportSvgStamp(file, zone, color)}
             onUpdateOrnament={handleUpdateOrnament}

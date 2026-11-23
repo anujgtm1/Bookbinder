@@ -10,6 +10,7 @@ describe('CoverElementsCard', () => {
     const onUpdateTextLayer = vi.fn();
     const onQuickAlignText = vi.fn();
     const onDeleteTextLayer = vi.fn();
+    const onCustomFontSelected = vi.fn();
 
     const frontBoard = { x: 200, y: 21, width: 143, height: 223 };
     const titleLayer = CoverTextLayerModel.createPreset('front-title', frontBoard);
@@ -21,7 +22,12 @@ describe('CoverElementsCard', () => {
     render(
       <CoverElementsCard
         studio={studio}
-        customFont={null}
+        customFont={{
+          familyName: 'BookbinderCustom-MySerif',
+          fileName: 'MySerif.ttf',
+          bytes: new Uint8Array([1, 2, 3]),
+          pdfEmbeddable: true,
+        }}
         selectedTextId={titleLayer.id}
         selectedOrnamentId={null}
         onSelectText={vi.fn()}
@@ -30,6 +36,7 @@ describe('CoverElementsCard', () => {
         onUpdateTextLayer={onUpdateTextLayer}
         onQuickAlignText={onQuickAlignText}
         onDeleteTextLayer={onDeleteTextLayer}
+        onCustomFontSelected={onCustomFontSelected}
         onAddOrnament={vi.fn()}
         onUpdateOrnament={vi.fn()}
         onScaleOrnament={vi.fn()}
@@ -48,10 +55,30 @@ describe('CoverElementsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Center' }));
     expect(onQuickAlignText).toHaveBeenCalledWith(titleLayer.id, 'center');
+
+    // Custom font badge & upload input inside Cover Text
+    expect(screen.getByTestId('cover-text-custom-font-badge')).toHaveTextContent(
+      'Custom: BookbinderCustom-MySerif',
+    );
+    expect(screen.getByTestId('cover-text-upload-font-btn')).toBeInTheDocument();
+    const fontFile = new File([new Uint8Array([1, 2, 3])], 'CustomDisplay.otf', {
+      type: 'font/otf',
+    });
+    fireEvent.change(screen.getByTestId('cover-text-upload-font-input'), {
+      target: { files: [fontFile] },
+    });
+    expect(onCustomFontSelected).toHaveBeenCalledWith(fontFile, titleLayer.id);
+
+    // Flip H / Flip V buttons for Cover Text
+    fireEvent.click(screen.getByTestId('cover-text-flip-h-btn'));
+    expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { flipX: true });
+    fireEvent.click(screen.getByTestId('cover-text-flip-v-btn'));
+    expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { flipY: true });
   });
 
   it('switches to Classic Designs gallery and inserts parametric ornaments', () => {
     const onAddOrnament = vi.fn();
+    const onUpdateOrnament = vi.fn();
     const onScaleOrnament = vi.fn();
     const frontBoard = { x: 200, y: 21, width: 143, height: 223 };
     const frame = CoverOrnamentLayerModel.createForZone('frame-double-rule', frontBoard, 'front');
@@ -73,7 +100,7 @@ describe('CoverElementsCard', () => {
         onQuickAlignText={vi.fn()}
         onDeleteTextLayer={vi.fn()}
         onAddOrnament={onAddOrnament}
-        onUpdateOrnament={vi.fn()}
+        onUpdateOrnament={onUpdateOrnament}
         onScaleOrnament={onScaleOrnament}
         onFitOrnamentToBoard={vi.fn()}
         onDeleteOrnament={vi.fn()}
@@ -85,5 +112,11 @@ describe('CoverElementsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Scale ornament up/i }));
     expect(onScaleOrnament).toHaveBeenCalledWith(frame.id, 1.1);
+
+    // Flip H / Flip V buttons for Ornament / Custom SVG Stamp
+    fireEvent.click(screen.getByTestId('ornament-flip-h-btn'));
+    expect(onUpdateOrnament).toHaveBeenCalledWith(frame.id, { flipX: true });
+    fireEvent.click(screen.getByTestId('ornament-flip-v-btn'));
+    expect(onUpdateOrnament).toHaveBeenCalledWith(frame.id, { flipY: true });
   });
 });

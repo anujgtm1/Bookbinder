@@ -7,6 +7,8 @@ import {
   EyeOff,
   FileCode2,
   FileText,
+  FlipHorizontal2,
+  FlipVertical2,
   Grid2x2,
   ImagePlus,
   Layers,
@@ -74,6 +76,7 @@ import {
   computePocketImagePlacement,
   generateStyledInnerTemplatesPdf,
 } from './pocketRenderEngine';
+import { buildLayerFlipTransform } from './renderEngine';
 import { buildInnerPocketSnapTargets } from './snapGuides';
 import {
   isSupportedImageFile,
@@ -934,6 +937,14 @@ export function InnerPocketsStudio({
                             y={0}
                             width={tileW}
                             height={tileH}
+                            transform={buildLayerFlipTransform(
+                              0,
+                              0,
+                              tileW,
+                              tileH,
+                              layer.flipX,
+                              layer.flipY,
+                            )}
                             preserveAspectRatio="none"
                           />
                         </pattern>
@@ -1055,6 +1066,14 @@ export function InnerPocketsStudio({
                         y={layer.yMm}
                         width={layer.widthMm}
                         height={layer.heightMm}
+                        transform={buildLayerFlipTransform(
+                          layer.xMm,
+                          layer.yMm,
+                          layer.widthMm,
+                          layer.heightMm,
+                          layer.flipX,
+                          layer.flipY,
+                        )}
                         preserveAspectRatio="none"
                         data-testid={`pocket-layer-${index}`}
                         className="cursor-grab active:cursor-grabbing"
@@ -1685,6 +1704,44 @@ export function InnerPocketsStudio({
                   </div>
 
                   <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant={selectedLayer.flipX ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      aria-label="Flip selected pocket image horizontally"
+                      aria-pressed={Boolean(selectedLayer.flipX)}
+                      title="Flip image horizontally"
+                      data-testid="pocket-layer-flip-h-btn"
+                      onClick={() =>
+                        updateLayer(selectedLayer.id, (layer) => ({
+                          ...layer,
+                          flipX: !layer.flipX,
+                        }))
+                      }
+                    >
+                      <FlipHorizontal2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip H
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={selectedLayer.flipY ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      aria-label="Flip selected pocket image vertically"
+                      aria-pressed={Boolean(selectedLayer.flipY)}
+                      title="Flip image vertically"
+                      data-testid="pocket-layer-flip-v-btn"
+                      onClick={() =>
+                        updateLayer(selectedLayer.id, (layer) => ({
+                          ...layer,
+                          flipY: !layer.flipY,
+                        }))
+                      }
+                    >
+                      <FlipVertical2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip V
+                    </Button>
                     <Button
                       variant="outline"
                       size="icon"

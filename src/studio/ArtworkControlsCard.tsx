@@ -2,6 +2,8 @@ import {
   ArrowDown,
   ArrowUp,
   Expand,
+  FlipHorizontal2,
+  FlipVertical2,
   ImagePlus,
   Minus,
   Pipette,
@@ -47,6 +49,7 @@ export interface ArtworkControlsCardProps {
   readonly onMatchSpineBackToEdge?: (hex: string) => void;
   readonly onSetLayerClip: (id: string, clipZone: LayerClipZone) => void;
   readonly onScaleLayer: (id: string, factor: number) => void;
+  readonly onToggleLayerFlip?: (id: string, axis: 'x' | 'y') => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
@@ -96,6 +99,7 @@ export function ArtworkControlsCard({
   onMatchSpineBackToEdge,
   onSetLayerClip,
   onScaleLayer,
+  onToggleLayerFlip,
   onReorderLayer,
   onDeleteLayer,
   onUpdateStudio,
@@ -276,6 +280,38 @@ export function ArtworkControlsCard({
               </div>
 
               <div className="flex items-center gap-1">
+                {onToggleLayerFlip && (
+                  <>
+                    <Button
+                      type="button"
+                      variant={selectedLayer.flipX ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      aria-label="Flip selected image horizontally"
+                      aria-pressed={Boolean(selectedLayer.flipX)}
+                      title="Flip image horizontally"
+                      data-testid="layer-flip-h-btn"
+                      onClick={() => onToggleLayerFlip(selectedLayer.id, 'x')}
+                    >
+                      <FlipHorizontal2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip H
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={selectedLayer.flipY ? 'default' : 'outline'}
+                      size="sm"
+                      className="h-8 px-2 text-xs"
+                      aria-label="Flip selected image vertically"
+                      aria-pressed={Boolean(selectedLayer.flipY)}
+                      title="Flip image vertically"
+                      data-testid="layer-flip-v-btn"
+                      onClick={() => onToggleLayerFlip(selectedLayer.id, 'y')}
+                    >
+                      <FlipVertical2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip V
+                    </Button>
+                  </>
+                )}
                 <Button
                   variant="outline"
                   size="icon"

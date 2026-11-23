@@ -2,6 +2,8 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  FlipHorizontal2,
+  FlipVertical2,
   Maximize2,
   Minus,
   Plus,
@@ -67,6 +69,7 @@ export interface CoverElementsCardProps {
   readonly onUpdateTextLayer: (id: string, patch: Partial<CoverTextLayer>) => void;
   readonly onQuickAlignText: (id: string, verticalSlot: 'upper' | 'center' | 'lower') => void;
   readonly onDeleteTextLayer: (id: string) => void;
+  readonly onCustomFontSelected?: (file: File, targetTextLayerId: string) => void;
   readonly onAddOrnament: (presetId: ClassicOrnamentId, zone: CoverElementZone, color: string) => void;
   readonly onImportSvgStamp?: (file: File, zone: CoverElementZone, color: string) => void;
   readonly onUpdateOrnament: (id: string, patch: Partial<CoverOrnamentLayer>) => void;
@@ -125,6 +128,7 @@ export function CoverElementsCard({
   onUpdateTextLayer,
   onQuickAlignText,
   onDeleteTextLayer,
+  onCustomFontSelected,
   onAddOrnament,
   onImportSvgStamp,
   onUpdateOrnament,
@@ -137,6 +141,7 @@ export function CoverElementsCard({
   const [ornamentZone, setOrnamentZone] = useState<CoverElementZone>('front');
   const [defaultFoilColor, setDefaultFoilColor] = useState<string>('#d9b566');
   const svgStampInputRef = useRef<HTMLInputElement>(null);
+  const coverFontInputRef = useRef<HTMLInputElement>(null);
 
   const textLayers = studio.textLayers ?? [];
   const ornaments = studio.ornaments ?? [];
@@ -338,29 +343,74 @@ export function CoverElementsCard({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[1.5fr_1fr]">
                   <div className="space-y-1">
-                    <Label htmlFor="cover-text-font">Font</Label>
-                    <Select
-                      value={selectedText.fontId}
-                      onValueChange={(v) =>
-                        onUpdateTextLayer(selectedText.id, { fontId: v as StudioFontId })
-                      }
-                    >
-                      <SelectTrigger id="cover-text-font" className="h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CURATED_FONTS.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.label}
-                          </SelectItem>
-                        ))}
-                        {customFont && (
-                          <SelectItem value="custom">Custom ({customFont.familyName})</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-between gap-1.5">
+                      <Label htmlFor="cover-text-font">Font</Label>
+                      {customFont && (
+                        <Badge
+                          variant="outline"
+                          className="h-4 max-w-[140px] truncate px-1.5 font-mono text-[10px]"
+                          data-testid="cover-text-custom-font-badge"
+                          title={`Custom: ${customFont.familyName}`}
+                        >
+                          Custom: {customFont.familyName}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Select
+                        value={selectedText.fontId}
+                        onValueChange={(v) =>
+                          onUpdateTextLayer(selectedText.id, { fontId: v as StudioFontId })
+                        }
+                      >
+                        <SelectTrigger id="cover-text-font" className="h-8 flex-1 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CURATED_FONTS.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>
+                              {f.label}
+                            </SelectItem>
+                          ))}
+                          {customFont && (
+                            <SelectItem value="custom">Custom ({customFont.familyName})</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {onCustomFontSelected && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 shrink-0 px-2 text-xs"
+                            data-testid="cover-text-upload-font-btn"
+                            title="Upload a custom .ttf, .otf, .woff, or .woff2 font"
+                            onClick={() => coverFontInputRef.current?.click()}
+                          >
+                            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                            Upload Font
+                          </Button>
+                          <input
+                            ref={coverFontInputRef}
+                            type="file"
+                            accept=".ttf,.otf,.woff,.woff2"
+                            className="visually-hidden"
+                            aria-label="Upload custom font for cover text"
+                            data-testid="cover-text-upload-font-input"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                onCustomFontSelected(file, selectedText.id);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-1">
@@ -464,6 +514,36 @@ export function CoverElementsCard({
                       }
                     >
                       AA
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedText.flipX ? 'default' : 'outline'}
+                      className="h-7 px-2 text-[11px]"
+                      aria-pressed={Boolean(selectedText.flipX)}
+                      title="Flip text horizontally"
+                      data-testid="cover-text-flip-h-btn"
+                      onClick={() =>
+                        onUpdateTextLayer(selectedText.id, { flipX: !selectedText.flipX })
+                      }
+                    >
+                      <FlipHorizontal2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip H
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedText.flipY ? 'default' : 'outline'}
+                      className="h-7 px-2 text-[11px]"
+                      aria-pressed={Boolean(selectedText.flipY)}
+                      title="Flip text vertically"
+                      data-testid="cover-text-flip-v-btn"
+                      onClick={() =>
+                        onUpdateTextLayer(selectedText.id, { flipY: !selectedText.flipY })
+                      }
+                    >
+                      <FlipVertical2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip V
                     </Button>
                   </div>
 
@@ -744,7 +824,37 @@ export function CoverElementsCard({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedOrnament.flipX ? 'default' : 'outline'}
+                      className="h-7 px-2 text-[11px]"
+                      aria-pressed={Boolean(selectedOrnament.flipX)}
+                      title="Flip design horizontally"
+                      data-testid="ornament-flip-h-btn"
+                      onClick={() =>
+                        onUpdateOrnament(selectedOrnament.id, { flipX: !selectedOrnament.flipX })
+                      }
+                    >
+                      <FlipHorizontal2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip H
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={selectedOrnament.flipY ? 'default' : 'outline'}
+                      className="h-7 px-2 text-[11px]"
+                      aria-pressed={Boolean(selectedOrnament.flipY)}
+                      title="Flip design vertically"
+                      data-testid="ornament-flip-v-btn"
+                      onClick={() =>
+                        onUpdateOrnament(selectedOrnament.id, { flipY: !selectedOrnament.flipY })
+                      }
+                    >
+                      <FlipVertical2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      Flip V
+                    </Button>
                     <Button
                       type="button"
                       size="icon"
