@@ -235,13 +235,14 @@ src/
   - Supports free pointer dragging in 1:1 mm coordinates with live golden-brass **Magnetic Smart Snap Guides** (snapping cleanly to `FRONT CENTER`, `BACK CENTER`, `SPINE CENTER`, and board margins), plus quick-align presets (*Upper ⅓*, *Center*, *Lower ⅓*).
   - Configurable font family (all curated literary serifs/sans-serifs + custom `.ttf`/`.otf` uploads), font size (`8–96 pt`), letter spacing / tracking (`-0.05` to `0.40 em`), line height, uppercase transform, alignment (`Left / Center / Right`), and ink/foil color.
   - Renders identically across the 2D Interactive Canvas, 3D Book Preview, 300 DPI Print PDF (as true vector PDF typography), Affinity SVG, and **Cricut / Silhouette / ScanNCut HTV SVG** (baked via `@pdf-lib/fontkit` into flattened `1:1 mm` Bezier `<path>` curves).
-- **Parametric Classic Bookbindery Vector Ornament Library (`ornaments: CoverOrnamentLayer[]`):**
-  - Built-in library of timeless single-color vector book motifs generated parametrically in `1:1 mm` (never distorting across A6, Digest, or Trade book sizes):
+- **Parametric Classic Bookbindery Vector Ornament Library & Custom SVG Stamps (`ornaments: CoverOrnamentLayer[]`, `src/studio/svgStampParser.ts`):**
+  - Built-in library of 17 timeless single-color vector book motifs generated parametrically in `1:1 mm` (never distorting across A6, Digest, or Trade book sizes):
     - **Cover Frames:** Single Hairline Rule, Classic Double Rule, Art Deco Stepped Frame, Notched Corner Frame.
     - **Mirrored 4-Corner Flourishes:** Classic Scroll Corners, Art Deco Chevron Corners.
     - **Title Dividers & Emblems:** Diamond Rule, Aldus Fleuron Leaf, Celestial Stars & Crescent, Compass Rose, Botanical Sprig.
-    - **Spine Bands:** 5-Band Classic Spine Foil Rules.
-  - Draggable with magnetic snap guides, corner-resizable, recolorable to any foil/ink hex color, and exported cleanly to 300 DPI Print PDF, 3D Preview, Affinity SVG, and **Cricut / HTV SVG** as flattened cuttable vector paths.
+    - **Spine Designs (6 classic motifs):** 5-Band Spine Rules, Spine Title Cartouche, Head & Tail Decorative Bands, Vertical Botanical Spine Vine, Vertical Celestial Spine Column, Art Deco Spine Lattice.
+  - **Custom Vector SVG Stamp Import:** Upload any `.svg` design directly into the Classic Designs library; `svgStampParser.ts` parses shapes/paths into flattened absolute `1:1 mm` Bezier contours (zero `transform` attributes), enabling one-click foil/ink recoloring, adjustable stroke/line-weight thickening for HTV cutting, 4-corner canvas resizing, and direct export to 300 DPI Vector Print PDF, 3D Preview, Affinity SVG, and **Cricut / HTV SVG**.
+  - Draggable with magnetic snap guides, 4-corner resizable directly on the 2D canvas, recolorable to any foil/ink hex color, and exported cleanly to 300 DPI Print PDF, 3D Preview, Affinity SVG, and **Cricut / HTV SVG** as flattened cuttable vector paths.
 - **SVG Artwork Uploads:** Image uploaders on both Outer Cover and Inner Pockets accept `.svg` (`image/svg+xml`) alongside `PNG`, `JPG`, and `WEBP`.
 
 ---
