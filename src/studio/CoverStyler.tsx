@@ -275,11 +275,47 @@ export function CoverStyler({
     }
   };
 
+  const clipZoneForQuickFit = (target: QuickFitTarget): LayerClipZone =>
+    target === 'fullWrap' ? 'none' : target;
+
+  const handleQuickFitLayer = (id: string, target: QuickFitTarget) => {
+    const targetLayer = studioRef.current.layers.find((l) => l.id === id);
+    if (!targetLayer) return;
+
+    const nextClipZone = clipZoneForQuickFit(target);
+    const activeStubMode = targetLayer.stubExtensionMode;
+
+    // If pasting-stub extension is active on this layer, re-synthesize cleanly for the current book size
+    if (activeStubMode && activeStubMode !== 'none') {
+      if (target === 'front' || target === 'back') {
+        void handleExtendLayerStub(id, activeStubMode, target);
+        return;
+      }
+      // Fitting an extended layer to spine or fullWrap reverts cleanly to the unextended source image
+      const sourceLayer: CoverImageLayer = {
+        ...targetLayer,
+        dataUrl: targetLayer.originalDataUrl ?? targetLayer.dataUrl,
+        naturalWidth: targetLayer.originalWidth ?? targetLayer.naturalWidth,
+        naturalHeight: targetLayer.originalHeight ?? targetLayer.naturalHeight,
+        originalDataUrl: undefined,
+        originalWidth: undefined,
+        originalHeight: undefined,
+        stubExtensionMode: 'none',
+        stubExtensionSide: undefined,
+      };
+      const targetRect = resolveQuickFitRect(spec, target);
+      updateLayer(id, () => CoverImageLayerModel.fitToRect(sourceLayer, targetRect, nextClipZone));
+      return;
+    }
+
+    const targetRect = resolveQuickFitRect(spec, target);
+    updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect, nextClipZone));
+  };
+
   const handleApplyQuickFix = (fix: PreflightQuickFix) => {
     switch (fix.kind) {
       case 'fit-layer': {
-        const targetRect = resolveQuickFitRect(spec, fix.target);
-        updateLayer(fix.layerId, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect));
+        handleQuickFitLayer(fix.layerId, fix.target);
         setSelectedLayerId(fix.layerId);
         onStatusMessage(`Applied Quick Fit (${fix.label})`);
         break;
@@ -1455,10 +1491,7 @@ export function CoverStyler({
           sampledEdgeHex={sampledEdgeHex}
           onSelectLayer={setSelectedLayerId}
           onAddImageFiles={(files) => void handleAddImageFiles(files)}
-          onQuickFitLayer={(id, target: QuickFitTarget) => {
-            const targetRect = resolveQuickFitRect(spec, target);
-            updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect));
-          }}
+          onQuickFitLayer={handleQuickFitLayer}
           onExtendLayerStub={(id, mode) => void handleExtendLayerStub(id, mode)}
           onMatchSpineBackToEdge={(hex) => {
             updateStudio({ spineBgColor: hex, backBgColor: hex, frontBgColor: hex });

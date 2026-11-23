@@ -187,4 +187,66 @@ describe('CoverStyler', () => {
     await user.click(screen.getByTestId('download-outer-pdf-btn'));
     expect(onDownloadOuterPdf).toHaveBeenCalledTimes(1);
   });
+
+  it('fits artwork cleanly to Front Zone with front clipZone after the book is resized', async () => {
+    const user = userEvent.setup();
+    const initialParams = DEFAULT_BOOK_PARAMETERS;
+    const initialGeom = calculateCaseGeometry(initialParams);
+    const layer = CoverImageLayerModel.createInRect({
+      id: 'layer-resize-test',
+      dataUrl: 'data:image/png;base64,AAA',
+      fileName: 'wide-art.png',
+      naturalWidth: 1200,
+      naturalHeight: 1200, // square cover art would spill across spine if not clipped
+      targetRect: { x: 200, y: 0, width: 150, height: 150 },
+      clipZone: 'none',
+    });
+
+    let state: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      layers: [layer],
+    };
+    const onChange = vi.fn((next: CoverStudioState) => {
+      state = next;
+    });
+
+    const { rerender } = render(
+      <CoverStyler
+        params={initialParams}
+        geometry={initialGeom}
+        studio={state}
+        onChange={onChange}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    // Now resize book dramatically (wider + taller + thicker spine)
+    const largerParams = {
+      ...initialParams,
+      pbWidthMm: 175,
+      pbHeightMm: 250,
+      pbThicknessMm: 38,
+    };
+    const largerGeom = calculateCaseGeometry(largerParams);
+
+    rerender(
+      <CoverStyler
+        params={largerParams}
+        geometry={largerGeom}
+        studio={state}
+        onChange={onChange}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByTestId('quick-fit-front'));
+
+    const expectedFrontStart = largerGeom.outerWrap.bleedMm + largerGeom.outerWrap.frontBoardRect.x;
+    const expectedTotalHeight = largerGeom.outerWrap.heightMm + largerGeom.outerWrap.bleedMm * 2;
+    expect(state.layers[0].clipZone).toBe('front');
+    expect(state.layers[0].heightMm).toBeGreaterThanOrEqual(expectedTotalHeight - 0.5);
+    expect(state.layers[0].xMm + state.layers[0].widthMm).toBeGreaterThanOrEqual(
+      expectedFrontStart + largerGeom.outerWrap.frontBoardRect.width,
+    );
+  });
 });
