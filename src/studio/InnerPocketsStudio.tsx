@@ -27,6 +27,7 @@ import {
   type PdfExportSelection,
 } from '@/components/PdfExportDialog';
 import { Button } from '@/components/ui/button';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
 import { triggerBytesDownload } from '@/core/storage';
 import {
@@ -404,6 +405,8 @@ export function InnerPocketsStudio({
     [frontPocket.outerCutPolygon, innerLayout.frontX],
   );
 
+  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+
   return (
     <div className="flex flex-col gap-4" data-testid="inner-pockets-studio">
       {/* Unified Inner Pockets & Liner Cutting Mat Workbench */}
@@ -418,8 +421,8 @@ export function InnerPocketsStudio({
               Inner Slip-In Pockets &amp; Spine Liner
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {geometry.bindingStyle === 'softcover-jacket'
-                ? 'Note: Softcover Slip-In Jacket already includes built-in tuck flaps on the Outer Wrap — these separate inner pocket sheets are optional.'
+              {!bindingStrategy.capabilities.usesInnerPockets
+                ? `Note: ${bindingStrategy.shortLabel} does not require separate inner pocket sheets — these templates are optional.`
                 : 'Drop images directly onto any pocket, drag and resize with magnetic guides, or inspect 1:1 mm fold flaps and auto-paginated print sheets.'}
             </p>
           </div>

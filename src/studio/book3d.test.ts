@@ -36,4 +36,30 @@ describe('Book3DModel', () => {
     expect(Book3DModel.matchPreset(BOOK_3D_PRESETS[1].angle)).toBe('spine');
     expect(Book3DModel.matchPreset({ yawDeg: 57, pitchDeg: -22 })).toBeNull();
   });
+
+  it('uses flush 0-overhang cardstock proportions for paperback-wrap and thin wrap proportions for dust-jacket', () => {
+    const pbGeom = calculateCaseGeometry({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    });
+    const pbDims = Book3DModel.computeDimensionsPx(pbGeom, 310, 260);
+    expect(pbDims.pageInsetPx).toBe(0);
+    expect(pbDims.pageWidthPx).toBe(pbDims.widthPx);
+    expect(pbDims.pageHeightPx).toBe(pbDims.heightPx);
+    expect(pbDims.boardThicknessPx).toBe(0.8);
+
+    const djGeom = calculateCaseGeometry({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    });
+    const djDims = Book3DModel.computeDimensionsPx(djGeom, 310, 260);
+    expect(djDims.pageInsetPx).toBe(1);
+    expect(djDims.boardThicknessPx).toBe(1.2);
+  });
 });

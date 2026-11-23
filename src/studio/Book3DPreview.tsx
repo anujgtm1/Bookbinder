@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
@@ -231,15 +232,20 @@ function InnerFrontPocketSvg({
   const pocketLayers = pocketStyle.layers ?? [];
   const boardW = geometry.cutList.coverBoards.widthMm;
   const boardH = geometry.cutList.coverBoards.heightMm;
-  const isSoftcover = geometry.bindingStyle === 'softcover-jacket';
+  const { capabilities } = getBindingStrategy(geometry.bindingStyle);
+  const hasFlaps = capabilities.hasFlaps;
+  const usesInnerPockets = capabilities.usesInnerPockets;
+  const isFlushCardstock = !usesInnerPockets && !hasFlaps;
   const pocketFace = layout.frontFaceRect;
   const clipId = `${prefix}-inside-pocket-clip`;
 
-  // Pocket/flap is anchored to the outer fore-edge (left side when viewing the opened inside front board)
-  const pocketWidthMm = isSoftcover
-    ? geometry.outerWrap.jacketFlapWidthMm
-    : geometry.frontPocket.pocketWidthMm;
-  const pocketHeightMm = isSoftcover ? boardH : geometry.frontPocket.pocketHeightMm;
+  // Pocket/flap is anchored to the outer fore-edge (left side when viewing the opened inside front cover)
+  const pocketWidthMm = hasFlaps
+    ? Math.min(boardW * 0.85, geometry.outerWrap.jacketFlapWidthMm)
+    : usesInnerPockets
+      ? geometry.frontPocket.pocketWidthMm
+      : 0;
+  const pocketHeightMm = hasFlaps ? boardH : geometry.frontPocket.pocketHeightMm;
   const insetY = (boardH - pocketHeightMm) / 2;
 
   return (
@@ -250,110 +256,123 @@ function InnerFrontPocketSvg({
       className="block h-full w-full select-none"
     >
       <defs>
-        <clipPath id={clipId}>
-          <rect x={0} y={insetY} width={pocketWidthMm} height={pocketHeightMm} />
-        </clipPath>
-        {pocketLayers
-          .filter((layer) => layer.tiled)
-          .map((layer) => {
-            const tileW = Math.max(8, layer.widthMm);
-            const tileH = Math.max(8, layer.heightMm);
-            return (
-              <pattern
-                key={`inside-tile-${layer.id}`}
-                id={`${prefix}-inside-tile-${layer.id}`}
-                x={layer.xMm - pocketFace.x}
-                y={layer.yMm - pocketFace.y + insetY}
-                width={tileW}
-                height={tileH}
-                patternUnits="userSpaceOnUse"
-              >
-                <image
-                  href={layer.dataUrl}
-                  x={0}
-                  y={0}
-                  width={tileW}
-                  height={tileH}
-                  transform={buildLayerFlipTransform(0, 0, tileW, tileH, layer.flipX, layer.flipY)}
-                  preserveAspectRatio="none"
-                />
-              </pattern>
-            );
-          })}
-      </defs>
-
-      {/* Turned-in outer wrap rim / inner board backing */}
-      <rect x={0} y={0} width={boardW} height={boardH} fill={studio.frontBgColor} />
-      <rect
-        x={Math.min(10, boardW * 0.08)}
-        y={Math.min(10, boardH * 0.06)}
-        width={Math.max(10, boardW - Math.min(20, boardW * 0.16))}
-        height={Math.max(10, boardH - Math.min(20, boardH * 0.12))}
-        fill="#f6f0e4"
-        fillOpacity={isSoftcover ? 0.96 : 0.92}
-      />
-
-      {/* Styled Slip-In Pocket Envelope (or integrated softcover tuck flap) */}
-      <g clipPath={`url(#${clipId})`}>
-        <rect
-          x={0}
-          y={insetY}
-          width={pocketWidthMm}
-          height={pocketHeightMm}
-          fill={isSoftcover ? studio.frontBgColor : pocketStyle.backgroundColor}
-        />
-        {!isSoftcover && pocketLayers.length > 0 && (
-          <g opacity={pocketStyle.imageOpacity}>
-            {pocketLayers.map((layer) =>
-              layer.tiled ? (
-                <rect
-                  key={layer.id}
-                  x={0}
-                  y={insetY}
-                  width={pocketWidthMm}
-                  height={pocketHeightMm}
-                  fill={`url(#${prefix}-inside-tile-${layer.id})`}
-                />
-              ) : (
-                <image
-                  key={layer.id}
-                  href={layer.dataUrl}
+        {!isFlushCardstock && (
+          <clipPath id={clipId}>
+            <rect x={0} y={insetY} width={pocketWidthMm} height={pocketHeightMm} />
+          </clipPath>
+        )}
+        {usesInnerPockets &&
+          pocketLayers
+            .filter((layer) => layer.tiled)
+            .map((layer) => {
+              const tileW = Math.max(8, layer.widthMm);
+              const tileH = Math.max(8, layer.heightMm);
+              return (
+                <pattern
+                  key={`inside-tile-${layer.id}`}
+                  id={`${prefix}-inside-tile-${layer.id}`}
                   x={layer.xMm - pocketFace.x}
                   y={layer.yMm - pocketFace.y + insetY}
-                  width={layer.widthMm}
-                  height={layer.heightMm}
-                  transform={buildLayerFlipTransform(
-                    layer.xMm - pocketFace.x,
-                    layer.yMm - pocketFace.y + insetY,
-                    layer.widthMm,
-                    layer.heightMm,
-                    layer.flipX,
-                    layer.flipY,
-                  )}
-                  preserveAspectRatio="none"
-                />
-              ),
+                  width={tileW}
+                  height={tileH}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <image
+                    href={layer.dataUrl}
+                    x={0}
+                    y={0}
+                    width={tileW}
+                    height={tileH}
+                    transform={buildLayerFlipTransform(0, 0, tileW, tileH, layer.flipX, layer.flipY)}
+                    preserveAspectRatio="none"
+                  />
+                </pattern>
+              );
+            })}
+      </defs>
+
+      {/* Inside cover backing (turned-in rim for chipboard, clean cardstock for boardless wraps) */}
+      {capabilities.usesChipboard ? (
+        <>
+          <rect x={0} y={0} width={boardW} height={boardH} fill={studio.frontBgColor} />
+          <rect
+            x={Math.min(10, boardW * 0.08)}
+            y={Math.min(10, boardH * 0.06)}
+            width={Math.max(10, boardW - Math.min(20, boardW * 0.16))}
+            height={Math.max(10, boardH - Math.min(20, boardH * 0.12))}
+            fill="#f6f0e4"
+            fillOpacity={0.92}
+          />
+        </>
+      ) : (
+        <rect x={0} y={0} width={boardW} height={boardH} fill="#f7f2e7" />
+      )}
+
+      {/* Styled Slip-In Pocket Envelope (chipboard cases) or Folded Flap (slip cover & dust jacket) */}
+      {!isFlushCardstock && pocketWidthMm > 0 && (
+        <>
+          <g clipPath={`url(#${clipId})`}>
+            <rect
+              x={0}
+              y={insetY}
+              width={pocketWidthMm}
+              height={pocketHeightMm}
+              fill={hasFlaps ? studio.frontBgColor : pocketStyle.backgroundColor}
+            />
+            {usesInnerPockets && pocketLayers.length > 0 && (
+              <g opacity={pocketStyle.imageOpacity}>
+                {pocketLayers.map((layer) =>
+                  layer.tiled ? (
+                    <rect
+                      key={layer.id}
+                      x={0}
+                      y={insetY}
+                      width={pocketWidthMm}
+                      height={pocketHeightMm}
+                      fill={`url(#${prefix}-inside-tile-${layer.id})`}
+                    />
+                  ) : (
+                    <image
+                      key={layer.id}
+                      href={layer.dataUrl}
+                      x={layer.xMm - pocketFace.x}
+                      y={layer.yMm - pocketFace.y + insetY}
+                      width={layer.widthMm}
+                      height={layer.heightMm}
+                      transform={buildLayerFlipTransform(
+                        layer.xMm - pocketFace.x,
+                        layer.yMm - pocketFace.y + insetY,
+                        layer.widthMm,
+                        layer.heightMm,
+                        layer.flipX,
+                        layer.flipY,
+                      )}
+                      preserveAspectRatio="none"
+                    />
+                  ),
+                )}
+              </g>
             )}
           </g>
-        )}
-      </g>
 
-      {/* Subtle shadow & crisp edge along the open slip-in pocket lip */}
-      <line
-        x1={pocketWidthMm}
-        y1={insetY}
-        x2={pocketWidthMm}
-        y2={insetY + pocketHeightMm}
-        stroke="rgba(35, 31, 27, 0.35)"
-        strokeWidth="1.2"
-      />
-      <rect
-        x={pocketWidthMm}
-        y={insetY}
-        width={3.5}
-        height={pocketHeightMm}
-        fill="rgba(0, 0, 0, 0.08)"
-      />
+          {/* Subtle shadow & crisp edge along the open slip-in pocket or folded flap edge */}
+          <line
+            x1={pocketWidthMm}
+            y1={insetY}
+            x2={pocketWidthMm}
+            y2={insetY + pocketHeightMm}
+            stroke="rgba(35, 31, 27, 0.35)"
+            strokeWidth="1.2"
+          />
+          <rect
+            x={pocketWidthMm}
+            y={insetY}
+            width={3.5}
+            height={pocketHeightMm}
+            fill="rgba(0, 0, 0, 0.08)"
+          />
+        </>
+      )}
     </svg>
   );
 }
@@ -462,8 +481,10 @@ export function Book3DPreview({
   const halfDepth = dims.depthPx / 2;
   const halfWidth = dims.widthPx / 2;
   const halfHeight = dims.heightPx / 2;
-  const isFlexibleSpine = geometry.bindingStyle === 'flexible-spine';
-  const isSoftcover = geometry.bindingStyle === 'softcover-jacket';
+  const { capabilities } = getBindingStrategy(geometry.bindingStyle);
+  const usesChipboard = capabilities.usesChipboard;
+  const hasRigidSpine = capabilities.hasRigidSpine;
+  const isFlexibleBoardCover = usesChipboard && !hasRigidSpine;
   const coverOpenAngleDeg = isCoverOpen ? -122 : 0;
 
   return (
@@ -550,13 +571,13 @@ export function Book3DPreview({
               spinePlacements={spinePlacements}
               fontFamily={activeFontFamily}
             />
-            {/* Pressed bookbinding hinge groove along left spine edge (omitted on softcover) */}
-            {!isSoftcover && (
+            {/* Pressed bookbinding hinge groove along left spine edge (chipboard cases only) */}
+            {usesChipboard && (
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-y-0 left-0 w-3.5"
                 style={{
-                  background: isFlexibleSpine
+                  background: isFlexibleBoardCover
                     ? 'linear-gradient(90deg, rgba(0,0,0,0.16) 0%, rgba(255,255,255,0.08) 45%, transparent 100%)'
                     : 'linear-gradient(90deg, rgba(0,0,0,0.22) 0%, rgba(255,255,255,0.14) 36%, rgba(0,0,0,0.20) 56%, transparent 100%)',
                 }}
@@ -642,15 +663,17 @@ export function Book3DPreview({
             spinePlacements={spinePlacements}
             fontFamily={activeFontFamily}
           />
-          {/* Pressed hinge groove along right spine edge of back cover */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 right-0 w-3.5"
-            style={{
-              background:
-                'linear-gradient(270deg, rgba(0,0,0,0.22) 0%, rgba(255,255,255,0.14) 36%, rgba(0,0,0,0.20) 56%, transparent 100%)',
-            }}
-          />
+          {/* Pressed hinge groove along right spine edge of back cover (chipboard cases only) */}
+          {usesChipboard && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-0 w-3.5"
+              style={{
+                background:
+                  'linear-gradient(270deg, rgba(0,0,0,0.22) 0%, rgba(255,255,255,0.14) 36%, rgba(0,0,0,0.20) 56%, transparent 100%)',
+              }}
+            />
+          )}
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
@@ -666,7 +689,9 @@ export function Book3DPreview({
           aria-hidden="true"
           className="book3d-face rounded-r-[3px]"
           style={{
-            backgroundColor: studio.pocketStyle.backgroundColor,
+            backgroundColor: capabilities.usesInnerPockets
+              ? studio.pocketStyle.backgroundColor
+              : '#f7f2e7',
             transform: `translateZ(${-(halfDepth - dims.boardThicknessPx)}px)`,
           }}
         />
@@ -674,7 +699,7 @@ export function Book3DPreview({
         {/* Spine Face (left edge) */}
         <div
           data-testid="book3d-spine-face"
-          className={`book3d-face ${isFlexibleSpine ? 'rounded-y-[2px]' : ''}`}
+          className={`book3d-face ${isFlexibleBoardCover ? 'rounded-y-[2px]' : ''}`}
           style={{
             width: `${dims.depthPx}px`,
             height: `${dims.heightPx}px`,
@@ -694,14 +719,16 @@ export function Book3DPreview({
             fontFamily={activeFontFamily}
             showSpineText
           />
-          {/* Subtle cylindrical bookcloth spine lighting (deeper curve for Flexible Spine) */}
+          {/* Subtle cylindrical bookcloth/cardstock spine lighting */}
           <div
             aria-hidden="true"
             className="pointer-events-none absolute inset-0"
             style={{
-              background: isFlexibleSpine
+              background: isFlexibleBoardCover
                 ? 'linear-gradient(90deg, rgba(0,0,0,0.34) 0%, rgba(255,255,255,0.18) 28%, rgba(255,255,255,0.06) 52%, rgba(0,0,0,0.34) 100%)'
-                : 'linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(255,255,255,0.14) 22%, rgba(255,255,255,0.03) 56%, rgba(0,0,0,0.26) 100%)',
+                : !usesChipboard
+                  ? 'linear-gradient(90deg, rgba(0,0,0,0.20) 0%, rgba(255,255,255,0.12) 25%, rgba(255,255,255,0.02) 55%, rgba(0,0,0,0.20) 100%)'
+                  : 'linear-gradient(90deg, rgba(0,0,0,0.26) 0%, rgba(255,255,255,0.14) 22%, rgba(255,255,255,0.03) 56%, rgba(0,0,0,0.26) 100%)',
             }}
           />
         </div>

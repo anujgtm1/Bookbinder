@@ -1,4 +1,5 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import {
   exportDesignPresetsJson,
@@ -490,16 +491,12 @@ export function useCoverStudioActions({
         onSwitchTo2D();
         onSelectImageLayer(fix.layerId);
         break;
-      case 'switch-binding-style':
+      case 'switch-binding-style': {
+        const nextStrategy = getBindingStrategy(fix.bindingStyle);
         onUpdateParams?.({ bindingStyle: fix.bindingStyle });
-        onStatusMessage(
-          fix.bindingStyle === 'flexible-spine'
-            ? 'Switched to Flexible Spine (2-board, no rigid spine strip)'
-            : fix.bindingStyle === 'softcover-jacket'
-              ? 'Switched to 0-Board Softcover Slip-In Jacket'
-              : 'Switched to Rigid 3-Board Hardcover Case',
-        );
+        onStatusMessage(`Switched to ${nextStrategy.shortLabel}`);
         break;
+      }
       case 'apply-pocket-proportions':
         onUpdateParams?.({
           boardThicknessMm: 1.5,
@@ -516,10 +513,13 @@ export function useCoverStudioActions({
         onStatusMessage(`Switched Target Print Media to ${mediaSpec.shortLabel}`);
         break;
       }
-      case 'set-jacket-flap-width':
+      case 'set-jacket-flap-width': {
+        const activeStrategy = getBindingStrategy(geometry.bindingStyle);
+        const flapLabel = activeStrategy.flapConfig?.label.toLowerCase() ?? 'flap width';
         onUpdateParams?.({ jacketFlapWidthMm: fix.flapWidthMm });
-        onStatusMessage(`Adjusted slip flap width to ${fix.flapWidthMm} mm to fit on 1 sheet`);
+        onStatusMessage(`Adjusted ${flapLabel} to ${fix.flapWidthMm} mm to fit on 1 sheet`);
         break;
+      }
     }
   };
 

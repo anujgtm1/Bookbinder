@@ -1,4 +1,5 @@
 import { useMemo, type RefObject } from 'react';
+import { getBindingStrategy } from '@/core/bindingStyles';
 import {
   CoverTextLayerModel,
   type CoverOrnamentLayer,
@@ -90,6 +91,7 @@ export function CoverCanvas2D({
   onStartOrnamentDrag,
   onStartOrnamentResize,
 }: CoverCanvas2DProps) {
+  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
   const spinePlacements = useMemo(
     () => computeSpineTextPlacements(geometry, studio),
     [geometry, studio],
@@ -456,20 +458,21 @@ export function CoverCanvas2D({
         {/* Fold, Board & Cut Guides Overlay */}
         {showGuides && (
           <g pointerEvents="none">
-            {geometry.outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => (
-              <path
-                key={`studio-glue-tab-${idx}`}
-                d={GeometryPrimitives.polygonToSvgPath(
-                  GeometryPrimitives.translatePolygon(tabPoly, spec.bleedMm, spec.bleedMm),
-                  2,
-                )}
-                fill="url(#studio-glue-tab-hatch)"
-                stroke="#facc15"
-                strokeOpacity="0.8"
-                strokeWidth="0.65"
-                strokeDasharray="3 2"
-              />
-            ))}
+            {bindingStrategy.capabilities.hasGlueTabs &&
+              geometry.outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => (
+                <path
+                  key={`studio-glue-tab-${idx}`}
+                  d={GeometryPrimitives.polygonToSvgPath(
+                    GeometryPrimitives.translatePolygon(tabPoly, spec.bleedMm, spec.bleedMm),
+                    2,
+                  )}
+                  fill="url(#studio-glue-tab-hatch)"
+                  stroke="#facc15"
+                  strokeOpacity="0.8"
+                  strokeWidth="0.65"
+                  strokeDasharray="3 2"
+                />
+              ))}
             <path
               d={GeometryPrimitives.polygonToSvgPath(shiftedCutPolygon, 2)}
               fill="none"
@@ -479,24 +482,60 @@ export function CoverCanvas2D({
                 studio.cutLineMode === 'bleed-registration' ? '4 2.5' : undefined
               }
             />
-            {[
-              geometry.outerWrap.backBoardRect,
-              geometry.outerWrap.spineRect,
-              geometry.outerWrap.frontBoardRect,
-            ].map((rect, i) => (
-              <rect
-                key={i}
-                x={rect.x + spec.bleedMm}
-                y={rect.y + spec.bleedMm}
-                width={rect.width}
-                height={rect.height}
-                fill="none"
+            {geometry.outerWrap.foldLines.map((line, i) => (
+              <line
+                key={`studio-fold-${i}`}
+                data-testid="studio-fold-line"
+                x1={line.x1 + spec.bleedMm}
+                y1={line.y1 + spec.bleedMm}
+                x2={line.x2 + spec.bleedMm}
+                y2={line.y2 + spec.bleedMm}
                 stroke="#ffffff"
                 strokeOpacity="0.68"
                 strokeWidth="0.7"
                 strokeDasharray="5 3"
               />
             ))}
+            {bindingStrategy.capabilities.hasFlaps &&
+              geometry.outerWrap.jacketFlapWidthMm > 0 &&
+              [
+                {
+                  key: 'left-flap-hint',
+                  label: bindingStrategy.panelLabels.leftFlap ?? 'BACK FLAP',
+                  cx: spec.bleedMm + geometry.outerWrap.jacketFlapWidthMm / 2,
+                  cy:
+                    spec.bleedMm +
+                    geometry.outerWrap.backBoardRect.y +
+                    geometry.outerWrap.backBoardRect.height / 2,
+                },
+                {
+                  key: 'right-flap-hint',
+                  label: bindingStrategy.panelLabels.rightFlap ?? 'FRONT FLAP',
+                  cx:
+                    spec.bleedMm +
+                    geometry.outerWrap.widthMm -
+                    geometry.outerWrap.jacketFlapWidthMm / 2,
+                  cy:
+                    spec.bleedMm +
+                    geometry.outerWrap.frontBoardRect.y +
+                    geometry.outerWrap.frontBoardRect.height / 2,
+                },
+              ].map(({ key, label, cx, cy }) => (
+                <text
+                  key={key}
+                  x={cx}
+                  y={cy}
+                  fill="#ffffff"
+                  fillOpacity="0.45"
+                  fontSize="5.5"
+                  fontWeight="600"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  transform={`rotate(-90 ${cx} ${cy})`}
+                >
+                  {label}
+                </text>
+              ))}
             {studio.layers.length === 0 &&
               (studio.textLayers ?? []).length === 0 &&
               (studio.ornaments ?? []).length === 0 && (
@@ -514,7 +553,7 @@ export function CoverCanvas2D({
                     fontWeight="600"
                     textAnchor="middle"
                   >
-                    BACK COVER
+                    {bindingStrategy.panelLabels.back}
                   </text>
                   <text
                     x={

@@ -87,4 +87,37 @@ describe('Book3DPreview', () => {
       'rotateY(-122deg)',
     );
   });
+
+  it('renders cleanly for paperback-wrap (flush edges) and dust-jacket (folded flap) without chipboard hinge grooves', () => {
+    const pbGeometry = calculateCaseGeometry({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    });
+    const studio = CoverStudioModel.createDefault();
+
+    const { rerender } = render(
+      <Book3DPreview geometry={pbGeometry} studio={studio} customFont={null} isCoverOpen={true} />,
+    );
+    expect(screen.getByTestId('book3d-front-face')).toBeInTheDocument();
+    expect(screen.getByTestId('book3d-inner-pocket-face')).toBeInTheDocument();
+    expect(screen.getByTestId('book3d-first-page').getAttribute('style')).toContain('top: 0px');
+
+    const djGeometry = calculateCaseGeometry({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'dust-jacket',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      jacketFlapWidthMm: 70,
+    });
+    rerender(
+      <Book3DPreview geometry={djGeometry} studio={studio} customFont={null} isCoverOpen={true} />,
+    );
+    expect(screen.getByTestId('book3d-front-face')).toBeInTheDocument();
+    expect(screen.getByTestId('book3d-spine-face')).toBeInTheDocument();
+    expect(screen.getByTestId('book3d-inner-pocket-face')).toBeInTheDocument();
+  });
 });
