@@ -3,7 +3,9 @@ import {
   BINDING_STYLES,
   PAGE_SIZES,
   PAPERBACK_PRESETS,
+  PRIMARY_SHEET_MEDIA_IDS,
   PRINT_MEDIA_OPTIONS,
+  getPageSizeSpec,
   getPrintMediaSpec,
 } from '@/resources/paperSpecs';
 import { UnitConverter, clampFinite, type UnitSystem } from './units';
@@ -12,7 +14,9 @@ export {
   BINDING_STYLES,
   PAGE_SIZES,
   PAPERBACK_PRESETS,
+  PRIMARY_SHEET_MEDIA_IDS,
   PRINT_MEDIA_OPTIONS,
+  getPageSizeSpec,
   getPrintMediaSpec,
 };
 
@@ -55,6 +59,7 @@ export interface PrintMediaSpec {
   readonly id: PrintMediaId;
   readonly label: string;
   readonly shortLabel: string;
+  readonly dimensionsLabel: string;
   readonly kind: 'auto' | 'sheet' | 'roll';
   readonly shortMm: number | null;
   readonly longMm: number | null;
@@ -71,6 +76,8 @@ export interface BindingStyleOption {
 export interface PageSizeSpec {
   readonly id: PageSizeId;
   readonly label: string;
+  readonly shortLabel: string;
+  readonly dimensionsLabel: string;
   readonly widthMm: number;
   readonly heightMm: number;
 }

@@ -1,0 +1,145 @@
+{
+  "rollTotalMarginMm": 10.0,
+  "desktopSheets": {
+    "letter": {
+      "id": "letter",
+      "name": "US Letter",
+      "dimensionsLabel": "8.5 × 11\"",
+      "shortMm": 215.9,
+      "longMm": 279.4
+    },
+    "a4": {
+      "id": "a4",
+      "name": "A4",
+      "dimensionsLabel": "210 × 297 mm",
+      "shortMm": 210.0,
+      "longMm": 297.0
+    },
+    "legal": {
+      "id": "legal",
+      "name": "US Legal",
+      "dimensionsLabel": "8.5 × 14\"",
+      "shortMm": 215.9,
+      "longMm": 355.6
+    },
+    "tabloid": {
+      "id": "tabloid",
+      "name": "Tabloid",
+      "dimensionsLabel": "11 × 17\"",
+      "shortMm": 279.4,
+      "longMm": 431.8
+    }
+  },
+  "rollWidths": [
+    {
+      "id": "roll-13",
+      "inches": 13,
+      "widthMm": 330,
+      "name": "13\" Roll",
+      "dimensionsLabel": "330 mm"
+    },
+    {
+      "id": "roll-17",
+      "inches": 17,
+      "widthMm": 432,
+      "name": "17\" Roll",
+      "dimensionsLabel": "432 mm"
+    },
+    {
+      "id": "roll-24",
+      "inches": 24,
+      "widthMm": 610,
+      "name": "24\" Roll",
+      "dimensionsLabel": "610 mm"
+    },
+    {
+      "id": "roll-36",
+      "inches": 36,
+      "widthMm": 914,
+      "name": "36\" Roll",
+      "dimensionsLabel": "914 mm"
+    },
+    {
+      "id": "roll-44",
+      "inches": 44,
+      "widthMm": 1118,
+      "name": "44\" Roll",
+      "dimensionsLabel": "1118 mm"
+    }
+  ],
+  "exactAutoMedia": {
+    "id": "exact-auto",
+    "name": "Exact 1:1 Size",
+    "dimensionsLabel": "Auto / Roll",
+    "label": "Exact Wrap Size (Auto)"
+  },
+  "paperbackPresets": [
+    {
+      "id": "mass-market",
+      "label": "Mass Market Paperback",
+      "pbWidthMm": 106.0,
+      "pbHeightMm": 174.0,
+      "summary": "106 × 174 mm"
+    },
+    {
+      "id": "us-trade-digest",
+      "label": "US Trade Digest",
+      "pbWidthMm": 139.7,
+      "pbHeightMm": 215.9,
+      "summary": "5.5 × 8.5 in"
+    },
+    {
+      "id": "us-trade-standard",
+      "label": "US Trade Standard",
+      "pbWidthMm": 152.4,
+      "pbHeightMm": 228.6,
+      "summary": "6.0 × 9.0 in"
+    },
+    {
+      "id": "manga-b6",
+      "label": "Manga / B6",
+      "pbWidthMm": 128.0,
+      "pbHeightMm": 182.0,
+      "summary": "128 × 182 mm"
+    },
+    {
+      "id": "a6-notebook",
+      "label": "A6 Pocket Notebook",
+      "pbWidthMm": 105.0,
+      "pbHeightMm": 148.0,
+      "summary": "105 × 148 mm"
+    }
+  ],
+  "bindingStyles": [
+    {
+      "id": "rigid-case",
+      "label": "Rigid 3-Board Hardcover",
+      "shortLabel": "Rigid Case",
+      "summary": "2 cover boards + rigid spine strip (best ≥ 8 mm)"
+    },
+    {
+      "id": "flexible-spine",
+      "label": "Flexible Spine (No Spine Board)",
+      "shortLabel": "Flexible Spine",
+      "summary": "2 cover boards + cloth spine gap (best 3–8 mm)"
+    },
+    {
+      "id": "softcover-jacket",
+      "label": "Fold-and-Glue Slip Cover (0-Board, 1 Sheet)",
+      "shortLabel": "Slip Cover",
+      "summary": "1-piece printable cover with 4 mitered glue tabs — no separate pockets (fits Letter/A4 on A6)"
+    },
+    {
+      "id": "dust-jacket",
+      "label": "Classic Dust Jacket (Fold-In Flaps)",
+      "shortLabel": "Dust Jacket",
+      "summary": "Wrap-around publisher dust jacket with wide left & right fold-in flaps over an existing cover — no glue tabs or rigid boards."
+    },
+    {
+      "id": "paperback-wrap",
+      "label": "Replacement Paperback Cover (Flush Wrap)",
+      "shortLabel": "Paperback Cover",
+      "summary": "Flush 1-piece cardstock cover (Back + Spine + Front) glued directly to a paperback spine — no boards, flaps, or inner pockets."
+    }
+  ]
+}

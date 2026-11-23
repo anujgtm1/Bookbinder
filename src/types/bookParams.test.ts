@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import paperSpecsData from '@/resources/paperSpecs.json';
 import {
+  BINDING_STYLES,
   BookParametersModel,
   DEFAULT_BOOK_PARAMETERS,
   PAGE_SIZES,
   PAPERBACK_PRESETS,
+  PRIMARY_SHEET_MEDIA_IDS,
+  PRINT_MEDIA_OPTIONS,
+  getPageSizeSpec,
+  getPrintMediaSpec,
   hasIntegratedFlaps,
   isBoardlessBinding,
 } from './bookParams';
@@ -138,6 +144,65 @@ describe('BookParametersModel', () => {
     expect(PAGE_SIZES.tabloid.widthMm).toBe(279.4);
     expect(PAGE_SIZES.tabloid.heightMm).toBe(431.8);
     expect(BookParametersModel.deserialize({ pdfPageSize: 'legal' }).pdfPageSize).toBe('legal');
+  });
+
+  it('derives consistent shortLabel, dimensionsLabel, and label for every PRINT_MEDIA_OPTIONS and PAGE_SIZES entry from paperSpecs.json', () => {
+    expect(PRIMARY_SHEET_MEDIA_IDS).toEqual(['letter', 'a4', 'legal', 'tabloid']);
+
+    // Verify exact-auto media spec
+    const exactAuto = getPrintMediaSpec('exact-auto');
+    expect(exactAuto.shortLabel).toBe(paperSpecsData.exactAutoMedia.name);
+    expect(exactAuto.dimensionsLabel).toBe(paperSpecsData.exactAutoMedia.dimensionsLabel);
+    expect(exactAuto.label).toBe(paperSpecsData.exactAutoMedia.label);
+
+    // Verify every desktop sheet across PAGE_SIZES and PRINT_MEDIA_OPTIONS matches paperSpecs.json
+    for (const id of PRIMARY_SHEET_MEDIA_IDS) {
+      const jsonSheet = paperSpecsData.desktopSheets[id];
+      const expectedLabel = `${jsonSheet.name} (${jsonSheet.dimensionsLabel})`;
+
+      const pageSpec = getPageSizeSpec(id);
+      expect(pageSpec).toEqual(PAGE_SIZES[id]);
+      expect(pageSpec.shortLabel).toBe(jsonSheet.name);
+      expect(pageSpec.dimensionsLabel).toBe(jsonSheet.dimensionsLabel);
+      expect(pageSpec.label).toBe(expectedLabel);
+      expect(pageSpec.widthMm).toBe(jsonSheet.shortMm);
+      expect(pageSpec.heightMm).toBe(jsonSheet.longMm);
+
+      const mediaSpec = getPrintMediaSpec(id);
+      expect(mediaSpec.kind).toBe('sheet');
+      expect(mediaSpec.shortLabel).toBe(jsonSheet.name);
+      expect(mediaSpec.dimensionsLabel).toBe(jsonSheet.dimensionsLabel);
+      expect(mediaSpec.label).toBe(expectedLabel);
+      expect(mediaSpec.shortMm).toBe(jsonSheet.shortMm);
+      expect(mediaSpec.longMm).toBe(jsonSheet.longMm);
+    }
+
+    // Verify every wide-format roll in PRINT_MEDIA_OPTIONS matches paperSpecs.json
+    for (const jsonRoll of paperSpecsData.rollWidths) {
+      const rollSpec = getPrintMediaSpec(jsonRoll.id as (typeof PRINT_MEDIA_OPTIONS)[number]['id']);
+      expect(rollSpec.kind).toBe('roll');
+      expect(rollSpec.shortLabel).toBe(jsonRoll.name);
+      expect(rollSpec.dimensionsLabel).toBe(jsonRoll.dimensionsLabel);
+      expect(rollSpec.label).toBe(`${jsonRoll.name} (${jsonRoll.dimensionsLabel})`);
+      expect(rollSpec.rollWidthMm).toBe(jsonRoll.widthMm);
+    }
+
+    // Verify every PRINT_MEDIA_OPTIONS entry has non-empty canonical fields and consistent count
+    expect(PRINT_MEDIA_OPTIONS).toHaveLength(
+      1 + PRIMARY_SHEET_MEDIA_IDS.length + paperSpecsData.rollWidths.length,
+    );
+    for (const opt of PRINT_MEDIA_OPTIONS) {
+      expect(opt.shortLabel.length).toBeGreaterThan(0);
+      expect(opt.dimensionsLabel.length).toBeGreaterThan(0);
+      expect(opt.label.length).toBeGreaterThan(0);
+      if (opt.kind !== 'auto') {
+        expect(opt.label).toBe(`${opt.shortLabel} (${opt.dimensionsLabel})`);
+      }
+    }
+
+    // Verify presets and binding styles derive from paperSpecs.json
+    expect(PAPERBACK_PRESETS).toHaveLength(paperSpecsData.paperbackPresets.length);
+    expect(BINDING_STYLES).toHaveLength(paperSpecsData.bindingStyles.length);
   });
 
   it('parses, validates, and classifies dust-jacket and paperback-wrap binding styles', () => {
