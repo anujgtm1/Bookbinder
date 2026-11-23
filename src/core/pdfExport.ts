@@ -425,6 +425,7 @@ function renderPocket(
   placement: PlannedPlacement,
   font: PDFFont,
   boldFont: PDFFont,
+  showInteriorLabels = true,
 ): void {
   const cutColor = rgb(0.85, 0.1, 0.1);
   const scoreColor = rgb(0.05, 0.35, 0.85);
@@ -441,6 +442,8 @@ function renderPocket(
     const { a, b } = transformLine(score, placement, pocket.totalHeightMm);
     writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
   }
+
+  if (!showInteriorLabels) return;
 
   const centerLocal = GeometryPrimitives.rectCenter(pocket.faceRect);
   const center = transformPoint(centerLocal, placement, pocket.totalHeightMm);
@@ -472,6 +475,7 @@ function renderSpineLiner(
   placement: PlannedPlacement,
   font: PDFFont,
   boldFont: PDFFont,
+  showInteriorLabels = true,
 ): void {
   const cutColor = rgb(0.85, 0.1, 0.1);
   const scoreColor = rgb(0.05, 0.35, 0.85);
@@ -489,6 +493,8 @@ function renderSpineLiner(
     const { a, b } = transformLine(score, placement, liner.heightMm);
     writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
   }
+
+  if (!showInteriorLabels) return;
 
   const center = transformPoint(
     { x: liner.widthMm / 2, y: liner.heightMm / 2 },
@@ -560,9 +566,19 @@ function renderCalibrationAndLegend(
   writer.drawText(spacerNote, x, legY + 23, boldFont, 6.8, rgb(0.05, 0.35, 0.85));
 }
 
+export interface InnerPdfRenderOptions {
+  /** Optional 300 DPI pre-rendered PNG artwork keyed by inner piece kind */
+  readonly pieceArtworkPng?: Partial<
+    Record<Exclude<InnerPieceKind, 'calibration-legend'>, Uint8Array>
+  >;
+  /** Suppress centered dimension text on styled pieces so printed endpaper artwork stays clean */
+  readonly hideFaceTextOnStyled?: boolean;
+}
+
 export async function generateInnerTemplatesPdf(
   geometry: CaseGeometry,
   pageSizeId: PageSizeId,
+  options?: InnerPdfRenderOptions,
 ): Promise<{ readonly bytes: Uint8Array; readonly plan: InnerPdfLayoutPlan }> {
   const plan = planInnerTemplateLayout(geometry, pageSizeId);
   const pdfDoc = await PDFDocument.create();
@@ -589,17 +605,34 @@ export async function generateInnerTemplatesPdf(
     });
   }
 
+  const showLabels = !options?.hideFaceTextOnStyled;
+
   for (const placement of plan.placements) {
-    const writer = new PdfMmWriter(pages[placement.pageIndex], plan.pageHeightMm);
+    const page = pages[placement.pageIndex];
+    const writer = new PdfMmWriter(page, plan.pageHeightMm);
+
+    if (placement.kind !== 'calibration-legend') {
+      const pngBytes = options?.pieceArtworkPng?.[placement.kind];
+      if (pngBytes && pngBytes.byteLength > 0) {
+        const embeddedPng = await pdfDoc.embedPng(pngBytes);
+        page.drawImage(embeddedPng, {
+          x: UnitConverter.mmToPoints(placement.xMm),
+          y: UnitConverter.mmToPoints(plan.pageHeightMm - (placement.yMm + placement.heightMm)),
+          width: UnitConverter.mmToPoints(placement.widthMm),
+          height: UnitConverter.mmToPoints(placement.heightMm),
+        });
+      }
+    }
+
     switch (placement.kind) {
       case 'back-pocket':
-        renderPocket(writer, geometry.backPocket, placement, font, boldFont);
+        renderPocket(writer, geometry.backPocket, placement, font, boldFont, showLabels);
         break;
       case 'front-pocket':
-        renderPocket(writer, geometry.frontPocket, placement, font, boldFont);
+        renderPocket(writer, geometry.frontPocket, placement, font, boldFont, showLabels);
         break;
       case 'spine-liner':
-        renderSpineLiner(writer, geometry.spineLiner, placement, font, boldFont);
+        renderSpineLiner(writer, geometry.spineLiner, placement, font, boldFont, showLabels);
         break;
       case 'calibration-legend':
         renderCalibrationAndLegend(writer, placement, geometry, font, boldFont);
