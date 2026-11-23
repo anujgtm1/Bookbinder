@@ -59,6 +59,8 @@ export interface CoverElementsCardProps {
   readonly customFont: CustomFontAsset | null;
   readonly selectedTextId: string | null;
   readonly selectedOrnamentId: string | null;
+  /** When set, locks this card to a single section and hides its internal tablist (used inside the Cover Studio Tool Dock). */
+  readonly forcedTab?: CoverElementsTab;
   readonly onSelectText: (id: string | null) => void;
   readonly onSelectOrnament: (id: string | null) => void;
   readonly onAddTextPreset: (preset: CoverTextPresetKind) => void;
@@ -116,6 +118,7 @@ export function CoverElementsCard({
   customFont,
   selectedTextId,
   selectedOrnamentId,
+  forcedTab,
   onSelectText,
   onSelectOrnament,
   onAddTextPreset,
@@ -142,64 +145,81 @@ export function CoverElementsCard({
 
   // Keep visible tab in sync when the user clicks a text/ornament directly on the canvas
   const resolvedTab: CoverElementsTab =
-    selectedOrnament && !selectedText
+    forcedTab ??
+    (selectedOrnament && !selectedText
       ? 'ornaments'
       : selectedText && !selectedOrnament
         ? 'text'
-        : activeTab;
+        : activeTab);
 
   return (
     <Card data-testid="cover-elements-card">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 font-serif text-base">
-            <Sparkles className="h-4 w-4 text-brass" aria-hidden="true" />
-            Front &amp; Back Text + Classic Designs
+            {forcedTab === 'text' ? (
+              <>
+                <Type className="h-4 w-4 text-brass" aria-hidden="true" />
+                Front &amp; Back Cover Text
+              </>
+            ) : forcedTab === 'ornaments' ? (
+              <>
+                <Sparkles className="h-4 w-4 text-brass" aria-hidden="true" />
+                Classic Bookbindery Designs &amp; SVG Stamps
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 text-brass" aria-hidden="true" />
+                Front &amp; Back Text + Classic Designs
+              </>
+            )}
           </CardTitle>
-          <div className="flex items-center gap-1" role="tablist" aria-label="Cover design elements">
-            <Button
-              type="button"
-              role="tab"
-              aria-selected={resolvedTab === 'text'}
-              size="sm"
-              variant={resolvedTab === 'text' ? 'default' : 'outline'}
-              className="h-7 px-2.5 text-xs"
-              data-testid="elements-tab-text"
-              onClick={() => {
-                setActiveTab('text');
-                onSelectOrnament(null);
-              }}
-            >
-              <Type className="h-3.5 w-3.5" aria-hidden="true" />
-              Cover Text
-              {textLayers.length > 0 && (
-                <Badge variant="outline" className="ml-1 h-4 px-1 font-mono text-[10px]">
-                  {textLayers.length}
-                </Badge>
-              )}
-            </Button>
-            <Button
-              type="button"
-              role="tab"
-              aria-selected={resolvedTab === 'ornaments'}
-              size="sm"
-              variant={resolvedTab === 'ornaments' ? 'default' : 'outline'}
-              className="h-7 px-2.5 text-xs"
-              data-testid="elements-tab-ornaments"
-              onClick={() => {
-                setActiveTab('ornaments');
-                onSelectText(null);
-              }}
-            >
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              Classic Designs
-              {ornaments.length > 0 && (
-                <Badge variant="outline" className="ml-1 h-4 px-1 font-mono text-[10px]">
-                  {ornaments.length}
-                </Badge>
-              )}
-            </Button>
-          </div>
+          {!forcedTab && (
+            <div className="flex items-center gap-1" role="tablist" aria-label="Cover design elements">
+              <Button
+                type="button"
+                role="tab"
+                aria-selected={resolvedTab === 'text'}
+                size="sm"
+                variant={resolvedTab === 'text' ? 'default' : 'outline'}
+                className="h-7 px-2.5 text-xs"
+                data-testid="elements-tab-text"
+                onClick={() => {
+                  setActiveTab('text');
+                  onSelectOrnament(null);
+                }}
+              >
+                <Type className="h-3.5 w-3.5" aria-hidden="true" />
+                Cover Text
+                {textLayers.length > 0 && (
+                  <Badge variant="outline" className="ml-1 h-4 px-1 font-mono text-[10px]">
+                    {textLayers.length}
+                  </Badge>
+                )}
+              </Button>
+              <Button
+                type="button"
+                role="tab"
+                aria-selected={resolvedTab === 'ornaments'}
+                size="sm"
+                variant={resolvedTab === 'ornaments' ? 'default' : 'outline'}
+                className="h-7 px-2.5 text-xs"
+                data-testid="elements-tab-ornaments"
+                onClick={() => {
+                  setActiveTab('ornaments');
+                  onSelectText(null);
+                }}
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                Classic Designs
+                {ornaments.length > 0 && (
+                  <Badge variant="outline" className="ml-1 h-4 px-1 font-mono text-[10px]">
+                    {ornaments.length}
+                  </Badge>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       </CardHeader>
 

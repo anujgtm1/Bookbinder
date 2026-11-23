@@ -7,18 +7,22 @@ import {
   FileCode2,
   FileImage,
   FileText,
+  ImagePlus,
   Layers,
   Magnet,
   Maximize2,
   Pipette,
+  Printer,
   Ruler,
   Scissors,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
+  Type,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FloatingHudToolbar,
   HudButton,
@@ -28,6 +32,7 @@ import {
 import { OuterBlueprintCanvas } from '@/components/OuterBlueprintCanvas';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   triggerBlobDownload,
   triggerBytesDownload,
@@ -119,10 +124,12 @@ export interface CoverStylerProps {
   readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
   readonly onDownloadOuterSvg?: () => void;
   readonly onDownloadOuterPdf?: () => void;
+  readonly onOpenMeasureAndCut?: () => void;
   readonly onStatusMessage: (message: string) => void;
 }
 
 type StudioViewMode = '2d' | 'blueprint' | '3d';
+type StudioToolTab = 'artwork' | 'text' | 'designs' | 'spine' | 'preflight';
 
 function rgbToHex(r: number, g: number, b: number): string {
   return (
@@ -142,6 +149,7 @@ export function CoverStyler({
   onUpdateParams,
   onDownloadOuterSvg,
   onDownloadOuterPdf,
+  onOpenMeasureAndCut,
   onStatusMessage,
 }: CoverStylerProps) {
   const effectiveParams = useMemo(
@@ -149,6 +157,7 @@ export function CoverStyler({
     [params],
   );
   const [viewMode, setViewMode] = useState<StudioViewMode>('2d');
+  const [activeToolTab, setActiveToolTab] = useState<StudioToolTab>('artwork');
   const [blueprintZoom, setBlueprintZoom] = useState(1);
   const [blueprintPan, setBlueprintPan] = useState({ x: 0, y: 0 });
   const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
@@ -189,6 +198,15 @@ export function CoverStyler({
   );
   const snapTargets = useMemo(() => buildCanvasSnapTargets(geometry, spec), [geometry, spec]);
 
+  const handleSelectImageLayer = useCallback((id: string | null) => {
+    setSelectedLayerId(id);
+    if (id) {
+      setSelectedTextId(null);
+      setSelectedOrnamentId(null);
+      setActiveToolTab('artwork');
+    }
+  }, []);
+
   const {
     activeSnapGuides,
     suppressNextClickRef,
@@ -207,7 +225,7 @@ export function CoverStyler({
     onChangeLayers: (nextLayers) => {
       onChangeRef.current({ ...studioRef.current, layers: nextLayers });
     },
-    onSelectLayer: setSelectedLayerId,
+    onSelectLayer: handleSelectImageLayer,
   });
   const preflight = useMemo(
     () =>
@@ -460,6 +478,7 @@ export function CoverStyler({
     setSelectedLayerId(null);
     setSelectedOrnamentId(null);
     setSelectedTextId(created.id);
+    setActiveToolTab('text');
     setViewMode('2d');
     onStatusMessage(`Added "${created.text.split('\n')[0]}" on ${zone} cover — drag to position`);
   };
@@ -523,6 +542,7 @@ export function CoverStyler({
     setSelectedLayerId(null);
     setSelectedTextId(null);
     setSelectedOrnamentId(created.id);
+    setActiveToolTab('designs');
     setViewMode('2d');
     onStatusMessage(`Added ${getClassicOrnamentSpec(presetId).label} on ${zone} cover`);
   };
@@ -569,6 +589,7 @@ export function CoverStyler({
       setSelectedLayerId(null);
       setSelectedTextId(null);
       setSelectedOrnamentId(created.id);
+      setActiveToolTab('designs');
       setViewMode('2d');
       onStatusMessage(
         `Imported vector SVG stamp "${created.customSvgName}" (${parsed.paths.length} paths) on ${zone}`,
@@ -721,7 +742,7 @@ export function CoverStyler({
         break;
       case 'select-layer':
         setViewMode('2d');
-        setSelectedLayerId(fix.layerId);
+        handleSelectImageLayer(fix.layerId);
         break;
       case 'switch-binding-style':
         onUpdateParams?.({ bindingStyle: fix.bindingStyle });
@@ -807,7 +828,7 @@ export function CoverStyler({
         ...studio,
         layers: [...studio.layers, ...addedLayers],
       });
-      setSelectedLayerId(addedLayers[addedLayers.length - 1].id);
+      handleSelectImageLayer(addedLayers[addedLayers.length - 1].id);
       onStatusMessage(
         addedLayers.length === 1
           ? `Added "${addedLayers[0].fileName}" — drag to move or pull corners to resize`
@@ -946,9 +967,36 @@ export function CoverStyler({
         {/* Compact Header + Grouped Styled (300 DPI) & Cut-Only (1:1 mm) Export Strip */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
-            <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
-              Outer Case Wrap &amp; Cover Styler
-            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
+                Outer Case Wrap &amp; Cover Styler
+              </h2>
+              <button
+                type="button"
+                data-testid="studio-roll-badge"
+                onClick={onOpenMeasureAndCut}
+                disabled={!onOpenMeasureAndCut}
+                title="Open Measure & Cut tab for full chipboard cut list and 1:1 mm cutting blueprint"
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                  geometry.rollRecommendation.fits
+                    ? 'border-emerald-700/30 bg-emerald-600/12 text-emerald-900 hover:bg-emerald-600/20 dark:text-emerald-300'
+                    : 'border-amber-700/35 bg-amber-500/14 text-amber-900 hover:bg-amber-500/24 dark:text-amber-300'
+                } ${onOpenMeasureAndCut ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                <Printer className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span>{geometry.rollRecommendation.summary}</span>
+                <span aria-hidden="true" className="opacity-55">
+                  ·
+                </span>
+                <span className="font-mono">
+                  {UnitConverter.formatDimensions(
+                    geometry.outerWrap.widthMm,
+                    geometry.outerWrap.heightMm,
+                    effectiveParams.unit,
+                  )}
+                </span>
+              </button>
+            </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Style artwork &amp; spine lettering, inspect the 1:1 mm CAD blueprint, or orbit in 3D ({spec.pixelWidth} ×{' '}
               {spec.pixelHeight} px @ 300 DPI).
@@ -1276,15 +1324,14 @@ export function CoverStyler({
                         onClick={(e) => {
                           if (eyedropperTarget) return;
                           e.stopPropagation();
-                          setSelectedLayerId(layer.id);
-                          setSelectedTextId(null);
-                          setSelectedOrnamentId(null);
+                          handleSelectImageLayer(layer.id);
                         }}
                         onPointerDown={(e) => {
                           if (eyedropperTarget) return;
                           e.stopPropagation();
                           setSelectedTextId(null);
                           setSelectedOrnamentId(null);
+                          setActiveToolTab('artwork');
                           startMoveDrag(layer, e.clientX, e.clientY);
                         }}
                       />
@@ -1328,6 +1375,7 @@ export function CoverStyler({
                         setSelectedOrnamentId(orn.id);
                         setSelectedTextId(null);
                         setSelectedLayerId(null);
+                        setActiveToolTab('designs');
                       }}
                       onPointerDown={(e) => {
                         if (eyedropperTarget) return;
@@ -1337,6 +1385,7 @@ export function CoverStyler({
                         setSelectedOrnamentId(orn.id);
                         setSelectedTextId(null);
                         setSelectedLayerId(null);
+                        setActiveToolTab('designs');
                         elementDragRef.current = {
                           kind: 'ornament',
                           id: orn.id,
@@ -1430,6 +1479,7 @@ export function CoverStyler({
                         setSelectedTextId(layer.id);
                         setSelectedOrnamentId(null);
                         setSelectedLayerId(null);
+                        setActiveToolTab('text');
                       }}
                       onPointerDown={(e) => {
                         if (eyedropperTarget) return;
@@ -1439,6 +1489,7 @@ export function CoverStyler({
                         setSelectedTextId(layer.id);
                         setSelectedOrnamentId(null);
                         setSelectedLayerId(null);
+                        setActiveToolTab('text');
                         elementDragRef.current = {
                           kind: 'text',
                           id: layer.id,
@@ -1761,7 +1812,12 @@ export function CoverStyler({
                   </HudButton>
                   <HudButton
                     pressed={showPreflightOverlays}
-                    onClick={() => setShowPreflightOverlays((v) => !v)}
+                    onClick={() => {
+                      setShowPreflightOverlays((v) => !v);
+                      if (preflight.issues.length > 0) {
+                        setActiveToolTab('preflight');
+                      }
+                    }}
                     data-testid="studio-preflight-hud-btn"
                   >
                     {preflight.status === 'pass' ? (
@@ -1875,116 +1931,267 @@ export function CoverStyler({
         </div>
       </section>
 
-      {/* Live Print Preflight Consistency Check Panel */}
-      <PreflightCard
-        report={preflight}
-        showOverlays={showPreflightOverlays}
-        checkDpi={checkDpi}
-        activeIssueId={activeIssueId}
-        onToggleOverlays={setShowPreflightOverlays}
-        onToggleCheckDpi={(next) => {
-          setCheckDpi(next);
-          onStatusMessage(next ? '300 DPI print check enabled' : '300 DPI print check paused');
-        }}
-        onHighlightIssue={setActiveIssueId}
-        onApplyQuickFix={handleApplyQuickFix}
-        onIgnoreIssue={(issueId) => {
-          setIgnoredIssueIds((prev) => {
-            const next = new Set(prev);
-            next.add(issueId);
-            return next;
-          });
-          setActiveIssueId((prev) => (prev === issueId ? null : prev));
-        }}
-        onRestoreIgnored={() => {
-          setIgnoredIssueIds(new Set());
-          onStatusMessage('Restored all ignored preflight warnings');
-        }}
-      />
+      {/* Compact Tabbed Studio Tool Dock (1 click to Artwork, Cover Text, Classic Designs, Spine, or Preflight) */}
+      <Tabs
+        value={activeToolTab}
+        onValueChange={(value) => setActiveToolTab(value as StudioToolTab)}
+        data-testid="studio-tool-dock"
+        className="flex flex-col gap-3"
+      >
+        <div className="rounded-lg border border-border bg-secondary/45 p-1.5 shadow-xs">
+          <TabsList
+            aria-label="Cover studio tools"
+            className="h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0"
+          >
+            <TabsTrigger
+              value="artwork"
+              data-testid="studio-tool-artwork"
+              className="px-3 py-1.5 text-xs"
+            >
+              <ImagePlus className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+              Artwork &amp; Fill
+              {studio.layers.length > 0 && (
+                <Badge variant="outline" className="ml-0.5 h-4 px-1 font-mono text-[10px]">
+                  {studio.layers.length}
+                </Badge>
+              )}
+            </TabsTrigger>
 
-      {/* Decoupled Controls Grid */}
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ArtworkControlsCard
-          studio={studio}
-          selectedLayerId={selectedLayerId}
-          eyedropperTarget={eyedropperTarget}
-          extendingStub={extendingStub}
-          sampledEdgeHex={sampledEdgeHex}
-          onSelectLayer={setSelectedLayerId}
-          onAddImageFiles={(files) => void handleAddImageFiles(files)}
-          onQuickFitLayer={handleQuickFitLayer}
-          onExtendLayerStub={(id, mode) => void handleExtendLayerStub(id, mode)}
-          onMatchSpineBackToEdge={(hex) => {
-            updateStudio({ spineBgColor: hex, backBgColor: hex, frontBgColor: hex });
-            onStatusMessage(`Matched spine & back color to cover edge (${hex.toUpperCase()})`);
-          }}
-          onSetLayerClip={(id, clipZone: LayerClipZone) =>
-            updateLayer(id, (layer) => ({ ...layer, clipZone }))
-          }
-          onScaleLayer={(id, factor) =>
-            updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
-          }
-          onReorderLayer={(id, direction) =>
-            onChange({
-              ...studio,
-              layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
-            })
-          }
-          onDeleteLayer={(id) => {
-            const remaining = studio.layers.filter((l) => l.id !== id);
-            onChange({ ...studio, layers: remaining });
-            if (selectedLayerId === id) {
-              setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
+            <TabsTrigger
+              value="text"
+              data-testid="studio-tool-text"
+              className="px-3 py-1.5 text-xs"
+            >
+              <Type className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+              Cover Text
+              {(studio.textLayers ?? []).length > 0 && (
+                <Badge variant="outline" className="ml-0.5 h-4 px-1 font-mono text-[10px]">
+                  {(studio.textLayers ?? []).length}
+                </Badge>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="designs"
+              data-testid="studio-tool-designs"
+              className="px-3 py-1.5 text-xs"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+              Classic Designs
+              {(studio.ornaments ?? []).length > 0 && (
+                <Badge variant="outline" className="ml-0.5 h-4 px-1 font-mono text-[10px]">
+                  {(studio.ornaments ?? []).length}
+                </Badge>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="spine"
+              data-testid="studio-tool-spine"
+              className="px-3 py-1.5 text-xs"
+            >
+              <BookOpen className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+              Spine
+              {(studio.spineText.title.trim().length > 0 ||
+                studio.spineText.author.trim().length > 0) && (
+                <span
+                  aria-label="Spine text configured"
+                  className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-brass"
+                />
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="preflight"
+              data-testid="studio-tool-preflight"
+              className="px-3 py-1.5 text-xs"
+            >
+              {preflight.status === 'pass' ? (
+                <ShieldCheck
+                  className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400"
+                  aria-hidden="true"
+                />
+              ) : (
+                <ShieldAlert
+                  className={`h-3.5 w-3.5 ${
+                    preflight.errorCount > 0
+                      ? 'text-destructive'
+                      : 'text-amber-600 dark:text-amber-400'
+                  }`}
+                  aria-hidden="true"
+                />
+              )}
+              Preflight
+              {preflight.status === 'pass' ? (
+                <Badge
+                  variant="success"
+                  data-testid="studio-tool-preflight-badge"
+                  className="ml-0.5 h-4 rounded-full px-1.5 font-mono text-[10px]"
+                >
+                  OK
+                </Badge>
+              ) : (
+                <Badge
+                  variant={preflight.errorCount > 0 ? 'destructive' : 'warning'}
+                  data-testid="studio-tool-preflight-badge"
+                  className="ml-0.5 h-4 rounded-full px-1.5 font-mono text-[10px]"
+                >
+                  {preflight.errorCount + preflight.warningCount}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="artwork" className="mt-0">
+          <ArtworkControlsCard
+            studio={studio}
+            selectedLayerId={selectedLayerId}
+            eyedropperTarget={eyedropperTarget}
+            extendingStub={extendingStub}
+            sampledEdgeHex={sampledEdgeHex}
+            onSelectLayer={handleSelectImageLayer}
+            onAddImageFiles={(files) => void handleAddImageFiles(files)}
+            onQuickFitLayer={handleQuickFitLayer}
+            onExtendLayerStub={(id, mode) => void handleExtendLayerStub(id, mode)}
+            onMatchSpineBackToEdge={(hex) => {
+              updateStudio({ spineBgColor: hex, backBgColor: hex, frontBgColor: hex });
+              onStatusMessage(`Matched spine & back color to cover edge (${hex.toUpperCase()})`);
+            }}
+            onSetLayerClip={(id, clipZone: LayerClipZone) =>
+              updateLayer(id, (layer) => ({ ...layer, clipZone }))
             }
-          }}
-          onUpdateStudio={updateStudio}
-          onToggleEyedropper={(target) => {
-            setViewMode('2d');
-            setEyedropperTarget((prev) => (prev === target ? null : target));
-          }}
-        />
+            onScaleLayer={(id, factor) =>
+              updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
+            }
+            onReorderLayer={(id, direction) =>
+              onChange({
+                ...studio,
+                layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
+              })
+            }
+            onDeleteLayer={(id) => {
+              const remaining = studio.layers.filter((l) => l.id !== id);
+              onChange({ ...studio, layers: remaining });
+              if (selectedLayerId === id) {
+                setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
+              }
+            }}
+            onUpdateStudio={updateStudio}
+            onToggleEyedropper={(target) => {
+              setViewMode('2d');
+              setEyedropperTarget((prev) => (prev === target ? null : target));
+            }}
+          />
+        </TabsContent>
 
-        <SpineTypographyCard
-          spineText={studio.spineText}
-          maxFontSizePt={maxFontSizePt}
-          effectiveFontSizePt={effectiveFontSizePt}
-          customFont={customFont}
-          onUpdateSpineText={updateSpineText}
-          onCustomFontSelected={(file) => void handleCustomFontUpload(file)}
-        />
-      </div>
+        <TabsContent value="text" className="mt-0">
+          <CoverElementsCard
+            forcedTab="text"
+            studio={studio}
+            customFont={customFont}
+            selectedTextId={selectedTextId}
+            selectedOrnamentId={selectedOrnamentId}
+            onSelectText={(id) => {
+              setSelectedTextId(id);
+              if (id) {
+                setSelectedLayerId(null);
+                setSelectedOrnamentId(null);
+              }
+            }}
+            onSelectOrnament={(id) => {
+              setSelectedOrnamentId(id);
+              if (id) {
+                setSelectedLayerId(null);
+                setSelectedTextId(null);
+              }
+            }}
+            onAddTextPreset={handleAddTextPreset}
+            onUpdateTextLayer={handleUpdateTextLayer}
+            onQuickAlignText={handleQuickAlignText}
+            onDeleteTextLayer={handleDeleteTextLayer}
+            onAddOrnament={handleAddOrnament}
+            onImportSvgStamp={(file, zone, color) => void handleImportSvgStamp(file, zone, color)}
+            onUpdateOrnament={handleUpdateOrnament}
+            onScaleOrnament={handleScaleOrnament}
+            onFitOrnamentToBoard={handleFitOrnamentToBoard}
+            onDeleteOrnament={handleDeleteOrnament}
+          />
+        </TabsContent>
 
-      {/* Front & Back Cover Text Layers + Classic Bookbindery Vector Ornament Library */}
-      <CoverElementsCard
-        studio={studio}
-        customFont={customFont}
-        selectedTextId={selectedTextId}
-        selectedOrnamentId={selectedOrnamentId}
-        onSelectText={(id) => {
-          setSelectedTextId(id);
-          if (id) {
-            setSelectedLayerId(null);
-            setSelectedOrnamentId(null);
-          }
-        }}
-        onSelectOrnament={(id) => {
-          setSelectedOrnamentId(id);
-          if (id) {
-            setSelectedLayerId(null);
-            setSelectedTextId(null);
-          }
-        }}
-        onAddTextPreset={handleAddTextPreset}
-        onUpdateTextLayer={handleUpdateTextLayer}
-        onQuickAlignText={handleQuickAlignText}
-        onDeleteTextLayer={handleDeleteTextLayer}
-        onAddOrnament={handleAddOrnament}
-        onImportSvgStamp={(file, zone, color) => void handleImportSvgStamp(file, zone, color)}
-        onUpdateOrnament={handleUpdateOrnament}
-        onScaleOrnament={handleScaleOrnament}
-        onFitOrnamentToBoard={handleFitOrnamentToBoard}
-        onDeleteOrnament={handleDeleteOrnament}
-      />
+        <TabsContent value="designs" className="mt-0">
+          <CoverElementsCard
+            forcedTab="ornaments"
+            studio={studio}
+            customFont={customFont}
+            selectedTextId={selectedTextId}
+            selectedOrnamentId={selectedOrnamentId}
+            onSelectText={(id) => {
+              setSelectedTextId(id);
+              if (id) {
+                setSelectedLayerId(null);
+                setSelectedOrnamentId(null);
+              }
+            }}
+            onSelectOrnament={(id) => {
+              setSelectedOrnamentId(id);
+              if (id) {
+                setSelectedLayerId(null);
+                setSelectedTextId(null);
+              }
+            }}
+            onAddTextPreset={handleAddTextPreset}
+            onUpdateTextLayer={handleUpdateTextLayer}
+            onQuickAlignText={handleQuickAlignText}
+            onDeleteTextLayer={handleDeleteTextLayer}
+            onAddOrnament={handleAddOrnament}
+            onImportSvgStamp={(file, zone, color) => void handleImportSvgStamp(file, zone, color)}
+            onUpdateOrnament={handleUpdateOrnament}
+            onScaleOrnament={handleScaleOrnament}
+            onFitOrnamentToBoard={handleFitOrnamentToBoard}
+            onDeleteOrnament={handleDeleteOrnament}
+          />
+        </TabsContent>
+
+        <TabsContent value="spine" className="mt-0">
+          <SpineTypographyCard
+            spineText={studio.spineText}
+            maxFontSizePt={maxFontSizePt}
+            effectiveFontSizePt={effectiveFontSizePt}
+            customFont={customFont}
+            onUpdateSpineText={updateSpineText}
+            onCustomFontSelected={(file) => void handleCustomFontUpload(file)}
+          />
+        </TabsContent>
+
+        <TabsContent value="preflight" className="mt-0">
+          <PreflightCard
+            report={preflight}
+            showOverlays={showPreflightOverlays}
+            checkDpi={checkDpi}
+            activeIssueId={activeIssueId}
+            onToggleOverlays={setShowPreflightOverlays}
+            onToggleCheckDpi={(next) => {
+              setCheckDpi(next);
+              onStatusMessage(next ? '300 DPI print check enabled' : '300 DPI print check paused');
+            }}
+            onHighlightIssue={setActiveIssueId}
+            onApplyQuickFix={handleApplyQuickFix}
+            onIgnoreIssue={(issueId) => {
+              setIgnoredIssueIds((prev) => {
+                const next = new Set(prev);
+                next.add(issueId);
+                return next;
+              });
+              setActiveIssueId((prev) => (prev === issueId ? null : prev));
+            }}
+            onRestoreIgnored={() => {
+              setIgnoredIssueIds(new Set());
+              onStatusMessage('Restored all ignored preflight warnings');
+            }}
+          />
+        </TabsContent>
+      </Tabs>
 
       {/* Cricut / Silhouette / ScanNCut HTV & Foil Vector SVG Export Modal */}
       <CricutExportDialog

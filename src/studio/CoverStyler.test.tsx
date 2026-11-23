@@ -58,7 +58,8 @@ describe('CoverStyler', () => {
     await user.click(screen.getByTestId('layer-scale-up-btn'));
     expect(state.layers[0].widthMm).toBeGreaterThan(widthBefore);
 
-    // Spine typography update + flip author orientation to horizontal
+    // Switch to Spine tab in the Studio Tool Dock -> update spine typography + flip author orientation
+    await user.click(screen.getByTestId('studio-tool-spine'));
     await user.type(screen.getByTestId('studio-spine-title-input'), 'D');
     expect(state.spineText.title).toBe('D');
 
@@ -141,6 +142,9 @@ describe('CoverStyler', () => {
     );
 
     expect(screen.getByTestId('studio-preflight-overlays')).toBeInTheDocument();
+
+    // Open Preflight tab in the Studio Tool Dock
+    await user.click(screen.getByTestId('studio-tool-preflight'));
     expect(screen.getByTestId('preflight-issue-front-board-gap')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('preflight-fix-front-board-gap'));
@@ -156,6 +160,7 @@ describe('CoverStyler', () => {
 
     expect(screen.queryByTestId('preflight-issue-front-board-gap')).not.toBeInTheDocument();
     expect(screen.getByTestId('preflight-status-badge')).toHaveTextContent('All Checks Passed');
+    expect(screen.getByTestId('studio-tool-preflight-badge')).toHaveTextContent('OK');
   });
 
   it('switches to 1:1 mm CAD Blueprint mode (including 3-piece split) and triggers Cut-Only exports', async () => {
@@ -248,5 +253,73 @@ describe('CoverStyler', () => {
     expect(state.layers[0].xMm + state.layers[0].widthMm).toBeGreaterThanOrEqual(
       expectedFrontStart + largerGeom.outerWrap.frontBoardRect.width,
     );
+  });
+
+  it('supports compact Studio Tool Dock tabs without double nested tabs, smart auto-switch on canvas click, and roll badge navigation', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const onOpenMeasureAndCut = vi.fn();
+
+    let state: CoverStudioState = CoverStudioModel.createDefault();
+    const onChange = vi.fn((next: CoverStudioState) => {
+      state = next;
+    });
+
+    const { rerender } = render(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={state}
+        onChange={onChange}
+        onOpenMeasureAndCut={onOpenMeasureAndCut}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    // Clicking the compact spec/roll badge invokes onOpenMeasureAndCut
+    const rollBadge = screen.getByTestId('studio-roll-badge');
+    expect(rollBadge).toHaveTextContent('366.0 × 259.0 mm');
+    await user.click(rollBadge);
+    expect(onOpenMeasureAndCut).toHaveBeenCalledTimes(1);
+
+    // Switch to Cover Text tab -> no internal nested tablist
+    await user.click(screen.getByTestId('studio-tool-text'));
+    expect(screen.queryByTestId('elements-tab-text')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('add-front-title-btn'));
+
+    rerender(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={state}
+        onChange={onChange}
+        onOpenMeasureAndCut={onOpenMeasureAndCut}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    // Switch to Classic Designs tab -> add an ornament
+    await user.click(screen.getByTestId('studio-tool-designs'));
+    expect(screen.queryByTestId('elements-tab-ornaments')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('add-ornament-frame-double-rule'));
+
+    rerender(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={state}
+        onChange={onChange}
+        onOpenMeasureAndCut={onOpenMeasureAndCut}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    // Smart Auto-Switch: clicking the text element on canvas switches tool dock to Cover Text
+    await user.click(screen.getByTestId('studio-cover-text-0'));
+    expect(screen.getByTestId('studio-tool-text')).toHaveAttribute('data-state', 'active');
+
+    // Clicking the ornament on canvas switches tool dock back to Classic Designs
+    await user.click(screen.getByTestId('studio-ornament-0'));
+    expect(screen.getByTestId('studio-tool-designs')).toHaveAttribute('data-state', 'active');
   });
 });
