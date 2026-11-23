@@ -84,7 +84,7 @@ export interface InnerPocketsStudioProps {
   readonly exportingInnerPdf?: boolean;
   readonly onChangePocketStyle: (next: PocketStyleConfig) => void;
   readonly onDownloadInnerSvg: () => void;
-  readonly onDownloadInnerPdf: () => void;
+  readonly onDownloadInnerPdf: (includeLegend?: boolean) => void;
   readonly onStatusMessage: (message: string) => void;
 }
 
@@ -352,6 +352,7 @@ export function InnerPocketsStudio({
   const [viewMode, setViewMode] = useState<PocketViewMode>('styled');
   const [showGuides, setShowGuides] = useState(true);
   const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
+  const [includePdfLegend, setIncludePdfLegend] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => layers[layers.length - 1]?.id ?? null,
@@ -379,8 +380,8 @@ export function InnerPocketsStudio({
   }, [pocketStyle, onChangePocketStyle]);
 
   const pdfPlan = useMemo(
-    () => planInnerTemplateLayout(geometry, pdfPageSize),
-    [geometry, pdfPageSize],
+    () => planInnerTemplateLayout(geometry, pdfPageSize, { includeLegend: includePdfLegend }),
+    [geometry, pdfPageSize, includePdfLegend],
   );
 
   const { backPocket, spineLiner, frontPocket } = geometry;
@@ -579,10 +580,12 @@ export function InnerPocketsStudio({
         geometry,
         pdfPageSize,
         pocketStyle,
+        undefined,
+        { includeLegend: includePdfLegend },
       );
       triggerBytesDownload(bytes, 'inner_pockets_styled.pdf', 'application/pdf');
       onStatusMessage(
-        `Exported inner_pockets_styled.pdf (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'}, 300 DPI)`,
+        `Exported inner_pockets_styled.pdf (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'}, 300 DPI${includePdfLegend ? ' with legend' : ''})`,
       );
     } catch {
       onStatusMessage('Failed to generate Styled Pockets PDF.');
@@ -641,6 +644,20 @@ export function InnerPocketsStudio({
 
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              variant={includePdfLegend ? 'secondary' : 'outline'}
+              size="sm"
+              className={`h-8 px-2.5 text-xs ${
+                includePdfLegend ? 'border-brass/60 text-foreground' : 'border-dashed text-muted-foreground'
+              }`}
+              aria-pressed={includePdfLegend}
+              data-testid="pocket-pdf-legend-toggle"
+              title="Include 50 × 50 mm scale square & cut/score legend in PDF (off by default to fit more pieces per page)"
+              onClick={() => setIncludePdfLegend((v) => !v)}
+            >
+              <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
+              {includePdfLegend ? 'PDF Legend: On' : 'PDF Legend: Off'}
+            </Button>
+            <Button
               variant="default"
               size="sm"
               onClick={() => void handleDownloadStyledPdf()}
@@ -653,7 +670,7 @@ export function InnerPocketsStudio({
             <Button
               variant="outline"
               size="sm"
-              onClick={onDownloadInnerPdf}
+              onClick={() => onDownloadInnerPdf(includePdfLegend)}
               disabled={exportingInnerPdf}
               aria-label="Download Inner Pockets and Spine Liner as Plain Cut PDF"
               data-testid="download-inner-pdf-btn"

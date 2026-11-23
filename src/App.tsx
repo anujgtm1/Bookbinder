@@ -90,16 +90,17 @@ export function App() {
     setStatusMessage('Exported inner_pockets_and_liner.svg (1:1 mm)');
   };
 
-  const handleDownloadInnerPdf = async () => {
+  const handleDownloadInnerPdf = async (includeLegend = false) => {
     setExportingTarget('inner-pdf');
     try {
       const { bytes, plan } = await generateInnerTemplatesPdf(
         geometry,
         project.parameters.pdfPageSize,
+        { includeLegend },
       );
       triggerBytesDownload(bytes, 'inner_pockets_and_liner.pdf', 'application/pdf');
       setStatusMessage(
-        `Exported inner_pockets_and_liner.pdf (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'})`,
+        `Exported inner_pockets_and_liner.pdf (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'}${includeLegend ? ' with legend' : ''})`,
       );
     } catch {
       setStatusMessage('Failed to generate inner templates PDF.');

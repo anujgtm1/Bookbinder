@@ -168,10 +168,17 @@ function packOrderedItems(
   return { pageCount: bins.length, placements };
 }
 
+export interface InnerPdfLayoutOptions {
+  /** Include the 50×50 mm scale verification square & cut/score visual legend block. Defaults to false for tighter sheet packing. */
+  readonly includeLegend?: boolean;
+}
+
 export function planInnerTemplateLayout(
   geometry: CaseGeometry,
   pageSizeId: PageSizeId,
+  options?: InnerPdfLayoutOptions,
 ): InnerPdfLayoutPlan {
+  const includeLegend = options?.includeLegend ?? false;
   const sheet = PAGE_SIZES[pageSizeId];
   const usableW = sheet.widthMm - PAGE_MARGIN_MM * 2;
   const usableH = sheet.heightMm - PAGE_MARGIN_MM * 2;
@@ -194,6 +201,18 @@ export function planInnerTemplateLayout(
     heightMm: geometry.spineLiner.heightMm,
     allowRotate: true,
   };
+
+  if (!includeLegend) {
+    const packed = packOrderedItems([backPocket, frontPocket, spineLiner], usableW, usableH);
+    return {
+      pageSizeId,
+      pageWidthMm: sheet.widthMm,
+      pageHeightMm: sheet.heightMm,
+      pageCount: packed.pageCount,
+      placements: packed.placements,
+    };
+  }
+
   const calibration: PackableItem = {
     kind: 'calibration-legend',
     widthMm: CALIBRATION_BOX_W_MM,
@@ -573,6 +592,8 @@ export interface InnerPdfRenderOptions {
   >;
   /** Suppress centered dimension text on styled pieces so printed endpaper artwork stays clean */
   readonly hideFaceTextOnStyled?: boolean;
+  /** Include the 50×50 mm calibration square & visual legend block. Defaults to false. */
+  readonly includeLegend?: boolean;
 }
 
 export async function generateInnerTemplatesPdf(
@@ -580,7 +601,9 @@ export async function generateInnerTemplatesPdf(
   pageSizeId: PageSizeId,
   options?: InnerPdfRenderOptions,
 ): Promise<{ readonly bytes: Uint8Array; readonly plan: InnerPdfLayoutPlan }> {
-  const plan = planInnerTemplateLayout(geometry, pageSizeId);
+  const plan = planInnerTemplateLayout(geometry, pageSizeId, {
+    includeLegend: options?.includeLegend,
+  });
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle('Bookbinder — Inner Pockets & Spine Liner (1:1 mm)');
   pdfDoc.setCreator('Bookbinder Studio');

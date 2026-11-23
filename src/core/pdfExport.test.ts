@@ -10,18 +10,36 @@ import {
 } from './pdfExport';
 
 describe('Inner Envelopes & Spine Liner PDF exporter', () => {
-  it('packs default book onto 2 pages on US Letter and A4 with zero clipping', () => {
+  it('omits the legend block by default for tighter packing and includes it on Page 1 when includeLegend is enabled', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
 
-    const letterPlan = planInnerTemplateLayout(geom, 'letter');
-    expect(letterPlan.pageCount).toBe(2);
-    expect(letterPlan.placements).toHaveLength(4);
-    expect(letterPlan.placements.every((p) => !p.clipped)).toBe(true);
-    // Calibration square is placed on Page 1
-    const cal = letterPlan.placements.find((p) => p.kind === 'calibration-legend');
+    // Default (includeLegend = false): only the 3 template pieces are packed
+    const letterCompact = planInnerTemplateLayout(geom, 'letter');
+    expect(letterCompact.placements).toHaveLength(3);
+    expect(letterCompact.placements.some((p) => p.kind === 'calibration-legend')).toBe(false);
+    expect(letterCompact.placements.every((p) => !p.clipped)).toBe(true);
+
+    // Opt-in (includeLegend = true): includes calibration-legend on Page 1
+    const letterWithLegend = planInnerTemplateLayout(geom, 'letter', { includeLegend: true });
+    expect(letterWithLegend.pageCount).toBe(2);
+    expect(letterWithLegend.placements).toHaveLength(4);
+    expect(letterWithLegend.placements.every((p) => !p.clipped)).toBe(true);
+    const cal = letterWithLegend.placements.find((p) => p.kind === 'calibration-legend');
     expect(cal?.pageIndex).toBe(0);
 
-    const a4Plan = planInnerTemplateLayout(geom, 'a4');
+    // Compact A6 / pocket notebook fits on 1 US Letter sheet without legend, vs 2 sheets with legend
+    const a6Geom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 12,
+    });
+    const a6NoLegend = planInnerTemplateLayout(a6Geom, 'letter');
+    const a6WithLegend = planInnerTemplateLayout(a6Geom, 'letter', { includeLegend: true });
+    expect(a6NoLegend.pageCount).toBe(1);
+    expect(a6NoLegend.pageCount).toBeLessThanOrEqual(a6WithLegend.pageCount);
+
+    const a4Plan = planInnerTemplateLayout(geom, 'a4', { includeLegend: true });
     expect(a4Plan.pageCount).toBe(2);
     expect(a4Plan.placements.every((p) => !p.clipped)).toBe(true);
   });

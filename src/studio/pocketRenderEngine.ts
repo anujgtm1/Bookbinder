@@ -322,8 +322,10 @@ export async function generateStyledInnerTemplatesPdf(
   pageSizeId: PageSizeId,
   pocketStyle: PocketStyleConfig,
   dpi = PRINT_DPI,
+  options?: { readonly includeLegend?: boolean },
 ): Promise<{ readonly bytes: Uint8Array; readonly plan: InnerPdfLayoutPlan }> {
-  const plan = planInnerTemplateLayout(geometry, pageSizeId);
+  const includeLegend = options?.includeLegend ?? false;
+  const plan = planInnerTemplateLayout(geometry, pageSizeId, { includeLegend });
   const layout = computeInnerPocketsLayout(geometry);
 
   let loadedImage: HTMLImageElement | null = null;
@@ -403,5 +405,6 @@ export async function generateStyledInnerTemplatesPdf(
   return generateInnerTemplatesPdf(geometry, pageSizeId, {
     pieceArtworkPng,
     hideFaceTextOnStyled: true,
+    includeLegend,
   });
 }

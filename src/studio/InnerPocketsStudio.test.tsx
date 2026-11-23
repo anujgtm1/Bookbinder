@@ -61,12 +61,20 @@ describe('InnerPocketsStudio', () => {
     expect(screen.queryByTestId('styled-front-pocket-fill')).not.toBeInTheDocument();
     expect(screen.getByText('SPINE LINER')).toBeInTheDocument();
 
-    // Download buttons invoke callbacks
+    // Download buttons invoke callbacks (PDF legend defaults to OFF for tighter sheet packing)
     await user.click(screen.getByTestId('download-inner-svg-btn'));
     expect(onDownloadInnerSvg).toHaveBeenCalledTimes(1);
 
+    const legendToggle = screen.getByTestId('pocket-pdf-legend-toggle');
+    expect(legendToggle).toHaveAttribute('aria-pressed', 'false');
     await user.click(screen.getByTestId('download-inner-pdf-btn'));
-    expect(onDownloadInnerPdf).toHaveBeenCalledTimes(1);
+    expect(onDownloadInnerPdf).toHaveBeenLastCalledWith(false);
+
+    // Opt in to printing legend -> passes includeLegend=true
+    await user.click(legendToggle);
+    expect(legendToggle).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByTestId('download-inner-pdf-btn'));
+    expect(onDownloadInnerPdf).toHaveBeenLastCalledWith(true);
   });
 
   it('supports interactive multi-layer quick-fit, copy to opposite pocket, and removal', async () => {
