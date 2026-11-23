@@ -1,8 +1,9 @@
-import { PDFDocument } from 'pdf-lib';
+import { inflateSync } from 'node:zlib';
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
-import { CoverTextLayerModel } from '@/types/coverElements';
+import { CoverOrnamentLayerModel, CoverTextLayerModel } from '@/types/coverElements';
 import { CoverStudioModel } from '@/types/studio';
 import { UnitConverter } from '@/types/units';
 import {
@@ -429,5 +430,109 @@ describe('studio renderEngine', () => {
     );
     const djRegPdf = await PDFDocument.load(djRegBytes);
     expect(djRegPdf.getPageCount()).toBe(1);
+  });
+
+  it('omits cover text, spine text, and ornaments in exportLayerMode: base-only while keeping base geometry, guides, and HTV center ticks', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const bleed = geom.outerWrap.bleedMm;
+    const frontRect = {
+      x: geom.outerWrap.frontBoardRect.x + bleed,
+      y: geom.outerWrap.frontBoardRect.y + bleed,
+      width: geom.outerWrap.frontBoardRect.width,
+      height: geom.outerWrap.frontBoardRect.height,
+    };
+    const frontTitle = {
+      ...CoverTextLayerModel.createPreset('front-title', frontRect),
+      text: 'THE ODYSSEY',
+      color: '#d4af37',
+    };
+    const ornament = CoverOrnamentLayerModel.createForZone(
+      'frame-double-rule',
+      frontRect,
+      'front',
+      '#f5efe2',
+    );
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'THE ODYSSEY',
+        author: 'HOMER',
+      },
+      textLayers: [frontTitle],
+      ornaments: [ornament],
+    };
+
+    const fullBytes = await generatePrintReadyRollPdf(geom, studio, null, {
+      skipCanvasRaster: true,
+      includeGuides: true,
+      includeScaleBar: false,
+      exportLayerMode: 'full',
+    });
+    const baseOnlyBytes = await generatePrintReadyRollPdf(geom, studio, null, {
+      skipCanvasRaster: true,
+      includeGuides: true,
+      includeScaleBar: false,
+      exportLayerMode: 'base-only',
+    });
+
+    const fullPdf = await PDFDocument.load(fullBytes);
+    const basePdf = await PDFDocument.load(baseOnlyBytes);
+
+    expect(basePdf.getPageCount()).toBe(1);
+    const baseSize = basePdf.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(baseSize.width)).toBeCloseTo(372, 2);
+    expect(UnitConverter.pointsToMm(baseSize.height)).toBeCloseTo(265, 2);
+    expect(basePdf.getTitle()).toContain('For HTV');
+
+    // Full mode embeds font resources and BT/ET text streams; Base-Only omits text streams & fonts entirely
+    const getFontCount = (doc: PDFDocument): number => {
+      const resources = doc.getPage(0).node.Resources();
+      const fontDict = resources?.lookupMaybe(PDFName.of('Font'), PDFDict);
+      return fontDict ? fontDict.entries().length : 0;
+    };
+    const getDecompressedPageStream = (doc: PDFDocument): string => {
+      const pageNode = doc.getPage(0).node;
+      const contents = pageNode.Contents();
+      const refs = contents instanceof PDFArray ? contents.asArray() : [contents];
+      return refs
+        .map((item) => {
+          const resolved = item ? doc.context.lookup(item) : undefined;
+          if (resolved instanceof PDFRawStream) {
+            return inflateSync(Buffer.from(resolved.contents)).toString('latin1');
+          }
+          return '';
+        })
+        .join('\n');
+    };
+
+    expect(getFontCount(fullPdf)).toBeGreaterThan(0);
+    expect(getFontCount(basePdf)).toBe(0);
+
+    const fullStream = getDecompressedPageStream(fullPdf);
+    const baseStream = getDecompressedPageStream(basePdf);
+    expect(fullStream).toContain('\nBT\n');
+    expect(baseStream).not.toContain('\nBT\n');
+    // Base-Only retains background fills (f), cut/fold guides, and brass HTV center-alignment ticks (0.71 0.51 0.15 RG)
+    expect(baseStream).toContain('\nf\n');
+    expect(baseStream).toContain('0.92 0.14 0.14 RG');
+    expect(baseStream).toContain('0.12 0.42 0.88 RG');
+    expect(baseStream).toContain('0.71 0.51 0.15 RG');
+
+    // Base-Only PDF is valid and meaningfully smaller without embedded fonts / text streams / ornament paths
+    expect(baseOnlyBytes.byteLength).toBeGreaterThan(500);
+    expect(baseOnlyBytes.byteLength).toBeLessThan(fullBytes.byteLength);
+
+    // Also works with outer registration marks only (includeGuides: false)
+    const baseNoGuidesBytes = await generatePrintReadyRollPdf(geom, studio, null, {
+      skipCanvasRaster: true,
+      includeGuides: false,
+      includeScaleBar: false,
+      exportLayerMode: 'base-only',
+    });
+    const baseNoGuidesPdf = await PDFDocument.load(baseNoGuidesBytes);
+    expect(baseNoGuidesPdf.getPageCount()).toBe(1);
+    expect(getFontCount(baseNoGuidesPdf)).toBe(0);
+    expect(getDecompressedPageStream(baseNoGuidesPdf)).not.toContain('\nBT\n');
   });
 });

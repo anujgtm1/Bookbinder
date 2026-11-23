@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FlipHorizontal2, Scissors, X } from 'lucide-react';
+import { CheckCircle2, Download, FlipHorizontal2, Printer, Scissors, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ export interface CricutExportDialogProps {
   readonly unit: UnitSystem;
   readonly onOpenChange: (open: boolean) => void;
   readonly onStatusMessage: (message: string) => void;
+  readonly onOpenBasePdfForHtv?: () => void;
 }
 
 /**
@@ -39,6 +40,7 @@ export function CricutExportDialog({
   unit,
   onOpenChange,
   onStatusMessage,
+  onOpenBasePdfForHtv,
 }: CricutExportDialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -179,6 +181,17 @@ export function CricutExportDialog({
     }
   };
 
+  const handleOpenBasePdfForHtv = () => {
+    const dialog = dialogRef.current;
+    if (dialog && typeof dialog.close === 'function' && dialog.open) {
+      dialog.close();
+    } else {
+      dialog?.removeAttribute('open');
+    }
+    onOpenChange(false);
+    onOpenBasePdfForHtv?.();
+  };
+
   return (
     <dialog
       ref={dialogRef}
@@ -227,7 +240,10 @@ export function CricutExportDialog({
       <div className="grid gap-5 overflow-y-auto p-5 md:grid-cols-[1.1fr_1fr]">
         {/* Left: Live Vector Cut Mat Preview */}
         <div className="flex flex-col gap-3">
-          <div className="drafting-surface relative flex h-72 items-center justify-center rounded-lg border border-border p-4">
+          <div
+            data-testid="cricut-preview-mat"
+            className="cricut-mat-surface relative flex h-72 items-center justify-center rounded-lg border border-border p-4 shadow-inner"
+          >
             {previewDataUri ? (
               <img
                 src={previewDataUri}
@@ -236,7 +252,7 @@ export function CricutExportDialog({
                 className="max-h-full max-w-full object-contain drop-shadow-xs"
               />
             ) : (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-slate-600">
                 {generating ? 'Outlining font paths…' : 'Preparing vector cut preview…'}
               </span>
             )}
@@ -288,10 +304,26 @@ export function CricutExportDialog({
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-3 pt-1 text-[10px] text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <span className="inline-block h-2 w-2 rounded-full bg-[#111111]" />
-                  Lettering (HTV)
-                </span>
+                {options.groupByColor && preview.foilColors.length > 0 ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1">
+                      {preview.foilColors.map((hex) => (
+                        <span
+                          key={hex}
+                          className="inline-block h-2.5 w-2.5 rounded-full border border-border/80"
+                          style={{ backgroundColor: hex }}
+                          title={hex}
+                        />
+                      ))}
+                    </span>
+                    Foil Mats ({preview.foilColors.length})
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <span className="inline-block h-2 w-2 rounded-full bg-[#111111]" />
+                    Lettering (HTV)
+                  </span>
+                )}
                 <span className="flex items-center gap-1">
                   <span className="inline-block h-2 w-2 rounded-full bg-[#B48327]" />
                   Corner Alignment
@@ -455,6 +487,40 @@ export function CricutExportDialog({
                 </div>
               )}
 
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Label htmlFor="cricut-group-by-color-switch">Split Mats by Foil Color</Label>
+                    {preview && preview.foilColors.length > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1"
+                        data-testid="cricut-foil-color-dots"
+                      >
+                        {preview.foilColors.map((hex) => (
+                          <span
+                            key={hex}
+                            className="inline-block h-2.5 w-2.5 rounded-full border border-border/80 shadow-2xs"
+                            style={{ backgroundColor: hex }}
+                            title={hex}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {preview && preview.foilColors.length > 1
+                      ? `${preview.foilColors.length} foil colors detected — Cricut splits mats automatically.`
+                      : 'Uses design foil colors so Cricut splits mats automatically.'}
+                  </p>
+                </div>
+                <Switch
+                  id="cricut-group-by-color-switch"
+                  data-testid="cricut-group-by-color-switch"
+                  checked={Boolean(options.groupByColor)}
+                  onCheckedChange={(v) => updateOption('groupByColor', v)}
+                />
+              </div>
+
               <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/40 px-2.5 py-2">
                 <div className="space-y-0.5">
                   <Label htmlFor="cricut-mirror-switch">Mirror Horizontally (HTV)</Label>
@@ -472,24 +538,50 @@ export function CricutExportDialog({
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <form method="dialog">
-              <Button type="submit" variant="outline" size="sm">
-                Cancel
+          <div className="space-y-2.5 pt-2">
+            {onOpenBasePdfForHtv && (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-brass/35 bg-brass/10 px-2.5 py-2">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-medium text-foreground">
+                    Hybrid Printed Base + HTV Foil
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Print artwork base only (no text or ornaments) to press HTV cleanly.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 px-2 text-[11px]"
+                  data-testid="cricut-open-base-pdf-btn"
+                  onClick={handleOpenBasePdfForHtv}
+                >
+                  <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+                  Export Printed Base PDF…
+                </Button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <form method="dialog">
+                <Button type="submit" variant="outline" size="sm">
+                  Cancel
+                </Button>
+              </form>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                autoFocus
+                disabled={!preview || preview.pathCount === 0 || generating}
+                onClick={handleDownload}
+                data-testid="cricut-download-btn"
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Download Cricut SVG
               </Button>
-            </form>
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              autoFocus
-              disabled={!preview || preview.pathCount === 0 || generating}
-              onClick={handleDownload}
-              data-testid="cricut-download-btn"
-            >
-              <Download className="h-4 w-4" aria-hidden="true" />
-              Download Cricut SVG
-            </Button>
+            </div>
           </div>
         </div>
       </div>

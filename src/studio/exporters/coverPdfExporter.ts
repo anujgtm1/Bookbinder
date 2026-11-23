@@ -33,6 +33,8 @@ import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from '../classicOrname
 import { getCuratedFont, loadCuratedFontBytes, type CustomFontAsset } from '../fonts';
 import { renderCoverArtworkCanvas } from './coverRasterExporter';
 
+export type CoverPdfLayerMode = 'full' | 'base-only';
+
 interface PdfCoordMapper {
   readonly toPdfX: (mm: number) => number;
   readonly toPdfY: (mm: number) => number;
@@ -241,16 +243,88 @@ function drawOuterRegistrationMarks(
   }
 }
 
+/**
+ * Draws subtle 3 mm brass center-alignment hairlines in the outer top/bottom bleed or margin
+ * at the exact Back Board, Spine, and Front Board center X coordinates — strictly outside the
+ * visible board faces to aid HTV transfer-tape alignment without marking the visible cover.
+ */
+function drawHtvCenterAlignmentTicks(
+  page: PDFPage,
+  geometry: CaseGeometry,
+  spec: StudioCanvasSpec,
+  coords: PdfCoordMapper,
+): void {
+  const { toPdfX, toPdfY } = coords;
+  const bleed = spec.bleedMm;
+  const { outerWrap } = geometry;
+  const brass = rgb(0.71, 0.51, 0.15);
+
+  const topMarginMm =
+    Math.min(
+      outerWrap.backBoardRect.y,
+      outerWrap.spineRect.y,
+      outerWrap.frontBoardRect.y,
+    ) + bleed;
+  const bottomBoardEdgeMm =
+    Math.max(
+      outerWrap.backBoardRect.y + outerWrap.backBoardRect.height,
+      outerWrap.spineRect.y + outerWrap.spineRect.height,
+      outerWrap.frontBoardRect.y + outerWrap.frontBoardRect.height,
+    ) + bleed;
+  const bottomMarginMm = spec.totalHeightMm - bottomBoardEdgeMm;
+
+  const topTickLen = Math.min(3, Math.max(0, topMarginMm));
+  const bottomTickLen = Math.min(3, Math.max(0, bottomMarginMm));
+
+  const centerXsMm = [
+    bleed + outerWrap.backBoardRect.x + outerWrap.backBoardRect.width / 2,
+    bleed + outerWrap.spineRect.x + outerWrap.spineRect.width / 2,
+    bleed + outerWrap.frontBoardRect.x + outerWrap.frontBoardRect.width / 2,
+  ];
+
+  for (const cxMm of centerXsMm) {
+    const xPt = toPdfX(cxMm);
+    if (topTickLen >= 0.5) {
+      page.drawLine({
+        start: { x: xPt, y: toPdfY(0) },
+        end: { x: xPt, y: toPdfY(topTickLen) },
+        color: brass,
+        thickness: 0.55,
+        opacity: 0.9,
+      });
+    }
+    if (bottomTickLen >= 0.5) {
+      page.drawLine({
+        start: { x: xPt, y: toPdfY(spec.totalHeightMm) },
+        end: { x: xPt, y: toPdfY(spec.totalHeightMm - bottomTickLen) },
+        color: brass,
+        thickness: 0.55,
+        opacity: 0.9,
+      });
+    }
+  }
+}
+
 /** Renders the complete 1:1 mm outer cover onto a single PDFDocument page (artwork, vectors, typography, guides). */
 async function renderBaseCoverPdfPage(
   geometry: CaseGeometry,
   studio: CoverStudioState,
   customFont: CustomFontAsset | null,
   spec: StudioCanvasSpec,
-  options?: { rasterDpi?: number; skipCanvasRaster?: boolean; includeGuides?: boolean },
+  options?: {
+    rasterDpi?: number;
+    skipCanvasRaster?: boolean;
+    includeGuides?: boolean;
+    exportLayerMode?: CoverPdfLayerMode;
+  },
 ): Promise<{ bytes: Uint8Array; pageW: number; pageH: number }> {
+  const isBaseOnly = (options?.exportLayerMode ?? 'full') === 'base-only';
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle('Bookbinder — Print-Ready Outer Cover (1:1 mm)');
+  pdfDoc.setTitle(
+    isBaseOnly
+      ? 'Bookbinder — Print-Ready Outer Cover Base (For HTV, 1:1 mm)'
+      : 'Bookbinder — Print-Ready Outer Cover (1:1 mm)',
+  );
   pdfDoc.setCreator('Bookbinder Studio');
 
   const pageW = UnitConverter.mmToPoints(spec.totalWidthMm);
@@ -269,6 +343,7 @@ async function renderBaseCoverPdfPage(
   ) {
     const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
       includeSpineText: false,
+      includeTextAndOrnaments: !isBaseOnly,
       dpi: options?.rasterDpi ?? PRINT_DPI,
     });
     const pngBytes = await canvasToPngBytes(canvas);
@@ -292,138 +367,141 @@ async function renderBaseCoverPdfPage(
     }
   }
 
-  // 2a. True Vector Classic Bookbindery Ornaments & Custom SVG Stamps (crisp at any scale, never rasterized)
-  const mmToPt = UnitConverter.mmToPoints(1);
-  for (const orn of studio.ornaments ?? []) {
-    const compoundD = buildOrnamentCompoundPath(orn);
-    if (!compoundD) continue;
-    const style = getOrnamentSvgStyle(orn);
-    const oc = hexToRgb01(orn.color);
-    const pdfColor = rgb(oc.r, oc.g, oc.b);
-    page.drawSvgPath(compoundD, {
-      x: 0,
-      y: pageH,
-      scale: mmToPt,
-      color: style.fill !== 'none' ? pdfColor : undefined,
-      borderColor: style.stroke !== 'none' && style.strokeWidthMm > 0 ? pdfColor : undefined,
-      borderWidth:
-        style.stroke !== 'none' && style.strokeWidthMm > 0
-          ? UnitConverter.mmToPoints(style.strokeWidthMm)
-          : undefined,
-    });
-  }
-
-  // 2b. True Vector Cover Text Layers (Front / Back / Spine)
-  const fontCache = new Map<StudioFontId, PDFFont>();
-  for (const textLayer of studio.textLayers ?? []) {
-    const lineItems = computeCoverTextLinePlacements(textLayer);
-    const pdfFont = await embedFontByIdInPdf(pdfDoc, textLayer.fontId, customFont, fontCache);
-    const tc = hexToRgb01(textLayer.color);
-    const textColor = rgb(tc.r, tc.g, tc.b);
-    const isFlipped = Boolean(textLayer.flipX || textLayer.flipY);
-
-    if (isFlipped) {
-      const layerAnchorXPt = toPdfX(textLayer.xMm);
-      const layerAnchorYPt = toPdfY(textLayer.yMm);
-      const sx = textLayer.flipX ? -1 : 1;
-      const sy = textLayer.flipY ? -1 : 1;
-      const tx = layerAnchorXPt * (1 - sx);
-      const ty = layerAnchorYPt * (1 - sy);
-      page.pushOperators(
-        pushGraphicsState(),
-        concatTransformationMatrix(sx, 0, 0, sy, tx, ty),
-      );
+  // 2. Vector Ornaments, Cover Text Layers & Spine Typography (omitted in 'base-only' HTV mode)
+  if (!isBaseOnly) {
+    // 2a. True Vector Classic Bookbindery Ornaments & Custom SVG Stamps (crisp at any scale, never rasterized)
+    const mmToPt = UnitConverter.mmToPoints(1);
+    for (const orn of studio.ornaments ?? []) {
+      const compoundD = buildOrnamentCompoundPath(orn);
+      if (!compoundD) continue;
+      const style = getOrnamentSvgStyle(orn);
+      const oc = hexToRgb01(orn.color);
+      const pdfColor = rgb(oc.r, oc.g, oc.b);
+      page.drawSvgPath(compoundD, {
+        x: 0,
+        y: pageH,
+        scale: mmToPt,
+        color: style.fill !== 'none' ? pdfColor : undefined,
+        borderColor: style.stroke !== 'none' && style.strokeWidthMm > 0 ? pdfColor : undefined,
+        borderWidth:
+          style.stroke !== 'none' && style.strokeWidthMm > 0
+            ? UnitConverter.mmToPoints(style.strokeWidthMm)
+            : undefined,
+      });
     }
 
-    for (const item of lineItems) {
-      if (!item.text.trim()) continue;
-      const trackingPt = item.letterSpacingEm * item.fontSizePt;
-      const chars = Array.from(item.text);
-      const totalWidthPt =
-        Math.abs(trackingPt) > 0.05 && chars.length > 1
-          ? chars.reduce(
-              (acc, ch, i) =>
-                acc +
-                pdfFont.widthOfTextAtSize(ch, item.fontSizePt) +
-                (i < chars.length - 1 ? trackingPt : 0),
-              0,
-            )
-          : pdfFont.widthOfTextAtSize(item.text, item.fontSizePt);
-      const textHeightPt = pdfFont.heightAtSize(item.fontSizePt, { descender: false });
-      const anchorXPt = toPdfX(item.anchorXMm);
-      const anchorYPt = toPdfY(item.anchorYMm);
+    // 2b. True Vector Cover Text Layers (Front / Back / Spine)
+    const fontCache = new Map<StudioFontId, PDFFont>();
+    for (const textLayer of studio.textLayers ?? []) {
+      const lineItems = computeCoverTextLinePlacements(textLayer);
+      const pdfFont = await embedFontByIdInPdf(pdfDoc, textLayer.fontId, customFont, fontCache);
+      const tc = hexToRgb01(textLayer.color);
+      const textColor = rgb(tc.r, tc.g, tc.b);
+      const isFlipped = Boolean(textLayer.flipX || textLayer.flipY);
 
-      const startXPt =
-        item.align === 'left'
-          ? anchorXPt
-          : item.align === 'right'
-            ? anchorXPt - totalWidthPt
-            : anchorXPt - totalWidthPt / 2;
-      const baseYPt = anchorYPt - textHeightPt * 0.36;
+      if (isFlipped) {
+        const layerAnchorXPt = toPdfX(textLayer.xMm);
+        const layerAnchorYPt = toPdfY(textLayer.yMm);
+        const sx = textLayer.flipX ? -1 : 1;
+        const sy = textLayer.flipY ? -1 : 1;
+        const tx = layerAnchorXPt * (1 - sx);
+        const ty = layerAnchorYPt * (1 - sy);
+        page.pushOperators(
+          pushGraphicsState(),
+          concatTransformationMatrix(sx, 0, 0, sy, tx, ty),
+        );
+      }
 
-      if (Math.abs(trackingPt) > 0.05 && chars.length > 1) {
-        let cursorX = startXPt;
-        for (const ch of chars) {
-          page.drawText(ch, {
-            x: cursorX,
+      for (const item of lineItems) {
+        if (!item.text.trim()) continue;
+        const trackingPt = item.letterSpacingEm * item.fontSizePt;
+        const chars = Array.from(item.text);
+        const totalWidthPt =
+          Math.abs(trackingPt) > 0.05 && chars.length > 1
+            ? chars.reduce(
+                (acc, ch, i) =>
+                  acc +
+                  pdfFont.widthOfTextAtSize(ch, item.fontSizePt) +
+                  (i < chars.length - 1 ? trackingPt : 0),
+                0,
+              )
+            : pdfFont.widthOfTextAtSize(item.text, item.fontSizePt);
+        const textHeightPt = pdfFont.heightAtSize(item.fontSizePt, { descender: false });
+        const anchorXPt = toPdfX(item.anchorXMm);
+        const anchorYPt = toPdfY(item.anchorYMm);
+
+        const startXPt =
+          item.align === 'left'
+            ? anchorXPt
+            : item.align === 'right'
+              ? anchorXPt - totalWidthPt
+              : anchorXPt - totalWidthPt / 2;
+        const baseYPt = anchorYPt - textHeightPt * 0.36;
+
+        if (Math.abs(trackingPt) > 0.05 && chars.length > 1) {
+          let cursorX = startXPt;
+          for (const ch of chars) {
+            page.drawText(ch, {
+              x: cursorX,
+              y: baseYPt,
+              size: item.fontSizePt,
+              font: pdfFont,
+              color: textColor,
+            });
+            cursorX += pdfFont.widthOfTextAtSize(ch, item.fontSizePt) + trackingPt;
+          }
+        } else {
+          page.drawText(item.text, {
+            x: startXPt,
             y: baseYPt,
             size: item.fontSizePt,
             font: pdfFont,
             color: textColor,
           });
-          cursorX += pdfFont.widthOfTextAtSize(ch, item.fontSizePt) + trackingPt;
         }
-      } else {
-        page.drawText(item.text, {
-          x: startXPt,
-          y: baseYPt,
-          size: item.fontSizePt,
-          font: pdfFont,
-          color: textColor,
-        });
+      }
+
+      if (isFlipped) {
+        page.pushOperators(popGraphicsState());
       }
     }
 
-    if (isFlipped) {
-      page.pushOperators(popGraphicsState());
-    }
-  }
+    // 2c. True Vector Spine Typography
+    const textPlacements = computeSpineTextPlacements(geometry, studio);
+    if (textPlacements.length > 0) {
+      const pdfFont = await embedFontByIdInPdf(
+        pdfDoc,
+        studio.spineText.fontId,
+        customFont,
+        fontCache,
+      );
+      const tc = hexToRgb01(studio.spineText.textColor);
+      const textColor = rgb(tc.r, tc.g, tc.b);
 
-  // 2c. True Vector Spine Typography
-  const textPlacements = computeSpineTextPlacements(geometry, studio);
-  if (textPlacements.length > 0) {
-    const pdfFont = await embedFontByIdInPdf(
-      pdfDoc,
-      studio.spineText.fontId,
-      customFont,
-      fontCache,
-    );
-    const tc = hexToRgb01(studio.spineText.textColor);
-    const textColor = rgb(tc.r, tc.g, tc.b);
+      for (const item of textPlacements) {
+        const textWidthPt = pdfFont.widthOfTextAtSize(item.text, item.fontSizePt);
+        const textHeightPt = pdfFont.heightAtSize(item.fontSizePt, { descender: false });
+        const centerXPt = toPdfX(item.anchorXMm);
+        const centerYPt = toPdfY(item.anchorYMm);
 
-    for (const item of textPlacements) {
-      const textWidthPt = pdfFont.widthOfTextAtSize(item.text, item.fontSizePt);
-      const textHeightPt = pdfFont.heightAtSize(item.fontSizePt, { descender: false });
-      const centerXPt = toPdfX(item.anchorXMm);
-      const centerYPt = toPdfY(item.anchorYMm);
+        // Rotate around text center cleanly in PDF coordinate space (CCW positive)
+        const pdfRotDeg =
+          item.rotationDegCss === 0 ? 0 : item.rotationDegCss === 90 ? -90 : 90;
+        const rad = (pdfRotDeg * Math.PI) / 180;
+        const dxLocal = -textWidthPt / 2;
+        const dyLocal = -textHeightPt * 0.36;
+        const startX = centerXPt + dxLocal * Math.cos(rad) - dyLocal * Math.sin(rad);
+        const startY = centerYPt + dxLocal * Math.sin(rad) + dyLocal * Math.cos(rad);
 
-      // Rotate around text center cleanly in PDF coordinate space (CCW positive)
-      const pdfRotDeg =
-        item.rotationDegCss === 0 ? 0 : item.rotationDegCss === 90 ? -90 : 90;
-      const rad = (pdfRotDeg * Math.PI) / 180;
-      const dxLocal = -textWidthPt / 2;
-      const dyLocal = -textHeightPt * 0.36;
-      const startX = centerXPt + dxLocal * Math.cos(rad) - dyLocal * Math.sin(rad);
-      const startY = centerYPt + dxLocal * Math.sin(rad) + dyLocal * Math.cos(rad);
-
-      page.drawText(item.text, {
-        x: startX,
-        y: startY,
-        size: item.fontSizePt,
-        font: pdfFont,
-        color: textColor,
-        rotate: degrees(pdfRotDeg),
-      });
+        page.drawText(item.text, {
+          x: startX,
+          y: startY,
+          size: item.fontSizePt,
+          font: pdfFont,
+          color: textColor,
+          rotate: degrees(pdfRotDeg),
+        });
+      }
     }
   }
 
@@ -435,12 +513,19 @@ async function renderBaseCoverPdfPage(
     drawOuterRegistrationMarks(page, geometry, spec, coords);
   }
 
+  // 4. Subtle outer HTV center-alignment ticks for Base-Only mode
+  if (isBaseOnly) {
+    drawHtvCenterAlignmentTicks(page, geometry, spec, coords);
+  }
+
   return { bytes: await pdfDoc.save(), pageW, pageH };
 }
 
 export interface PrintReadyCoverPdfOptions {
   /** Override cut/fold overlay visibility (true = full cut & fold lines, false = outer corner marks only; defaults to studio.cutLineMode). */
   readonly includeGuides?: boolean;
+  /** 'full' prints artwork + vector text & ornaments; 'base-only' prints artwork/background + guides & HTV center ticks only. */
+  readonly exportLayerMode?: CoverPdfLayerMode;
   /** Target output paper sheet or roll media ID. */
   readonly printMediaId?: PrintMediaId;
   /** Backward-compatible alias for printMediaId. */
@@ -460,7 +545,7 @@ export interface PrintReadyCoverPdfOptions {
 /**
  * Generates the Print-Ready Outer Cover PDF (`outer_cover_print.pdf`) at exact 1:1 physical mm scale:
  * - Solid vector fills or 300/600 DPI embedded artwork raster
- * - True vector spine & cover typography via pdf-lib + fontkit
+ * - True vector spine & cover typography via pdf-lib + fontkit (omitted when exportLayerMode === 'base-only')
  * - Cut-line toggle: Full Cut & Miter Guides vs. Bleed + Outer Corner Registration Marks Only
  * - Shared print-media sheet centering, 2-sheet tiling with overlap marks, and optional 50 mm scale check bar
  */
@@ -481,6 +566,7 @@ export async function generatePrintReadyRollPdf(
       rasterDpi,
       skipCanvasRaster: options?.skipCanvasRaster,
       includeGuides: options?.includeGuides,
+      exportLayerMode: options?.exportLayerMode,
     },
   );
 

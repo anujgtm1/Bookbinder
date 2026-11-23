@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { calculateCaseGeometry } from '@/core/geometry';
+import type { CoverPdfLayerMode } from '@/studio/renderEngine';
 import {
   DEFAULT_BOOK_PARAMETERS,
   type PageSizeId,
@@ -21,6 +22,7 @@ function StatefulPdfExportDialog({
   initialMedia = 'letter',
   initialPageSize = 'letter',
   initialSplitMode = 'single',
+  defaultExportLayerMode = 'full',
   onReduceFlapWidth,
   onConfirmExport,
   onClose = vi.fn(),
@@ -30,6 +32,7 @@ function StatefulPdfExportDialog({
   readonly initialMedia?: PrintMediaId;
   readonly initialPageSize?: PageSizeId;
   readonly initialSplitMode?: SplitMode;
+  readonly defaultExportLayerMode?: CoverPdfLayerMode;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
   readonly onConfirmExport: (selection: PdfExportSelection) => void;
   readonly onClose?: () => void;
@@ -51,6 +54,7 @@ function StatefulPdfExportDialog({
       splitMode={splitMode}
       onChangeSplitMode={setSplitMode}
       onReduceFlapWidth={onReduceFlapWidth}
+      defaultExportLayerMode={defaultExportLayerMode}
       onConfirmExport={onConfirmExport}
       onClose={onClose}
     />
@@ -131,6 +135,7 @@ describe('PdfExportDialog', () => {
       includeLegend: false,
       dpi: 600,
       tileOverlapMm: 15,
+      exportLayerMode: 'full',
     });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -235,6 +240,7 @@ describe('PdfExportDialog', () => {
       includeLegend: true,
       dpi: 300,
       tileOverlapMm: 10,
+      exportLayerMode: 'full',
     });
   });
 
@@ -291,5 +297,56 @@ describe('PdfExportDialog', () => {
     expect(reduceBtn).toHaveTextContent('22.9 mm');
     await user.click(reduceBtn);
     expect(onReduceFlapWidth).toHaveBeenCalledWith(22.9);
+  });
+
+  it('supports Base Only (For HTV) print layer toggle and defaultExportLayerMode="base-only" for cover-styled target', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const onConfirmExport = vi.fn();
+
+    const { rerender } = render(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={geom}
+        initialMedia="exact-auto"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    const fullBtn = screen.getByTestId('pdf-opt-layers-full');
+    const baseOnlyBtn = screen.getByTestId('pdf-opt-layers-base-only');
+    expect(fullBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(baseOnlyBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('pdf-export-summary')).not.toHaveTextContent('Base Only (For HTV)');
+
+    // Toggle to Base Only (For HTV) -> summary + helper caption update
+    await user.click(baseOnlyBtn);
+    expect(baseOnlyBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(fullBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent('Base Only (For HTV)');
+    expect(
+      screen.getByText(/Omits text & ornaments so Cricut HTV \/ foil presses onto a clean printed base/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onConfirmExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'cover-styled',
+        exportLayerMode: 'base-only',
+      }),
+    );
+
+    // Opening with defaultExportLayerMode="base-only" initializes Base Only active
+    rerender(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={geom}
+        initialMedia="exact-auto"
+        defaultExportLayerMode="base-only"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+    expect(screen.getByTestId('pdf-opt-layers-base-only')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent('Base Only (For HTV)');
   });
 });

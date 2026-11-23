@@ -61,7 +61,7 @@ import type { CustomFontAsset } from './fonts';
 import { useCoverElementsInteraction } from './hooks/useCoverElementsInteraction';
 import { useCoverStudioActions } from './hooks/useCoverStudioActions';
 import { PreflightEngine } from './preflight';
-import { computeStudioCanvasSpec } from './renderEngine';
+import { computeStudioCanvasSpec, type CoverPdfLayerMode } from './renderEngine';
 import { buildCanvasSnapTargets } from './snapGuides';
 import { useInteractiveLayers } from './useInteractiveLayers';
 
@@ -121,6 +121,8 @@ export function CoverStyler({
   const [pdfDialogTarget, setPdfDialogTarget] = useState<'cover-styled' | 'outer-blueprint' | null>(
     null,
   );
+  const [pdfExportLayerModeDefault, setPdfExportLayerModeDefault] =
+    useState<CoverPdfLayerMode>('full');
   const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(effectiveParams.printMedia);
   const [localPageSize, setLocalPageSize] = useState<PageSizeId>(effectiveParams.pdfPageSize);
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(effectiveParams.splitMode);
@@ -294,6 +296,7 @@ export function CoverStyler({
       tileOverlapMm: selection.tileOverlapMm,
       includeScaleBar: selection.includeScaleBar,
       splitMode: selection.splitMode,
+      exportLayerMode: selection.exportLayerMode,
     });
   };
 
@@ -311,13 +314,21 @@ export function CoverStyler({
           exportingKind={actions.exportingKind}
           exportingOuterPdf={exportingOuterPdf}
           onOpenMeasureAndCut={onOpenMeasureAndCut}
-          onExportPrintPdf={() => setPdfDialogTarget('cover-styled')}
+          onExportPrintPdf={() => {
+            setPdfExportLayerModeDefault('full');
+            setPdfDialogTarget('cover-styled');
+          }}
           onExportAffinityPng={() => void actions.handleExportAffinityPng()}
           onExportAffinitySvg={() => void actions.handleExportAffinitySvg()}
           onOpenCricutDialog={() => setCricutDialogOpen(true)}
           onDownloadOuterSvg={onDownloadOuterSvg}
           onDownloadOuterPdf={
-            onDownloadOuterPdf ? () => setPdfDialogTarget('outer-blueprint') : undefined
+            onDownloadOuterPdf
+              ? () => {
+                  setPdfExportLayerModeDefault('full');
+                  setPdfDialogTarget('outer-blueprint');
+                }
+              : undefined
           }
         />
 
@@ -753,6 +764,10 @@ export function CoverStyler({
         unit={effectiveParams.unit}
         onOpenChange={setCricutDialogOpen}
         onStatusMessage={onStatusMessage}
+        onOpenBasePdfForHtv={() => {
+          setPdfExportLayerModeDefault('base-only');
+          setPdfDialogTarget('cover-styled');
+        }}
       />
 
       {/* Unified Print & Export PDF Modal */}
@@ -782,6 +797,7 @@ export function CoverStyler({
             : undefined
         }
         defaultIncludeGuides={studio.cutLineMode === 'full-cut-miter'}
+        defaultExportLayerMode={pdfExportLayerModeDefault}
         exporting={actions.exportingKind === 'pdf' || exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}
         onClose={() => setPdfDialogTarget(null)}

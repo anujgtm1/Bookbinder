@@ -54,6 +54,7 @@ import {
   generatePrintReadyRollPdf,
   renderCoverArtworkCanvas,
   resolveQuickFitRect,
+  type CoverPdfLayerMode,
   type StudioCanvasSpec,
 } from '../renderEngine';
 import { parseSvgStampText } from '../svgStampParser';
@@ -666,11 +667,15 @@ export function useCoverStudioActions({
     readonly tileOverlapMm?: number;
     readonly includeScaleBar?: boolean;
     readonly splitMode?: SplitMode;
+    readonly exportLayerMode?: CoverPdfLayerMode;
   }) => {
     setExportingKind('pdf');
     try {
       const effectiveMediaId = options?.printMediaId ?? effectiveParams.printMedia;
       const effectiveDpi = options?.dpi ?? 300;
+      const effectiveLayerMode: CoverPdfLayerMode = options?.exportLayerMode ?? 'full';
+      const isBaseOnly = effectiveLayerMode === 'base-only';
+      const fileName = isBaseOnly ? 'outer_cover_base_for_htv.pdf' : 'outer_cover_print.pdf';
       if (options?.includeGuides !== undefined) {
         const nextCutLineMode = options.includeGuides ? 'full-cut-miter' : 'bleed-registration';
         if (nextCutLineMode !== studio.cutLineMode) {
@@ -679,24 +684,28 @@ export function useCoverStudioActions({
       }
       const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
         includeGuides: options?.includeGuides,
+        exportLayerMode: effectiveLayerMode,
         printMediaId: effectiveMediaId,
         dpi: effectiveDpi,
         tileOverlapMm: options?.tileOverlapMm,
         includeScaleBar: options?.includeScaleBar,
       });
-      triggerBytesDownload(bytes, 'outer_cover_print.pdf', 'application/pdf');
+      triggerBytesDownload(bytes, fileName, 'application/pdf');
       const fit = evaluatePrintMediaFit(
         effectiveMediaId,
         geometry.outerWrap.widthMm,
         geometry.outerWrap.heightMm,
         options?.tileOverlapMm,
       );
+      const layerTag = isBaseOnly ? ', Base Only for HTV' : '';
       onStatusMessage(
         fit.status === 'fits-1-sheet'
-          ? `Exported outer_cover_print.pdf (100% actual size, centered on 1× ${fit.mediaLabel}, ${effectiveDpi} DPI)`
+          ? `Exported ${fileName} (100% actual size, centered on 1× ${fit.mediaLabel}, ${effectiveDpi} DPI${layerTag})`
           : fit.status === 'fits-2-sheet-tile'
-            ? `Exported outer_cover_print.pdf (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap, ${effectiveDpi} DPI)`
-            : `Exported outer_cover_print.pdf (${effectiveDpi} DPI + vector spine text)`,
+            ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap, ${effectiveDpi} DPI${layerTag})`
+            : isBaseOnly
+              ? `Exported ${fileName} (${effectiveDpi} DPI, Base Only for HTV)`
+              : `Exported ${fileName} (${effectiveDpi} DPI + vector spine text)`,
       );
     } catch {
       onStatusMessage('Failed to generate Print-Ready Roll PDF.');

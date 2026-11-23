@@ -1414,4 +1414,70 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('flap-depth-ok')).toBeVisible();
     await expect(page.getByTestId('jacket-flap-width-value')).toContainText('63.0 mm');
   });
+
+  test('supports Hybrid Printed Base + Cricut HTV Foil workflow (multi-color foil SVG + Base-Only Print PDF handoff)', async ({
+    page,
+  }) => {
+    // 1. Add Front Cover Text (Antique Gold Foil #d9b566) + Classic Ornament (Archival Cream #f5efe2)
+    await page.getByTestId('studio-tool-text').click();
+    await page.getByTestId('add-front-title-btn').click();
+    await page.getByTestId('cover-text-textarea').fill('THE ILIAD');
+    await page.getByRole('button', { name: 'Set text color to Antique Gold Foil' }).click();
+
+    await page.getByTestId('studio-tool-designs').click();
+    await page.getByTestId('add-ornament-frame-double-rule').click();
+    await page.getByRole('button', { name: 'Set ornament color to Archival Cream' }).click();
+
+    // 2. Open Cricut HTV SVG dialog -> enable Split Mats by Foil Color -> export multicolor SVG
+    await page.getByTestId('studio-open-cricut-btn').click();
+    const cricutDialog = page.getByTestId('cricut-export-dialog');
+    await expect(cricutDialog).toBeVisible();
+    await expect(page.getByTestId('cricut-scope-front')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('cricut-foil-color-dots')).toBeVisible();
+    await expect(cricutDialog).toContainText('2 foil colors detected');
+
+    await page.getByTestId('cricut-group-by-color-switch').click();
+    await expect(cricutDialog).toContainText('Foil Mats (2)');
+    await expect(page.getByTestId('cricut-download-btn')).toBeEnabled();
+
+    const svgPromise = page.waitForEvent('download');
+    await page.getByTestId('cricut-download-btn').click();
+    const svgDownload = await svgPromise;
+    await expect(cricutDialog).toBeHidden();
+    expect(svgDownload.suggestedFilename()).toBe('the_iliad_cricut_htv_front_multicolor.svg');
+
+    const svgText = await readFile((await svgDownload.path())!, 'utf-8');
+    expect(svgText).toContain('id="foil-color-d9b566"');
+    expect(svgText).toContain('fill="#D9B566"');
+    expect(svgText).toContain('id="foil-color-f5efe2"');
+    expect(svgText).toContain('fill="#F5EFE2"');
+    expect(svgText).not.toContain('<text');
+    expect(svgText).not.toContain('transform=');
+
+    // 3. Re-open Cricut dialog -> hand off to Export Printed Base PDF… -> confirm Base Only PDF download
+    await page.getByTestId('studio-open-cricut-btn').click();
+    await expect(cricutDialog).toBeVisible();
+
+    await page.getByTestId('cricut-open-base-pdf-btn').click();
+    await expect(cricutDialog).toBeHidden();
+
+    const pdfDialog = page.getByTestId('pdf-export-dialog');
+    await expect(pdfDialog).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-layers-base-only')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByTestId('pdf-export-summary')).toContainText('Base Only (For HTV)');
+
+    const pdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const pdfDownload = await pdfPromise;
+    await expect(pdfDialog).toBeHidden();
+    expect(pdfDownload.suggestedFilename()).toBe('outer_cover_base_for_htv.pdf');
+
+    const pdfBytes = await readFile((await pdfDownload.path())!);
+    expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    const loadedPdf = await PDFDocument.load(pdfBytes);
+    expect(loadedPdf.getPageCount()).toBeGreaterThanOrEqual(1);
+  });
 });
