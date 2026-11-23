@@ -44,12 +44,13 @@ src/
 │                           #   (bookParams, geometry, studio, studioLayer, coverElements,
 │                           #    designPreset, project, units)
 ├── lib/                    # Shared pure utilities (canvasImage, color, svgFormat, utils)
-├── resources/              # Static catalogs & vector assets (paperSpecs, palettes, designPresets)
+├── resources/              # Declarative JSON & static catalogs (paperSpecs.json, paperSpecs.ts,
+│   │                       #   palettes.ts, designPresets.ts)
 │   └── ornaments/          # Bundled SVG ornament assets & registry (index.ts, divider-*.svg, emblem-*.svg)
-├── core/                   # Pure 1:1 mm geometry engine (geometry), SVG & PDF blueprint exporters
-│                           #   (svgExport, pdfExport), print-media sheet centering & 2-sheet tiling
-│                           #   (pdfSheetLayout), localStorage/JSON persistence (storage, presetStorage),
-│                           #   and theme management (theme)
+├── core/                   # Open/closed binding strategy registry (bindingStyles), pure 1:1 mm geometry
+│                           #   engine (geometry), SVG & PDF blueprint exporters (svgExport, pdfExport),
+│                           #   print-media sheet centering & 2-sheet tiling (pdfSheetLayout),
+│                           #   localStorage/JSON persistence (storage, presetStorage), and theme (theme)
 ├── studio/                 # Interactive Cover & Inner Pockets workbench
 │   ├── exporters/          # Cover output engines (coverPdfExporter, coverRasterExporter,
 │   │                       #   coverAffinitySvgExporter)
