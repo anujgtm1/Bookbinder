@@ -254,10 +254,30 @@ src/
   - **Starter Series Themes + Unlimited Custom Presets:** Ships with 4 built-in classic bookbindery themes (*Classic Clothbound Gold*, *Art Deco Midnight*, *Botanical Field Journal*, *Celestial Oxblood*) alongside user-saved presets persisted in `localStorage` with `.json` export/import backup support.
   - Accessible 1 click away via the **`Presets`** tab in the Cover Studio Tool Dock.
 
+### 7.9 Open/Closed Binding Style Strategy Registry & 5 Cover Structures (`src/core/bindingStyles.ts`, `src/resources/paperSpecs.json`)
+- Every cover structure is registered declaratively in `BINDING_STYLE_STRATEGIES` (`getBindingStrategy(style)`) exposing `capabilities` (`usesChipboard`, `hasRigidSpine`, `hasHingeSpacers`, `supportsThreePieceSplit`, `usesInnerPockets`, `hasFlaps`, `hasGlueTabs`, `hasTurnIns`), `panelLabels`, `flapConfig`, `innerPocketsNotice`, `materialNote`, `buildExportNote`, `calculateCutList`, `calculateOuterWrap` (including `outerWrap.foldLines`), and `computeMaxFlapWidthForSheet`:
+  1. **`rigid-case` (Rigid 3-Board Hardcover):** Front, Back, and Spine chipboards with `9 mm` hinge spacers and 45°-mitered turn-ins.
+  2. **`flexible-spine` (Flexible-Spine 2-Board):** Front & Back chipboards with unified cloth spine gap (`0` spine board) for flat-opening `3–8 mm` notebooks.
+  3. **`softcover-jacket` (Fold-and-Glue Slip Cover):** `0`-board 1-piece printable slip cover with 4 mitered top/bottom wrap-over glue tabs on the Back and Front covers (`10 mm` tab height preserving full `PB_H + 2 mm` vertical pocket clearance), adjustable `20–65 mm` flaps, and recommended minimum flap depth `≥ max(35 mm, 35% × PB_W)`.
+  4. **`dust-jacket` (Classic Dust Jacket):** `0`-board wrap-around publisher dust jacket with flush cover height (`PB_H`), `+1.0 mm` fore-edge ease (`PB_W + 1.0`), `+1.5 mm` spine ease (`PB_THICK + 1.5`), 4 vertical fold lines, zero glue tabs, adjustable `20–100 mm` flaps, and recommended minimum flap depth `≥ max(45 mm, 45% × PB_W)`.
+  5. **`paperback-wrap` (Replacement Paperback Cover):** Flush `0`-board 1-piece cardstock wrap (`PB_W + PB_THICK + PB_W` × `PB_H`) with 2 vertical spine score folds, zero flaps/glue tabs, and optional outer trim bleed.
+- **Zone-Aware Quick Fit & Clip Masks (`src/studio/canvasSpec.ts`):** `StudioCanvasSpec` separates full-sheet background color bands (`frontZoneRect` / `backZoneRect` / `spineZoneRect`) from cover-face artwork bounds (`frontArtworkRect` / `backArtworkRect` / `spineArtworkRect`) so `Fit Front` / `Fit Back` and front/back clip masks frame the visible cover face cleanly without spilling onto tuck flaps or top/bottom glue tabs on `softcover-jacket` and `dust-jacket`.
+- **Canonical Paper Resource (`src/resources/paperSpecs.json`):** Single declarative source of truth for desktop cut sheets (`letter`, `a4`, `legal`, `tabloid`), wide-format rolls (`13"`–`44"`), paperback presets, and binding labels, exposing consistent `shortLabel`, `dimensionsLabel`, and `label` representations across UI badges, dialogs, preflight, and PDF footers.
+
+### 7.10 Unified Print & Export PDF Dialog, Multi-Sheet Tiling & Flap-Depth Guardrails (`src/components/PdfExportDialog.tsx`, `src/core/pdfSheetLayout.ts`)
+- Native modal `<dialog closedby="any">` opened by every PDF export action across **Cover Studio**, **Measure & Cut**, and **Inner Pockets** (`cover-styled`, `outer-blueprint`, `inner-styled`, `inner-blueprint`).
+- Evaluates 3-state paper fit (`fits-1-sheet`, `fits-2-sheet-tile`, `does-not-fit`) via `evaluatePrintMediaFit` across `US Letter (8.5 × 11")`, `A4 (210 × 297 mm)`, `US Legal (8.5 × 14")`, `Tabloid (11 × 17")`, `Exact 1:1 Size`, and `13"–44"` rolls, rendering a live proportional SVG sheet-layout diagram (`PdfSheetPreviewSvg.tsx`) with 1-click fixes when a design exceeds the chosen sheet.
+- Shared `layoutPdfToPrintMedia` engine (`src/core/pdfSheetLayout.ts`) supports centered 1-sheet placement, 2-sheet horizontal tiling with configurable `10 / 15 / 20 mm` overlap strips and alignment crosshairs, optional `50 mm` physical Scale-Check Ruler bar, `300 / 600 DPI` raster resolution, `Cut, Fold & Glue Guides` vs. Registration Marks Only, `Single Wrap` vs. `3-Piece Split`, and auto-paginated Inner Pockets (`Letter / A4 / Legal / Tabloid`) with optional `50 × 50 mm` calibration legend.
+- **Flap-Depth Guardrails (`evaluateFlapDepth`):** Displays `Rec. ≥ ...` beside the flap slider, warns inline with a 1-click fix whenever a flap is shallower than recommended for the book width, and emits a `flap-too-shallow` Preflight warning highlighting both shallow flaps on the 2D canvas.
+
+### 7.11 Hybrid Printed Base + Multi-Color Cricut HTV Foil Workflow (`coverPdfExporter.ts`, `cricutExport.ts`, `CricutExportDialog.tsx`)
+- **Base-Only Print PDF (`exportLayerMode: 'base-only'`):** Outputs `outer_cover_base_for_htv.pdf` containing background fills, uploaded artwork layers, cut/fold guides, and subtle `3 mm` brass HTV center-alignment ticks in the outer top/bottom margins at the Back, Spine, and Front centerlines—omitting cover text, spine text, and vector ornaments so HTV foil presses cleanly with zero double-vision ghosting.
+- **Multi-Color Foil Mat Grouping (`groupByColor: true`) & High-Contrast Mat Preview:** Groups filled lettering and ornament curves by hex color (`id="foil-color-…"`, `_multicolor.svg`) so Cricut Design Space / Silhouette Studio splits multi-color foil designs onto separate mats automatically; previews dark cut paths on an always-light `.cricut-mat-surface` carrier sheet for crisp dark-mode contrast; includes a 1-click **Export Printed Base PDF…** handoff opening `PdfExportDialog` pre-configured to `Base Only (For HTV)`.
+
 ---
 
 ## 8. Recommended Tech Stack (Local Build)
-- **Framework:** React + TypeScript + Vite
-- **Styling:** Tailwind CSS
-- **PDF Generation:** `pdf-lib` (true millimeter vector paths, custom `.ttf`/`.otf` font embedding, and lossless 300 DPI image embedding)
+- **Framework:** React 19 + TypeScript 5.8 + Vite 6
+- **Styling:** Tailwind CSS v4 + Radix UI / shadcn primitives
+- **PDF & Vector Generation:** `pdf-lib` + `@pdf-lib/fontkit` (true millimeter vector paths, custom `.ttf`/`.otf`/`.woff` font embedding, flattened Bezier HTV curves, `300 / 600 DPI` image embedding, centered single-sheet & 2-sheet tiled PDFs)
 - **Icons:** `lucide-react`

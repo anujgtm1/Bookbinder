@@ -1,7 +1,8 @@
 # Bookbinder Studio — Feature Roadmap & Tracker
 
 Living tracker for completed features, active milestones, and upcoming work.
-Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEARCH.md](./RESEARCH.md)
+Live app: **[https://anujgtm.com/Bookbinder/](https://anujgtm.com/Bookbinder/)**
+Related docs: [SPEC.md](./SPEC.md) · [DEVELOPMENT.md](./DEVELOPMENT.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [FEATURE_IDEAS.md](./FEATURE_IDEAS.md) · [RESEARCH.md](./RESEARCH.md)
 
 ---
 
@@ -9,38 +10,35 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 
 ### Milestone 1 — Core Geometry Engine & Structural Templates (Phase 1)
 - [x] **Domain Models (`src/types/`):** Strongly typed `UnitSystem`/`UnitConverter`, `BookParametersModel` (presets, clamping, validation, serialize/deserialize), `CaseGeometry`/`GeometryPrimitives`, and versioned `BookbinderProjectModel`.
-- [x] **Pure Millimeter Geometry Engine (`src/core/geometry.ts`):** Exact chipboard cut list, 45°-mitered outer wrap polygon (`MITER_CUT_LEG = 2*TURN_IN - MITER_GAP*√2`), 3-piece quarter-bound split panels, portrait & 90°-rotated large-format roll width evaluator, inner spine reinforcement liner, and mirrored front/back slip-in pocket envelopes with 45°-mitered glue flaps.
+- [x] **Pure Millimeter Geometry Engine (`src/core/geometry.ts`):** Exact chipboard cut list, 45°-mitered outer wrap polygon (`MITER_CUT_LEG = 2*TURN_IN - MITER_GAP*√2`), 3-piece quarter-bound split panels, portrait & 90°-rotated desktop-sheet and large-format roll width evaluator, inner spine reinforcement liner, and mirrored front/back slip-in pocket envelopes with 45°-mitered glue flaps.
 - [x] **2 × 2 Structural Export Matrix (`src/core/svgExport.ts`, `src/core/pdfExport.ts`):**
-  - Outer Case Wrap `.SVG` (`1:1` mm with named Affinity `<g>` layers) & `.PDF` (`1:1` mm vector print template, single or 3-piece).
-  - Inner Pockets & Spine Liner `.SVG` (`1:1` mm Affinity/cutter layers) & `.PDF` (auto-paginated/auto-rotated across Letter/A4/Tabloid with `50 × 50 mm` calibration square).
-- [x] **Workspace UI (`src/components/`):** Craft-meets-CAD light/dark theme (`modern-web-guidance` compliant), shadcn/ui + Radix primitives, `SidebarControls`, `CutListCard` (with Roll Printer badge & 9 mm hinge spacer SVG diagram), zoomable/pannable `BlueprintPreview`, and co-located workspace tabs.
+  - Outer Case Wrap `.SVG` (`1:1` mm with named Affinity `<g>` layers) & `.PDF` (`1:1` mm vector print template, single, 3-piece, centered single-sheet, or 2-sheet tiled).
+  - Inner Pockets & Spine Liner `.SVG` (`1:1` mm Affinity/cutter layers) & `.PDF` (auto-paginated/auto-rotated across Letter/A4/Legal/Tabloid with optional `50 × 50 mm` calibration square & legend).
+- [x] **Workspace UI (`src/components/`):** Craft-meets-CAD light/dark atelier theme (`modern-web-guidance` compliant), shadcn/ui + Radix primitives, `SidebarControls`, `CutListCard` (with Roll/Home-Sheet badge & 9 mm hinge spacer SVG diagram), zoomable/pannable `OuterBlueprintCanvas`, and co-located workspace tabs.
 - [x] **Persistence:** Automatic `localStorage` save with image-quota fallback + `.json` project export/import.
 
 ### Milestone 2 — Interactive Cover & Spine Styler (Phase 2)
-- [x] **Free-Form Multi-Image Canvas (`src/studio/CoverStyler.tsx`, `src/types/studioLayer.ts`):** Upload/drop unlimited PNG/JPG/WEBP images, click to select, drag anywhere across the wrap, pull 4 corner resize handles proportionally, scroll to zoom, reorder layer stack, delete via keyboard or button, one-click `Fit Front` / `Fit Spine` / `Fit Back` / `Full Wrap`, and optional per-zone clip masks.
+- [x] **Free-Form Multi-Image Canvas (`src/studio/CoverStyler.tsx`, `src/types/studioLayer.ts`):** Upload/drop unlimited PNG/JPG/WEBP/SVG images, click to select, drag anywhere across the wrap, pull 4 corner resize handles proportionally, scroll to zoom, reorder layer stack, delete via keyboard or button, zone-aware `Fit Front` / `Fit Spine` / `Fit Back` / `Full Wrap`, Flip H/V, and per-zone clip masks.
 - [x] **Colors & Eyedropper:** Independent Back, Spine & Hinges, and Front base color pickers plus click-to-sample eyedropper mapped via SVG `getScreenCTM`.
-- [x] **Spine Typography (`src/studio/fonts.ts`, `src/studio/SpineTypographyCard.tsx`):** Separate Title/Author inputs, Inline vs. Stacked presets, US/UK vs. European reading orientation, Vertical vs. Horizontal author writing toggle, 6 bundled offline `@fontsource/*` fonts, custom `.ttf`/`.otf`/`.woff`/`.woff2` `FontFace` uploader, automatic font-size clamping (`≤ SPINE_W - 4.0 mm`), and `±2.0 mm` optical horizontal nudge.
-- [x] **Bindery Cutting Mat UI & Interactive 3D Book Preview (`src/studio/Book3DPreview.tsx`, `src/components/FloatingHudToolbar.tsx`):** Self-healing spruce cutting-mat workbench, warm cotton-rag paper sheets, kettle-stitch dividers, collapsible Book Spec rail, folder-style paper index tabs, accessible floating HUD pill toolbars, and a live rotatable CSS 3D folded hardcover book mockup rendered at exact `BOARD_W × BOARD_H × SPINE_W` proportions.
-- [x] **Unified Two-Tab Physical Workbench & Stylable Inner Pockets (`src/studio/InnerPocketsStudio.tsx`, `src/studio/pocketRenderEngine.ts`):** Merged duplicate Outer Wrap views into two physical tabs (**Outer Case Wrap** with `Styled Cover` / `Blueprint` / `3D Book` HUD + **Inner Pockets & Liner** with `Styled Pockets` / `Blueprint` HUD). Added endpaper color picker, **Match Cover Color** sync, custom picture upload (`Cover` / `Contain` / `Tile`, scale, opacity), and 300 DPI **Styled Pockets PDF** export.
-- [x] **Turn-In / Pasting Stub Edge Extension (`src/studio/edgeExtend.ts`):** Non-destructive client-side canvas edge synthesis (**`Edge Smear`**, **`Soft Mirror`**, **`Mirror`**, plus `Off` revert and one-click **Match Spine & Back to Cover Edge**) that keeps downloaded front-only covers 100% uncropped on the chipboard face while seamlessly extending colors/textures across the 18 mm turn-in pasting stub and bleed.
-- [x] **Magnetic Smart Snap Guides (`src/studio/snapGuides.ts`):** Live `3.5 mm` magnetic alignment snapping while dragging or corner-resizing artwork onto Front/Back board edges & centers, Spine edges & centerline, Turn-In cut boundaries, and Bleed edges—rendered as glowing brass guidelines with intersection diamonds and target badges (toggleable via HUD `Snap` or bypassed with `Alt`).
-- [x] **Live Print Preflight Consistency Checker (`src/studio/preflight.ts`, `src/studio/PreflightCard.tsx`):** Real-time verification of front/back board & turn-in/bleed coverage gaps, effective print DPI, WCAG 2.1 spine text contrast, spine hinge clearance, and structural readiness—with preview-only red diagonal-hatched gap zones, red DPI outlines, and one-click Quick Fix actions (`Extend Edges to Stub`, `Fit to Front/Back`, `Enable 3 mm Bleed`, etc.).
-- [x] **300 DPI Dual Exports (`src/studio/renderEngine.ts`):** Print-Ready Roll PDF (`outer_cover_print.pdf`) with embedded vector spine typography and cut-line vs. bleed-registration mark toggle; Affinity Round-Trip 300 DPI PNG (`outer_cover_300dpi.png`) and `1:1` mm SVG (`outer_cover_300dpi.svg`).
+- [x] **Spine & Cover Typography (`src/studio/fonts.ts`, `src/studio/SpineTypographyCard.tsx`, `src/studio/CoverTextCard.tsx`):** Separate Spine Title/Author inputs (Inline vs. Stacked, US/UK vs. European reading orientation, Vertical vs. Horizontal author), plus unlimited draggable Cover Text blocks (`+ Text` with direct inline list renaming synced `1:1` with the cover, plus Front Title / Front Author / Back Blurb presets), 6 bundled offline `@fontsource/*` fonts, custom `.ttf`/`.otf`/`.woff`/`.woff2` `FontFace` uploader, automatic spine font clamping, and `±2.0 mm` optical nudge.
+- [x] **17 Classic Foil Ornaments & Custom SVG Stamps (`src/resources/ornaments/`, `src/studio/ornaments/`, `src/studio/svgStampParser.ts`):** Bundled SVG & parametric frames, corner flourishes, dividers, emblems, and 6 spine motifs, plus custom `.svg` stamp import with `Fill` / `Outline` / `Fill + Thicken` line-weight control, 4-corner resize, Flip H/V, and 1-click Margin Fit presets (`Tight 6 mm`, `Classic 12 mm`, `Wide 18 mm`, `Center`).
+- [x] **3-Tab Hybrid Workbench, 3D Book Preview & Full-Page Focus Mode (`src/App.tsx`, `src/studio/Book3DPreview.tsx`, `src/hooks/useFullPageCanvas.ts`):** Dedicated **Measure & Cut**, **Cover Studio** (with 6-tab Tool Dock), and **Inner Pockets** tabs, full-screen canvas expansion (`Esc` to exit), openable interactive CSS 3D book preview, and seamless tiled endpaper patterns.
+- [x] **Turn-In Edge Extension & Magnetic Safe-Margin Snap Guides (`src/studio/edgeExtend.ts`, `src/studio/snapGuides.ts`):** Non-destructive `Edge Smear` / `Soft Mirror` / `Mirror` pasting-stub synthesis + live `3.5 mm` magnetic alignment snapping onto board centers, safe margins, spine lines, and bleed edges.
+- [x] **Reusable Series Design Presets (`src/types/designPreset.ts`, `src/core/presetStorage.ts`, `src/studio/DesignPresetsCard.tsx`):** Dimension-independent normalized presets with 4 starter series themes, `localStorage` persistence, and portable `.json` export/import.
 
-### Quality & Research
-- [x] **Automated Test Suite:** 88 Vitest unit/component tests + 12 Playwright Chromium behavioral E2E tests covering real downloads, interactive canvas manipulation, collapsible rail, 3D book orbiting, live preflight warning overlays/quick fixes, styled inner pocket PDF exports, non-destructive pasting-stub edge extension, and magnetic smart snap guides.
-- [x] **Affinity Connector Research:** Documented feasibility and architectures in [RESEARCH.md](./RESEARCH.md).
-- [x] **Deployment Plan:** Documented GitHub Pages CI/CD plan in [DEPLOYMENT.md](./DEPLOYMENT.md).
-
----
-
-## Active / Ready to Ship
-
-### Milestone 3 — GitHub Pages Deployment & CI Pipeline
-- [x] Add configurable `base: process.env.VITE_BASE_PATH ?? '/'` to `vite.config.ts` and inline SVG favicon to `index.html`.
-- [x] Add `.github/workflows/ci.yml` to run typecheck, lint, Vitest coverage, Playwright E2E, and production build on PRs into `main`.
-- [x] Add `.github/workflows/deploy.yml` to build (using `actions/configure-pages@v5` `base_path`) and deploy `dist/` to GitHub Pages on merge to `main`.
-- [ ] Enable GitHub Pages (**Settings → Pages → Source: GitHub Actions**) and merge PR `develop` → `main`.
+### Milestone 3 — 5 Binding Styles, Unified Export Dialog, Hybrid Cricut HTV & GitHub Pages Launch
+- [x] **Open/Closed Binding Style Strategy Registry (`src/core/bindingStyles.ts`) & 5 Cover Styles:**
+  - **Rigid 3-Board Hardcover**, **Flexible-Spine 2-Board**, **Fold-and-Glue Slip Cover** (4 mitered wrap-over glue tabs, adjustable `20–65 mm` flaps), **Classic Dust Jacket** (4 vertical folds, `20–100 mm` flaps, zero glue tabs), and **Replacement Paperback Cover** (flush 1-piece cardstock wrap, 2 spine score folds).
+  - Centralized declarative specs in `src/resources/paperSpecs.json` powering consistent labels and physical dimensions everywhere.
+- [x] **Unified Native `<dialog>` Print & Export PDF Dialog (`src/components/PdfExportDialog.tsx`, `src/components/PdfSheetPreviewSvg.tsx`, `src/core/pdfSheetLayout.ts`):**
+  - Wired to all 5 PDF buttons across Cover Studio, Measure & Cut, and Inner Pockets.
+  - Live paper-fit cards (`US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact 1:1 Size`, `13"–44"` rolls), live 1-sheet centered & 2-sheet tiled preview, configurable `10 / 15 / 20 mm` overlap + alignment crosshairs, optional `50 mm` Scale-Check Ruler, `300 / 600 DPI`, `Cut, Fold & Glue Guides` vs. Registration Marks Only, `Single Wrap` vs. `3-Piece Split`, and Inner Pockets auto-pagination (`Letter / A4 / Legal / Tabloid`).
+- [x] **Live Preflight & Smart Flap-Depth Guardrails (`src/studio/preflight.ts`):** Coverage gaps, optional DPI checks, WCAG spine contrast, paper-fit overflow & tiling checks, and flap-depth recommendations (`≥ 35%` / `35 mm` for glued Slip Covers; `≥ 45%` / `45 mm` for unglued Dust Jackets) shown both inline beside the flap slider and in Preflight with canvas highlights & 1-click fixes.
+- [x] **Cricut / Silhouette / ScanNCut HTV & Hybrid Printed Base Workflow (`src/studio/cricutExport.ts`, `src/studio/CricutExportDialog.tsx`):**
+  - Flattened `1:1 mm` glyph & ornament paths (zero `<text>` tags or `transform` attributes), 4 cut scopes, weeding box, registration marks, HTV Mirror, always-light high-contrast carrier mat preview, **Split Mats by Foil Color**, and **Base Only (For HTV)** Print PDF (`outer_cover_base_for_htv.pdf`) with `3 mm` outer alignment ticks + 1-click handoff from the Cricut dialog.
+- [x] **Modular Architecture Refactor:** Decomposed `CoverStyler`, `InnerPocketsStudio`, `CoverElementsCard`, and `renderEngine` into cohesive `src/lib/`, `src/resources/`, `src/studio/exporters/`, `src/studio/ornaments/`, `src/studio/pockets/`, and `src/studio/hooks/` modules.
+- [x] **GitHub Pages CI/CD & Live Deployment:** `.github/workflows/ci.yml` + `.github/workflows/deploy.yml` live at **[https://anujgtm.com/Bookbinder/](https://anujgtm.com/Bookbinder/)**.
+- [x] **Automated Test Suite:** **44 Vitest test files / 190 unit & component tests** + **30 Playwright Chromium E2E tests** covering every major user workflow and real PDF/SVG downloads.
 
 ---
 
@@ -51,7 +49,10 @@ Related docs: [SPEC.md](./SPEC.md) · [DEPLOYMENT.md](./DEPLOYMENT.md) · [RESEA
 - [ ] **Phase A — Native Affinity Script Export:** Add `src/core/affinityScriptExport.ts` to generate a ready-to-run Affinity JS script creating a native 300 DPI document with true Document Bleed, snapping Ruler Guides, locked Cut/Guide layers, artwork layers, and editable spine Artistic Text.
 - [ ] **Phase B — Local Companion Bridge:** Optional local bridge (`pnpm affinity-bridge`) enabling a one-click *"Send to Affinity"* button via Affinity MCP or macOS `open -a` fallback.
 
-### Future Craft Enhancements (Ideas)
-- [ ] Layer rotation & opacity controls on the interactive cover canvas.
-- [ ] Custom user-saved paperback presets library in `localStorage`.
-- [ ] Printable assembly instruction sheet / folding guide.
+### Next Craft Enhancements (see [FEATURE_IDEAS.md](./FEATURE_IDEAS.md))
+- [ ] **Folded Glue-In Endpapers** mode alongside Removable Slip-In Pockets for traditional paperback-to-hardcover rebinds.
+- [ ] **Bradel Binding** & **Rounded / Backed Spine Arc** calculators.
+- [ ] **Matching Slipcase Box** `1:1 mm` cut list & wrap generator.
+- [ ] **Spine Thickness Estimator** (from page count & paper GSM/PPI) with measured-block confirmation reminder.
+- [ ] **Printable Bench Recipe Card & Reusable Cutting Jigs** (exact hinge spacer & 45° corner miter gauge in PDF whitespace).
+- [ ] **Layer Rotation & Opacity** controls on the outer cover canvas + 1-click **Load Sample Book** showcase mode.
