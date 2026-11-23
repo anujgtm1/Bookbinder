@@ -11,6 +11,7 @@ import {
   Magnet,
   Maximize2,
   Pipette,
+  Ruler,
   ShieldAlert,
   ShieldCheck,
   ZoomIn,
@@ -126,6 +127,7 @@ export function CoverStyler({
   const [viewMode, setViewMode] = useState<StudioViewMode>('2d');
   const [blueprintZoom, setBlueprintZoom] = useState(1);
   const [blueprintPan, setBlueprintPan] = useState({ x: 0, y: 0 });
+  const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
   const [book3DAngle, setBook3DAngle] = useState<Book3DCameraAngle>(DEFAULT_BOOK_3D_ANGLE);
   const [book3DCoverOpen, setBook3DCoverOpen] = useState(false);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
@@ -1025,6 +1027,7 @@ export function CoverStyler({
               onAdjustZoom={adjustBlueprintZoom}
               pan={blueprintPan}
               onPanChange={setBlueprintPan}
+              showDimensions={showBlueprintDimensions}
             />
           ) : (
             <div className="h-full w-full pb-12">
@@ -1121,35 +1124,49 @@ export function CoverStyler({
                   </HudButton>
                 </HudGroup>
               ) : viewMode === 'blueprint' ? (
-                <HudGroup label="Blueprint zoom">
-                  <HudButton
-                    aria-label="Zoom out blueprint"
-                    title="Zoom out"
-                    onClick={() => adjustBlueprintZoom(-0.25)}
-                    className="px-2"
-                  >
-                    <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
-                  </HudButton>
-                  <span className="min-w-11 text-center font-mono text-[11px] text-[#f6efe2]/90">
-                    {Math.round(blueprintZoom * 100)}%
-                  </span>
-                  <HudButton
-                    aria-label="Zoom in blueprint"
-                    title="Zoom in"
-                    onClick={() => adjustBlueprintZoom(0.25)}
-                    className="px-2"
-                  >
-                    <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
-                  </HudButton>
-                  <HudButton
-                    aria-label="Reset blueprint zoom and pan"
-                    title="Reset zoom & pan"
-                    onClick={resetBlueprintView}
-                    className="px-2"
-                  >
-                    <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  </HudButton>
-                </HudGroup>
+                <>
+                  <HudGroup label="Blueprint overlays">
+                    <HudButton
+                      pressed={showBlueprintDimensions}
+                      onClick={() => setShowBlueprintDimensions((v) => !v)}
+                      title="Show/hide manual-cutting dimension lines, cumulative ruler marks, and 45° miter callout"
+                      data-testid="blueprint-dimensions-btn"
+                    >
+                      <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
+                      Dimensions
+                    </HudButton>
+                  </HudGroup>
+                  <HudSeparator />
+                  <HudGroup label="Blueprint zoom">
+                    <HudButton
+                      aria-label="Zoom out blueprint"
+                      title="Zoom out"
+                      onClick={() => adjustBlueprintZoom(-0.25)}
+                      className="px-2"
+                    >
+                      <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
+                    </HudButton>
+                    <span className="min-w-11 text-center font-mono text-[11px] text-[#f6efe2]/90">
+                      {Math.round(blueprintZoom * 100)}%
+                    </span>
+                    <HudButton
+                      aria-label="Zoom in blueprint"
+                      title="Zoom in"
+                      onClick={() => adjustBlueprintZoom(0.25)}
+                      className="px-2"
+                    >
+                      <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
+                    </HudButton>
+                    <HudButton
+                      aria-label="Reset blueprint zoom and pan"
+                      title="Reset zoom & pan"
+                      onClick={resetBlueprintView}
+                      className="px-2"
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </HudButton>
+                  </HudGroup>
+                </>
               ) : (
                 <>
                   <HudGroup label="3D camera angles">

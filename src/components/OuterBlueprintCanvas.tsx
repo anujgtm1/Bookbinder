@@ -2,6 +2,14 @@ import { useMemo, useRef, useState } from 'react';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
+import {
+  CornerMiterCallout,
+  CumulativeRulerStrip,
+  GrainDirectionArrow,
+  HorizontalDimLine,
+  VerticalDimLine,
+  type CumulativeRulerStop,
+} from './BlueprintDimensionLines';
 
 export interface OuterBlueprintCanvasProps {
   readonly geometry: CaseGeometry;
@@ -11,13 +19,15 @@ export interface OuterBlueprintCanvasProps {
   readonly onAdjustZoom: (delta: number) => void;
   readonly pan: { readonly x: number; readonly y: number };
   readonly onPanChange: (next: { readonly x: number; readonly y: number }) => void;
+  readonly showDimensions?: boolean;
 }
 
 const PAPER_SHEET_FILL = '#FAF6EE';
 
 /**
  * Pure 1:1 mm structural CAD blueprint for the Outer Case Wrap
- * (supports Single-Piece Continuous Wrap and 3-Piece Quarter-Bound Split with zoom & pan).
+ * (supports Single-Piece Continuous Wrap and 3-Piece Quarter-Bound Split with zoom, pan,
+ * and architectural manual-cutting dimension lines for non-printable materials like leather & bookcloth).
  */
 export function OuterBlueprintCanvas({
   geometry,
@@ -27,6 +37,7 @@ export function OuterBlueprintCanvas({
   onAdjustZoom,
   pan,
   onPanChange,
+  showDimensions = true,
 }: OuterBlueprintCanvasProps) {
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{
@@ -41,9 +52,13 @@ export function OuterBlueprintCanvas({
   const bleedPad = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
 
   const outerLayout = useMemo(() => {
-    const pad = 14 + bleedPad;
+    const padLeft = (showDimensions ? 38 : 14) + bleedPad;
+    const padRight = (showDimensions ? 32 : 14) + bleedPad;
+    const padTop = (showDimensions ? 36 : 14) + bleedPad;
+    const padBottom = (showDimensions ? 34 : 14) + bleedPad;
+
     if (splitMode === 'three-piece') {
-      const gap = 14;
+      const gap = showDimensions ? 20 : 14;
       let cursorX = 0;
       const positionedPanels = splitPanels.map((panel) => {
         const xOffset = cursorX;
@@ -52,15 +67,62 @@ export function OuterBlueprintCanvas({
       });
       const totalW = Math.max(0, cursorX - gap);
       return {
-        viewBox: `${-pad} ${-pad} ${totalW + pad * 2} ${outerWrap.heightMm + pad * 2}`,
+        viewBox: `${-padLeft} ${-padTop} ${totalW + padLeft + padRight} ${outerWrap.heightMm + padTop + padBottom}`,
         positionedPanels,
       };
     }
     return {
-      viewBox: `${-pad} ${-pad} ${outerWrap.widthMm + pad * 2} ${outerWrap.heightMm + pad * 2}`,
+      viewBox: `${-padLeft} ${-padTop} ${outerWrap.widthMm + padLeft + padRight} ${outerWrap.heightMm + padTop + padBottom}`,
       positionedPanels: [],
     };
-  }, [outerWrap, splitPanels, splitMode, bleedPad]);
+  }, [outerWrap, splitPanels, splitMode, bleedPad, showDimensions]);
+
+  const singleHorizontalSegments = useMemo(() => {
+    const segs: { readonly x1: number; readonly x2: number }[] = [];
+    const sideW =
+      outerWrap.bindingStyle === 'softcover-jacket'
+        ? outerWrap.jacketFlapWidthMm
+        : outerWrap.turnInMm;
+
+    if (sideW > 0.2) segs.push({ x1: 0, x2: sideW });
+    segs.push({
+      x1: outerWrap.backBoardRect.x,
+      x2: outerWrap.backBoardRect.x + outerWrap.backBoardRect.width,
+    });
+    if (outerWrap.leftHingeRect.width > 0.2) {
+      segs.push({
+        x1: outerWrap.leftHingeRect.x,
+        x2: outerWrap.leftHingeRect.x + outerWrap.leftHingeRect.width,
+      });
+    }
+    segs.push({
+      x1: outerWrap.spineRect.x,
+      x2: outerWrap.spineRect.x + outerWrap.spineRect.width,
+    });
+    if (outerWrap.rightHingeRect.width > 0.2) {
+      segs.push({
+        x1: outerWrap.rightHingeRect.x,
+        x2: outerWrap.rightHingeRect.x + outerWrap.rightHingeRect.width,
+      });
+    }
+    segs.push({
+      x1: outerWrap.frontBoardRect.x,
+      x2: outerWrap.frontBoardRect.x + outerWrap.frontBoardRect.width,
+    });
+    if (sideW > 0.2) {
+      segs.push({ x1: outerWrap.widthMm - sideW, x2: outerWrap.widthMm });
+    }
+    return segs;
+  }, [outerWrap]);
+
+  const cumulativeStops = useMemo<readonly CumulativeRulerStop[]>(() => {
+    const pts: number[] = [0];
+    for (const seg of singleHorizontalSegments) {
+      pts.push(seg.x1, seg.x2);
+    }
+    pts.push(outerWrap.widthMm);
+    return pts.map((xMm) => ({ xMm }));
+  }, [singleHorizontalSegments, outerWrap.widthMm]);
 
   return (
     <div
@@ -293,10 +355,108 @@ export function OuterBlueprintCanvas({
                     </g>
                   );
                 })}
+
+              {/* Manual-Cutting CAD Dimension Lines, Cumulative Ruler, Miter Callout & Grain Arrow */}
+              {showDimensions && (
+                <g data-testid="outer-blueprint-dimensions">
+                  {/* Grain Direction parallel to spine */}
+                  <GrainDirectionArrow
+                    x={outerWrap.backBoardRect.x + outerWrap.backBoardRect.width - 14}
+                    centerY={outerWrap.heightMm / 2}
+                  />
+
+                  {/* Overall Total Width along top */}
+                  <HorizontalDimLine
+                    x1={0}
+                    x2={outerWrap.widthMm}
+                    y={-25 - bleedPad}
+                    anchorY={0}
+                    label={`TOTAL W: ${UnitConverter.format(outerWrap.widthMm, unit)}`}
+                    emphasized
+                  />
+
+                  {/* Horizontal segment breakdown chain */}
+                  {singleHorizontalSegments.map((seg, idx) => (
+                    <HorizontalDimLine
+                      key={`hseg-${idx}`}
+                      x1={seg.x1}
+                      x2={seg.x2}
+                      y={-10 - bleedPad}
+                      anchorY={0}
+                      label={UnitConverter.formatValue(seg.x2 - seg.x1, unit)}
+                      fontSize={4.2}
+                    />
+                  ))}
+
+                  {/* Overall Total Height along left */}
+                  <VerticalDimLine
+                    y1={0}
+                    y2={outerWrap.heightMm}
+                    x={-16 - bleedPad}
+                    anchorX={0}
+                    label={`TOTAL H: ${UnitConverter.format(outerWrap.heightMm, unit)}`}
+                    emphasized
+                  />
+
+                  {/* Right Vertical Breakdown Chain (Top Turn-In | Board Height | Bottom Turn-In) */}
+                  {outerWrap.turnInMm > 0.2 ? (
+                    <>
+                      <VerticalDimLine
+                        y1={0}
+                        y2={outerWrap.turnInMm}
+                        x={outerWrap.widthMm + 11 + bleedPad}
+                        anchorX={outerWrap.widthMm}
+                        label={UnitConverter.formatValue(outerWrap.turnInMm, unit)}
+                        fontSize={4.2}
+                      />
+                      <VerticalDimLine
+                        y1={outerWrap.turnInMm}
+                        y2={outerWrap.heightMm - outerWrap.turnInMm}
+                        x={outerWrap.widthMm + 11 + bleedPad}
+                        anchorX={outerWrap.widthMm}
+                        label={UnitConverter.format(cutList.coverBoards.heightMm, unit)}
+                        fontSize={4.4}
+                      />
+                      <VerticalDimLine
+                        y1={outerWrap.heightMm - outerWrap.turnInMm}
+                        y2={outerWrap.heightMm}
+                        x={outerWrap.widthMm + 11 + bleedPad}
+                        anchorX={outerWrap.widthMm}
+                        label={UnitConverter.formatValue(outerWrap.turnInMm, unit)}
+                        fontSize={4.2}
+                      />
+                    </>
+                  ) : (
+                    <VerticalDimLine
+                      y1={0}
+                      y2={outerWrap.heightMm}
+                      x={outerWrap.widthMm + 11 + bleedPad}
+                      anchorX={outerWrap.widthMm}
+                      label={UnitConverter.format(outerWrap.heightMm, unit)}
+                      fontSize={4.4}
+                    />
+                  )}
+
+                  {/* Cumulative Steel-Ruler Datum Strip from 0 along bottom edge */}
+                  <CumulativeRulerStrip
+                    stops={cumulativeStops}
+                    y={outerWrap.heightMm + 12 + bleedPad}
+                    anchorY={outerWrap.heightMm}
+                    unit={unit}
+                  />
+
+                  {/* Exact 45° Corner Miter Cut Leg & Board Clearance Gap Callout */}
+                  <CornerMiterCallout
+                    miterCutLegMm={outerWrap.miterCutLegMm}
+                    miterGapMm={outerWrap.miterGapMm}
+                    unit={unit}
+                  />
+                </g>
+              )}
             </g>
           ) : (
             <g data-testid="blueprint-split-panels">
-              {outerLayout.positionedPanels.map(({ panel, xOffset }) => (
+              {outerLayout.positionedPanels.map(({ panel, xOffset }, panelIdx) => (
                 <g key={panel.id} transform={`translate(${xOffset}, 0)`}>
                   {outerWrap.includeBleed && outerWrap.bleedMm > 0 && (
                     <rect
@@ -349,6 +509,43 @@ export function OuterBlueprintCanvas({
                   >
                     {UnitConverter.formatDimensions(panel.widthMm, panel.heightMm, unit)}
                   </text>
+
+                  {showDimensions && (
+                    <g data-testid={`split-panel-dims-${panel.id}`}>
+                      <HorizontalDimLine
+                        x1={0}
+                        x2={panel.widthMm}
+                        y={-13 - bleedPad}
+                        anchorY={0}
+                        label={UnitConverter.format(panel.widthMm, unit)}
+                        emphasized
+                        fontSize={4.5}
+                      />
+                      {panelIdx === 0 && (
+                        <VerticalDimLine
+                          y1={0}
+                          y2={panel.heightMm}
+                          x={-16 - bleedPad}
+                          anchorX={0}
+                          label={UnitConverter.format(panel.heightMm, unit)}
+                          emphasized
+                          fontSize={4.5}
+                        />
+                      )}
+                      {panel.id === 'spine' &&
+                        panel.guideRects.map((g, gi) => (
+                          <HorizontalDimLine
+                            key={`sp-sub-${gi}`}
+                            x1={g.rect.x}
+                            x2={g.rect.x + g.rect.width}
+                            y={panel.heightMm + 11 + bleedPad}
+                            anchorY={panel.heightMm}
+                            label={UnitConverter.formatValue(g.rect.width, unit)}
+                            fontSize={3.9}
+                          />
+                        ))}
+                    </g>
+                  )}
                 </g>
               ))}
             </g>

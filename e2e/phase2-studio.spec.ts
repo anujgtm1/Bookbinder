@@ -533,4 +533,35 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('book3d-front-hinge')).toHaveAttribute('data-open', 'true');
     await expect(page.getByTestId('book3d-inner-pocket-face')).toBeVisible();
   });
+
+  test('renders manual-cutting CAD dimension lines, cumulative ruler datum strip, and 45° miter callout in Blueprint mode on both tabs', async ({
+    page,
+  }) => {
+    // 1. Outer Case Wrap Blueprint mode shows full CAD dimension chains, cumulative ruler, and miter callout
+    await page.getByTestId('studio-view-blueprint-btn').click();
+    const outerDims = page.getByTestId('outer-blueprint-dimensions');
+    await expect(outerDims).toBeVisible();
+    await expect(outerDims).toContainText('TOTAL W: 366.0 mm');
+    await expect(outerDims).toContainText('TOTAL H: 259.0 mm');
+    await expect(page.getByTestId('blueprint-cumulative-ruler')).toContainText('RULER (mm)');
+    await expect(page.getByTestId('blueprint-miter-callout')).toContainText('45° MITER LEG');
+
+    // Toggle unit to inches -> Blueprint dimension lines & ruler update immediately
+    await page.getByTestId('unit-toggle-in').click();
+    await expect(page.getByTestId('blueprint-cumulative-ruler')).toContainText('RULER (in)');
+
+    // Toggle Dimensions off & back on via Blueprint HUD
+    await page.getByTestId('blueprint-dimensions-btn').click();
+    await expect(outerDims).toBeHidden();
+    await page.getByTestId('blueprint-dimensions-btn').click();
+    await expect(outerDims).toBeVisible();
+
+    // 2. Inner Pockets Blueprint mode renders pocket/liner dimension chains & toggles cleanly
+    await page.getByTestId('nav-pockets').click();
+    await page.getByTestId('pockets-view-blueprint-btn').click();
+    const pocketDims = page.getByTestId('pockets-blueprint-dimensions');
+    await expect(pocketDims).toBeVisible();
+    await page.getByTestId('pockets-dimensions-btn').click();
+    await expect(pocketDims).toBeHidden();
+  });
 });
