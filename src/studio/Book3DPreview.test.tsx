@@ -1,0 +1,51 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { calculateCaseGeometry } from '@/core/geometry';
+import { BookParametersModel } from '@/types/bookParams';
+import { CoverStudioModel } from '@/types/studio';
+import { Book3DPreview } from './Book3DPreview';
+
+describe('Book3DPreview', () => {
+  it('renders front, spine (with typography), and back faces and responds to keyboard and pointer orbit', () => {
+    const geometry = calculateCaseGeometry(BookParametersModel.createDefault());
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'Dune',
+        author: 'Frank Herbert',
+      },
+    };
+    const onAngleChange = vi.fn();
+
+    render(
+      <Book3DPreview
+        geometry={geometry}
+        studio={studio}
+        customFont={null}
+        angle={{ yawDeg: 32, pitchDeg: -10 }}
+        onAngleChange={onAngleChange}
+      />,
+    );
+
+    expect(screen.getByTestId('book3d-front-face')).toBeInTheDocument();
+    expect(screen.getByTestId('book3d-spine-face')).toBeInTheDocument();
+    expect(screen.getByTestId('book3d-back-face')).toBeInTheDocument();
+    expect(screen.getByTestId('book3d-spine-typography')).toHaveTextContent('Dune');
+
+    const stage = screen.getByTestId('book3d-stage');
+    fireEvent.keyDown(stage, { key: 'ArrowRight' });
+    expect(onAngleChange).toHaveBeenCalledWith({ yawDeg: 47, pitchDeg: -10 });
+
+    fireEvent(
+      stage,
+      new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }),
+    );
+    fireEvent(
+      stage,
+      new MouseEvent('pointermove', { bubbles: true, clientX: 140, clientY: 80 }),
+    );
+    fireEvent(stage, new MouseEvent('pointerup', { bubbles: true }));
+    expect(onAngleChange).toHaveBeenLastCalledWith({ yawDeg: 54, pitchDeg: 1 });
+  });
+});
