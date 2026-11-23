@@ -16,7 +16,7 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 
 - **Book Presets & Units** — Enter custom dimensions with a `mm` / `in` toggle, or start from built-in presets for **A6**, **Mass Market**, **Manga B6**, and **US Trade**.
 - **Chipboard Cut Lists & Diagrams** — Get exact board measurements paired with clear visual gluing and folding diagrams.
-- **Paper & Roll Fit Checks** — Instantly see if your wrap fits **US Letter**, **A4**, **US Legal**, or **`13"–44"`** roll printers.
+- **Paper & Roll Fit Checks** — Instantly see whether your wrap fits **US Letter**, **A4**, **US Legal**, **Tabloid**, or **`13"–44"`** roll printers with live `1 sheet` vs. `2 sheets (tiled)` status badges.
 - **True-Scale `1:1 mm` CAD Blueprint** — Includes manual cutting dimension chains, a cumulative steel-ruler datum strip, **45° corner miter** callouts, and **grain direction arrows** for leather, paper, and bookcloth.
 - **3-Piece Quarter-Bound Split Mode** — Split wider wraps cleanly into separate spine, front, and back pieces for quarter-bound styles or smaller home printers.
 
@@ -27,7 +27,7 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 - **Cover & Spine Typography** — Add draggable Front/Back titles and Spine text with curated literary fonts or your own uploaded `.ttf`, `.otf`, and `.woff` font files.
 - **17 Classic Foil Designs & Custom SVG Stamps** — Dress up your covers with frames, corner flourishes, dividers, emblems, and 6 spine motifs—or import custom vector SVG stamps with **Fill**, **Outline**, and **Thicken** line-weight control.
 - **Safe-Margin Snap Guides & Flip** — Snap magnetically to cover centers and balanced margins, use 1-click **Tight**, **Classic**, **Wide**, and **Center** margin fit presets, and apply **Horizontal & Vertical Flip** to art, ornaments, or text.
-- **Live Print Preflight** — Catch coverage gaps, low contrast, and optional **DPI** warnings before wasting paper or vinyl.
+- **Live Print & Paper-Fit Preflight** — Catch coverage gaps, low contrast, optional **DPI** warnings, and paper-fit overflows before wasting paper or vinyl—with **1-click fixes** to switch to a fitting sheet/roll, trim slip-cover flap width to fit a single page, or enable **3-Piece Split**.
 - **Openable 3D Book Preview & Full Screen** — Orbit your folded book, swing open the front cover in live 3D, or jump into 1-click **Full Screen** focus mode (`Esc` to exit).
 
 ![Bookbinder Studio — Interactive 3D Folded Book Preview](./docs/screenshots/book-3d-preview.png)
@@ -42,12 +42,15 @@ Design and print exact **1:1 mm** removable hardcover cases, flexible-spine cove
 
 - **Mirrored Pockets & Spine Liner** — Auto-generated Front and Back slip-in pocket envelopes with **45° mitered glue flaps** plus a **Spine Reinforcement Liner**.
 - **Styled Endpapers & Seamless Patterns** — Pick from curated endpaper swatches, sync in one click with **Match Cover Color**, place draggable/flippable pocket art, or turn any motif into a 1-click seamless **Tile Pattern**.
-- **Auto-Paginated Printing** — Export **US Letter**, **A4**, or **Tabloid** PDFs with optional **Print Legend** and **Cut & Fold** lines.
+- **Auto-Paginated Printing** — Export **US Letter**, **A4**, **US Legal**, or **Tabloid** PDFs with an optional **`50 × 50 mm` Calibration & Legend** block and **Cut & Fold** lines.
 - **Smart Slip-Cover Handling** — Cleanly marked **Built-In** on 1-piece Fold-and-Glue Slip Covers so you never print extra pocket sheets.
 
 ## Print & Cutting-Machine Exports
 
-- **300 DPI Print-Ready PDFs** — Crisp vector text, full-bleed artwork, and optional **Cut & Fold** lines ready for home or print-shop output.
+- **Unified Print & Export PDF Dialog** — Clicking any PDF button in **Cover Studio**, **Measure & Cut**, or **Inner Pockets** opens a dedicated Export Dialog where you can compare paper sizes live (`US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact 1:1 Size`, or `13"–44"` rolls) with instant **`1 sheet`** vs. **`2 sheets (tiled)`** fit badges, a live sheet-layout preview, and **1-click fixes** whenever a cover exceeds your chosen sheet.
+- **Flexible Multi-Sheet Tiling & Calibration** — Choose between printing on a single larger sheet (e.g., `1× US Legal`) or tiling across `2× US Letter / A4` sheets with configurable overlap (`10 / 15 / 20 mm`), shaded tape-zone guides, blue alignment crosshairs, and an optional **`50 mm` Scale-Check Ruler** bar to verify 100% actual size before cutting.
+- **`300 / 600 DPI` Print-Ready Cover PDFs** — Crisp embedded vector text and ornaments over `300` or `600 DPI` full-bleed artwork, with **Cut, Fold & Glue Guides** or clean **Registration Marks Only**, plus **Single Wrap** or **3-Piece Split** output.
+- **Auto-Paginated Inner Pockets PDFs** — Packs pockets and spine liner across `US Letter`, `A4`, `US Legal`, or `Tabloid` pages with an optional **`50 × 50 mm` calibration square & legend**.
 - **`1:1 mm` Cut-Only SVGs & PDFs** — Exact-scale cutting outlines for hand knives, plotters, or laser cutters.
 - **Affinity Designer Round-Trip SVGs** — Cleanly structured vector SVGs ready for further editing in Affinity Designer.
 - **Cricut, Silhouette & ScanNCut HTV & Foil SVGs** — Export **Spine**, **Front Cover**, **Back Cover**, or **Full Wrap** designs with flattened vector paths, weeding box, corner alignment marks, and an **HTV Mirror** toggle.
