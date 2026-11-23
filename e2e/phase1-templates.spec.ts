@@ -66,10 +66,13 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     expect(outerSvgContent).toContain('id="cut-lines"');
     expect(outerSvgContent).toContain('id="board-guides"');
 
-    // 2. Outer Case Wrap Cut-Only PDF
-    const outerPdfPromise = page.waitForEvent('download');
+    // 2. Outer Case Wrap Cut-Only PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-outer-pdf-btn').click();
+    await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
+    const outerPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
     const outerPdfDownload = await outerPdfPromise;
+    await expect(page.getByTestId('pdf-export-dialog')).toBeHidden();
     expect(outerPdfDownload.suggestedFilename()).toBe('outer_case_wrap.pdf');
     const outerPdfBuffer = await readFile((await outerPdfDownload.path())!);
     expect(outerPdfBuffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');
@@ -87,10 +90,14 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     expect(innerSvgContent).toContain('id="score-lines"');
     expect(innerSvgContent).toContain('width="50" height="50"');
 
-    // 4. Inner Pockets & Spine Liner Plain Cut PDF
-    const innerPdfPromise = page.waitForEvent('download');
+    // 4. Inner Pockets & Spine Liner Plain Cut PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-inner-pdf-btn').click();
+    await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-legend')).toBeVisible();
+    const innerPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
     const innerPdfDownload = await innerPdfPromise;
+    await expect(page.getByTestId('pdf-export-dialog')).toBeHidden();
     expect(innerPdfDownload.suggestedFilename()).toBe('inner_pockets_and_liner.pdf');
     const innerPdfBuffer = await readFile((await innerPdfDownload.path())!);
     expect(innerPdfBuffer.subarray(0, 5).toString('ascii')).toBe('%PDF-');

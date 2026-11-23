@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
@@ -196,10 +197,14 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('studio-spine-title-input').fill('Piranesi');
     await page.getByTestId('studio-spine-author-input').fill('Susanna Clarke');
 
-    // 1. Export Print-Ready PDF (300 DPI + vector typography)
-    const pdfPromise = page.waitForEvent('download');
+    // 1. Export Print-Ready PDF (300 DPI + vector typography via unified Print & Export PDF dialog)
     await page.getByTestId('studio-export-pdf-btn').click();
+    await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-guides')).toBeVisible();
+    const pdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
     const pdfDownload = await pdfPromise;
+    await expect(page.getByTestId('pdf-export-dialog')).toBeHidden();
     expect(pdfDownload.suggestedFilename()).toBe('outer_cover_print.pdf');
     const pdfBytes = await readFile((await pdfDownload.path())!);
     expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
@@ -363,10 +368,15 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('pocket-copy-other-btn').click();
     await expect(page.getByTestId('pocket-layer-count-badge')).toHaveText('2 images');
 
-    // Export Styled Pockets PDF
-    const styledPdfPromise = page.waitForEvent('download');
+    // Export Styled Pockets PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-styled-inner-pdf-btn').click();
+    await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-guides')).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-legend')).toBeVisible();
+    const styledPdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
     const styledPdfDownload = await styledPdfPromise;
+    await expect(page.getByTestId('pdf-export-dialog')).toBeHidden();
     expect(styledPdfDownload.suggestedFilename()).toBe('inner_pockets_styled.pdf');
     const pdfBytes = await readFile((await styledPdfDownload.path())!);
     expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
@@ -894,10 +904,13 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(tiledIssue).toBeVisible();
     await expect(tiledIssue).toContainText('2 tiled pages');
 
-    // Export Print PDF and verify it produces a 2-page US Letter Portrait PDF (215.9 x 279.4 mm)
-    const pdfPromise = page.waitForEvent('download');
+    // Export Print PDF via unified dialog and verify it produces a 2-page US Letter Portrait PDF (215.9 x 279.4 mm)
     await page.getByTestId('studio-export-pdf-btn').click();
+    await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
+    const pdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
     const pdfDownload = await pdfPromise;
+    await expect(page.getByTestId('pdf-export-dialog')).toBeHidden();
     expect(pdfDownload.suggestedFilename()).toBe('outer_cover_print.pdf');
     const pdfBytes = await readFile((await pdfDownload.path())!);
     const loadedPdf = await PDFDocument.load(pdfBytes);
@@ -926,5 +939,357 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
       'data-fit-status',
       'fits-roll',
     );
+  });
+
+  test('exercises Unified PDF Export Dialog across Cover Studio, Measure & Cut, and Inner Pockets', async ({
+    page,
+  }) => {
+    // 1. Switch to A6 Softcover Slip Cover with 5 mm spine & 52.5 mm flaps (323 x 170 mm)
+    await page.getByTestId('preset-select').click();
+    await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
+    await page.getByTestId('input-pb-thickness').fill('5');
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
+    await page.getByTestId('slider-jacket-flap-width').fill('52.5');
+
+    await expect(page.getByTestId('jacket-flap-width-value')).toContainText('52.5 mm');
+    await expect(page.getByTestId('studio-roll-badge')).toContainText('323.0 × 170.0 mm');
+
+    // 2. Open Cover Studio Print PDF dialog -> Legal shows 1 sheet, Letter shows 2 sheets (tiled)
+    await page.getByTestId('studio-export-pdf-btn').click();
+    const pdfDialog = page.getByTestId('pdf-export-dialog');
+    await expect(pdfDialog).toBeVisible();
+    await expect(page.getByTestId('pdf-media-option-legal')).toContainText('1 sheet');
+    await expect(page.getByTestId('pdf-media-option-letter')).toContainText('2 sheets (tiled)');
+
+    // Select US Legal -> download -> assert 1-page US Legal Landscape (~355.6 x 215.9 mm)
+    await page.getByTestId('pdf-media-option-legal').click();
+    await expect(page.getByTestId('pdf-media-option-legal')).toHaveAttribute('aria-pressed', 'true');
+    const legalDownloadPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const legalDownload = await legalDownloadPromise;
+    await expect(pdfDialog).toBeHidden();
+    const legalPdf = await PDFDocument.load(await readFile((await legalDownload.path())!));
+    expect(legalPdf.getPageCount()).toBe(1);
+    const legalSize = legalPdf.getPage(0).getSize();
+    expect((legalSize.width * 25.4) / 72).toBeCloseTo(355.6, 0);
+    expect((legalSize.height * 25.4) / 72).toBeCloseTo(215.9, 0);
+
+    // 3. Re-open Print PDF dialog -> US Letter + 15 mm overlap + registration marks only (guides off)
+    await page.getByTestId('studio-export-pdf-btn').click();
+    await expect(pdfDialog).toBeVisible();
+    await page.getByTestId('pdf-media-option-letter').click();
+    await page.getByTestId('pdf-opt-overlap-15').click();
+    await expect(page.getByTestId('pdf-opt-overlap-15')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('pdf-opt-guides')).toHaveAttribute('aria-checked', 'true');
+    await page.getByTestId('pdf-opt-guides').click();
+    await expect(page.getByTestId('pdf-opt-guides')).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByTestId('pdf-opt-scale-bar')).toBeVisible();
+
+    const tiledDownloadPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const tiledDownload = await tiledDownloadPromise;
+    await expect(pdfDialog).toBeHidden();
+    const tiledPdf = await PDFDocument.load(await readFile((await tiledDownload.path())!));
+    expect(tiledPdf.getPageCount()).toBe(2);
+    const tiledSize = tiledPdf.getPage(0).getSize();
+    expect((tiledSize.width * 25.4) / 72).toBeCloseTo(215.9, 0);
+    expect((tiledSize.height * 25.4) / 72).toBeCloseTo(279.4, 0);
+
+    // 4. Switch to Hardcover -> Measure & Cut -> Cut PDF -> 3-Piece Split -> assert 3 pages
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Rigid 3-Board Hardcover/i }).click();
+    await page.getByTestId('nav-measure').click();
+    await expect(page.getByTestId('measure-and-cut-panel')).toBeVisible();
+
+    await page.getByTestId('measure-download-pdf-btn').click();
+    await expect(pdfDialog).toBeVisible();
+    await page.getByTestId('pdf-opt-split-three').click();
+    await expect(page.getByTestId('pdf-opt-split-three')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('pdf-export-summary')).toContainText('3 pages');
+
+    const splitDownloadPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const splitDownload = await splitDownloadPromise;
+    await expect(pdfDialog).toBeHidden();
+    expect(splitDownload.suggestedFilename()).toBe('outer_case_wrap_3piece.pdf');
+    const splitPdf = await PDFDocument.load(await readFile((await splitDownload.path())!));
+    expect(splitPdf.getPageCount()).toBe(3);
+
+    // 5. Inner Pockets -> Styled Pockets PDF -> toggle Calibration & Legend on + US Legal -> valid PDF
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
+    await page.getByTestId('download-styled-inner-pdf-btn').click();
+    await expect(pdfDialog).toBeVisible();
+    await page.getByTestId('pdf-opt-legend').click();
+    await expect(page.getByTestId('pdf-opt-legend')).toHaveAttribute('aria-checked', 'true');
+    await page.getByTestId('pdf-page-option-legal').click();
+    await expect(page.getByTestId('pdf-page-option-legal')).toHaveAttribute('aria-pressed', 'true');
+
+    const innerDownloadPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const innerDownload = await innerDownloadPromise;
+    await expect(pdfDialog).toBeHidden();
+    expect(innerDownload.suggestedFilename()).toBe('inner_pockets_styled.pdf');
+    const innerBytes = await readFile((await innerDownload.path())!);
+    expect(innerBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    const innerPdf = await PDFDocument.load(innerBytes);
+    expect(innerPdf.getPageCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  test('directly manipulates Cover Text and Classic Ornaments (drag, resize, Snap to Margin, Flip H/V, and keyboard delete)', async ({
+    page,
+  }) => {
+    // 1. Add Front Title and drag it on the canvas
+    await page.getByTestId('studio-tool-text').click();
+    await page.getByTestId('add-front-title-btn').click();
+    const textGroup = page.getByTestId('studio-cover-text-0');
+    await expect(textGroup).toBeVisible();
+
+    const textEl = textGroup.locator('text').first();
+    const initialTextX = Number(await textEl.getAttribute('x'));
+    await textGroup.scrollIntoViewIfNeeded();
+    const textBox = await textGroup.boundingBox();
+    expect(textBox).not.toBeNull();
+
+    await page.mouse.move(textBox!.x + textBox!.width / 2, textBox!.y + textBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      textBox!.x + textBox!.width / 2 + 50,
+      textBox!.y + textBox!.height / 2 + 35,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+
+    const movedTextX = Number(await textEl.getAttribute('x'));
+    expect(movedTextX).toBeGreaterThan(initialTextX + 5);
+
+    // 2. Add a Classic Botanical Emblem, drag it on canvas, resize via SE handle, Snap to Classic (12 mm), and Flip H/V
+    await page.getByTestId('studio-tool-designs').click();
+    await page.getByTestId('add-ornament-emblem-botanical-sprig').click();
+    const ornamentGroup = page.getByTestId('studio-ornament-0');
+    await expect(ornamentGroup).toBeVisible();
+
+    const ornHitRect = ornamentGroup.locator('rect').first();
+    const initialOrnX = Number(await ornHitRect.getAttribute('x'));
+    await ornamentGroup.scrollIntoViewIfNeeded();
+    const ornBox = await ornamentGroup.boundingBox();
+    expect(ornBox).not.toBeNull();
+
+    await page.mouse.move(ornBox!.x + ornBox!.width / 2, ornBox!.y + ornBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      ornBox!.x + ornBox!.width / 2 - 40,
+      ornBox!.y + ornBox!.height / 2 - 20,
+      { steps: 5 },
+    );
+    await page.mouse.up();
+
+    const movedOrnX = Number(await ornHitRect.getAttribute('x'));
+    expect(movedOrnX).toBeLessThan(initialOrnX - 3);
+
+    // Resize ornament via its SE corner handle
+    const widthBeforeResize = Number(await ornHitRect.getAttribute('width'));
+    const ornSeHandle = page.getByTestId('ornament-resize-se');
+    await expect(ornSeHandle).toBeVisible();
+    const seBox = await ornSeHandle.boundingBox();
+    expect(seBox).not.toBeNull();
+
+    await page.mouse.move(seBox!.x + seBox!.width / 2, seBox!.y + seBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(seBox!.x + seBox!.width / 2 + 35, seBox!.y + seBox!.height / 2 + 35, {
+      steps: 5,
+    });
+    await page.mouse.up();
+
+    const widthAfterResize = Number(await ornHitRect.getAttribute('width'));
+    expect(widthAfterResize).toBeGreaterThan(widthBeforeResize + 2);
+
+    // Snap to Margin preset Classic (12 mm) + Flip H & Flip V
+    await page.getByTestId('ornament-fit-classic').click();
+    const classicWidth = Number(await ornHitRect.getAttribute('width'));
+    expect(classicWidth).toBeGreaterThan(100);
+
+    await page.getByTestId('ornament-flip-h-btn').click();
+    await expect(page.getByTestId('ornament-flip-h-btn')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('ornament-flip-v-btn').click();
+    await expect(page.getByTestId('ornament-flip-v-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    // Delete selected ornament with Delete key, then select Cover Text and delete with Backspace
+    await page.keyboard.press('Delete');
+    await expect(ornamentGroup).toBeHidden();
+
+    await textGroup.click();
+    await page.keyboard.press('Backspace');
+    await expect(textGroup).toBeHidden();
+  });
+
+  test('completes full Design Presets lifecycle (Save, Export JSON, Delete, and Re-Import JSON)', async ({
+    page,
+  }) => {
+    await page.getByTestId('studio-front-color-input').fill('#3b2f4a');
+    await expect(page.getByTestId('studio-front-fill')).toHaveAttribute('fill', '#3b2f4a');
+
+    // 1. Save a custom preset
+    await page.getByTestId('studio-tool-presets').click();
+    await page.getByTestId('preset-name-input').fill('Archive Folio Series');
+    await page.getByTestId('save-design-preset-btn').click();
+    await expect(page.getByTestId('saved-preset-card-0')).toContainText('Archive Folio Series');
+
+    // 2. Export saved presets to JSON and verify valid JSON download
+    const exportPromise = page.waitForEvent('download');
+    await page.getByTestId('export-presets-btn').click();
+    const exportDownload = await exportPromise;
+    expect(exportDownload.suggestedFilename()).toBe('bookbinder-series-presets.json');
+    const exportedPath = (await exportDownload.path())!;
+    const exportedRaw = await readFile(exportedPath, 'utf-8');
+    const exportedParsed = JSON.parse(exportedRaw) as { presets?: Array<{ name?: string }> };
+    expect(Array.isArray(exportedParsed.presets)).toBe(true);
+    expect(exportedParsed.presets?.[0]?.name).toBe('Archive Folio Series');
+
+    // 3. Delete the custom preset from the list
+    await page.getByTestId('delete-saved-preset-0').click();
+    await expect(page.getByTestId('saved-preset-card-0')).toBeHidden();
+    await expect(page.getByTestId('export-presets-btn')).toBeDisabled();
+
+    // 4. Re-import the exported JSON and verify the preset is restored
+    await page.getByTestId('import-presets-input').setInputFiles(exportedPath);
+    await expect(page.getByTestId('saved-preset-card-0')).toBeVisible();
+    await expect(page.getByTestId('saved-preset-card-0')).toContainText('Archive Folio Series');
+  });
+
+  test('uploads a custom .woff font in Cover Text and activates it without errors', async ({
+    page,
+  }) => {
+    await page.getByTestId('studio-tool-text').click();
+    await page.getByTestId('add-front-title-btn').click();
+    await expect(page.getByTestId('studio-cover-text-0')).toBeVisible();
+
+    const loraWoffPath = path.resolve(
+      'node_modules/@fontsource/lora/files/lora-latin-400-normal.woff',
+    );
+    await page.getByTestId('cover-text-upload-font-input').setInputFiles(loraWoffPath);
+
+    await expect(page.getByTestId('cover-text-custom-font-badge')).toBeVisible();
+    await expect(page.getByTestId('cover-text-custom-font-badge')).toContainText(/lora/i);
+    await expect(page.getByTestId('status-message')).toContainText('Loaded custom font');
+    await expect(page.getByTestId('studio-cover-text-0').locator('text').first()).toHaveAttribute(
+      'font-family',
+      /lora/i,
+    );
+  });
+
+  test('supports SVG Stamp render modes and Cricut HTV Back Cover / Full Cover Wrap scopes with Weeding & Registration toggles', async ({
+    page,
+  }) => {
+    // 1. Import a custom SVG stamp in Classic Designs and toggle Outline (stroke) & Fill + Thicken (fill-and-stroke)
+    await page.getByTestId('studio-tool-designs').click();
+    const customStamp = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,8 62,38 94,50 62,62 50,92 38,62 6,50 38,38" fill="#000"/></svg>',
+      'utf-8',
+    );
+    await page.getByTestId('import-svg-stamp-input').setInputFiles({
+      name: 'compass-star.svg',
+      mimeType: 'image/svg+xml',
+      buffer: customStamp,
+    });
+
+    const stampPath = page.getByTestId('studio-ornament-0').locator('path').first();
+    await expect(stampPath).toBeVisible();
+
+    const renderModeGroup = page.getByRole('group', { name: 'Custom SVG render mode' });
+    await renderModeGroup.getByRole('button', { name: 'Outline' }).click();
+    await expect(stampPath).toHaveAttribute('fill', 'none');
+    await expect(stampPath).toHaveAttribute('stroke', /.+/);
+
+    await renderModeGroup.getByRole('button', { name: 'Fill + Thicken' }).click();
+    await expect(stampPath).not.toHaveAttribute('fill', 'none');
+    await expect(stampPath).toHaveAttribute('stroke', /.+/);
+
+    // 2. Add a Back Cover Blurb so Back Cover and Full Wrap both contain lettering
+    await page.getByTestId('studio-tool-text').click();
+    await page.getByTestId('add-back-blurb-btn').click();
+    await page.getByTestId('cover-text-textarea').fill('A timeless folio edition.');
+
+    // 3. Open Cricut HTV SVG dialog -> switch between Back Cover & Full Cover Wrap -> toggle Weeding & Registration off
+    await page.getByTestId('studio-open-cricut-btn').click();
+    await expect(page.getByTestId('cricut-export-dialog')).toBeVisible();
+
+    await page.getByTestId('cricut-scope-back').click();
+    await expect(page.getByTestId('cricut-scope-back')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('cricut-svg-preview-img')).toBeVisible();
+
+    await page.getByTestId('cricut-scope-fullwrap').click();
+    await expect(page.getByTestId('cricut-scope-fullwrap')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('cricut-outer-cut-switch')).toBeVisible();
+
+    await page.getByTestId('cricut-weeding-switch').click();
+    await expect(page.getByTestId('cricut-weeding-switch')).toHaveAttribute('aria-checked', 'false');
+    await page.getByTestId('cricut-reg-switch').click();
+    await expect(page.getByTestId('cricut-reg-switch')).toHaveAttribute('aria-checked', 'false');
+
+    const fullWrapSvgPromise = page.waitForEvent('download');
+    await page.getByTestId('cricut-download-btn').click();
+    const fullWrapDownload = await fullWrapSvgPromise;
+    expect(fullWrapDownload.suggestedFilename()).toContain('_cricut_htv_fullwrap.svg');
+
+    const svgText = await readFile((await fullWrapDownload.path())!, 'utf-8');
+    expect(svgText).toContain('id="spine-lettering"');
+    expect(svgText).toContain('id="classic-ornaments"');
+    expect(svgText).toContain('id="outer-wrap-cut"');
+    expect(svgText).not.toContain('id="htv-weeding-box"');
+    expect(svgText).not.toContain('id="alignment-registration-marks"');
+    expect(svgText).not.toContain('<text');
+    expect(svgText).not.toContain('transform=');
+  });
+
+  test('supports Inner Pockets full-screen expand/Escape, Full Cut Envelope clip scope, and Flip H/V toggles', async ({
+    page,
+  }) => {
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
+
+    // 1. Expand cutting mat to full screen and exit cleanly via Escape
+    const pocketsStage = page.getByTestId('pockets-canvas-stage');
+    await expect(pocketsStage).toHaveAttribute('data-expanded', 'false');
+    await page.getByTestId('pockets-fullscreen-btn').click();
+    await expect(pocketsStage).toHaveAttribute('data-expanded', 'true');
+    await expect(page.getByTestId('pockets-exit-fullscreen-btn')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(pocketsStage).toHaveAttribute('data-expanded', 'false');
+    await expect(page.getByTestId('pockets-exit-fullscreen-btn')).toBeHidden();
+
+    // 2. Upload artwork, switch clip scope to Full Cut Envelope, and toggle Flip H / Flip V
+    const endpaperPng = createSolidPngBuffer(64, 64, 52, 95, 118);
+    await page.getByTestId('pocket-upload-image-input').setInputFiles({
+      name: 'endpaper-motif.png',
+      mimeType: 'image/png',
+      buffer: endpaperPng,
+    });
+    const pocketLayer = page.getByTestId('pocket-layer-0');
+    await expect(pocketLayer).toBeVisible();
+
+    await page.getByTestId('pocket-scope-select').click();
+    await page.getByRole('option', { name: /Full Cut Envelope/i }).click();
+    await expect(page.getByTestId('pocket-scope-select')).toContainText('Full Cut Envelope');
+
+    await expect(page.getByTestId('pocket-layer-flip-h-btn')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await page.getByTestId('pocket-layer-flip-h-btn').click();
+    await expect(page.getByTestId('pocket-layer-flip-h-btn')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(pocketLayer).toHaveAttribute('transform', /scale\(-1 1\)/);
+
+    await page.getByTestId('pocket-layer-flip-v-btn').click();
+    await expect(page.getByTestId('pocket-layer-flip-v-btn')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(pocketLayer).toHaveAttribute('transform', /scale\(-1 -1\)/);
   });
 });
