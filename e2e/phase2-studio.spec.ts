@@ -1042,11 +1042,21 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
   test('directly manipulates Cover Text and Classic Ornaments (drag, resize, Snap to Margin, Flip H/V, and keyboard delete)', async ({
     page,
   }) => {
-    // 1. Add Front Title and drag it on the canvas
+    // 1. Add generic "Text", rename directly in the text list (stays 1:1 with canvas & textarea), and drag it
     await page.getByTestId('studio-tool-text').click();
-    await page.getByTestId('add-front-title-btn').click();
+    await page.getByTestId('add-cover-text-btn').click();
     const textGroup = page.getByTestId('studio-cover-text-0');
     await expect(textGroup).toBeVisible();
+    await expect(textGroup).toContainText('Text');
+
+    const inlineInput = page.getByTestId('cover-text-inline-input-0');
+    await expect(inlineInput).toHaveValue('Text');
+    await page.getByTestId('cover-text-rename-0').click();
+    await inlineInput.fill('Field Notes');
+    await inlineInput.press('Enter');
+    await expect(inlineInput).toHaveValue('Field Notes');
+    await expect(page.getByTestId('cover-text-textarea')).toHaveValue('Field Notes');
+    await expect(textGroup).toContainText('Field Notes');
 
     const textEl = textGroup.locator('text').first();
     const initialTextX = Number(await textEl.getAttribute('x'));

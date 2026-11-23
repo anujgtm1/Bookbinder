@@ -17,7 +17,7 @@ const VALID_CURATED_FONT_IDS: readonly CuratedFontId[] = [
 
 export type CoverElementZone = 'front' | 'back' | 'spine';
 export type TextAlign = 'left' | 'center' | 'right';
-export type CoverTextPresetKind = 'front-title' | 'front-author' | 'back-blurb';
+export type CoverTextPresetKind = 'text' | 'front-title' | 'front-author' | 'back-blurb';
 
 export type ClassicOrnamentCategory = 'frames' | 'corners' | 'dividers' | 'emblems' | 'spine';
 
@@ -196,6 +196,23 @@ export const CoverTextLayerModel = {
     const color = options?.color ?? '#f5efe2';
     const cx = roundTo(targetBoardRectMm.x + targetBoardRectMm.width / 2, 2);
     const scaleFactor = Math.min(1.15, Math.max(0.68, targetBoardRectMm.width / 140));
+
+    if (preset === 'text') {
+      return {
+        id: generateElementId('txt'),
+        text: 'Text',
+        zone: 'front',
+        xMm: cx,
+        yMm: roundTo(targetBoardRectMm.y + targetBoardRectMm.height * 0.5, 2),
+        fontId,
+        fontSizePt: roundTo(20 * scaleFactor, 1),
+        letterSpacingEm: 0.04,
+        lineHeight: 1.24,
+        align: 'center',
+        color,
+        uppercase: false,
+      };
+    }
 
     if (preset === 'front-title') {
       return {

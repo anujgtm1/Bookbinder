@@ -4,6 +4,7 @@ import {
   AlignRight,
   FlipHorizontal2,
   FlipVertical2,
+  Pencil,
   Plus,
   Trash2,
   Type,
@@ -60,13 +61,25 @@ export function CoverTextCard({
   embedded = false,
 }: CoverTextCardProps) {
   const coverFontInputRef = useRef<HTMLInputElement>(null);
+  const inlineInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const selectedText = textLayers.find((t) => t.id === selectedTextId) ?? null;
 
   const content = (
     <>
-      {/* Quick-Add Front & Back Cover Text Presets */}
+      {/* Quick-Add Cover Text & Presets */}
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            variant="default"
+            className="h-7 px-2.5 text-xs"
+            data-testid="add-cover-text-btn"
+            onClick={() => onAddTextPreset('text')}
+          >
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+            Text
+          </Button>
           <Button
             type="button"
             size="sm"
@@ -102,25 +115,29 @@ export function CoverTextCard({
           </Button>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Drag any text block directly on the cover — snaps magnetically to board centers &amp;
-          exports as vector curves for Print PDF and Cricut HTV.
+          Edit any text directly in the list below or drag it on the cover — snaps magnetically to
+          board centers &amp; exports as vector curves for Print PDF and Cricut HTV.
         </p>
       </div>
 
-      {/* Cover Text Layer List */}
+      {/* Cover Text Layer List (inline-editable — stays 1:1 with the actual cover text) */}
       {textLayers.length > 0 && (
         <ul
           aria-label="Cover text layers"
           data-testid="cover-text-layer-list"
-          className="max-h-32 space-y-1 overflow-y-auto rounded-md border border-border bg-secondary/25 p-1.5"
+          className="max-h-36 space-y-1 overflow-y-auto rounded-md border border-border bg-secondary/25 p-1.5"
         >
           {textLayers.map((layer, idx) => {
             const isSelected = layer.id === selectedTextId;
+            const hasNewlines = /\r?\n/.test(layer.text);
+            const inlineDisplayValue = hasNewlines
+              ? layer.text.replace(/\r?\n/g, ' ↵ ')
+              : layer.text;
             const snippet = layer.text.split(/\r?\n/)[0]?.trim() || '(Empty text)';
             return (
               <li
                 key={layer.id}
-                className={`flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-xs ${
+                className={`flex items-center justify-between gap-1.5 rounded-sm px-2 py-1 text-xs ${
                   isSelected
                     ? 'bg-primary/12 text-foreground ring-1 ring-primary/40'
                     : 'hover:bg-accent/60'
@@ -130,22 +147,60 @@ export function CoverTextCard({
                   type="button"
                   onClick={() => onSelectText(layer.id)}
                   data-testid={`cover-text-select-${idx}`}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
+                  aria-label={`Select text layer ${snippet}`}
+                  className="flex shrink-0 items-center cursor-pointer"
                 >
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-full border border-border"
                     style={{ backgroundColor: layer.color }}
                   />
-                  <span className="truncate font-medium">{snippet}</span>
-                  <Badge variant="outline" className="ml-auto shrink-0 font-mono text-[9px] uppercase">
-                    {layer.zone}
-                  </Badge>
                 </button>
+                <input
+                  ref={(el) => {
+                    inlineInputRefs.current[layer.id] = el;
+                  }}
+                  type="text"
+                  value={inlineDisplayValue}
+                  placeholder="(Empty text)"
+                  aria-label={`Cover text ${idx + 1}`}
+                  data-testid={`cover-text-inline-input-${idx}`}
+                  onFocus={() => onSelectText(layer.id)}
+                  onClick={() => onSelectText(layer.id)}
+                  onChange={(e) => onUpdateTextLayer(layer.id, { text: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  className="min-w-0 flex-1 rounded-xs bg-transparent px-1 py-0.5 text-xs font-medium text-foreground placeholder:text-muted-foreground/70 hover:bg-background/60 focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <Badge variant="outline" className="shrink-0 font-mono text-[9px] uppercase">
+                  {layer.zone}
+                </Badge>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-destructive hover:text-destructive"
+                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                  aria-label={`Rename text layer ${snippet}`}
+                  title="Rename / edit text"
+                  data-testid={`cover-text-rename-${idx}`}
+                  onClick={() => {
+                    onSelectText(layer.id);
+                    const input = inlineInputRefs.current[layer.id];
+                    if (input) {
+                      input.focus();
+                      input.select();
+                    }
+                  }}
+                >
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
                   aria-label={`Remove text layer ${snippet}`}
                   data-testid={`cover-text-delete-${idx}`}
                   onClick={() => onDeleteTextLayer(layer.id)}
