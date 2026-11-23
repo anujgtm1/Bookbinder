@@ -208,9 +208,6 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
                         ? 'Cover Trim Size'
                         : 'Outer Wrap'}
               </span>
-              <Badge variant="outline" className="font-mono text-[10px]">
-                1:1 mm
-              </Badge>
             </div>
             <p className="mt-1 font-mono text-sm font-semibold text-foreground">
               {UnitConverter.formatDimensions(outerWrap.widthMm, outerWrap.heightMm, unit)}

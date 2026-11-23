@@ -212,7 +212,7 @@ export function evaluateRollWidth(
       orientation,
       usedWidthMm,
       spareWidthMm,
-      summary: `Fits on ${sheetLabel} (100% actual size)`,
+      summary: `Fits on ${sheetLabel}`,
     };
   }
 
@@ -238,7 +238,7 @@ export function evaluateRollWidth(
       orientation,
       usedWidthMm,
       spareWidthMm,
-      summary: `Fits on 1× ${legalSpec.label} home sheet (100% actual size)`,
+      summary: `Fits on 1× ${legalSpec.label} home sheet`,
     };
   }
 

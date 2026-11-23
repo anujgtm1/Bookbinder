@@ -325,8 +325,8 @@ async function renderBaseCoverPdfPage(
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(
     isBaseOnly
-      ? 'Bookbinder — Print-Ready Outer Cover Base (For HTV, 1:1 mm)'
-      : 'Bookbinder — Print-Ready Outer Cover (1:1 mm)',
+      ? 'Bookbinder — Print-Ready Outer Cover Base (For HTV)'
+      : 'Bookbinder — Print-Ready Outer Cover',
   );
   pdfDoc.setCreator('Bookbinder Studio');
 

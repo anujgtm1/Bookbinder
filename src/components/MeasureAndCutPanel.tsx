@@ -99,15 +99,15 @@ export function MeasureAndCutPanel({
       {/* Full Chipboard Cut List & Roll Sizing (flush with the Measure & Cut folder tab) */}
       <CutListCard geometry={geometry} unit={unit} className="rounded-tl-none" />
 
-      {/* 1:1 mm Structural Cutting Blueprint & Material Layout Card */}
+      {/* Structural Cutting Blueprint & Material Layout Card */}
       <section
-        aria-label="1:1 mm Cutting Blueprint and Material Layout"
+        aria-label="Cutting Blueprint & Material Layout"
         className="overflow-hidden rounded-lg border border-border bg-card shadow-xs"
       >
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
             <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
-              1:1 mm Cutting Blueprint &amp; Material Layout
+              Cutting Blueprint &amp; Material Layout
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Exact cutting marks, cumulative steel-ruler stops, and 45° miter callouts for
@@ -119,18 +119,18 @@ export function MeasureAndCutPanel({
               variant="outline"
               size="sm"
               onClick={onDownloadOuterSvg}
-              aria-label="Download Outer Case Wrap Cut SVG (1:1 mm)"
+              aria-label="Download Outer Case Wrap Cut SVG"
               data-testid="measure-download-svg-btn"
             >
               <FileCode2 className="h-4 w-4" aria-hidden="true" />
-              Cut SVG (1:1 mm)
+              Cut SVG
             </Button>
             <Button
               variant="default"
               size="sm"
               onClick={() => setPdfDialogOpen(true)}
               disabled={exportingOuterPdf}
-              aria-label="Open Cutting Blueprint PDF export dialog"
+              aria-label="Download Outer Case Wrap Cut PDF"
               data-testid="measure-download-pdf-btn"
             >
               <FileText className="h-4 w-4" aria-hidden="true" />

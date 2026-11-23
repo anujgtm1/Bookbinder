@@ -69,7 +69,7 @@
   ],
   "exactAutoMedia": {
     "id": "exact-auto",
-    "name": "Exact 1:1 Size",
+    "name": "Exact Wrap Size",
     "dimensionsLabel": "Auto / Roll",
     "label": "Exact Wrap Size (Auto)"
   },

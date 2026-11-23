@@ -455,12 +455,12 @@ export function SidebarControls({
           {(() => {
             const spec = getPrintMediaSpec(params.printMedia);
             if (spec.kind === 'auto') {
-              return 'Exports exact 1:1 mm wrap size; choose a sheet size to center or auto-tile.';
+              return 'Exports exact wrap size; choose a sheet size to center or auto-tile.';
             }
             if (spec.kind === 'sheet') {
               return 'Print PDF centers on 1 sheet or auto-tiles across 2 sheets with a 10 mm overlap.';
             }
-            return 'Exports exact 1:1 mm roll PDF and checks fit against your selected roll width.';
+            return 'Exports exact roll PDF and checks fit against your selected roll width.';
           })()}
         </p>
       </div>

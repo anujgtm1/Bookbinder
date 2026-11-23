@@ -144,7 +144,7 @@ describe('PdfExportDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('disables Download PDF when cover does not fit selected sheet and offers 1-click switch to Tabloid, 3-Piece Split, or Exact 1:1', async () => {
+  it('disables Download PDF when cover does not fit selected sheet and offers 1-click switch to Tabloid, 3-Piece Split, or Exact Wrap Size', async () => {
     const user = userEvent.setup();
     // 164 x 220 x 28 mm rigid hardcover -> wrap 418 x 263 mm:
     // exceeds US Letter even as 2 tiled sheets, but fits cleanly on 1x Tabloid

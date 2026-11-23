@@ -311,7 +311,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       'Cut 2 cover boards + 1 rigid spine strip from chipboard; wrap with bookcloth or heavy cover paper.',
     buildExportNote(outerWrap) {
-      return `Outer Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm • 45° Miter Clearance ${roundTo(outerWrap.miterGapMm, 2)} mm • Scale 1:1 mm`;
+      return `Outer Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm • 45° Miter Clearance ${roundTo(outerWrap.miterGapMm, 2)} mm`;
     },
     calculateCutList(params) {
       const boardWidthMm = params.pbWidthMm + params.overhangForeEdgeMm;
@@ -359,7 +359,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       'Cut 2 cover boards (no spine board); bridge the center gap with flexible bookcloth or heavy paper.',
     buildExportNote(outerWrap, cutList) {
-      return `Flexible-Spine Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Cloth Spine Gap ${roundTo(cutList.spineStrip.widthMm, 2)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm • Scale 1:1 mm`;
+      return `Flexible-Spine Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Cloth Spine Gap ${roundTo(cutList.spineStrip.widthMm, 2)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm`;
     },
     calculateCutList(params) {
       const boardWidthMm = params.pbWidthMm + params.overhangForeEdgeMm;
@@ -597,7 +597,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       '0 chipboard — print on 130–200 gsm coated or matte paper, score 4 vertical folds, and wrap over an existing cover (no glue).',
     buildExportNote(outerWrap) {
-      return `Dust Jacket ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • ${roundTo(outerWrap.jacketFlapWidthMm, 2)} mm fold-in flaps • Score 4 vertical folds (no glue) • Scale 1:1 mm`;
+      return `Dust Jacket ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • ${roundTo(outerWrap.jacketFlapWidthMm, 2)} mm fold-in flaps • Score 4 vertical folds (no glue)`;
     },
     calculateCutList(params) {
       // Real publisher dust jacket wrap ease over an existing cover:
@@ -706,7 +706,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       '0 chipboard — print on 220–300 gsm cover cardstock, score 2 spine folds, and glue directly onto the paperback textblock spine.',
     buildExportNote(outerWrap) {
-      return `Paperback Cover ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Score 2 spine folds & glue spine to textblock • Scale 1:1 mm`;
+      return `Paperback Cover ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Score 2 spine folds & glue spine to textblock`;
     },
     calculateCutList(params) {
       const coverWidthMm = roundTo(params.pbWidthMm, 2);

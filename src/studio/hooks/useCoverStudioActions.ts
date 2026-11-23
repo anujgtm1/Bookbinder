@@ -716,7 +716,7 @@ export function useCoverStudioActions({
       const pocketsTag = options?.appendInnerPocketsPage ? ' + Pockets' : '';
       onStatusMessage(
         fit.status === 'fits-1-sheet'
-          ? `Exported ${fileName} (100% actual size, centered on 1× ${fit.mediaLabel}${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
+          ? `Exported ${fileName} (centered on 1× ${fit.mediaLabel}${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
           : fit.status === 'fits-2-sheet-tile'
             ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
             : isBaseOnly
@@ -758,7 +758,7 @@ export function useCoverStudioActions({
       }
       const svg = generateAffinityCoverSvg(geometry, studio, customFont, artworkDataUrl);
       triggerTextDownload(svg, 'outer_cover_300dpi.svg', 'image/svg+xml;charset=utf-8');
-      onStatusMessage('Exported outer_cover_300dpi.svg (1:1 mm Affinity round-trip)');
+      onStatusMessage('Exported outer_cover_300dpi.svg (Affinity round-trip)');
     } catch {
       onStatusMessage('Failed to export Affinity SVG.');
     } finally {

@@ -6,7 +6,7 @@ import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
 import { MeasureAndCutPanel } from './MeasureAndCutPanel';
 
 describe('MeasureAndCutPanel', () => {
-  it('renders the full CutListCard, 1:1 mm blueprint canvas with CAD dimensions, and export buttons', async () => {
+  it('renders the full CutListCard, blueprint canvas with CAD dimensions, and export buttons', async () => {
     const user = userEvent.setup();
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const onDownloadOuterSvg = vi.fn();

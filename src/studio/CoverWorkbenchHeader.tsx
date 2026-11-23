@@ -46,7 +46,7 @@ export function CoverWorkbenchHeader({
             data-fit-status={geometry.mediaFit.status}
             onClick={onOpenMeasureAndCut}
             disabled={!onOpenMeasureAndCut}
-            title="Open Measure & Cut tab for full chipboard cut list and 1:1 mm cutting blueprint"
+            title="Open Measure & Cut tab for full chipboard cut list and cutting blueprint"
             className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
               geometry.mediaFit.mediaId === 'exact-auto'
                 ? geometry.rollRecommendation.fits
@@ -78,7 +78,7 @@ export function CoverWorkbenchHeader({
           </button>
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Style artwork &amp; spine lettering, inspect the 1:1 mm CAD blueprint, or orbit in 3D (
+          Style artwork &amp; spine lettering, inspect the cutting blueprint, or orbit in 3D (
           {spec.pixelWidth} × {spec.pixelHeight} px @ 300 DPI).
         </p>
       </div>
@@ -120,14 +120,14 @@ export function CoverWorkbenchHeader({
             size="sm"
             onClick={onOpenCricutDialog}
             data-testid="studio-open-cricut-btn"
-            title="Export 1:1 mm outlined vector SVG for Cricut Design Space, Silhouette Studio, or Brother ScanNCut"
+            title="Export outlined vector SVG for Cricut Design Space, Silhouette Studio, or Brother ScanNCut"
           >
             <Scissors className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
             Cricut / HTV SVG
           </Button>
         </div>
 
-        {/* 1:1 mm Unstyled Structural Cut Templates */}
+        {/* Unstyled Structural Cut Templates */}
         {(onDownloadOuterSvg || onDownloadOuterPdf) && (
           <div
             className="flex items-center gap-1 rounded-md border border-border bg-secondary/45 px-2 py-1"

@@ -119,7 +119,7 @@ describe('bindingStyles strategy registry', () => {
     expect(pbWrap.foldLines).toHaveLength(2);
     expect(pbWrap.foldLines.map((l) => l.x1)).toEqual([105, 115]);
     expect(pbStrategy.buildExportNote(pbWrap, pbCut)).toBe(
-      'Paperback Cover 220 × 148 mm • Score 2 spine folds & glue spine to textblock • Scale 1:1 mm',
+      'Paperback Cover 220 × 148 mm • Score 2 spine folds & glue spine to textblock',
     );
 
     // Dust jacket -> 4 vertical fold lines
@@ -134,7 +134,7 @@ describe('bindingStyles strategy registry', () => {
     expect(djWrap.foldLines).toHaveLength(4);
     expect(djWrap.foldLines.map((l) => l.x1)).toEqual([50, 156, 167.5, 273.5]);
     expect(djStrategy.buildExportNote(djWrap, djCut)).toBe(
-      'Dust Jacket 323.5 × 148 mm • 50 mm fold-in flaps • Score 4 vertical folds (no glue) • Scale 1:1 mm',
+      'Dust Jacket 323.5 × 148 mm • 50 mm fold-in flaps • Score 4 vertical folds (no glue)',
     );
 
     // Softcover slip cover -> 4 vertical + 4 horizontal glue-tab fold lines = 8

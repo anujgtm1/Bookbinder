@@ -92,17 +92,17 @@ const TARGET_TITLES: Record<PdfExportTarget, string> = {
 };
 
 const TARGET_SUBTITLES: Record<PdfExportTarget, string> = {
-  'cover-styled': '100% actual size cover artwork & vector typography with live paper-fit preview.',
-  'outer-blueprint': '1:1 physical mm structural cutting template with fold guides and miter marks.',
+  'cover-styled': 'Cover artwork & vector typography with live paper-fit preview.',
+  'outer-blueprint': 'Structural cutting template with fold guides and miter marks.',
   'inner-styled': '300 DPI styled inner slip-in pockets & spine liner auto-paginated to your paper.',
-  'inner-blueprint': '1:1 physical mm unstyled cutting blueprints for inner pockets & spine liner.',
+  'inner-blueprint': 'Unstyled cutting blueprints for inner pockets & spine liner.',
 };
 
 function renderFitBadge(fit: PrintMediaFitEvaluation) {
   if (fit.mediaId === 'exact-auto') {
     return (
       <Badge variant="brass" className="rounded-full px-1.5 py-0 text-[10px]">
-        1:1 exact
+        Wrap size
       </Badge>
     );
   }
@@ -130,7 +130,7 @@ function renderFitBadge(fit: PrintMediaFitEvaluation) {
 /**
  * Native modal <dialog closedby="any"> for unified Print & Export PDF across Bookbinder Studio.
  * Lets users compare desktop sheets & rolls live, inspect a mini sheet layout diagram,
- * adjust print options, and export 1:1 mm PDFs.
+ * adjust print options, and export PDFs.
  */
 export function PdfExportDialog({
   open,
@@ -330,7 +330,7 @@ export function PdfExportDialog({
       const pageWord = activeInnerPlan.pageCount === 1 ? 'page' : 'pages';
       const sizeLabel = PAGE_SIZES[pageSizeId].label;
       const legendSuffix = includeLegend ? ' • with 50 mm legend' : '';
-      const modeSuffix = target === 'inner-styled' ? ' • 300 DPI' : ' • 1:1 mm';
+      const modeSuffix = target === 'inner-styled' ? ' • 300 DPI' : '';
       return `${activeInnerPlan.pageCount} ${pageWord} • ${sizeLabel}${legendSuffix}${modeSuffix}`;
     }
 
@@ -338,7 +338,7 @@ export function PdfExportDialog({
       target === 'cover-styled' && exportLayerMode === 'base-only'
         ? ' • Base Only (For HTV)'
         : '';
-    const dpiSuffix = target === 'cover-styled' ? ` • ${dpi} DPI${layerSuffix}` : ' • 1:1 mm';
+    const dpiSuffix = target === 'cover-styled' ? ` • ${dpi} DPI${layerSuffix}` : '';
     if (effectiveSplitMode === 'three-piece') {
       return `3 pages • 3-Piece Split (Back, Spine, Front)${dpiSuffix}`;
     }
@@ -367,7 +367,7 @@ export function PdfExportDialog({
         activeFit.sheetPageWidthMm > activeFit.sheetPageHeightMm ? 'Landscape' : 'Portrait';
       return `${formatPageCount(2)} • ${activeMediaSpec.label} ${orient} (tiled, ${tileOverlapMm} mm overlap)${pocketsSuffix}${dpiSuffix}`;
     }
-    return `${formatPageCount(1)} • ${activeMediaSpec.label} (1:1 mm)${pocketsSuffix}${dpiSuffix}`;
+    return `${formatPageCount(1)} • ${activeMediaSpec.label}${pocketsSuffix}${dpiSuffix}`;
   }, [
     isOuterTarget,
     activeInnerPlan.pageCount,
@@ -613,7 +613,7 @@ export function PdfExportDialog({
 
               {isOuterTarget && effectiveSplitMode === 'three-piece' && (
                 <p className="rounded-md border border-brass/35 bg-brass/10 px-3 py-1.5 text-[11px] text-foreground">
-                  3-Piece Split outputs 3 separate 1:1 panel pages (<strong>Back Board</strong>,{' '}
+                  3-Piece Split outputs 3 separate panel pages (<strong>Back Board</strong>,{' '}
                   <strong>Spine Strip</strong>, and <strong>Front Board</strong>).
                 </p>
               )}
@@ -744,7 +744,7 @@ export function PdfExportDialog({
                       50 mm Scale-Check Ruler
                     </Label>
                     <p className="text-[11px] text-muted-foreground">
-                      Prints a 50.0 mm ruler bar to verify 100% Actual Size.
+                      Prints a 50 mm ruler bar to verify print scale.
                     </p>
                   </div>
                   <Switch
@@ -765,7 +765,7 @@ export function PdfExportDialog({
                     </Label>
                     <p className="text-[11px] text-muted-foreground">
                       Appends {detachedInnerPlan.pageCount}{' '}
-                      {detachedInnerPlan.pageCount === 1 ? 'page' : 'pages'} of 1:1 mm detached
+                      {detachedInnerPlan.pageCount === 1 ? 'page' : 'pages'} of detached
                       fore-edge pockets ({PAGE_SIZES[resolvedInnerPageSizeId].shortLabel}).
                     </p>
                   </div>

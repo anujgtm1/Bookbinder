@@ -428,7 +428,7 @@ export function InnerPocketsStudio({
             <p className="mt-0.5 text-xs text-muted-foreground">
               {!bindingStrategy.capabilities.usesInnerPockets
                 ? `Note: ${bindingStrategy.shortLabel} does not require separate inner pocket sheets — these templates are optional.`
-                : 'Drop images directly onto any pocket, drag and resize with magnetic guides, or inspect 1:1 mm fold flaps and auto-paginated print sheets.'}
+                : 'Drop images directly onto any pocket, drag and resize with magnetic guides, or inspect fold flaps and auto-paginated print sheets.'}
             </p>
           </div>
 
@@ -532,7 +532,7 @@ export function InnerPocketsStudio({
             aria-hidden="true"
             className="pointer-events-none absolute top-3 left-3 z-10 rounded-full border border-white/15 bg-black/25 px-2.5 py-0.5 font-mono text-[10px] tracking-wide text-[#efe8d8]/85"
           >
-            POCKETS &amp; LINER • 1:1 mm
+            POCKETS &amp; LINER
           </div>
 
           {/* Top-right pagination badge & full-page exit button */}

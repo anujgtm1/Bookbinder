@@ -742,7 +742,7 @@ export const PreflightEngine = {
         const overflowDetail = detachedFit?.fitsSingleSheet
           ? `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable bounds — detach the side flaps to Separate Inner Pockets so the seamless outer shell (${roundTo(detachedFit.detachedWidthMm, 1)} × ${roundTo(detachedFit.detachedHeightMm, 1)} mm) fits cleanly on 1× ${mediaSpec.shortLabel}.`
           : mediaSpec.kind === 'sheet'
-            ? `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable bounds even across 2 tiled pages. Switch to a larger sheet or roll for 100% scale printing.`
+            ? `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable bounds even across 2 tiled pages. Switch to a larger sheet or roll.`
             : `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable width.`;
         const overflowQuickFix: PreflightQuickFix | undefined = detachedFit?.fitsSingleSheet
           ? {

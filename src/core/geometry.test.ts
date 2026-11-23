@@ -245,14 +245,12 @@ describe('calculateCaseGeometry', () => {
     expect(deepGeom.outerWrap.widthMm).toBeCloseTo(294.0, 2);
     expect(deepGeom.outerWrap.heightMm).toBeCloseTo(170.0, 2);
     expect(deepGeom.rollRecommendation.fits).toBe(true);
-    expect(deepGeom.rollRecommendation.summary).toBe(
-      'Fits on 1× US Legal (8.5 × 14") home sheet (100% actual size)',
-    );
+    expect(deepGeom.rollRecommendation.summary).toBe('Fits on 1× US Legal (8.5 × 14") home sheet');
 
     // Direct evaluateRollWidth checks: 294 × 170 => US Legal; default hardcover 366 × 259 => 13" roll
     const legalRec = evaluateRollWidth(294, 170);
     expect(legalRec.fits).toBe(true);
-    expect(legalRec.summary).toBe('Fits on 1× US Legal (8.5 × 14") home sheet (100% actual size)');
+    expect(legalRec.summary).toBe('Fits on 1× US Legal (8.5 × 14") home sheet');
 
     const hardcoverRec = evaluateRollWidth(366, 259);
     expect(hardcoverRec.fits).toBe(true);

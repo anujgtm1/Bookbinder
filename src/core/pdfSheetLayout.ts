@@ -99,7 +99,7 @@ function drawScaleCheckBar(
     }
   }
 
-  page.drawText('50 mm Scale Check (100%)', {
+  page.drawText('50 mm Scale Check', {
     x: UnitConverter.mmToPoints(barX0Mm),
     y: UnitConverter.mmToPoints(originYMm + 5.6),
     size: 5.2,
@@ -249,7 +249,7 @@ async function layoutSingleSheetCenteredPdf(
   const mediaLabel = getPrintMediaSpec(fit.mediaId).label;
   const outDoc = await PDFDocument.create();
   outDoc.setTitle(
-    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${mediaLabel}, 1:1 mm)`,
+    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${mediaLabel})`,
   );
   outDoc.setCreator('Bookbinder Studio');
 
@@ -284,7 +284,7 @@ async function layoutSingleSheetCenteredPdf(
     sheetPage,
     font,
     sheetWPt,
-    `100% Actual Size (1:1 mm) • Centered on ${mediaLabel}`,
+    `Centered on ${mediaLabel}`,
   );
 
   if (options.includeScaleBar) {
@@ -307,7 +307,7 @@ async function layoutTwoSheetTiledPdf(
   const mediaLabel = getPrintMediaSpec(fit.mediaId).label;
   const outDoc = await PDFDocument.create();
   outDoc.setTitle(
-    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${mediaLabel}, 1:1 mm)`,
+    options.documentTitle ?? `Bookbinder — Print-Ready Outer Cover (${mediaLabel})`,
   );
   outDoc.setCreator('Bookbinder Studio');
 
@@ -361,7 +361,7 @@ async function layoutTwoSheetTiledPdf(
     page1,
     font,
     sheetWPt,
-    `SHEET 1 OF 2 (LEFT) — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${mediaLabel})`,
+    `SHEET 1 OF 2 (LEFT) — ALIGN & TAPE ${overlapMm} mm OVERLAP (${mediaLabel})`,
   );
 
   if (options.includeScaleBar) {
@@ -400,7 +400,7 @@ async function layoutTwoSheetTiledPdf(
     page2,
     font,
     sheetWPt,
-    `SHEET 2 OF 2 (RIGHT) — ALIGN & TAPE ${overlapMm} mm OVERLAP • 100% ACTUAL SIZE (${mediaLabel})`,
+    `SHEET 2 OF 2 (RIGHT) — ALIGN & TAPE ${overlapMm} mm OVERLAP (${mediaLabel})`,
   );
 
   return outDoc.save();

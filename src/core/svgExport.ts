@@ -134,7 +134,7 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
      width="${fmtMm(totalWidth)}mm"
      height="${fmtMm(totalHeight)}mm"
      viewBox="${viewBox}">
-  <title>Outer Case Wrap — ${escapeXml(wrapDim)} (1:1 mm)</title>
+  <title>Outer Case Wrap — ${escapeXml(wrapDim)}</title>
 ${bleedGroup}
 ${glueTabGroup}
   <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
@@ -227,7 +227,7 @@ function renderThreePieceSvg(geometry: CaseGeometry): string {
      width="${fmtMm(totalWidth)}mm"
      height="${fmtMm(totalHeight)}mm"
      viewBox="${viewBox}">
-  <title>Outer Case Wrap — 3-Piece Quarter-Bound Split (1:1 mm)</title>
+  <title>Outer Case Wrap — 3-Piece Quarter-Bound Split</title>
   <g id="bleed-box" fill="none" stroke="#00AA44" stroke-width="0.35" stroke-dasharray="3 2">
     ${bleedElements}
   </g>
@@ -329,7 +329,7 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
      width="${fmtMm(contentW)}mm"
      height="${fmtMm(totalH)}mm"
      viewBox="0 0 ${fmtMm(contentW)} ${fmtMm(totalH)}">
-  <title>Inner Pockets &amp; Spine Liner — 1:1 mm Vector Templates</title>
+  <title>Inner Pockets &amp; Spine Liner — Vector Templates</title>
   <g id="glue-flaps" fill="#e6dccb" fill-opacity="0.65" stroke="none">
     ${glueFlapPaths}
   </g>
@@ -342,8 +342,8 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
   <g id="dimensions-notes" font-family="sans-serif" fill="#222222">
     <rect x="${fmtMm(pad)}" y="${fmtMm(pad)}" width="50" height="50" fill="none" stroke="#222222" stroke-width="0.5" data-label="50x50mm Calibration Square" />
     <text x="${fmtMm(pad + 25)}" y="${fmtMm(pad + 22)}" font-size="4.5" font-weight="600" text-anchor="middle">50 × 50 mm</text>
-    <text x="${fmtMm(pad + 25)}" y="${fmtMm(pad + 30)}" font-size="3.4" text-anchor="middle">Verify 1:1 Scale</text>
-    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 18)}" font-size="5" font-weight="700">INNER POCKETS &amp; SPINE LINER (1:1 mm)</text>
+    <text x="${fmtMm(pad + 25)}" y="${fmtMm(pad + 30)}" font-size="3.4" text-anchor="middle">50 mm Scale Check</text>
+    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 18)}" font-size="5" font-weight="700">INNER POCKETS &amp; SPINE LINER</text>
     <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 27)}" font-size="3.8" fill="#555555">Solid Red = Cut • Dashed Blue = Score &amp; Fold • Shaded = Apply Glue Here</text>
     <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">BACK POCKET</text>
     <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>

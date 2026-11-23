@@ -541,7 +541,7 @@ function renderCalibrationAndLegend(
   const muted = rgb(0.38, 0.38, 0.38);
 
   writer.drawText('BOOKBINDER STUDIO', x, y + 3, boldFont, 8.5, dark);
-  writer.drawText('Inner Pockets & Spine Liner (1:1 mm)', x, y + 8, font, 6.8, muted);
+  writer.drawText('Inner Pockets & Spine Liner', x, y + 8, font, 6.8, muted);
 
   // Exact 50.0 mm x 50.0 mm Calibration Square
   const sqY = y + 12;
@@ -557,8 +557,7 @@ function renderCalibrationAndLegend(
   writer.drawLine({ x: midX, y: midY - 4 }, { x: midX, y: midY + 4 }, { color: muted, thicknessPt: 0.5 });
 
   writer.drawText('50.0 mm × 50.0 mm', x + 7, sqY + 18, boldFont, 8, dark);
-  writer.drawText('Verify 50mm × 50mm', x + 5, sqY + 33, font, 6.8, dark);
-  writer.drawText('Print at 100% / Actual Size', x + 3, sqY + 39, font, 6.5, muted);
+  writer.drawText('50 mm Scale Check', x + 7, sqY + 35, font, 6.8, muted);
 
   // Visual Legend
   const legY = sqY + CALIBRATION_SIZE_MM + 7;
@@ -609,7 +608,7 @@ export async function generateInnerTemplatesPdf(
     includeLegend: options?.includeLegend,
   });
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle('Bookbinder — Inner Pockets & Spine Liner (1:1 mm)');
+  pdfDoc.setTitle('Bookbinder — Inner Pockets & Spine Liner');
   pdfDoc.setCreator('Bookbinder Studio');
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -622,7 +621,7 @@ export async function generateInnerTemplatesPdf(
   for (let i = 0; i < plan.pageCount; i++) {
     const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
     pages.push(page);
-    const footer = `Page ${i + 1} of ${plan.pageCount} • ${PAGE_SIZES[pageSizeId].label} • Scale 1:1 mm (Print at 100% Actual Size)`;
+    const footer = `Page ${i + 1} of ${plan.pageCount} • ${PAGE_SIZES[pageSizeId].label}`;
     page.drawText(footer, {
       x: UnitConverter.mmToPoints(PAGE_MARGIN_MM),
       y: UnitConverter.mmToPoints(4.5),
@@ -716,7 +715,7 @@ export async function generateOuterWrapPdf(
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
 
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle('Bookbinder — Outer Case Wrap Structural Template (1:1 mm)');
+  pdfDoc.setTitle('Bookbinder — Outer Case Wrap Structural Template');
   pdfDoc.setCreator('Bookbinder Studio');
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -766,7 +765,7 @@ export async function generateOuterWrapPdf(
       const cy = pageH / 2;
       writer.drawText(panel.label.toUpperCase(), cx - 32, cy - 3, boldFont, 9, guideColor);
       writer.drawText(
-        `${roundTo(panel.widthMm, 1)} × ${roundTo(panel.heightMm, 1)} mm • Scale 1:1 mm`,
+        `${roundTo(panel.widthMm, 1)} × ${roundTo(panel.heightMm, 1)} mm`,
         cx - 32,
         cy + 5,
         font,
@@ -928,7 +927,7 @@ export async function generateOuterWrapPdf(
           ...options,
           bleedMm: options.bleedMm ?? bleed,
           documentTitle:
-            options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template (1:1 mm)',
+            options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template',
         })
       : baseBytes;
 

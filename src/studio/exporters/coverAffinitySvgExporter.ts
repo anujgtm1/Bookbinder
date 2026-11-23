@@ -110,7 +110,7 @@ export function generateAffinityCoverSvg(
      width="${fmtMm(spec.totalWidthMm)}mm"
      height="${fmtMm(spec.totalHeightMm)}mm"
      viewBox="0 0 ${fmtMm(spec.totalWidthMm)} ${fmtMm(spec.totalHeightMm)}">
-  <title>Composed Outer Cover — Affinity Round-Trip (1:1 mm, 300 DPI)</title>
+  <title>Composed Outer Cover — Affinity Round-Trip (300 DPI)</title>
   <g id="artwork-layer">
 ${artworkLayer}
   </g>

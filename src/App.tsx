@@ -110,8 +110,8 @@ export function App() {
       triggerBytesDownload(bytes, filename, 'application/pdf');
       setStatusMessage(
         options?.appendInnerPocketsPage
-          ? `Exported ${filename} + Detached Pockets (1:1 mm)`
-          : `Exported ${filename} (1:1 mm)`,
+          ? `Exported ${filename} + Detached Pockets`
+          : `Exported ${filename}`,
       );
     } catch {
       setStatusMessage('Failed to generate outer wrap PDF.');
@@ -123,7 +123,7 @@ export function App() {
   const handleDownloadInnerSvg = () => {
     const svg = generateInnerTemplatesSvg(geometry);
     triggerTextDownload(svg, 'inner_pockets_and_liner.svg', 'image/svg+xml;charset=utf-8');
-    setStatusMessage('Exported inner_pockets_and_liner.svg (1:1 mm)');
+    setStatusMessage('Exported inner_pockets_and_liner.svg');
   };
 
   const handleDownloadInnerPdf = async (options?: InnerPdfExportOptions) => {

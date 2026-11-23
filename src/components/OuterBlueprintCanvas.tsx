@@ -26,7 +26,7 @@ export interface OuterBlueprintCanvasProps {
 const PAPER_SHEET_FILL = '#FAF6EE';
 
 /**
- * Pure 1:1 mm structural CAD blueprint for the Outer Case Wrap
+ * Structural CAD blueprint for the Outer Case Wrap
  * (supports Single-Piece Continuous Wrap and 3-Piece Quarter-Bound Split with zoom, pan,
  * and architectural manual-cutting dimension lines for non-printable materials like leather & bookcloth).
  */
@@ -183,7 +183,7 @@ export function OuterBlueprintCanvas({
       >
         <svg
           role="img"
-          aria-label="Outer Case Wrap 1:1 structural blueprint"
+          aria-label="Outer Case Wrap structural blueprint"
           data-testid="outer-blueprint-svg"
           viewBox={outerLayout.viewBox}
           className="max-h-full max-w-full drop-shadow-[0_14px_26px_rgba(0,0,0,0.42)]"
