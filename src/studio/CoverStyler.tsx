@@ -34,6 +34,15 @@ import {
   triggerTextDownload,
 } from '@/core/storage';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
+import {
+  CoverOrnamentLayerModel,
+  CoverTextLayerModel,
+  type ClassicOrnamentId,
+  type CoverElementZone,
+  type CoverOrnamentLayer,
+  type CoverTextLayer,
+  type CoverTextPresetKind,
+} from '@/types/coverElements';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import {
   CoverStudioModel,
@@ -50,6 +59,7 @@ import {
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
+import { CoverElementsCard } from './CoverElementsCard';
 import { CricutExportDialog } from './CricutExportDialog';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import { PreflightCard } from './PreflightCard';
@@ -60,6 +70,7 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
+import { buildOrnamentCompoundPath, getClassicOrnamentSpec } from './classicOrnaments';
 import {
   applyStubExtensionToLayer,
   detectLayerCoverSide,
@@ -72,6 +83,7 @@ import {
 } from './fonts';
 import { PreflightEngine, type PreflightQuickFix } from './preflight';
 import {
+  computeCoverTextLinePlacements,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   exportCoverPng300Dpi,
@@ -81,7 +93,11 @@ import {
   resolveQuickFitRect,
   resolveZoneClipRect,
 } from './renderEngine';
-import { buildCanvasSnapTargets } from './snapGuides';
+import {
+  DEFAULT_SNAP_THRESHOLD_MM,
+  buildCanvasSnapTargets,
+  type ActiveSnapGuide,
+} from './snapGuides';
 import {
   isSupportedImageFile,
   readImageFile,
@@ -135,6 +151,9 @@ export function CoverStyler({
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => studio.layers[studio.layers.length - 1]?.id ?? null,
   );
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [selectedOrnamentId, setSelectedOrnamentId] = useState<string | null>(null);
+  const [elementSnapGuides, setElementSnapGuides] = useState<readonly ActiveSnapGuide[]>([]);
   const [customFont, setCustomFont] = useState<CustomFontAsset | null>(null);
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
@@ -228,6 +247,295 @@ export function CoverStyler({
       layers: studio.layers.map((layer) => (layer.id === id ? updater(layer) : layer)),
     });
   };
+
+  const getBoardRectInCanvas = (zone: CoverElementZone): Rect2D => {
+    const base =
+      zone === 'back'
+        ? geometry.outerWrap.backBoardRect
+        : zone === 'spine'
+          ? geometry.outerWrap.spineRect
+          : geometry.outerWrap.frontBoardRect;
+    return {
+      x: base.x + spec.bleedMm,
+      y: base.y + spec.bleedMm,
+      width: base.width,
+      height: base.height,
+    };
+  };
+
+  // Pointer drag interaction for draggable CoverTextLayers & CoverOrnamentLayers (with live magnetic snap guides)
+  const elementDragRef = useRef<
+    | { readonly kind: 'none' }
+    | {
+        readonly kind: 'text';
+        readonly id: string;
+        readonly startXMm: number;
+        readonly startYMm: number;
+        readonly origXMm: number;
+        readonly origYMm: number;
+      }
+    | {
+        readonly kind: 'ornament';
+        readonly id: string;
+        readonly startXMm: number;
+        readonly startYMm: number;
+        readonly origXMm: number;
+        readonly origYMm: number;
+        readonly widthMm: number;
+        readonly heightMm: number;
+      }
+  >({ kind: 'none' });
+
+  useEffect(() => {
+    const findBestSnap = (
+      candidates: readonly number[],
+      targets: readonly { readonly positionMm: number; readonly label: string; readonly kind: ActiveSnapGuide['kind'] }[],
+      axis: 'x' | 'y',
+    ): { readonly delta: number; readonly guide: ActiveSnapGuide | null } => {
+      let bestDist = DEFAULT_SNAP_THRESHOLD_MM;
+      let bestDelta = 0;
+      let bestGuide: ActiveSnapGuide | null = null;
+      for (const c of candidates) {
+        for (const t of targets) {
+          const d = Math.abs(t.positionMm - c);
+          if (d <= bestDist) {
+            bestDist = d;
+            bestDelta = t.positionMm - c;
+            bestGuide = { axis, positionMm: t.positionMm, label: t.label, kind: t.kind };
+          }
+        }
+      }
+      return { delta: bestDelta, guide: bestGuide };
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const drag = elementDragRef.current;
+      if (drag.kind === 'none') return;
+      const pt = toSvgMm(e.clientX, e.clientY);
+      if (!pt) return;
+      const dx = pt.xMm - drag.startXMm;
+      const dy = pt.yMm - drag.startYMm;
+      const allowSnap = snapEnabled && !e.altKey;
+      const guides: ActiveSnapGuide[] = [];
+
+      if (drag.kind === 'text') {
+        let nextX = drag.origXMm + dx;
+        let nextY = drag.origYMm + dy;
+        if (allowSnap) {
+          const sx = findBestSnap([nextX], snapTargets.vertical, 'x');
+          const sy = findBestSnap([nextY], snapTargets.horizontal, 'y');
+          nextX += sx.delta;
+          nextY += sy.delta;
+          if (sx.guide) guides.push(sx.guide);
+          if (sy.guide) guides.push(sy.guide);
+        }
+        setElementSnapGuides(guides);
+        const cur = studioRef.current;
+        onChangeRef.current({
+          ...cur,
+          textLayers: (cur.textLayers ?? []).map((t) =>
+            t.id === drag.id ? { ...t, xMm: roundTo(nextX, 2), yMm: roundTo(nextY, 2) } : t,
+          ),
+        });
+      } else {
+        let nextX = drag.origXMm + dx;
+        let nextY = drag.origYMm + dy;
+        if (allowSnap) {
+          const sx = findBestSnap(
+            [nextX, nextX + drag.widthMm / 2, nextX + drag.widthMm],
+            snapTargets.vertical,
+            'x',
+          );
+          const sy = findBestSnap(
+            [nextY, nextY + drag.heightMm / 2, nextY + drag.heightMm],
+            snapTargets.horizontal,
+            'y',
+          );
+          nextX += sx.delta;
+          nextY += sy.delta;
+          if (sx.guide) guides.push(sx.guide);
+          if (sy.guide) guides.push(sy.guide);
+        }
+        setElementSnapGuides(guides);
+        const cur = studioRef.current;
+        onChangeRef.current({
+          ...cur,
+          ornaments: (cur.ornaments ?? []).map((o) =>
+            o.id === drag.id ? { ...o, xMm: roundTo(nextX, 2), yMm: roundTo(nextY, 2) } : o,
+          ),
+        });
+      }
+      suppressNextClickRef.current = true;
+    };
+
+    const onPointerUp = () => {
+      if (elementDragRef.current.kind !== 'none') {
+        elementDragRef.current = { kind: 'none' };
+        setElementSnapGuides([]);
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [snapEnabled, snapTargets, toSvgMm, suppressNextClickRef]);
+
+  // Keyboard Backspace/Delete removal for selected CoverTextLayer or CoverOrnamentLayer
+  useEffect(() => {
+    if (viewMode !== '2d' || (!selectedTextId && !selectedOrnamentId)) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      const cur = studioRef.current;
+      if (selectedTextId) {
+        onChangeRef.current({
+          ...cur,
+          textLayers: (cur.textLayers ?? []).filter((t) => t.id !== selectedTextId),
+        });
+        setSelectedTextId(null);
+      } else if (selectedOrnamentId) {
+        onChangeRef.current({
+          ...cur,
+          ornaments: (cur.ornaments ?? []).filter((o) => o.id !== selectedOrnamentId),
+        });
+        setSelectedOrnamentId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [viewMode, selectedTextId, selectedOrnamentId]);
+
+  const handleAddTextPreset = (preset: CoverTextPresetKind) => {
+    const zone: CoverElementZone = preset === 'back-blurb' ? 'back' : 'front';
+    const created = CoverTextLayerModel.createPreset(preset, getBoardRectInCanvas(zone), {
+      fontId: studio.spineText.fontId,
+      color: studio.spineText.textColor,
+    });
+    onChange({ ...studio, textLayers: [...(studio.textLayers ?? []), created] });
+    setSelectedLayerId(null);
+    setSelectedOrnamentId(null);
+    setSelectedTextId(created.id);
+    setViewMode('2d');
+    onStatusMessage(`Added "${created.text.split('\n')[0]}" on ${zone} cover — drag to position`);
+  };
+
+  const handleUpdateTextLayer = (id: string, patch: Partial<CoverTextLayer>) => {
+    onChange({
+      ...studio,
+      textLayers: (studio.textLayers ?? []).map((t) => {
+        if (t.id !== id) return t;
+        const next = { ...t, ...patch };
+        if (patch.zone && patch.zone !== t.zone) {
+          const rect = getBoardRectInCanvas(patch.zone);
+          return {
+            ...next,
+            xMm: roundTo(rect.x + rect.width / 2, 2),
+            yMm: roundTo(rect.y + rect.height / 2, 2),
+          };
+        }
+        return next;
+      }),
+    });
+  };
+
+  const handleQuickAlignText = (id: string, verticalSlot: 'upper' | 'center' | 'lower') => {
+    const ratio = verticalSlot === 'upper' ? 0.3 : verticalSlot === 'lower' ? 0.76 : 0.5;
+    onChange({
+      ...studio,
+      textLayers: (studio.textLayers ?? []).map((t) => {
+        if (t.id !== id) return t;
+        const rect = getBoardRectInCanvas(t.zone);
+        return {
+          ...t,
+          align: 'center',
+          xMm: roundTo(rect.x + rect.width / 2, 2),
+          yMm: roundTo(rect.y + rect.height * ratio, 2),
+        };
+      }),
+    });
+  };
+
+  const handleDeleteTextLayer = (id: string) => {
+    const remaining = (studio.textLayers ?? []).filter((t) => t.id !== id);
+    onChange({ ...studio, textLayers: remaining });
+    if (selectedTextId === id) {
+      setSelectedTextId(remaining[remaining.length - 1]?.id ?? null);
+    }
+  };
+
+  const handleAddOrnament = (
+    presetId: ClassicOrnamentId,
+    zone: CoverElementZone,
+    color: string,
+  ) => {
+    const created = CoverOrnamentLayerModel.createForZone(
+      presetId,
+      getBoardRectInCanvas(zone),
+      zone,
+      color,
+    );
+    onChange({ ...studio, ornaments: [...(studio.ornaments ?? []), created] });
+    setSelectedLayerId(null);
+    setSelectedTextId(null);
+    setSelectedOrnamentId(created.id);
+    setViewMode('2d');
+    onStatusMessage(`Added ${getClassicOrnamentSpec(presetId).label} on ${zone} cover`);
+  };
+
+  const handleUpdateOrnament = (id: string, patch: Partial<CoverOrnamentLayer>) => {
+    onChange({
+      ...studio,
+      ornaments: (studio.ornaments ?? []).map((o) => (o.id === id ? { ...o, ...patch } : o)),
+    });
+  };
+
+  const handleScaleOrnament = (id: string, factor: number) => {
+    onChange({
+      ...studio,
+      ornaments: (studio.ornaments ?? []).map((o) =>
+        o.id === id ? CoverOrnamentLayerModel.scaleAroundCenter(o, factor) : o,
+      ),
+    });
+  };
+
+  const handleFitOrnamentToBoard = (id: string) => {
+    onChange({
+      ...studio,
+      ornaments: (studio.ornaments ?? []).map((o) => {
+        if (o.id !== id) return o;
+        const fitted = CoverOrnamentLayerModel.createForZone(
+          o.presetId,
+          getBoardRectInCanvas(o.zone),
+          o.zone,
+          o.color,
+        );
+        return { ...fitted, id: o.id, strokeWidthMm: o.strokeWidthMm };
+      }),
+    });
+  };
+
+  const handleDeleteOrnament = (id: string) => {
+    const remaining = (studio.ornaments ?? []).filter((o) => o.id !== id);
+    onChange({ ...studio, ornaments: remaining });
+    if (selectedOrnamentId === id) {
+      setSelectedOrnamentId(remaining[remaining.length - 1]?.id ?? null);
+    }
+  };
+
+  const visibleSnapGuides =
+    elementSnapGuides.length > 0 ? elementSnapGuides : activeSnapGuides;
 
   const handleExtendLayerStub = async (
     layerId: string,
@@ -744,6 +1052,8 @@ export function CoverStyler({
                     void sampleColorAtSvgClick(e.clientX, e.clientY, eyedropperTarget);
                   } else if (e.target === e.currentTarget) {
                     setSelectedLayerId(null);
+                    setSelectedTextId(null);
+                    setSelectedOrnamentId(null);
                   }
                 }}
                 onWheel={(e) => {
@@ -828,6 +1138,8 @@ export function CoverStyler({
                     if (!eyedropperTarget) {
                       e.stopPropagation();
                       setSelectedLayerId(null);
+                      setSelectedTextId(null);
+                      setSelectedOrnamentId(null);
                     }
                   }}
                 />
@@ -842,6 +1154,8 @@ export function CoverStyler({
                     if (!eyedropperTarget) {
                       e.stopPropagation();
                       setSelectedLayerId(null);
+                      setSelectedTextId(null);
+                      setSelectedOrnamentId(null);
                     }
                   }}
                 />
@@ -856,6 +1170,8 @@ export function CoverStyler({
                     if (!eyedropperTarget) {
                       e.stopPropagation();
                       setSelectedLayerId(null);
+                      setSelectedTextId(null);
+                      setSelectedOrnamentId(null);
                     }
                   }}
                 />
@@ -880,13 +1196,151 @@ export function CoverStyler({
                           if (eyedropperTarget) return;
                           e.stopPropagation();
                           setSelectedLayerId(layer.id);
+                          setSelectedTextId(null);
+                          setSelectedOrnamentId(null);
                         }}
                         onPointerDown={(e) => {
                           if (eyedropperTarget) return;
                           e.stopPropagation();
+                          setSelectedTextId(null);
+                          setSelectedOrnamentId(null);
                           startMoveDrag(layer, e.clientX, e.clientY);
                         }}
                       />
+                    </g>
+                  );
+                })}
+
+                {/* Classic Bookbindery Vector Ornaments (draggable with magnetic snap guides) */}
+                {(studio.ornaments ?? []).map((orn, index) => {
+                  const compoundD = buildOrnamentCompoundPath(orn);
+                  if (!compoundD) return null;
+                  const isSelected = orn.id === selectedOrnamentId && !eyedropperTarget;
+                  return (
+                    <g
+                      key={orn.id}
+                      data-testid={`studio-ornament-${index}`}
+                      className={
+                        eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+                      }
+                      onClick={(e) => {
+                        if (eyedropperTarget) return;
+                        e.stopPropagation();
+                        setSelectedOrnamentId(orn.id);
+                        setSelectedTextId(null);
+                        setSelectedLayerId(null);
+                      }}
+                      onPointerDown={(e) => {
+                        if (eyedropperTarget) return;
+                        e.stopPropagation();
+                        const pt = toSvgMm(e.clientX, e.clientY);
+                        if (!pt) return;
+                        setSelectedOrnamentId(orn.id);
+                        setSelectedTextId(null);
+                        setSelectedLayerId(null);
+                        elementDragRef.current = {
+                          kind: 'ornament',
+                          id: orn.id,
+                          startXMm: pt.xMm,
+                          startYMm: pt.yMm,
+                          origXMm: orn.xMm,
+                          origYMm: orn.yMm,
+                          widthMm: orn.widthMm,
+                          heightMm: orn.heightMm,
+                        };
+                      }}
+                    >
+                      {/* Transparent hit target so thin frames/dividers are easy to grab */}
+                      <rect
+                        x={orn.xMm}
+                        y={orn.yMm}
+                        width={orn.widthMm}
+                        height={orn.heightMm}
+                        fill="transparent"
+                      />
+                      <path d={compoundD} fill={orn.color} />
+                      {isSelected && (
+                        <rect
+                          x={orn.xMm - 1.5}
+                          y={orn.yMm - 1.5}
+                          width={orn.widthMm + 3}
+                          height={orn.heightMm + 3}
+                          fill="none"
+                          stroke="#facc15"
+                          strokeWidth="0.9"
+                          strokeDasharray="3.5 2"
+                          pointerEvents="none"
+                        />
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* Draggable Front / Back / Spine Cover Text Layers */}
+                {(studio.textLayers ?? []).map((layer, index) => {
+                  const lineItems = computeCoverTextLinePlacements(layer);
+                  const layerFamily = resolveFontCssFamily(layer.fontId, customFont);
+                  const anchor =
+                    layer.align === 'left' ? 'start' : layer.align === 'right' ? 'end' : 'middle';
+                  const bounds = CoverTextLayerModel.estimateBounds(layer);
+                  const isSelected = layer.id === selectedTextId && !eyedropperTarget;
+                  return (
+                    <g
+                      key={layer.id}
+                      data-testid={`studio-cover-text-${index}`}
+                      className={
+                        eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+                      }
+                      onClick={(e) => {
+                        if (eyedropperTarget) return;
+                        e.stopPropagation();
+                        setSelectedTextId(layer.id);
+                        setSelectedOrnamentId(null);
+                        setSelectedLayerId(null);
+                      }}
+                      onPointerDown={(e) => {
+                        if (eyedropperTarget) return;
+                        e.stopPropagation();
+                        const pt = toSvgMm(e.clientX, e.clientY);
+                        if (!pt) return;
+                        setSelectedTextId(layer.id);
+                        setSelectedOrnamentId(null);
+                        setSelectedLayerId(null);
+                        elementDragRef.current = {
+                          kind: 'text',
+                          id: layer.id,
+                          startXMm: pt.xMm,
+                          startYMm: pt.yMm,
+                          origXMm: layer.xMm,
+                          origYMm: layer.yMm,
+                        };
+                      }}
+                    >
+                      <rect
+                        x={bounds.x - 2}
+                        y={bounds.y - 2}
+                        width={bounds.width + 4}
+                        height={bounds.height + 4}
+                        fill="transparent"
+                        stroke={isSelected ? '#facc15' : 'none'}
+                        strokeWidth={isSelected ? '0.9' : '0'}
+                        strokeDasharray={isSelected ? '3.5 2' : undefined}
+                      />
+                      {lineItems.map((item, lineIdx) => (
+                        <text
+                          key={`${layer.id}-${lineIdx}`}
+                          x={item.anchorXMm}
+                          y={item.anchorYMm}
+                          fill={item.color}
+                          fontFamily={layerFamily}
+                          fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
+                          letterSpacing={`${item.letterSpacingEm}em`}
+                          textAnchor={anchor}
+                          dominantBaseline="middle"
+                        >
+                          {item.text}
+                        </text>
+                      ))}
                     </g>
                   );
                 })}
@@ -954,7 +1408,9 @@ export function CoverStyler({
                         strokeDasharray="5 3"
                       />
                     ))}
-                    {studio.layers.length === 0 && (
+                    {studio.layers.length === 0 &&
+                      (studio.textLayers ?? []).length === 0 &&
+                      (studio.ornaments ?? []).length === 0 && (
                       <>
                         <text
                           x={
@@ -1067,7 +1523,7 @@ export function CoverStyler({
 
                 <LayerSelectionOverlay
                   canvasBounds={canvasBounds}
-                  activeSnapGuides={activeSnapGuides}
+                  activeSnapGuides={visibleSnapGuides}
                   selectedLayer={selectedLayer}
                   clipBoundaryRect={
                     selectedLayer && selectedLayer.clipZone !== 'none'
@@ -1278,7 +1734,7 @@ export function CoverStyler({
                 ? 'Solid Red: 45° Miter Cut Line • Dashed Blue: Board Guides • Brass: Hinge Spacers • Green: Bleed.'
                 : selectedLayer
                   ? `Selected "${selectedLayer.fileName}" — drag to position, pull corners or scroll wheel to resize, Backspace to remove.`
-                  : 'Drop PNG, JPG, or WEBP artwork anywhere onto the cutting mat or click Add Images below.'}
+                  : 'Drop PNG, JPG, WEBP, or SVG artwork anywhere onto the cutting mat, or add Cover Text & Classic Designs below.'}
           </span>
           <span className="font-mono text-[11px] text-brass">
             {spec.totalWidthMm.toFixed(1)} × {spec.totalHeightMm.toFixed(1)} mm @ 300 DPI
@@ -1364,6 +1820,37 @@ export function CoverStyler({
           onCustomFontSelected={(file) => void handleCustomFontUpload(file)}
         />
       </div>
+
+      {/* Front & Back Cover Text Layers + Classic Bookbindery Vector Ornament Library */}
+      <CoverElementsCard
+        studio={studio}
+        customFont={customFont}
+        selectedTextId={selectedTextId}
+        selectedOrnamentId={selectedOrnamentId}
+        onSelectText={(id) => {
+          setSelectedTextId(id);
+          if (id) {
+            setSelectedLayerId(null);
+            setSelectedOrnamentId(null);
+          }
+        }}
+        onSelectOrnament={(id) => {
+          setSelectedOrnamentId(id);
+          if (id) {
+            setSelectedLayerId(null);
+            setSelectedTextId(null);
+          }
+        }}
+        onAddTextPreset={handleAddTextPreset}
+        onUpdateTextLayer={handleUpdateTextLayer}
+        onQuickAlignText={handleQuickAlignText}
+        onDeleteTextLayer={handleDeleteTextLayer}
+        onAddOrnament={handleAddOrnament}
+        onUpdateOrnament={handleUpdateOrnament}
+        onScaleOrnament={handleScaleOrnament}
+        onFitOrnamentToBoard={handleFitOrnamentToBoard}
+        onDeleteOrnament={handleDeleteOrnament}
+      />
 
       {/* Cricut / Silhouette / ScanNCut HTV & Foil Vector SVG Export Modal */}
       <CricutExportDialog

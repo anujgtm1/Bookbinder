@@ -599,4 +599,44 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(svgText).not.toContain('<text');
     expect(svgText).not.toContain('transform=');
   });
+
+  test('supports draggable Front/Back cover text layers, Classic Bookbindery vector designs, 3D preview, and Front Cover Cricut HTV SVG export', async ({
+    page,
+  }) => {
+    // 1. Add a Front Title text layer and customize its text
+    await page.getByTestId('add-front-title-btn').click();
+    await expect(page.getByTestId('studio-cover-text-0')).toBeVisible();
+    await page.getByTestId('cover-text-textarea').fill('THE ODYSSEY');
+    await expect(page.getByTestId('studio-cover-text-0')).toContainText('THE ODYSSEY');
+
+    // 2. Switch to Classic Designs tab and add a Double Rule Frame + Aldus Fleuron divider
+    await page.getByTestId('elements-tab-ornaments').click();
+    await page.getByTestId('add-ornament-frame-double-rule').click();
+    await page.getByTestId('add-ornament-divider-fleuron-leaf').click();
+    await expect(page.getByTestId('studio-ornament-0')).toBeVisible();
+    await expect(page.getByTestId('studio-ornament-1')).toBeVisible();
+
+    // 3. Verify Front Cover text renders live in 3D Book Preview
+    await page.getByTestId('studio-view-3d-btn').click();
+    await expect(page.getByTestId('book3d-front-face')).toContainText('THE ODYSSEY');
+    await page.getByTestId('studio-view-2d-btn').click();
+
+    // 4. Open Cricut / HTV SVG modal -> auto-selects Front Cover scope since there is front text/ornaments
+    await page.getByTestId('studio-open-cricut-btn').click();
+    await expect(page.getByTestId('cricut-export-dialog')).toBeVisible();
+    await expect(page.getByTestId('cricut-scope-front')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('cricut-svg-preview-img')).toBeVisible();
+
+    const frontSvgPromise = page.waitForEvent('download');
+    await page.getByTestId('cricut-download-btn').click();
+    const frontSvgDownload = await frontSvgPromise;
+    expect(frontSvgDownload.suggestedFilename()).toBe('the_odyssey_cricut_htv_front.svg');
+
+    const frontSvgText = await readFile((await frontSvgDownload.path())!, 'utf-8');
+    expect(frontSvgText).toContain('id="spine-lettering"');
+    expect(frontSvgText).toContain('id="classic-ornaments"');
+    expect(frontSvgText).toContain('id="htv-weeding-box"');
+    expect(frontSvgText).not.toContain('<text');
+    expect(frontSvgText).not.toContain('transform=');
+  });
 });
