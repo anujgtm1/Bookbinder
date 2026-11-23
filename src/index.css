@@ -1,0 +1,501 @@
+@import 'tailwindcss';
+
+/*
+ * Bindery Cutting Mat — Folio Workbench Theme
+ * Follows modern-web-guidance:
+ * - color-scheme: light dark on :root mirrored from <meta name="color-scheme">
+ * - light-dark() with prefers-color-scheme fallbacks
+ * - Motion transitions opt-in via @media (prefers-reduced-motion: no-preference)
+ * - Accessible toolbar states via [aria-pressed="true"], @media (hover: hover),
+ *   @media (pointer: coarse), and forced-colors: active
+ */
+:root {
+  color-scheme: light dark;
+
+  &:has(> head > meta[name='color-scheme'][content='dark']) {
+    color-scheme: dark;
+  }
+
+  &:has(> head > meta[name='color-scheme'][content='light']) {
+    color-scheme: light;
+  }
+
+  /* Tier 1: Bindery Cutting Mat & Cotton Paper palette tokens */
+  --bg-light: #f2ece1;
+  --bg-dark: #141210;
+  --fg-light: #231f1b;
+  --fg-dark: #f3ede2;
+
+  --card-light: #faf6ee;
+  --card-dark: #1c1916;
+  --card-fg-light: #231f1b;
+  --card-fg-dark: #f3ede2;
+
+  --popover-light: #fcf9f3;
+  --popover-dark: #231f1b;
+  --popover-fg-light: #231f1b;
+  --popover-fg-dark: #f3ede2;
+
+  /* Bindery Spruce (light) / Burnished Brass Foil (dark) — AAA contrast */
+  --primary-light: #1e4d44;
+  --primary-dark: #d4ac5a;
+  --primary-fg-light: #fffdf8;
+  --primary-fg-dark: #19140a;
+
+  /* Warm rag secondary & muted surfaces */
+  --secondary-light: #ebe3d4;
+  --secondary-dark: #26221d;
+  --secondary-fg-light: #2a241e;
+  --secondary-fg-dark: #ece5d8;
+
+  --muted-light: #e5dccb;
+  --muted-dark: #231f1a;
+  --muted-fg-light: #5c5347;
+  --muted-fg-dark: #aca192;
+
+  --accent-light: #e3d7c3;
+  --accent-dark: #302a23;
+  --accent-fg-light: #231f1b;
+  --accent-fg-dark: #f3ede2;
+
+  --destructive-light: #b93822;
+  --destructive-dark: #ef6f54;
+  --destructive-fg-light: #fffdf8;
+  --destructive-fg-dark: #1f0a06;
+
+  --border-light: #d7ccb9;
+  --border-dark: #332d26;
+  --input-light: #cabda7;
+  --input-dark: #3d362e;
+  --ring-light: #a67b2e;
+  --ring-dark: #d4ac5a;
+
+  /* Craft accent tokens: Antique Brass, Vermilion Cut-Line, Bookcloth Sage */
+  --brass-light: #a67b2e;
+  --brass-dark: #d4ac5a;
+  --brass-bright-light: #c59b48;
+  --brass-bright-dark: #dfb96a;
+  --vermilion-light: #c84b31;
+  --vermilion-dark: #ef6f54;
+  --sage-light: #4a6d5e;
+  --sage-dark: #7ba693;
+
+  /* Self-healing cutting mat workbench surface */
+  --mat-bg-light: #1b3a34;
+  --mat-bg-dark: #112420;
+  --mat-grid-minor-light: rgba(235, 224, 198, 0.075);
+  --mat-grid-minor-dark: rgba(212, 172, 90, 0.065);
+  --mat-grid-major-light: rgba(235, 224, 198, 0.16);
+  --mat-grid-major-dark: rgba(212, 172, 90, 0.14);
+  --mat-fg-light: #efe8d8;
+  --mat-fg-dark: #e8dfcd;
+
+  /* Floating HUD pill over the cutting mat */
+  --hud-bg-light: rgba(18, 33, 29, 0.92);
+  --hud-bg-dark: rgba(14, 21, 19, 0.94);
+  --hud-fg-light: #f6efe2;
+  --hud-fg-dark: #f4ede0;
+  --hud-border-light: rgba(197, 155, 72, 0.36);
+  --hud-border-dark: rgba(212, 172, 90, 0.34);
+
+  /* Light drafting paper backing (used inside CutList diagram) */
+  --drafting-bg-light: #f5efe3;
+  --drafting-bg-dark: #181613;
+  --drafting-grid-light: #e2d8c5;
+  --drafting-grid-dark: #2a241e;
+
+  --scrollbar-track-light: #ebe3d4;
+  --scrollbar-track-dark: #1c1916;
+  --scrollbar-thumb-light: #b6a892;
+  --scrollbar-thumb-dark: #574f45;
+
+  /* Semantic defaults (light fallback) */
+  --background: var(--bg-light);
+  --foreground: var(--fg-light);
+  --card: var(--card-light);
+  --card-foreground: var(--card-fg-light);
+  --popover: var(--popover-light);
+  --popover-foreground: var(--popover-fg-light);
+  --primary: var(--primary-light);
+  --primary-foreground: var(--primary-fg-light);
+  --secondary: var(--secondary-light);
+  --secondary-foreground: var(--secondary-fg-light);
+  --muted: var(--muted-light);
+  --muted-foreground: var(--muted-fg-light);
+  --accent: var(--accent-light);
+  --accent-foreground: var(--accent-fg-light);
+  --destructive: var(--destructive-light);
+  --destructive-foreground: var(--destructive-fg-light);
+  --border: var(--border-light);
+  --input: var(--input-light);
+  --ring: var(--ring-light);
+  --brass: var(--brass-light);
+  --brass-bright: var(--brass-bright-light);
+  --vermilion: var(--vermilion-light);
+  --sage: var(--sage-light);
+  --mat-bg: var(--mat-bg-light);
+  --mat-grid-minor: var(--mat-grid-minor-light);
+  --mat-grid-major: var(--mat-grid-major-light);
+  --mat-fg: var(--mat-fg-light);
+  --hud-bg: var(--hud-bg-light);
+  --hud-fg: var(--hud-fg-light);
+  --hud-border: var(--hud-border-light);
+  --drafting-bg: var(--drafting-bg-light);
+  --drafting-grid: var(--drafting-grid-light);
+  --scrollbar-track: var(--scrollbar-track-light);
+  --scrollbar-thumb: var(--scrollbar-thumb-light);
+
+  /* Crisp cardstock 6px base radius */
+  --radius: 0.375rem;
+
+  @media (prefers-color-scheme: dark) {
+    --background: var(--bg-dark);
+    --foreground: var(--fg-dark);
+    --card: var(--card-dark);
+    --card-foreground: var(--card-fg-dark);
+    --popover: var(--popover-dark);
+    --popover-foreground: var(--popover-fg-dark);
+    --primary: var(--primary-dark);
+    --primary-foreground: var(--primary-fg-dark);
+    --secondary: var(--secondary-dark);
+    --secondary-foreground: var(--secondary-fg-dark);
+    --muted: var(--muted-dark);
+    --muted-foreground: var(--muted-fg-dark);
+    --accent: var(--accent-dark);
+    --accent-foreground: var(--accent-fg-dark);
+    --destructive: var(--destructive-dark);
+    --destructive-foreground: var(--destructive-fg-dark);
+    --border: var(--border-dark);
+    --input: var(--input-dark);
+    --ring: var(--ring-dark);
+    --brass: var(--brass-dark);
+    --brass-bright: var(--brass-bright-dark);
+    --vermilion: var(--vermilion-dark);
+    --sage: var(--sage-dark);
+    --mat-bg: var(--mat-bg-dark);
+    --mat-grid-minor: var(--mat-grid-minor-dark);
+    --mat-grid-major: var(--mat-grid-major-dark);
+    --mat-fg: var(--mat-fg-dark);
+    --hud-bg: var(--hud-bg-dark);
+    --hud-fg: var(--hud-fg-dark);
+    --hud-border: var(--hud-border-dark);
+    --drafting-bg: var(--drafting-bg-dark);
+    --drafting-grid: var(--drafting-grid-dark);
+    --scrollbar-track: var(--scrollbar-track-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --background: light-dark(var(--bg-light), var(--bg-dark));
+    --foreground: light-dark(var(--fg-light), var(--fg-dark));
+    --card: light-dark(var(--card-light), var(--card-dark));
+    --card-foreground: light-dark(var(--card-fg-light), var(--card-fg-dark));
+    --popover: light-dark(var(--popover-light), var(--popover-dark));
+    --popover-foreground: light-dark(var(--popover-fg-light), var(--popover-fg-dark));
+    --primary: light-dark(var(--primary-light), var(--primary-dark));
+    --primary-foreground: light-dark(var(--primary-fg-light), var(--primary-fg-dark));
+    --secondary: light-dark(var(--secondary-light), var(--secondary-dark));
+    --secondary-foreground: light-dark(var(--secondary-fg-light), var(--secondary-fg-dark));
+    --muted: light-dark(var(--muted-light), var(--muted-dark));
+    --muted-foreground: light-dark(var(--muted-fg-light), var(--muted-fg-dark));
+    --accent: light-dark(var(--accent-light), var(--accent-dark));
+    --accent-foreground: light-dark(var(--accent-fg-light), var(--accent-fg-dark));
+    --destructive: light-dark(var(--destructive-light), var(--destructive-dark));
+    --destructive-foreground: light-dark(var(--destructive-fg-light), var(--destructive-fg-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --input: light-dark(var(--input-light), var(--input-dark));
+    --ring: light-dark(var(--ring-light), var(--ring-dark));
+    --brass: light-dark(var(--brass-light), var(--brass-dark));
+    --brass-bright: light-dark(var(--brass-bright-light), var(--brass-bright-dark));
+    --vermilion: light-dark(var(--vermilion-light), var(--vermilion-dark));
+    --sage: light-dark(var(--sage-light), var(--sage-dark));
+    --mat-bg: light-dark(var(--mat-bg-light), var(--mat-bg-dark));
+    --mat-grid-minor: light-dark(var(--mat-grid-minor-light), var(--mat-grid-minor-dark));
+    --mat-grid-major: light-dark(var(--mat-grid-major-light), var(--mat-grid-major-dark));
+    --mat-fg: light-dark(var(--mat-fg-light), var(--mat-fg-dark));
+    --hud-bg: light-dark(var(--hud-bg-light), var(--hud-bg-dark));
+    --hud-fg: light-dark(var(--hud-fg-light), var(--hud-fg-dark));
+    --hud-border: light-dark(var(--hud-border-light), var(--hud-border-dark));
+    --drafting-bg: light-dark(var(--drafting-bg-light), var(--drafting-bg-dark));
+    --drafting-grid: light-dark(var(--drafting-grid-light), var(--drafting-grid-dark));
+    --scrollbar-track: light-dark(var(--scrollbar-track-light), var(--scrollbar-track-dark));
+    --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
+  }
+
+  accent-color: var(--primary);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brass: var(--brass);
+  --color-brass-bright: var(--brass-bright);
+  --color-vermilion: var(--vermilion);
+  --color-sage: var(--sage);
+  --color-mat: var(--mat-bg);
+  --color-mat-foreground: var(--mat-fg);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'EB Garamond', Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :where(a:any-link, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Self-healing bindery cutting mat with dual-scale major/minor millimeter grid */
+.cutting-mat-surface {
+  background-color: var(--mat-bg);
+  color: var(--mat-fg);
+  background-image:
+    radial-gradient(ellipse at 50% 42%, rgba(255, 248, 228, 0.045), transparent 68%),
+    linear-gradient(to right, var(--mat-grid-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--mat-grid-major) 1px, transparent 1px),
+    linear-gradient(to right, var(--mat-grid-minor) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--mat-grid-minor) 1px, transparent 1px);
+  background-size: 100% 100%, 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 248, 228, 0.08), inset 0 0 42px rgba(0, 0, 0, 0.24);
+}
+
+/* Light cotton-paper drafting grid (secondary diagrams) */
+.drafting-surface {
+  background-color: var(--drafting-bg);
+  background-image:
+    linear-gradient(to right, var(--drafting-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--drafting-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Bookbinding kettle-stitch dashed section rule */
+.kettle-stitch-divider {
+  border-block-start: 1px dashed var(--border);
+}
+
+/* Folder-style paper index tabs anchored to top edge of workbench */
+.folio-index-tab {
+  position: relative;
+  border: 1px solid var(--border);
+  border-bottom-color: transparent;
+  border-radius: 0.5rem 0.5rem 0 0;
+  background-color: var(--secondary);
+  color: var(--muted-foreground);
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease;
+
+  &[data-state='active'] {
+    background-color: var(--card);
+    color: var(--foreground);
+    border-color: var(--border);
+    box-shadow: inset 0 2.5px 0 var(--brass-bright);
+    z-index: 2;
+  }
+
+  @media (hover: hover) {
+    &:hover:not([data-state='active']) {
+      background-color: var(--accent);
+      color: var(--foreground);
+    }
+  }
+}
+
+/* Floating HUD pill toolbar on the cutting mat (per modern-web-guidance toolbar) */
+.hud-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--hud-border);
+  background-color: var(--hud-bg);
+  color: var(--hud-fg);
+  padding: 0.25rem 0.375rem;
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 248, 228, 0.1);
+}
+
+.hud-toolbar-separator {
+  display: inline-block;
+  inline-size: 1px;
+  block-size: 1.125rem;
+  margin-inline: 0.2rem;
+  border-inline-start: 1px solid rgba(246, 239, 226, 0.22);
+}
+
+.hud-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-inline-size: 1.75rem;
+  min-block-size: 1.75rem;
+  padding-inline: 0.625rem;
+  padding-block: 0.25rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  color: var(--hud-fg);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+
+  &[aria-pressed='true'] {
+    background-color: var(--brass-bright);
+    color: #19140a;
+    border-color: rgba(255, 255, 255, 0.28);
+    font-weight: 600;
+  }
+
+  &[aria-disabled='true'] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  @media (hover: hover) {
+    &:hover:not([aria-pressed='true']):not([aria-disabled='true']) {
+      background-color: rgba(246, 239, 226, 0.12);
+    }
+  }
+
+  @media (pointer: coarse) {
+    min-inline-size: 2.5rem;
+    min-block-size: 2.5rem;
+  }
+}
+
+@media (forced-colors: active) {
+  .hud-toolbar {
+    border-color: ButtonText;
+    background-color: Canvas;
+    color: ButtonText;
+  }
+  .hud-toolbar-separator {
+    border-inline-start-color: ButtonText;
+  }
+  .hud-toolbar-btn[aria-pressed='true'] {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+}
+
+/* 3D Folded Hardcover Book Preview stage & page edges */
+.book3d-stage {
+  perspective: 1400px;
+  perspective-origin: 50% 48%;
+}
+
+.book3d-volume {
+  position: relative;
+  transform-style: preserve-3d;
+  will-change: transform;
+
+  &.is-animating {
+    @media (prefers-reduced-motion: no-preference) {
+      transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+}
+
+.book3d-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+
+.book3d-pages-fore {
+  background-color: #f3ede0;
+  background-image:
+    linear-gradient(to right, rgba(60, 48, 34, 0.14), transparent 18%, transparent 82%, rgba(60, 48, 34, 0.14)),
+    repeating-linear-gradient(
+      to right,
+      rgba(92, 78, 58, 0.12) 0px,
+      rgba(92, 78, 58, 0.12) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+}
+
+.book3d-pages-end {
+  background-color: #ece4d4;
+  background-image:
+    linear-gradient(to bottom, rgba(60, 48, 34, 0.16), transparent 22%, transparent 78%, rgba(60, 48, 34, 0.16)),
+    repeating-linear-gradient(
+      to bottom,
+      rgba(92, 78, 58, 0.12) 0px,
+      rgba(92, 78, 58, 0.12) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+}
+
+/* Visually hidden utility per accessibility guide */
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* Scrollbar fallback for browsers without scrollbar-color */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}

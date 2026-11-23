@@ -81,9 +81,12 @@ src/
 - `WRAP_W = INNER_W + (TURN_IN * 2)`
 - `WRAP_H = BOARD_H + (TURN_IN * 2)`
 - **45° Mitered Corner Polygon:**
-  - `MITER_GAP = BOARD_T * MITER_FACTOR`
-  - `d = TURN_IN - MITER_GAP`
-  - 8-point outer cut polygon beveling all four outer corners at 45° so folded turn-ins meet cleanly without overlapping chipboard corners.
+  - `MITER_GAP = BOARD_T * MITER_FACTOR` (perpendicular clearance outside each chipboard corner)
+  - `MITER_CUT_LEG = max(0, 2 * TURN_IN - MITER_GAP * √2)` (45° corner bevel leg measured along each outer wrap edge from the outer corner)
+  - 8-point outer cut polygon beveling all four outer corners at 45° so folded turn-ins meet cleanly without overlapping chipboard corners or exposing raw board tips.
+- **3-Piece / Quarter-Bound Split Panels (when `SPLIT_MODE = 3-Piece`):**
+  - Spine wrap width = `SPINE_W + (HINGE_W * 2) + (QUARTER_BOUND_OVERLAP * 2)` (default `QUARTER_BOUND_OVERLAP = 20.0 mm`), height = `WRAP_H` (includes top/bottom `TURN_IN`).
+  - Front & Back cover panels: each covers the remaining board face (`BOARD_W - QUARTER_BOUND_OVERLAP + 3.0 mm` lap overlap) plus outer fore-edge, top, and bottom `TURN_IN` with 45° miters on the two outer fore-edge corners.
 - **Roll Printer Width Recommendation:**
   - Evaluates standard roll widths (`13" / 330 mm`, `17" / 432 mm`, `24" / 610 mm`, `36" / 914 mm`, `44" / 1118 mm`) minus `10.0 mm` total unprintable side margin (`5.0 mm` per edge).
   - Checks both **Unrotated Feed** (`WRAP_W` across roll width) and **90°-Rotated Landscape Feed** (`WRAP_H` across roll width) and recommends the narrowest compatible roll plus orientation (e.g., *"Fits on a 17" roll (rotated 90°) with 163 mm spare width"*).
@@ -103,58 +106,76 @@ src/
 
 ## 5. UI / UX & Visual Components
 
-### 5.1 Main Workspace & Controls
-- **Left Sidebar:**
-  - Unit toggle (`mm` / `in`) + Preset selector
-  - Paperback Dimensions (`H`, `W`, `Spine Thickness`)
-  - Collapsible "Construction & Hinge Settings" (`9.0 mm` hinge spacer, board thickness, turn-in, pocket depth %, bleed, 3-piece split toggle)
-  - PDF Page Size selector for Inner Envelopes (`US Letter 8.5×11"`, `A4`, `Tabloid 11×17"`)
-  - Project Save/Load (`Export .json` / `Import .json` + automatic `localStorage` persistence)
-- **Top Summary Card (`CutListCard.tsx`):**
-  - Displays exact dimensions for **2× Cover Boards**, **1× Spine Strip**, and the **Roll Printer Size & Orientation Badge**.
-  - Includes a clean inline **SVG Assembly Diagram** visually reminding the user to place their **`9 mm` spacer** between the spine strip and front/back boards during gluing.
+### 5.1 Aesthetic & Layout Architecture ("Bindery Cutting Mat" + "Folio Workbench")
+- **Visual Theme ("Bindery Cutting Mat"):**
+  - Pairs a deep spruce-teal self-healing cutting-mat drafting surface (`#1B3A34` light / `#112420` dark) with subtle dual-scale millimeter grid lines against warm cotton-rag paper control sheets (`#F8F4EC` / `#1C1917`), lampblack ink (`#231F1B` / `#F3EDE2`), antique brass foil (`#C59B48`), and vermilion cut-line (`#C84B31`) accents.
+  - Display headings use `EB Garamond`, UI labels use `Inter`, and all millimeter/inch readouts use `tabular-nums` monospace typography for jitter-free editing.
+  - Respects `prefers-reduced-motion` (opting into spatial transitions inside `@media (prefers-reduced-motion: no-preference)`) and dual-mode `color-scheme` (`light-dark()` with fallbacks).
+- **Folio Workbench Layout:**
+  - **Compact Single-Row Header:** Brand wordmark, collapsible Book Spec Rail toggle, live status readout, and light/dark theme toggle.
+  - **Collapsible Left Book Spec Rail (`SidebarControls.tsx`):** Can be collapsed on demand to expand the drafting cutting mat edge-to-edge:
+    - Unit toggle (`mm` / `in`) + Preset selector
+    - Paperback Dimensions (`H`, `W`, `Spine Thickness`)
+    - Collapsible "Construction & Hinge Settings" (`9.0 mm` hinge spacer, board thickness, turn-in, pocket depth %, bleed, 3-piece split toggle)
+    - PDF Page Size selector for Inner Envelopes (`US Letter 8.5×11"`, `A4`, `Tabloid 11×17"`)
+    - Project Save/Load (`Export .json` / `Import .json` + automatic `localStorage` persistence)
+  - **Spec & Cut List Strip (`CutListCard.tsx`):**
+    - Displays exact dimensions for **2× Cover Boards**, **1× Spine Strip**, **Outer Wrap**, and the **Roll Printer Size & Orientation Badge**.
+    - Includes a clean inline **SVG Assembly Diagram** visually reminding the user to place their **`9 mm` spacer** between the spine strip and front/back boards during gluing.
+  - **Folder-Style Paper Index Tabs:** `Structural Templates` and `Cover & Spine Styler` attach directly to the top edge of the workbench panel.
 - **Interactive Blueprint Preview (`BlueprintPreview.tsx`):**
-  - Zoomable/pannable `1:1` proportional SVG preview showing:
+  - Full-bleed cutting-mat `1:1` proportional SVG viewport with a **Floating Bottom-Center HUD Toolbar** (`role="toolbar"` with roving keyboard navigation) for sheet switching (`Outer Case Wrap` / `Inner Pockets & Spine Liner`) and zoom/reset controls:
     - Outer Case Wrap: Solid Red (`#FF0000`) 45°-mitered cut polygon, Dashed Blue (`#0066FF`) board/spine placement boxes, Dashed Green (`#00AA44`) optional bleed box.
     - Inner Spine Liner & Front/Back Pocket Envelopes with dashed score lines and labeled open edges.
-  - Primary Phase 1 Action Buttons:
-    - `Download Outer Wrap (.SVG)`
-    - `Download Inner Envelopes & Liner (.PDF)`
+  - **2 × 2 Structural Export Matrix:**
+    - **Outer Case Wrap:** `.SVG` (Affinity `1:1` mm layers) and `.PDF` (`1:1` mm vector print template, single-piece or 3-piece split)
+    - **Inner Pockets & Spine Liner:** `.SVG` (`1:1` mm vector cut/score/glue layers) and `.PDF` (`1:1` mm auto-paginated sheet PDF)
 
 ---
 
 ## 6. Phase 1 Export Specifications
 
-### 6.1 Outer Case Wrap SVG (`outer_case_wrap.svg`)
-- Root `<svg>` explicitly defines physical millimeter dimensions (`width="{WRAP_W}mm" height="{WRAP_H}mm" viewBox="0 0 {WRAP_W} {WRAP_H}"`) so Affinity Designer/Publisher/Photo opens it at exact `1:1` physical scale without DPI scaling errors.
-- Organized into clean named `<g id="...">` groups (`cut-lines`, `board-guides`, `bleed-box`, `dimensions-notes`) so guide layers can be locked or toggled before printing.
+### 6.1 Outer Case Wrap Exports (`outer_case_wrap.svg` & `outer_case_wrap.pdf`)
+- **SVG (`outer_case_wrap.svg`):** Root `<svg>` explicitly defines physical millimeter dimensions (`width="{WRAP_W}mm" height="{WRAP_H}mm" viewBox="0 0 {WRAP_W} {WRAP_H}"`, expanding symmetrically when bleed is enabled) so Affinity Designer/Publisher/Photo opens it at exact `1:1` physical scale without DPI scaling errors. Organized into clean named `<g id="...">` groups (`cut-lines`, `board-guides`, `bleed-box`, `dimensions-notes`) so guide layers can be locked or toggled before printing.
+- **PDF (`outer_case_wrap.pdf`):** Generated client-side via `pdf-lib` at exact `1:1` physical millimeter scale (`1 mm = 2.83465 pt`) for both Single-Piece Continuous Wrap (roll-size page) and 3-Piece Quarter-Bound Split (3 exact panels), including the 45°-mitered cut polygon, dashed blue board/hinge guides, optional bleed frame, and a `50.0 mm × 50.0 mm` scale verification note.
 
-### 6.2 Inner Envelopes & Spine Liner PDF (`inner_pockets_and_liner.pdf`)
-- Generated client-side via `pdf-lib` in exact millimeter coordinates (`1 mm = 2.83465 pt`).
-- **Auto-Pagination & Rotation:** Automatically arranges Front Pocket, Back Pocket, and Spine Liner across 1 or 2 pages depending on selected sheet size (`Letter`, `A4`, or `Tabloid`), automatically rotating pieces 90° if needed to prevent clipping.
-- **Calibration Square:** Includes a `50.0 mm × 50.0 mm` verification square on Page 1 labeled *"Verify 50mm × 50mm — Print at 100% / Actual Size"*.
-- **Visual Legend:** Solid lines = Cut; Dashed lines = Score & Fold; Shaded/hatched tabs = Apply Glue Here.
+### 6.2 Inner Envelopes & Spine Liner Exports (`inner_pockets_and_liner.pdf` & `inner_pockets_and_liner.svg`)
+- **PDF (`inner_pockets_and_liner.pdf`):** Generated client-side via `pdf-lib` in exact millimeter coordinates (`1 mm = 2.83465 pt`).
+  - **Auto-Pagination & Rotation:** Automatically arranges Front Pocket, Back Pocket, and Spine Liner across 1 or 2 pages depending on selected sheet size (`Letter`, `A4`, or `Tabloid`), automatically rotating pieces 90° if needed to prevent clipping.
+  - **Calibration Square:** Includes a `50.0 mm × 50.0 mm` verification square on Page 1 labeled *"Verify 50mm × 50mm — Print at 100% / Actual Size"*.
+  - **Visual Legend:** Solid lines = Cut; Dashed lines = Score & Fold; Shaded/hatched tabs = Apply Glue Here.
+- **SVG (`inner_pockets_and_liner.svg`):** Exact `1:1` physical millimeter vector layout of Back Pocket, Spine Liner, Front Pocket, and `50 × 50 mm` calibration square organized into named `<g id="...">` groups (`glue-flaps`, `cut-lines`, `score-lines`, `dimensions-notes`) for Affinity or electronic cutting machines.
 
 ---
 
 ## 7. Phase 2 Specification: Decoupled Cover & Spine Styler (`src/studio/`)
 
 ### 7.1 Design Scope & Constraints
-- Lightweight zone-based compositor consuming `CaseGeometry` read-only from `geometry.ts`—intentionally focused on rapid cover image placement, spine typography, and export without duplicating full vector illustration tools.
+- Lightweight interactive layer-based compositor consuming `CaseGeometry` read-only from `geometry.ts`—intentionally focused on rapid cover artwork composition, spine typography, and print-ready export without duplicating full vector illustration tools.
 
-### 7.2 Zone-Based Controls
-- **Front Cover Zone:**
-  - Drag-and-drop image upload (`PNG`, `JPG`, `WEBP`).
-  - Simple interactive **Pan (`drag`)** and **Zoom (`slider / scroll wheel`)** to frame the artwork cleanly across the Front Board + Turn-in/Bleed area.
-  - Optional **Full-Wrap Panoramic Mode** toggle allowing one wide image to span Back + Spine + Front + Turn-Ins.
+### 7.2 Interactive Canvas & Controls
+- **Free-Form Multi-Image Layer Stack (`layers: CoverImageLayer[]`):**
+  - Upload or drag-and-drop **any number of images** (`PNG`, `JPG`, `WEBP`) directly onto the outer wrap canvas (e.g., front cover art, back cover art, spine artwork, emblems, textures, or a full-wrap panoramic image).
+  - **Direct Canvas Manipulation:**
+    - Click any image to select it (showing selection frame and 4 corner resize handles).
+    - **Drag anywhere** across the wrap to position freely in millimeter coordinates.
+    - **Drag corner handles** (or use mouse wheel / scale slider) to resize proportionally.
+  - **Layer Stack & Quick-Fit Helpers:**
+    - Reorder layers (bring forward / send backward), remove individual layers, or reset.
+    - One-click **Quick Fit** presets for the selected layer (`Fit Front`, `Fit Spine`, `Fit Back`, `Fit Full Wrap`) plus an optional **Clip to Zone** mask (`None`, `Front`, `Spine`, `Back`) for crisp edges at board/spine seams.
 - **Back Cover & Spine Background Fill:**
-  - Solid color pickers for Spine and Back Cover backgrounds, plus an **Eyedropper Tool** to sample a matching color directly from the uploaded front cover image.
+  - Solid color pickers for Back Cover, Spine, and Front base backgrounds (visible wherever no image is placed), plus an **Eyedropper Tool** to sample a matching color directly from the preview artwork.
 - **Spine Typography:**
   - Separate **Spine Title** and **Spine Author** text inputs.
   - Layout preset: **Inline** (`Title — Author` centered along spine) vs. **Stacked** (`Title` upper-center, `Author` near bottom of spine).
   - Orientation toggle: **Top-to-Bottom (US/UK standard)** vs. **Bottom-to-Top (European standard)**.
+  - **Author Orientation toggle:** **Vertical** (matches spine reading direction) vs. **Horizontal** (classic clothbound horizontal author block centered near the tail of the spine, auto-wrapping multi-word names and clamping width within `SPINE_W - 4.0 mm`).
   - Font selector: Curated classic literary serifs/sans-serifs (*EB Garamond, Libre Baskerville, Cormorant Garamond, Lora, Inter, Montserrat*) + **Custom Font Uploader** (`.ttf`, `.otf`, `.woff2` via `FontFace` API).
   - Automatic font-size clamping so text height never exceeds `SPINE_W - 4.0 mm` (preventing text from spilling into the `9 mm` hinge grooves), paired with a **`±2.0 mm` Optical Horizontal Nudge** slider.
+- **Interactive 3D Folded Book Preview (`Book3DPreview.tsx`):**
+  - Toggleable right inside the Cover & Spine Styler's floating HUD (`2D Flat Wrap` ↔ `3D Book Preview`).
+  - Renders a physically proportioned CSS 3D hardcover volume using exact `BOARD_W × BOARD_H × SPINE_W` ratios, mapping the live Front Cover, Spine (with live vertical/horizontal typography), and Back Cover artwork onto the 3D book faces alongside cream paper page-block edges inset inside the hardcover overhang.
+  - Supports free pointer drag-to-orbit (`Yaw` / `Pitch`), keyboard arrow rotation, and one-click angle presets (`Front 3/4`, `Spine`, `Back 3/4`, `Reset`).
 
 ### 7.3 Dual High-Resolution Exports (Exact `WRAP_W × WRAP_H` Physical Scale)
 1. **Print-Ready Roll PDF (`outer_cover_print.pdf`):**
