@@ -481,6 +481,23 @@
     );
 }
 
+/* Native modal <dialog> scroll containment & backdrop per modern-web-guidance */
+dialog.bindery-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+dialog.bindery-modal:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.bindery-modal::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: rgba(11, 24, 21, 0.62);
+  backdrop-filter: blur(2px);
+}
+
 /* Visually hidden utility per accessibility guide */
 .visually-hidden:where(:not(:focus-within, :active)) {
   position: absolute !important;

@@ -564,4 +564,33 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('pockets-dimensions-btn').click();
     await expect(pocketDims).toBeHidden();
   });
+
+  test('exports Cricut / Silhouette / ScanNCut 1:1 mm HTV SVG with flattened vector glyph paths and zero <text> tags', async ({
+    page,
+  }) => {
+    await page.getByTestId('studio-spine-title-input').fill('Dune');
+    await page.getByTestId('studio-spine-author-input').fill('Frank Herbert');
+    await page.getByTestId('author-orientation-horizontal').click();
+
+    await page.getByTestId('studio-open-cricut-btn').click();
+    await expect(page.getByTestId('cricut-export-dialog')).toBeVisible();
+    await expect(page.getByTestId('cricut-svg-preview-img')).toBeVisible();
+
+    // Toggle Mirror Horizontally for HTV and download SVG
+    await page.getByTestId('cricut-mirror-switch').click();
+
+    const svgPromise = page.waitForEvent('download');
+    await page.getByTestId('cricut-download-btn').click();
+    const svgDownload = await svgPromise;
+    expect(svgDownload.suggestedFilename()).toBe('dune_cricut_htv_spine_mirrored.svg');
+
+    const svgText = await readFile((await svgDownload.path())!, 'utf-8');
+    expect(svgText).toMatch(/width="[\d.]+mm"/);
+    expect(svgText).toMatch(/height="[\d.]+mm"/);
+    expect(svgText).toContain('id="spine-lettering"');
+    expect(svgText).toContain('id="htv-weeding-box"');
+    expect(svgText).toContain('id="alignment-registration-marks"');
+    expect(svgText).not.toContain('<text');
+    expect(svgText).not.toContain('transform=');
+  });
 });

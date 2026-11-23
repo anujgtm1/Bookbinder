@@ -12,6 +12,7 @@ import {
   Maximize2,
   Pipette,
   Ruler,
+  Scissors,
   ShieldAlert,
   ShieldCheck,
   ZoomIn,
@@ -49,6 +50,7 @@ import {
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
+import { CricutExportDialog } from './CricutExportDialog';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
@@ -145,6 +147,7 @@ export function CoverStyler({
   const [sampledEdgeHex, setSampledEdgeHex] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [exportingKind, setExportingKind] = useState<'pdf' | 'png' | 'svg' | null>(null);
+  const [cricutDialogOpen, setCricutDialogOpen] = useState(false);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const studioRef = useRef(studio);
@@ -619,6 +622,16 @@ export function CoverStyler({
               >
                 <FileCode2 className="h-4 w-4" aria-hidden="true" />
                 Affinity SVG
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCricutDialogOpen(true)}
+                data-testid="studio-open-cricut-btn"
+                title="Export 1:1 mm outlined vector SVG for Cricut Design Space, Silhouette Studio, or Brother ScanNCut"
+              >
+                <Scissors className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                Cricut / HTV SVG
               </Button>
             </div>
 
@@ -1327,6 +1340,17 @@ export function CoverStyler({
           onCustomFontSelected={(file) => void handleCustomFontUpload(file)}
         />
       </div>
+
+      {/* Cricut / Silhouette / ScanNCut HTV & Foil Vector SVG Export Modal */}
+      <CricutExportDialog
+        open={cricutDialogOpen}
+        geometry={geometry}
+        studio={studio}
+        customFont={customFont}
+        unit={effectiveParams.unit}
+        onOpenChange={setCricutDialogOpen}
+        onStatusMessage={onStatusMessage}
+      />
     </div>
   );
 }
