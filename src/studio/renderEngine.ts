@@ -506,17 +506,46 @@ export async function generatePrintReadyRollPdf(
       drawFoldLine(bleed, botFoldY, bleed + w, botFoldY);
     }
 
-    // Horizontal glue-tab fold lines on left & right flaps (1-piece fold-and-glue slip cover)
-    if (isSoftcover && outerWrap.jacketGlueTabHeightMm > 0.2 && outerWrap.jacketFlapWidthMm > 0.2) {
-      const flapW = outerWrap.jacketFlapWidthMm;
-      const tabTopY = bleed + outerWrap.jacketGlueTabHeightMm;
-      const tabBotY = bleed + h - outerWrap.jacketGlueTabHeightMm;
-      // Left (Back) flap top & bottom glue tab folds
-      drawFoldLine(bleed, tabTopY, bleed + flapW, tabTopY);
-      drawFoldLine(bleed, tabBotY, bleed + flapW, tabBotY);
-      // Right (Front) flap top & bottom glue tab folds
-      drawFoldLine(bleed + w - flapW, tabTopY, bleed + w, tabTopY);
-      drawFoldLine(bleed + w - flapW, tabBotY, bleed + w, tabBotY);
+    // Horizontal glue-tab fold lines on Back & Front cover wrap-over tabs (1-piece fold-and-glue slip cover)
+    if (isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0) {
+      for (const tabPoly of outerWrap.jacketGlueTabPolygons) {
+        const bbox = GeometryPrimitives.boundingBox(tabPoly);
+        const isTopTab = bbox.y < h / 2;
+        const foldY = bleed + (isTopTab ? bbox.y + bbox.height : bbox.y);
+        drawFoldLine(bleed + bbox.x, foldY, bleed + bbox.x + bbox.width, foldY);
+      }
+
+      // Print concise 1-2-3 fold & glue instructions inside the top cut-off trim-waste gap
+      // (strictly outside the red cut outline, so it trims cleanly away after cutting)
+      const wasteStartX = bleed + outerWrap.jacketFlapWidthMm * 2 + 3;
+      const wasteEndX = bleed + w - outerWrap.jacketFlapWidthMm * 2 - 3;
+      const wasteWidthMm = wasteEndX - wasteStartX;
+      if (wasteWidthMm >= 80 && outerWrap.jacketGlueTabHeightMm >= 8) {
+        const noteFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const stripY = bleed + 1.4;
+        const stripH = outerWrap.jacketGlueTabHeightMm - 2.8;
+        page.drawRectangle({
+          x: toPdfX(wasteStartX),
+          y: toPdfY(stripY + stripH),
+          width: UnitConverter.mmToPoints(wasteWidthMm),
+          height: UnitConverter.mmToPoints(stripH),
+          color: rgb(0.98, 0.97, 0.94),
+          opacity: 0.92,
+        });
+        const instructionText =
+          'TRIM WASTE • FOLD & GLUE: 1. Fold side flaps inward  2. Glue blank back of 4 tabs  3. Fold tabs over flaps';
+        const fontSizePt = wasteWidthMm >= 145 ? 6.4 : 5.2;
+        const textW = noteFont.widthOfTextAtSize(instructionText, fontSizePt);
+        const centerX = toPdfX(wasteStartX + wasteWidthMm / 2);
+        const centerY = toPdfY(stripY + stripH / 2);
+        page.drawText(instructionText, {
+          x: centerX - textW / 2,
+          y: centerY - fontSizePt * 0.34,
+          size: fontSizePt,
+          font: noteFont,
+          color: rgb(0.2, 0.2, 0.2),
+        });
+      }
     }
 
     // Deduplicated vertical fold / score X positions (fore-edge turn-ins/flaps, board edges & spine hinges)

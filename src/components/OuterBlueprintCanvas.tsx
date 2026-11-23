@@ -319,16 +319,33 @@ export function OuterBlueprintCanvas({
               {outerWrap.bindingStyle === 'softcover-jacket' &&
                 outerWrap.jacketFlapWidthMm > 0 && (
                   <g data-testid="blueprint-softcover-flaps-and-tabs">
-                    {outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => (
-                      <path
-                        key={`glue-tab-${idx}`}
-                        d={GeometryPrimitives.polygonToSvgPath(tabPoly, 2)}
-                        fill="url(#outer-glue-hatch)"
-                        stroke="#A67B2E"
-                        strokeWidth="0.65"
-                        strokeDasharray="2.5 1.8"
-                      />
-                    ))}
+                    {outerWrap.jacketGlueTabPolygons.map((tabPoly, idx) => {
+                      const bbox = GeometryPrimitives.boundingBox(tabPoly);
+                      const cx = bbox.x + bbox.width / 2;
+                      const cy = bbox.y + bbox.height / 2;
+                      return (
+                        <g key={`glue-tab-${idx}`}>
+                          <path
+                            d={GeometryPrimitives.polygonToSvgPath(tabPoly, 2)}
+                            fill="url(#outer-glue-hatch)"
+                            stroke="#A67B2E"
+                            strokeWidth="0.65"
+                            strokeDasharray="2.5 1.8"
+                          />
+                          <text
+                            x={cx}
+                            y={cy}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="3.4"
+                            fontWeight="700"
+                            fill="#7A5212"
+                          >
+                            GLUE
+                          </text>
+                        </g>
+                      );
+                    })}
                     {[
                       {
                         label: 'BACK FLAP',

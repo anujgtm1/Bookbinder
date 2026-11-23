@@ -196,14 +196,22 @@ describe('calculateCaseGeometry', () => {
     expect(geom.cutList.boardThicknessMm).toBe(0);
     expect(geom.outerWrap.turnInMm).toBe(0);
     expect(geom.outerWrap.miterCutLegMm).toBe(0);
-    // 16-vertex clockwise outline with 4 mitered top & bottom flap glue tabs
-    expect(geom.outerWrap.outerCutPolygon).toHaveLength(16);
+    // 20-vertex clockwise outline with 4 mitered wrap-over glue tabs on Back & Front outer cover edges
+    expect(geom.outerWrap.outerCutPolygon).toHaveLength(20);
     expect(geom.outerWrap.jacketGlueTabHeightMm).toBeCloseTo(10.0, 2);
     expect(geom.outerWrap.jacketGlueTabPolygons).toHaveLength(4);
     // Snug slip ease: cover panel = 106 × 150 mm, spine = 6 mm, flap = roundTo(105 * 0.23, 1) = 24.2 mm
     expect(geom.outerWrap.jacketFlapWidthMm).toBeCloseTo(24.2, 2);
     expect(geom.outerWrap.spineRect.width).toBeCloseTo(6.0, 2);
     expect(geom.outerWrap.backBoardRect.y).toBeCloseTo(10.0, 2);
+    // Verify wrap-over glue tabs sit on the outer cover edges (x = 24.2..48.4 and x = 218.0..242.2)
+    // so folding the side flaps inward first preserves the full 150 mm unobstructed pocket height
+    const backTopTabBox = GeometryPrimitives.boundingBox(geom.outerWrap.jacketGlueTabPolygons[0]);
+    const frontTopTabBox = GeometryPrimitives.boundingBox(geom.outerWrap.jacketGlueTabPolygons[1]);
+    expect(backTopTabBox.x).toBeCloseTo(24.2, 1);
+    expect(backTopTabBox.width).toBeCloseTo(24.2, 1);
+    expect(frontTopTabBox.x + frontTopTabBox.width).toBeCloseTo(242.2, 1);
+    expect(frontTopTabBox.width).toBeCloseTo(24.2, 1);
     expect(geom.outerWrap.widthMm).toBeCloseTo(24.2 * 2 + 106 * 2 + 6, 2); // 266.4 mm <= 269.4 mm US Letter printable
     expect(geom.outerWrap.heightMm).toBeCloseTo(170.0, 2); // 150 + 2*10 <= 205.9 mm US Letter printable
     expect(geom.rollRecommendation.fits).toBe(true);

@@ -47,6 +47,6 @@ describe('CutListCard', () => {
     expect(screen.getByTestId('cut-cover-boards')).toHaveTextContent('0-Board Softcover');
     expect(screen.getByTestId('cut-spine-strip')).toHaveTextContent('Tuck Flaps');
     expect(screen.getByTestId('roll-recommendation-badge')).toHaveTextContent('US Letter / A4');
-    expect(screen.getByTestId('cut-list-card')).toHaveTextContent('4 glue tabs');
+    expect(screen.getByTestId('cut-list-card')).toHaveTextContent('Glue blank back of 4 tabs');
   });
 });

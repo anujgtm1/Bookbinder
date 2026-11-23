@@ -164,62 +164,71 @@ export function calculateOuterWrap(
   if (isSoftcover) {
     const x0 = 0;
     const x1 = jacketFlapWidthMm;
+    const x1TabEnd = roundTo(Math.min(x1 + jacketFlapWidthMm, x1 + boardW), 3);
     const x2 = roundTo(jacketFlapWidthMm + innerWidthMm, 3);
+    const x2TabStart = roundTo(Math.max(x2 - jacketFlapWidthMm, x2 - boardW), 3);
     const x3 = widthMm;
     const y0 = 0;
     const y1 = jacketGlueTabHeightMm;
     const y2 = roundTo(jacketGlueTabHeightMm + boardH, 3);
     const y3 = heightMm;
-    const m = roundTo(Math.min(jacketGlueTabHeightMm, jacketFlapWidthMm * 0.35), 2);
+    const tabSpan = Math.min(x1TabEnd - x1, x2 - x2TabStart);
+    const m = roundTo(Math.min(jacketGlueTabHeightMm, tabSpan * 0.35), 2);
 
-    // 16-vertex clockwise 1-piece fold-and-glue slip cover outline with 4 mitered flap glue tabs
+    // 20-vertex clockwise 1-piece fold-and-glue slip cover outline:
+    // 4 mitered wrap-over glue tabs sit on the outer top & bottom edges of the Back & Front covers
+    // so flaps fold inward first and tabs glue over the outside of the flaps (preserving full PB_H + 2 mm pocket clearance).
     outerCutPolygon = [
       { x: x0, y: y1 },
-      { x: x0 + m, y: y0 },
-      { x: x1 - m, y: y0 },
       { x: x1, y: y1 },
+      { x: x1 + m, y: y0 },
+      { x: x1TabEnd - m, y: y0 },
+      { x: x1TabEnd, y: y1 },
+      { x: x2TabStart, y: y1 },
+      { x: x2TabStart + m, y: y0 },
+      { x: x2 - m, y: y0 },
       { x: x2, y: y1 },
-      { x: x2 + m, y: y0 },
-      { x: x3 - m, y: y0 },
       { x: x3, y: y1 },
       { x: x3, y: y2 },
-      { x: x3 - m, y: y3 },
-      { x: x2 + m, y: y3 },
       { x: x2, y: y2 },
+      { x: x2 - m, y: y3 },
+      { x: x2TabStart + m, y: y3 },
+      { x: x2TabStart, y: y2 },
+      { x: x1TabEnd, y: y2 },
+      { x: x1TabEnd - m, y: y3 },
+      { x: x1 + m, y: y3 },
       { x: x1, y: y2 },
-      { x: x1 - m, y: y3 },
-      { x: x0 + m, y: y3 },
       { x: x0, y: y2 },
     ];
 
     jacketGlueTabPolygons = [
-      // Left (Back) Top Glue Tab
+      // Back Cover Top Wrap-Over Glue Tab
       [
-        { x: x0, y: y1 },
-        { x: x0 + m, y: y0 },
-        { x: x1 - m, y: y0 },
         { x: x1, y: y1 },
+        { x: x1 + m, y: y0 },
+        { x: x1TabEnd - m, y: y0 },
+        { x: x1TabEnd, y: y1 },
       ],
-      // Right (Front) Top Glue Tab
+      // Front Cover Top Wrap-Over Glue Tab
       [
+        { x: x2TabStart, y: y1 },
+        { x: x2TabStart + m, y: y0 },
+        { x: x2 - m, y: y0 },
         { x: x2, y: y1 },
-        { x: x2 + m, y: y0 },
-        { x: x3 - m, y: y0 },
-        { x: x3, y: y1 },
       ],
-      // Right (Front) Bottom Glue Tab
+      // Front Cover Bottom Wrap-Over Glue Tab
       [
+        { x: x2TabStart, y: y2 },
         { x: x2, y: y2 },
-        { x: x3, y: y2 },
-        { x: x3 - m, y: y3 },
-        { x: x2 + m, y: y3 },
+        { x: x2 - m, y: y3 },
+        { x: x2TabStart + m, y: y3 },
       ],
-      // Left (Back) Bottom Glue Tab
+      // Back Cover Bottom Wrap-Over Glue Tab
       [
-        { x: x0, y: y2 },
         { x: x1, y: y2 },
-        { x: x1 - m, y: y3 },
-        { x: x0 + m, y: y3 },
+        { x: x1TabEnd, y: y2 },
+        { x: x1TabEnd - m, y: y3 },
+        { x: x1 + m, y: y3 },
       ],
     ];
   } else {

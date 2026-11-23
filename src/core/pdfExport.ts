@@ -767,25 +767,23 @@ export async function generateOuterWrapPdf(
   const isFlexible = outerWrap.bindingStyle === 'flexible-spine';
 
   if (isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0) {
-    for (const tabPoly of outerWrap.jacketGlueTabPolygons) {
-      writer.drawHatchedPolygon(GeometryPrimitives.translatePolygon(tabPoly, bleed, bleed));
-    }
-    const flapW = outerWrap.jacketFlapWidthMm;
-    const tabTopY = bleed + outerWrap.jacketGlueTabHeightMm;
-    const tabBotY = bleed + outerWrap.heightMm - outerWrap.jacketGlueTabHeightMm;
     const tabFoldStyle = { color: guideColor, thicknessPt: 0.65, dashArray: [3.5, 2] };
-    writer.drawLine({ x: bleed, y: tabTopY }, { x: bleed + flapW, y: tabTopY }, tabFoldStyle);
-    writer.drawLine({ x: bleed, y: tabBotY }, { x: bleed + flapW, y: tabBotY }, tabFoldStyle);
-    writer.drawLine(
-      { x: bleed + outerWrap.widthMm - flapW, y: tabTopY },
-      { x: bleed + outerWrap.widthMm, y: tabTopY },
-      tabFoldStyle,
-    );
-    writer.drawLine(
-      { x: bleed + outerWrap.widthMm - flapW, y: tabBotY },
-      { x: bleed + outerWrap.widthMm, y: tabBotY },
-      tabFoldStyle,
-    );
+    for (const tabPoly of outerWrap.jacketGlueTabPolygons) {
+      const shiftedTab = GeometryPrimitives.translatePolygon(tabPoly, bleed, bleed);
+      writer.drawHatchedPolygon(shiftedTab);
+      const bbox = GeometryPrimitives.boundingBox(shiftedTab);
+      const isTopTab = bbox.y < bleed + outerWrap.heightMm / 2;
+      const foldY = isTopTab ? bbox.y + bbox.height : bbox.y;
+      writer.drawLine({ x: bbox.x, y: foldY }, { x: bbox.x + bbox.width, y: foldY }, tabFoldStyle);
+      writer.drawText(
+        'GLUE',
+        bbox.x + bbox.width / 2 - 5,
+        bbox.y + bbox.height / 2 + 1.5,
+        boldFont,
+        5.5,
+        rgb(0.48, 0.32, 0.08),
+      );
+    }
   }
 
   writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
@@ -820,13 +818,13 @@ export async function generateOuterWrapPdf(
   }
 
   const headerNote = isSoftcover
-    ? `Fold-and-Glue Slip Cover ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Flaps ${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm + Glue Tabs ${roundTo(outerWrap.jacketGlueTabHeightMm, 1)} mm • Print at 100%`
+    ? `FOLD & GLUE: 1. Fold ${roundTo(outerWrap.jacketFlapWidthMm, 1)} mm flaps inward  2. Glue blank back of 4 tabs  3. Fold tabs over flaps`
     : isFlexible
       ? `Flexible-Spine Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Cloth Spine Gap ${roundTo(cutList.spineStrip.widthMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`
       : `Outer Wrap ${roundTo(outerWrap.widthMm, 1)} × ${roundTo(outerWrap.heightMm, 1)} mm • Hinge Spacer ${roundTo(cutList.hingeSpacerMm, 1)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 1)} mm • Print at 100% (1:1 mm)`;
-  const headerX = bleed + (isSoftcover ? outerWrap.jacketFlapWidthMm + 4 : outerWrap.turnInMm);
+  const headerX = bleed + (isSoftcover ? outerWrap.jacketFlapWidthMm * 2 + 4 : outerWrap.turnInMm);
   const headerY = bleed + (isSoftcover ? outerWrap.jacketGlueTabHeightMm * 0.65 : outerWrap.turnInMm * 0.6);
-  writer.drawText(headerNote, headerX, headerY, font, 7.5, mutedColor);
+  writer.drawText(headerNote, headerX, headerY, font, isSoftcover ? 6.5 : 7.5, mutedColor);
 
   return pdfDoc.save();
 }

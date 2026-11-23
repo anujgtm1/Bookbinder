@@ -103,9 +103,19 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
     <text x="${fmt(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)}" y="${fmt(outerWrap.heightMm / 2)}" font-size="3.6" transform="rotate(-90 ${fmt(outerWrap.widthMm - outerWrap.jacketFlapWidthMm / 2)} ${fmt(outerWrap.heightMm / 2)})">TUCK FLAP ${fmt(outerWrap.jacketFlapWidthMm)} mm</text>`
       : '';
 
+  const glueTabNotes =
+    isSoftcover && outerWrap.jacketGlueTabPolygons.length > 0
+      ? outerWrap.jacketGlueTabPolygons
+          .map((poly) => {
+            const bbox = GeometryPrimitives.boundingBox(poly);
+            return `    <text x="${fmt(bbox.x + bbox.width / 2)}" y="${fmt(bbox.y + bbox.height / 2)}" font-size="3.1" font-weight="600" fill="#7A5212">GLUE BACK</text>`;
+          })
+          .join('\n')
+      : '';
+
   const headerNoteY = isSoftcover ? outerWrap.jacketGlueTabHeightMm / 2 : outerWrap.turnInMm / 2;
   const headerNote = isSoftcover
-    ? `Fold-and-Glue Slip Cover ${escapeXml(wrapDim)} • Flaps ${fmt(outerWrap.jacketFlapWidthMm)} mm + Glue Tabs ${fmt(outerWrap.jacketGlueTabHeightMm)} mm • Scale 1:1 mm`
+    ? `Fold-and-Glue Slip Cover ${escapeXml(wrapDim)} • 1. Fold ${fmt(outerWrap.jacketFlapWidthMm)} mm flaps inward • 2. Glue back of 4 tabs (${fmt(outerWrap.jacketGlueTabHeightMm)} mm) • 3. Fold tabs over flaps`
     : isFlexible
       ? `Flexible-Spine Wrap ${escapeXml(wrapDim)} • Cloth Spine Gap ${fmt(cutList.spineStrip.widthMm)} mm • Turn-In ${fmt(outerWrap.turnInMm)} mm • Scale 1:1 mm`
       : `Outer Wrap ${escapeXml(wrapDim)} • Turn-In ${fmt(outerWrap.turnInMm)} mm • 45° Miter Clearance ${fmt(outerWrap.miterGapMm)} mm • Scale 1:1 mm`;
@@ -134,7 +144,8 @@ ${glueTabGroup}
     <text x="${fmt(spineCenter.x)}" y="${fmt(spineCenter.y)}" font-size="4.2" font-weight="600" transform="rotate(-90 ${fmt(spineCenter.x)} ${fmt(spineCenter.y)})">${isFlexible ? 'FLEX SPINE' : 'SPINE'} ${escapeXml(spineDim)}</text>
 ${hingeNotes}
 ${flapNotes}
-    <text x="${fmt(outerWrap.widthMm / 2)}" y="${fmt(headerNoteY)}" font-size="3.6" fill="#444444">${headerNote}</text>
+${glueTabNotes}
+    <text x="${fmt(outerWrap.widthMm / 2)}" y="${fmt(headerNoteY)}" font-size="3.2" fill="#444444">${headerNote}</text>
   </g>
 </svg>
 `;

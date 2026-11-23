@@ -139,15 +139,17 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
               role="img"
               viewBox="0 0 320 66"
               className="h-14 w-full"
-              aria-label={`Fold-and-glue slip cover diagram showing ${flapLabel} Back Flap with mitered glue tabs, Back Cover, Spine, Front Cover, and ${flapLabel} Front Flap with mitered glue tabs`}
+              aria-label={`Fold-and-glue slip cover diagram showing ${flapLabel} Back Flap, Back Cover with top and bottom wrap-over glue tabs, Spine, Front Cover with top and bottom wrap-over glue tabs, and ${flapLabel} Front Flap`}
             >
-              <title>Cut outline, fold 4 mitered glue tabs and 2 side flaps inward, and glue shut</title>
-              {/* Left top & bottom mitered glue tabs */}
-              <polygon points="8,13 15,5 39,5 46,13" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
-              <polygon points="8,53 46,53 39,61 15,61" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
-              {/* Right top & bottom mitered glue tabs */}
-              <polygon points="274,13 281,5 305,5 312,13" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
-              <polygon points="274,53 312,53 305,61 281,61" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              <title>
+                1. Fold side flaps inward. 2. Apply glue to blank back of 4 cover tabs. 3. Fold tabs down over flaps.
+              </title>
+              {/* Back Cover top & bottom wrap-over glue tabs (sit directly above/below where Back Flap lands) */}
+              <polygon points="46,13 53,5 77,5 84,13" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              <polygon points="46,53 84,53 77,61 53,61" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              {/* Front Cover top & bottom wrap-over glue tabs (sit directly above/below where Front Flap lands) */}
+              <polygon points="236,13 243,5 267,5 274,13" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
+              <polygon points="236,53 274,53 267,61 243,61" fill="var(--brass-bright)" fillOpacity="0.34" stroke="var(--brass)" strokeWidth="1" />
               {/* Left & Right pocket flaps */}
               <rect x="8" y="13" width="38" height="40" fill="var(--brass-bright)" fillOpacity="0.18" stroke="var(--brass)" strokeWidth="1.1" strokeDasharray="3 2" />
               <text x="27" y="36" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="var(--brass)">Flap</text>
@@ -320,9 +322,9 @@ export function CutListCard({ geometry, unit }: CutListCardProps) {
           <figcaption className="text-[11px] text-muted-foreground">
             {isSoftcover ? (
               <>
-                Cut 1 outline, fold the <strong className="text-foreground">4 glue tabs</strong> &amp;{' '}
-                <strong className="text-foreground">{flapLabel}</strong> flaps inward, and glue shut —
-                no separate pockets needed.
+                <strong className="text-foreground">1.</strong> Fold {flapLabel} flaps inward ·{' '}
+                <strong className="text-foreground">2.</strong> Glue blank back of 4 tabs ·{' '}
+                <strong className="text-foreground">3.</strong> Fold tabs over flaps.
               </>
             ) : isFlexible ? (
               <>
