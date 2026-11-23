@@ -173,6 +173,8 @@ export function CoverStyler({
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [activeSnapGuides, setActiveSnapGuides] = useState<readonly ActiveSnapGuide[]>([]);
   const [showPreflightOverlays, setShowPreflightOverlays] = useState(true);
+  const [checkDpi, setCheckDpi] = useState(true);
+  const [ignoredIssueIds, setIgnoredIssueIds] = useState<ReadonlySet<string>>(() => new Set());
   const [activeIssueId, setActiveIssueId] = useState<string | null>(null);
   const [extendingStub, setExtendingStub] = useState(false);
   const [sampledEdgeHex, setSampledEdgeHex] = useState<string | null>(null);
@@ -198,8 +200,12 @@ export function CoverStyler({
     snapEnabledRef.current = snapEnabled;
   }, [snapTargets, snapEnabled]);
   const preflight = useMemo(
-    () => PreflightEngine.evaluate(effectiveParams, geometry, studio),
-    [effectiveParams, geometry, studio],
+    () =>
+      PreflightEngine.evaluate(effectiveParams, geometry, studio, {
+        checkDpi,
+        ignoredIssueIds,
+      }),
+    [effectiveParams, geometry, studio, checkDpi, ignoredIssueIds],
   );
   const spinePlacements = useMemo(
     () => computeSpineTextPlacements(geometry, studio),
@@ -1475,10 +1481,27 @@ export function CoverStyler({
       <PreflightCard
         report={preflight}
         showOverlays={showPreflightOverlays}
+        checkDpi={checkDpi}
         activeIssueId={activeIssueId}
         onToggleOverlays={setShowPreflightOverlays}
+        onToggleCheckDpi={(next) => {
+          setCheckDpi(next);
+          onStatusMessage(next ? '300 DPI print check enabled' : '300 DPI print check paused');
+        }}
         onHighlightIssue={setActiveIssueId}
         onApplyQuickFix={handleApplyQuickFix}
+        onIgnoreIssue={(issueId) => {
+          setIgnoredIssueIds((prev) => {
+            const next = new Set(prev);
+            next.add(issueId);
+            return next;
+          });
+          setActiveIssueId((prev) => (prev === issueId ? null : prev));
+        }}
+        onRestoreIgnored={() => {
+          setIgnoredIssueIds(new Set());
+          onStatusMessage('Restored all ignored preflight warnings');
+        }}
       />
 
       {/* Decoupled Controls Grid */}

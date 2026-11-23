@@ -185,4 +185,59 @@ describe('PreflightEngine', () => {
       label: 'Switch to Vertical',
     });
   });
+
+  it('supports optional DPI check toggle, includes max crisp 300-DPI dimensions, and allows ignoring/restoring individual warnings', () => {
+    const params = { ...BookParametersModel.createDefault(), includeBleed: false };
+    const geom = calculateCaseGeometry(params);
+    const spec = computeStudioCanvasSpec(geom, PRINT_DPI);
+
+    // 600x900 px image placed across frontZoneRect (~90 DPI -> triggers low-dpi-error)
+    // At 300 DPI, 600x900 px is crisp up to ~51 x 76 mm
+    const lowResLayer = CoverImageLayerModel.createInRect({
+      id: 'low-res-1',
+      dataUrl: 'data:image/png;base64,AAA',
+      fileName: 'vintage-plate.jpg',
+      naturalWidth: 600,
+      naturalHeight: 900,
+      targetRect: spec.frontZoneRect,
+      mode: 'cover',
+    });
+
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      layers: [lowResLayer],
+    };
+
+    // 1. Default (DPI check ON): reports low-dpi error with 300-DPI max physical size hint
+    const defaultReport = PreflightEngine.evaluate(params, geom, studio);
+    const dpiIssue = defaultReport.issues.find((i) => i.id === 'low-dpi-error-low-res-1');
+    expect(dpiIssue).toBeDefined();
+    expect(dpiIssue?.detail).toContain('Crisp at 300 DPI up to 51 × 76 mm');
+    expect(defaultReport.ignoredCount).toBe(0);
+
+    // 2. With checkDpi: false, DPI issue is skipped and resolution summary is 'skipped',
+    //    while bleed-disabled warning remains active
+    const dpiOffReport = PreflightEngine.evaluate(params, geom, studio, { checkDpi: false });
+    expect(dpiOffReport.issues.some((i) => i.category === 'resolution')).toBe(false);
+    expect(dpiOffReport.issues.some((i) => i.id === 'bleed-disabled')).toBe(true);
+    const resCheck = dpiOffReport.checks.find((c) => c.id === 'resolution');
+    expect(resCheck?.status).toBe('skipped');
+    expect(resCheck?.label).toBe('DPI Check (Off)');
+
+    // 3. Ignoring individual issues suppresses them, updates ignoredCount, and clears status when all are ignored
+    const ignoredOne = PreflightEngine.evaluate(params, geom, studio, {
+      ignoredIssueIds: new Set(['low-dpi-error-low-res-1', 'non-existent-id']),
+    });
+    expect(ignoredOne.issues.some((i) => i.id === 'low-dpi-error-low-res-1')).toBe(false);
+    expect(ignoredOne.ignoredCount).toBe(1);
+    expect(ignoredOne.errorCount).toBe(0);
+    expect(ignoredOne.status).toBe('warning'); // bleed-disabled still active
+
+    const ignoredAll = PreflightEngine.evaluate(params, geom, studio, {
+      ignoredIssueIds: new Set(['low-dpi-error-low-res-1', 'bleed-disabled']),
+    });
+    expect(ignoredAll.issues).toHaveLength(0);
+    expect(ignoredAll.ignoredCount).toBe(2);
+    expect(ignoredAll.status).toBe('pass');
+  });
 });

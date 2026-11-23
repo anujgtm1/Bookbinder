@@ -389,4 +389,63 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.mouse.up();
     await expect(page.getByTestId('studio-snap-guides')).toBeHidden();
   });
+
+  test('re-fits artwork cleanly to front after book resize and supports optional DPI check + Ignore/Restore warnings', async ({
+    page,
+  }) => {
+    // Upload a modest 600x900 image (will trigger low-DPI warning at full cover size)
+    const modestCover = createSolidPngBuffer(600, 900, 42, 85, 108);
+    await page.getByTestId('studio-upload-image-input').setInputFiles({
+      name: 'modest-cover.png',
+      mimeType: 'image/png',
+      buffer: modestCover,
+    });
+    await expect(page.getByTestId('studio-layer-0')).toBeVisible();
+
+    // 1. Optional DPI check toggle turns off DPI warnings without touching other checks
+    const dpiIssueLocator = page.locator('[data-testid^="preflight-issue-low-dpi-"]');
+    await expect(dpiIssueLocator).toBeVisible();
+    await expect(page.getByTestId('preflight-dpi-toggle')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByTestId('preflight-dpi-toggle').click();
+    await expect(page.getByTestId('preflight-dpi-toggle')).toHaveAttribute('aria-pressed', 'false');
+    await expect(dpiIssueLocator).toBeHidden();
+
+    // Turn DPI check back on -> warning returns
+    await page.getByTestId('preflight-dpi-toggle').click();
+    await expect(dpiIssueLocator).toBeVisible();
+
+    // 2. Ignore for now dismisses the specific warning + red highlight and shows Restore pill
+    await page.locator('[data-testid^="preflight-ignore-low-dpi-"]').click();
+    await expect(dpiIssueLocator).toBeHidden();
+    await expect(page.getByTestId('preflight-restore-ignored-btn')).toContainText('1 ignored');
+
+    // Restore brings the ignored warning back
+    await page.getByTestId('preflight-restore-ignored-btn').click();
+    await expect(dpiIssueLocator).toBeVisible();
+    await expect(page.getByTestId('preflight-restore-ignored-btn')).toBeHidden();
+
+    // Pause DPI check so we can verify clean Fit-to-Front coverage after resizing the book
+    await page.getByTestId('preflight-dpi-toggle').click();
+
+    // 3. Resize the book dimensions dramatically and click Fit to Front
+    const widthInput = page.getByTestId('input-pb-width');
+    const heightInput = page.getByTestId('input-pb-height');
+    await widthInput.fill('190');
+    await heightInput.fill('275');
+
+    await page.getByTestId('quick-fit-front').click();
+
+    // Front cover should now pass coverage cleanly, expand to resized book, and clip to Front Cover
+    await expect(page.getByTestId('preflight-issue-front-board-gap')).toBeHidden();
+    await expect(page.getByTestId('preflight-issue-front-turnin-gap')).toBeHidden();
+    await expect(page.getByTestId('preflight-status-badge')).toHaveText('All Checks Passed');
+    await expect(page.getByTestId('layer-clip-select')).toContainText('Clip to Front Cover');
+
+    const resizedLayer = page.getByTestId('studio-layer-0');
+    const resizedW = Number(await resizedLayer.getAttribute('width'));
+    const resizedH = Number(await resizedLayer.getAttribute('height'));
+    expect(resizedW).toBeGreaterThanOrEqual(210);
+    expect(resizedH).toBeGreaterThanOrEqual(315);
+  });
 });

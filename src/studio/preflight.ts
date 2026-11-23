@@ -67,7 +67,14 @@ export interface PreflightIssue {
 export interface PreflightCheckSummary {
   readonly id: PreflightCategory;
   readonly label: string;
-  readonly status: 'pass' | 'warning' | 'error';
+  readonly status: 'pass' | 'warning' | 'error' | 'skipped';
+}
+
+export interface PreflightOptions {
+  /** When false, skips print DPI resolution checks. Defaults to true. */
+  readonly checkDpi?: boolean;
+  /** Set of issue IDs temporarily dismissed by the user ("Ignore for now"). */
+  readonly ignoredIssueIds?: ReadonlySet<string>;
 }
 
 export interface PreflightReport {
@@ -75,6 +82,7 @@ export interface PreflightReport {
   readonly checks: readonly PreflightCheckSummary[];
   readonly errorCount: number;
   readonly warningCount: number;
+  readonly ignoredCount: number;
   readonly status: 'pass' | 'warning' | 'error';
 }
 
@@ -236,8 +244,11 @@ export const PreflightEngine = {
     params: BookParameters,
     geometry: CaseGeometry,
     studio: CoverStudioState,
+    options: PreflightOptions = {},
   ): PreflightReport {
-    const issues: PreflightIssue[] = [];
+    const checkDpi = options.checkDpi ?? true;
+    const ignoredIds = options.ignoredIssueIds;
+    const allIssues: PreflightIssue[] = [];
     const spec = computeStudioCanvasSpec(geometry, PRINT_DPI);
     const canvasRect: Rect2D = {
       x: 0,
@@ -282,7 +293,7 @@ export const PreflightEngine = {
     // 1. Off-canvas layer checks + Effective DPI checks
     for (const { layer, rawRect, onCanvasRect } of visibleLayers) {
       if (!onCanvasRect || rectArea(onCanvasRect) < 1) {
-        issues.push({
+        allIssues.push({
           id: `off-canvas-${layer.id}`,
           severity: 'warning',
           category: 'coverage',
@@ -301,16 +312,21 @@ export const PreflightEngine = {
         continue;
       }
 
+      if (!checkDpi) {
+        continue;
+      }
+
       const dpi = this.effectiveLayerDpi(layer);
+      const maxCrispWidthMm = Math.round((layer.naturalWidth / PRINT_DPI) * MM_PER_INCH);
+      const maxCrispHeightMm = Math.round((layer.naturalHeight / PRINT_DPI) * MM_PER_INCH);
       if (dpi < LOW_DPI_ERROR_THRESHOLD) {
-        issues.push({
+        allIssues.push({
           id: `low-dpi-error-${layer.id}`,
           severity: 'error',
           category: 'resolution',
           layerId: layer.id,
           title: `Low print resolution (~${dpi} DPI) on "${layer.fileName}"`,
-          detail:
-            'Images below 150 DPI will print visibly pixelated or soft. Shrink the image or replace it with a higher-resolution file (300 DPI recommended).',
+          detail: `Below 150 DPI may print visibly soft at full size. Crisp at 300 DPI up to ${maxCrispWidthMm} × ${maxCrispHeightMm} mm — shrink the image, click Ignore for now, or upload a higher-res file.`,
           highlights: [
             {
               rect: onCanvasRect,
@@ -326,14 +342,13 @@ export const PreflightEngine = {
           },
         });
       } else if (dpi < LOW_DPI_WARNING_THRESHOLD) {
-        issues.push({
+        allIssues.push({
           id: `low-dpi-warn-${layer.id}`,
           severity: 'warning',
           category: 'resolution',
           layerId: layer.id,
           title: `Moderate print resolution (~${dpi} DPI) on "${layer.fileName}"`,
-          detail:
-            '300 DPI is ideal for crisp hardcover printing; this layer is usable but slightly below fine-art print density.',
+          detail: `Crisp at 300 DPI up to ${maxCrispWidthMm} × ${maxCrispHeightMm} mm. Usable as-is, or shrink slightly / click Ignore for now.`,
           highlights: [
             {
               rect: rawRect,
@@ -391,7 +406,7 @@ export const PreflightEngine = {
       ]);
       if (boardGaps.length > 0) {
         const edgeSummary = boardGaps.map((g) => `${g.edge} (${g.gapMm} mm)`).join(', ');
-        issues.push({
+        allIssues.push({
           id: `${side}-board-gap`,
           severity: 'error',
           category: 'coverage',
@@ -417,7 +432,7 @@ export const PreflightEngine = {
       const turnInGaps = computeUncoveredEdges(zoneRect, combinedCovered, outerEdges);
       if (turnInGaps.length > 0) {
         const edgeSummary = turnInGaps.map((g) => `${g.edge} (${g.gapMm} mm)`).join(', ');
-        issues.push({
+        allIssues.push({
           id: `${side}-turnin-gap`,
           severity: 'warning',
           category: 'coverage',
@@ -456,7 +471,7 @@ export const PreflightEngine = {
         const ratio = this.contrastRatio(studio.spineText.textColor, studio.spineBgColor);
         if (ratio !== null && ratio < 3.0) {
           const suggestedHex = this.suggestHighContrastInk(studio.spineBgColor);
-          issues.push({
+          allIssues.push({
             id: 'spine-low-contrast-error',
             severity: 'error',
             category: 'typography',
@@ -478,7 +493,7 @@ export const PreflightEngine = {
           });
         } else if (ratio !== null && ratio < 4.5) {
           const suggestedHex = this.suggestHighContrastInk(studio.spineBgColor);
-          issues.push({
+          allIssues.push({
             id: 'spine-low-contrast-warn',
             severity: 'warning',
             category: 'typography',
@@ -503,7 +518,7 @@ export const PreflightEngine = {
 
       const maxPt = CoverStudioModel.maxSpineFontSizePt(geometry.outerWrap.spineRect.width);
       if (studio.spineText.fontSizePt > maxPt + 0.1) {
-        issues.push({
+        allIssues.push({
           id: 'spine-font-clamped',
           severity: 'warning',
           category: 'typography',
@@ -533,7 +548,7 @@ export const PreflightEngine = {
           geometry.outerWrap.spineRect.width,
         );
         if (horizPt < 6.5) {
-          issues.push({
+          allIssues.push({
             id: 'spine-horizontal-author-small',
             severity: 'warning',
             category: 'typography',
@@ -572,7 +587,7 @@ export const PreflightEngine = {
           ? geometry.outerWrap.spineRect.height * 0.68
           : geometry.outerWrap.spineRect.height - 20;
       if (estimatedSpanMm > safeHeightMm) {
-        issues.push({
+        allIssues.push({
           id: 'spine-text-length-overflow',
           severity: 'warning',
           category: 'typography',
@@ -592,7 +607,7 @@ export const PreflightEngine = {
 
     // 4. Structural & Print Readiness Checks
     if (!params.includeBleed && studio.layers.length > 0) {
-      issues.push({
+      allIssues.push({
         id: 'bleed-disabled',
         severity: 'warning',
         category: 'structure',
@@ -609,7 +624,7 @@ export const PreflightEngine = {
     }
 
     if (!geometry.rollRecommendation.fits && params.splitMode === 'single') {
-      issues.push({
+      allIssues.push({
         id: 'roll-width-exceeded',
         severity: 'warning',
         category: 'structure',
@@ -626,7 +641,7 @@ export const PreflightEngine = {
 
     const paramValidation = BookParametersModel.validate(params);
     paramValidation.errors.forEach((msg, idx) => {
-      issues.push({
+      allIssues.push({
         id: `param-error-${idx}`,
         severity: 'error',
         category: 'structure',
@@ -636,7 +651,7 @@ export const PreflightEngine = {
       });
     });
     paramValidation.warnings.forEach((msg, idx) => {
-      issues.push({
+      allIssues.push({
         id: `param-warn-${idx}`,
         severity: 'warning',
         category: 'structure',
@@ -646,11 +661,23 @@ export const PreflightEngine = {
       });
     });
 
+    // Partition active vs. temporarily ignored issues
+    let ignoredCount = 0;
+    const issues: PreflightIssue[] = [];
+    for (const issue of allIssues) {
+      if (ignoredIds?.has(issue.id)) {
+        ignoredCount += 1;
+      } else {
+        issues.push(issue);
+      }
+    }
+
     // Sort errors first, then warnings, then info
     const severityOrder: Record<PreflightSeverity, number> = { error: 0, warning: 1, info: 2 };
     issues.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
-    const categoryStatus = (cat: PreflightCategory): 'pass' | 'warning' | 'error' => {
+    const categoryStatus = (cat: PreflightCategory): 'pass' | 'warning' | 'error' | 'skipped' => {
+      if (cat === 'resolution' && !checkDpi) return 'skipped';
       const matching = issues.filter((i) => i.category === cat);
       if (matching.some((i) => i.severity === 'error')) return 'error';
       if (matching.some((i) => i.severity === 'warning')) return 'warning';
@@ -659,7 +686,11 @@ export const PreflightEngine = {
 
     const checks: PreflightCheckSummary[] = [
       { id: 'coverage', label: 'Cover & Turn-In Coverage', status: categoryStatus('coverage') },
-      { id: 'resolution', label: '300 DPI Print Resolution', status: categoryStatus('resolution') },
+      {
+        id: 'resolution',
+        label: checkDpi ? '300 DPI Print Resolution' : 'DPI Check (Off)',
+        status: categoryStatus('resolution'),
+      },
       { id: 'typography', label: 'Spine Contrast & Clearance', status: categoryStatus('typography') },
       { id: 'structure', label: 'Bleed & Structural Fit', status: categoryStatus('structure') },
     ];
@@ -674,6 +705,7 @@ export const PreflightEngine = {
       checks,
       errorCount,
       warningCount,
+      ignoredCount,
       status,
     };
   },

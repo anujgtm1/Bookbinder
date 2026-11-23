@@ -4,8 +4,11 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  EyeOff,
+  RotateCcw,
   ShieldAlert,
   ShieldCheck,
+  SlidersHorizontal,
   Wrench,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -17,19 +20,27 @@ import type { PreflightQuickFix, PreflightReport } from './preflight';
 export interface PreflightCardProps {
   readonly report: PreflightReport;
   readonly showOverlays: boolean;
+  readonly checkDpi: boolean;
   readonly activeIssueId: string | null;
   readonly onToggleOverlays: (next: boolean) => void;
+  readonly onToggleCheckDpi: (next: boolean) => void;
   readonly onHighlightIssue: (issueId: string | null) => void;
   readonly onApplyQuickFix: (fix: PreflightQuickFix) => void;
+  readonly onIgnoreIssue: (issueId: string) => void;
+  readonly onRestoreIgnored: () => void;
 }
 
 export function PreflightCard({
   report,
   showOverlays,
+  checkDpi,
   activeIssueId,
   onToggleOverlays,
+  onToggleCheckDpi,
   onHighlightIssue,
   onApplyQuickFix,
+  onIgnoreIssue,
+  onRestoreIgnored,
 }: PreflightCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasIssues = report.issues.length > 0;
@@ -93,11 +104,15 @@ export function PreflightCard({
                       ? 'border-destructive/35 bg-destructive/10 text-destructive'
                       : check.status === 'warning'
                         ? 'border-amber-600/35 bg-amber-500/12 text-amber-800 dark:text-amber-300'
-                        : 'border-emerald-700/25 bg-emerald-600/8 text-emerald-800 dark:text-emerald-300'
+                        : check.status === 'skipped'
+                          ? 'border-border/70 bg-muted/40 text-muted-foreground'
+                          : 'border-emerald-700/25 bg-emerald-600/8 text-emerald-800 dark:text-emerald-300'
                   }`}
                 >
                   {check.status === 'pass' ? (
                     <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  ) : check.status === 'skipped' ? (
+                    <EyeOff className="h-3 w-3" aria-hidden="true" />
                   ) : (
                     <AlertTriangle className="h-3 w-3" aria-hidden="true" />
                   )}
@@ -105,6 +120,39 @@ export function PreflightCard({
                 </span>
               ))}
             </div>
+
+            <Button
+              variant={checkDpi ? 'outline' : 'ghost'}
+              size="sm"
+              className={`h-7 px-2.5 text-xs ${
+                checkDpi ? '' : 'border border-dashed border-border text-muted-foreground'
+              }`}
+              aria-pressed={checkDpi}
+              onClick={() => onToggleCheckDpi(!checkDpi)}
+              data-testid="preflight-dpi-toggle"
+              title={
+                checkDpi
+                  ? '300 DPI print check is on — click to pause DPI warnings'
+                  : '300 DPI print check is off — click to re-enable'
+              }
+            >
+              <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+              {checkDpi ? 'DPI Check: On' : 'DPI Check: Off'}
+            </Button>
+
+            {report.ignoredCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                onClick={onRestoreIgnored}
+                data-testid="preflight-restore-ignored-btn"
+                title="Restore all ignored preflight warnings"
+              >
+                <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                {report.ignoredCount} ignored · Restore
+              </Button>
+            )}
 
             {hasCanvasHighlights && (
               <Button
@@ -177,18 +225,31 @@ export function PreflightCard({
                       </p>
                     </div>
 
-                    {issue.quickFix && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {issue.quickFix && (
+                        <Button
+                          variant={isError ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 shrink-0 px-2.5 text-xs"
+                          data-testid={`preflight-fix-${issue.id}`}
+                          onClick={() => onApplyQuickFix(issue.quickFix!)}
+                        >
+                          <Wrench className="h-3 w-3" aria-hidden="true" />
+                          {issue.quickFix.label}
+                        </Button>
+                      )}
                       <Button
-                        variant={isError ? 'default' : 'outline'}
+                        variant="ghost"
                         size="sm"
-                        className="h-7 shrink-0 px-2.5 text-xs"
-                        data-testid={`preflight-fix-${issue.id}`}
-                        onClick={() => onApplyQuickFix(issue.quickFix!)}
+                        className="h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        data-testid={`preflight-ignore-${issue.id}`}
+                        title="Ignore this warning for now"
+                        onClick={() => onIgnoreIssue(issue.id)}
                       >
-                        <Wrench className="h-3 w-3" aria-hidden="true" />
-                        {issue.quickFix.label}
+                        <EyeOff className="h-3 w-3" aria-hidden="true" />
+                        Ignore
                       </Button>
-                    )}
+                    </div>
                   </li>
                 );
               })}
