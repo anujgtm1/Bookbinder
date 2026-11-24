@@ -29,6 +29,8 @@ export type BindingStyle =
 
 export type SoftcoverPocketMode = 'integrated' | 'separate';
 
+export type InteriorStyle = 'slip-pockets' | 'folded-endpapers';
+
 export function isBoardlessBinding(style: BindingStyle): boolean {
   return !getBindingStrategy(style).capabilities.usesChipboard;
 }
@@ -137,6 +139,8 @@ export interface BookParameters {
   jacketFlapWidthMm?: number;
   /** Optional pocket construction mode for softcover-jacket ('integrated' 1-piece flaps vs 'separate' 2-sheet glue-in pockets) */
   softcoverPocketMode?: SoftcoverPocketMode;
+  /** Optional interior attachment style for chipboard hardcovers ('slip-pockets' vs 'folded-endpapers'; undefined defaults to 'slip-pockets') */
+  interiorStyle?: InteriorStyle;
   /** UI display unit (exports remain strictly 1:1 mm) */
   unit: UnitSystem;
 }
@@ -220,6 +224,13 @@ function parseSoftcoverPocketMode(value: unknown): SoftcoverPocketMode | undefin
   return undefined;
 }
 
+function parseInteriorStyle(value: unknown): InteriorStyle | undefined {
+  if (value === 'folded-endpapers' || value === 'slip-pockets') {
+    return value;
+  }
+  return undefined;
+}
+
 export const BookParametersModel = {
   createDefault(): BookParameters {
     return { ...DEFAULT_BOOK_PARAMETERS };
@@ -254,6 +265,7 @@ export const BookParametersModel = {
           )
         : undefined;
     const softcoverPocketMode = parseSoftcoverPocketMode(partial.softcoverPocketMode);
+    const interiorStyle = parseInteriorStyle(partial.interiorStyle);
 
     return {
       bindingStyle: parseBindingStyle(partial.bindingStyle),
@@ -323,6 +335,7 @@ export const BookParametersModel = {
       printMedia: parsePrintMedia(partial.printMedia),
       ...(jacketFlapWidthMm !== undefined ? { jacketFlapWidthMm } : {}),
       ...(softcoverPocketMode !== undefined ? { softcoverPocketMode } : {}),
+      ...(interiorStyle !== undefined ? { interiorStyle } : {}),
       unit: UnitConverter.parseUnitSystem(partial.unit, d.unit),
     };
   },
