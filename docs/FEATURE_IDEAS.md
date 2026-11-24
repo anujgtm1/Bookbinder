@@ -18,10 +18,9 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 - **Implemented in:** `src/studio/CoverTextCard.tsx`, `src/studio/ClassicDesignsCard.tsx`, `src/studio/ornaments/`, `src/resources/ornaments/`, `src/studio/svgStampParser.ts`, `src/studio/DesignPresetsCard.tsx`.
 - Includes generic `+ Text` with inline list renaming synced `1:1` with the cover, Front/Back presets, custom `.ttf`/`.otf`/`.woff` font upload, 17 classic foil frames/corners/dividers/emblems/spine motifs, custom SVG stamp import (`Fill` / `Outline` / `Fill + Thicken`), Safe-Margin Snap Guides + Fit presets, Flip H/V, and Reusable Series Design Presets.
 
-### 4. Permanent Glue-In Endpapers Option (Alongside Removable Slip-In Pockets)
-- **Why binders ask for it:** Bookbinder started with removable slip-in pockets (awesome for non-destructive paperback cases!), while traditional paperback-to-hardcover rebinders rip off the paperback cover and glue **folded endpapers** (`pastedown + flyleaf`, double width `2 × PB_W × PB_H` with a center fold score line) directly onto the text block and boards.
-- **What it would do:**
-  - Add an **Interior Style** toggle on the Inner tab: **`Removable Slip-In Pockets`** vs. **`Folded Glue-In Endpapers (Traditional Rebind)`** — letting traditional rebinders use the exact same drag-and-drop / Tile Pattern studio to print 1:1 mm marbled or illustrated folded endpaper sheets!
+### 4. [Shipped] Permanent Glue-In Endpapers Option (Alongside Removable Slip-In Pockets)
+- **Implemented in:** `src/core/geometry.ts`, `src/core/pdfExport.ts`, `src/core/svgExport.ts`, `src/studio/InnerPocketsStudio.tsx`, `src/studio/pockets/PocketPieceSvg.tsx`, `src/studio/pockets/PocketBlueprintDimensions.tsx`.
+- Adds an **Interior Style** toggle on the Inner tab switching cleanly between **`Removable Slip-In Pockets`** and **`Folded Glue-In Endpapers`** (`pastedown + flyleaf` double-width sheets with center fold score lines and mirrored `PASTEDOWN` / `FLYLEAF` annotations), reusing the full drag-and-drop & seamless Tile Pattern studio and SVG/PDF exporters.
 
 ### 5. [Shipped] Dust Jacket Generator Mode (+ Replacement Paperback Cover)
 - **Implemented in:** `src/core/bindingStyles.ts` (`dust-jacket` and `paperback-wrap` strategies), `src/components/SidebarControls.tsx`, `src/studio/preflight.ts`.
@@ -41,10 +40,9 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 - **What it would do:**
   - Add an optional **`Rounded Spine`** toggle with a rounding-depth / arc slider (or standard `1.10–1.18×` arc multiplier), updating `SPINE_W`, the spine stiffener card (flexible cardstock instead of rigid greyboard), and rendering a visibly curved spine in the 3D Book Preview.
 
-### 8. Matching Slipcase Box Calculator (1:1 mm Cut List & Wrap)
-- **Why binders ask for it:** Slipcases are one of the most popular next-step projects on r/bookbinding — and notoriously annoying to calculate by hand because you have to add `1.5–2.0 mm` slide clearance plus chipboard wall thicknesses on 5 panels (`2 walls + spine wall + head wall + tail wall`) and a thumb-notch cutout!
-- **What it would do:**
-  - Optional **"Matching Slipcase"** panel/export computed directly from the finished hardcover's outer dimensions (`BOARD_W × BOARD_H × CASE_THICKNESS + clearance`), outputting all 5 chipboard panel cuts, thumb-notch arc guide, and outer wrap strip.
+### 8. [Shipped] Matching Slipcase Box Calculator (Cut List & Wrap)
+- **Implemented in:** `src/core/slipcaseGeometry.ts`, `src/core/slipcaseExport.ts`, `src/components/SlipcaseCard.tsx`.
+- Expandable **Matching Slipcase** calculator on the Measure & Cut tab computed directly from the finished hardcover's outer dimensions (`BOARD_W × BOARD_H × CASE_THICKNESS + clearance`), with live slide-clearance and thumb-notch radius sliders, 5-panel chipboard cut table, live SVG arc preview, and cut-ready `matching_slipcase.svg` / `matching_slipcase.pdf` exports.
 
 ### 9. Spine Thickness Estimator (From Page Count & Paper GSM / PPI)
 - **Why binders ask for it:** People planning a typeset book *before* printing often want a ballpark spine width from page count and paper weight (e.g., 320 pages of 80 gsm cream paper).
@@ -59,19 +57,17 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 - **Implemented in:** `src/core/pdfSheetLayout.ts`, `src/components/PdfExportDialog.tsx`, `src/components/PdfSheetPreviewSvg.tsx`.
 - Unified Print & Export PDF Dialog compares `US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact 1:1`, and `13"–44"` rolls with live `1 sheet` vs. `2 sheets (tiled)` fit badges, configurable `10 / 15 / 20 mm` overlap + alignment crosshairs, and an optional `50 mm` Scale-Check Ruler bar.
 
-### 11. Printable "Bench Recipe Card" & Step-by-Step Cut Checklist
-- **Why binders ask for it:** At the cutting mat, people don't want to keep unlocking their phone with gluey fingers to check `143 × 223 mm` or `9 mm` spacer dimensions.
-- **What it would do:**
-  - A clean printable 1-page **Bindery Spec Sheet** (or footer strip on Page 1 of the PDF) listing exact chipboard cuts, grain direction, spacer width, corner miter gap, and a check-off assembly sequence.
+### 11. [Shipped] Printable "Bench Recipe Card" & Step-by-Step Cut Checklist
+- **Implemented in:** `src/core/benchRecipePdf.ts`, `src/components/MeasureAndCutPanel.tsx`.
+- One-click **Bench Recipe & Jigs PDF** (`bindery_bench_recipe_and_jigs.pdf`) listing exact chipboard cuts, grain direction, spacer width, corner miter gap, and a check-off assembly sequence right at the bench.
 
-### 12. Printable Cutting Jigs (Corner Miter Gauge + Hinge Spacer Strips)
-- **Why binders ask for it:** Beginners often buy plastic "bookbinding L-spacers" and corner miter guides on Etsy.
-- **What it would do:**
-  - Include a bonus cut-out **exact-width hinge spacer guide** (`HINGE_W`) and **exact-clearance 45° corner miter template** (`MITER_GAP = BOARD_T × MITER_FACTOR`) right in the empty whitespace of Page 1 of the Inner Templates PDF so users can glue them onto scrap chipboard and reuse them at the bench!
+### 12. [Shipped] Printable Cutting Jigs (Corner Miter Gauge + Hinge Spacer Strips)
+- **Implemented in:** `src/core/benchRecipePdf.ts`, `src/components/MeasureAndCutPanel.tsx`.
+- Bundled inside `bindery_bench_recipe_and_jigs.pdf` with exact-width cut-out **hinge spacer strips** (`HINGE_W`) and an exact-clearance **45° corner miter gauge** (`MITER_GAP = BOARD_T × MITER_FACTOR`) ready to glue onto scrap chipboard.
 
-### 13. Visual Material & Foil Preview + 1-Click Demo Book (Showcase Polish)
-- **Material Preview (2D/3D):** Optional non-printing visual shader overlay (*Matte Paper*, *Woven Bookcloth Linen*, *Pebbled Leather*, and *Metallic Gold/Silver Foil* sheen on spine lettering) so clothbound designs look realistic in 3D before ordering cloth.
-- **1-Click "Load Sample Book" Button:** Preloads a public-domain classic cover + styled marbled endpaper pockets so first-time visitors arriving from Reddit can orbit the 3D book, open the cover, and test dragging/snapping within 3 seconds.
+### 13. [Shipped] Visual Material & Foil Preview + 1-Click Demo Book (Showcase Polish)
+- **Implemented in:** `src/resources/sampleProject.ts`, `src/studio/materialPreview.ts`, `src/studio/CoverStyler.tsx`, `src/studio/Book3DPreview.tsx`.
+- Includes a 1-click **Sample Book** loader (*Twenty Thousand Leagues Under the Seas* clothbound cover + marbled endpapers) plus non-printing 2D/3D **Matte Paper**, **Bookcloth Linen**, and **Pebbled Leather** surface shaders and metallic **Gold / Silver / Copper Foil** sheen previews.
 
 ---
 
