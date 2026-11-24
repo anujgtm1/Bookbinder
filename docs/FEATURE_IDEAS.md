@@ -71,7 +71,14 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ---
 
-## Intentional Scope Guardrails (What *Not* to Build)
+## Intentional Scope Guardrails & Recorded Product Decisions (What *Not* to Build)
 To keep Bookbinder fast, focused, and joyful rather than bloated:
 - **Skip full text-block signature imposition** — excellent dedicated open-source tools already exist for that (`bookbinder-js`, `Wynkyn`), and linking to them as companion tools is far better than duplicating them.
 - **Skip heavy photo-editing / brush tools** — keep our 1:1 mm Affinity / Inkscape SVG & 300 DPI PNG round-trip exports crisp for users who want complex illustration workflows.
+- **Skip arbitrary user-uploaded structural cut dielines (keep flap/pocket shapes parametric):**
+  - Decorative vector shapes are already supported via `.svg` artwork uploads and `Designs → Import SVG Stamp` (`svgStampParser.ts`).
+  - Allowing arbitrary uploaded structural cut outlines (custom scalloped flaps, custom cover dielines) breaks parametric resizing across book dimensions, complicates cut-vs-score semantics, and hits all 6 geometry IR consumers (2D canvas, Blueprint, 3D preview, PDF + 2-sheet tiling, Affinity SVG, Cricut SVG, Preflight). Power users authoring custom dielines already use Affinity/Inkscape and prefer exporting Bookbinder's layered `1:1 mm` SVG.
+  - Instead, if structural flap/pocket variety is added later, limit it to **2–3 parametric craft profiles** (`straight`, `tapered` flap tips, `diagonal` inner pockets — all pure `Polygon2D`, plus optional `thumb-notch` arcs reusing `slipcaseGeometry.ts`).
+- **Cricut HTV Basic Cut `.SVG` vs. Print Then Cut `.PNG` separation:**
+  - Never embed raster `<image>` tags into Basic Cut `.SVG` files (Cricut Design Space strips or rejects `<image>` elements inside SVGs).
+  - Basic Cut `.SVG` stays strictly pure flattened vector `<path>` curves (zero `<text>`, zero `<image>`, zero `transform=`). Full-color raster art uses either the **Hybrid Printed Base PDF (`Base Only (For HTV)`)** workflow or a dedicated **Print Then Cut (Transparent 300 DPI PNG)** export sized to Cricut's Letter/Legal Print-Then-Cut bounds.
