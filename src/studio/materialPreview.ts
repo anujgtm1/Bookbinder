@@ -140,17 +140,20 @@ export function getFoilFinishSpec(id: FoilFinishId): FoilFinishSpec {
  * (matte paper sheen, woven bookcloth crosshatch, or pebbled leather grain) for 2D/3D previews.
  */
 export function getSurfaceOverlayStyle(material: SurfaceMaterialId): CSSProperties {
+  // IMPORTANT: Never use `mixBlendMode` or `opacity < 1` here — inside CSS 3D
+  // `preserve-3d` faces (`Book3DPreview`), non-normal blend modes / group opacity
+  // create isolated compositing layers that break `backface-visibility: hidden`
+  // and cause outer cover art to bleed through the opened inside cover.
   if (material === 'bookcloth-linen') {
     return {
       pointerEvents: 'none',
       backgroundImage: [
-        'repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.085) 0px, rgba(255, 255, 255, 0.085) 1px, transparent 1px, transparent 3px)',
+        'repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.075) 0px, rgba(255, 255, 255, 0.075) 1px, transparent 1px, transparent 3px)',
         'repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.11) 0px, rgba(0, 0, 0, 0.11) 1px, transparent 1px, transparent 3px)',
-        'repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.03) 0px, rgba(255, 255, 255, 0.03) 2px, rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px)',
+        'repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.025) 0px, rgba(255, 255, 255, 0.025) 2px, rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px)',
       ].join(', '),
       backgroundSize: '3px 3px, 3px 3px, 8px 8px',
-      mixBlendMode: 'overlay',
-      opacity: 0.78,
+      opacity: 1,
     };
   }
 
@@ -158,14 +161,13 @@ export function getSurfaceOverlayStyle(material: SurfaceMaterialId): CSSProperti
     return {
       pointerEvents: 'none',
       backgroundImage: [
-        'radial-gradient(circle at 25% 30%, rgba(255, 255, 255, 0.14) 0px, rgba(255, 255, 255, 0.04) 1.6px, rgba(0, 0, 0, 0.12) 2.8px, transparent 3.6px)',
-        'radial-gradient(circle at 75% 70%, rgba(255, 255, 255, 0.11) 0px, rgba(0, 0, 0, 0.11) 2.2px, transparent 3.4px)',
-        'linear-gradient(125deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 42%, rgba(0, 0, 0, 0.16) 100%)',
+        'radial-gradient(circle at 25% 30%, rgba(255, 255, 255, 0.12) 0px, rgba(255, 255, 255, 0.035) 1.6px, rgba(0, 0, 0, 0.11) 2.8px, transparent 3.6px)',
+        'radial-gradient(circle at 75% 70%, rgba(255, 255, 255, 0.095) 0px, rgba(0, 0, 0, 0.1) 2.2px, transparent 3.4px)',
+        'linear-gradient(125deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 42%, rgba(0, 0, 0, 0.14) 100%)',
       ].join(', '),
       backgroundSize: '7px 7px, 11px 11px, 100% 100%',
       backgroundPosition: '0 0, 3px 5px, 0 0',
-      mixBlendMode: 'soft-light',
-      opacity: 0.88,
+      opacity: 1,
     };
   }
 
@@ -173,12 +175,11 @@ export function getSurfaceOverlayStyle(material: SurfaceMaterialId): CSSProperti
   return {
     pointerEvents: 'none',
     backgroundImage: [
-      'linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 48%, rgba(0, 0, 0, 0.06) 100%)',
-      'radial-gradient(rgba(0, 0, 0, 0.04) 0.6px, transparent 0.6px)',
+      'linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0%, rgba(255, 255, 255, 0) 48%, rgba(0, 0, 0, 0.04) 100%)',
+      'radial-gradient(rgba(0, 0, 0, 0.03) 0.6px, transparent 0.6px)',
     ].join(', '),
     backgroundSize: '100% 100%, 4px 4px',
-    mixBlendMode: 'soft-light',
-    opacity: 0.6,
+    opacity: 1,
   };
 }
 

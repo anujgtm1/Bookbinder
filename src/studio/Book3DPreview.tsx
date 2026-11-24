@@ -628,6 +628,7 @@ export function Book3DPreview({
           <div
             data-testid="book3d-front-face"
             className="book3d-face rounded-r-[3px] shadow-md"
+            style={{ transform: 'translateZ(0.2px)' }}
           >
             <CoverFaceSvg
               faceId="front"

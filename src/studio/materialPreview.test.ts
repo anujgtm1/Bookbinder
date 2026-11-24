@@ -56,8 +56,9 @@ describe('Non-Printing Visual Material & Foil Preview definitions', () => {
       expect(style.pointerEvents).toBe('none');
       expect(typeof style.backgroundImage).toBe('string');
       expect((style.backgroundImage ?? '').length).toBeGreaterThan(20);
-      expect(style.opacity).toBeGreaterThan(0);
-      expect(style.opacity).toBeLessThanOrEqual(1);
+      // Avoid mixBlendMode / opacity < 1 so CSS 3D backface-visibility: hidden is never broken
+      expect(style.mixBlendMode).toBeUndefined();
+      expect(style.opacity).toBe(1);
     }
 
     // Bookcloth uses repeating-linear-gradient crosshatch; leather uses radial-gradient pebbles
