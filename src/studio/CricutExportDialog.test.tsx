@@ -171,4 +171,97 @@ describe('CricutExportDialog', () => {
       URL.revokeObjectURL = origRevokeObjectUrl;
     }
   });
+
+  it('defaults geometrically to Back Cover even with stale zone metadata and shows empty-scope hint on empty panels', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const bleed = geom.outerWrap.bleedMm;
+    const backRect = {
+      x: geom.outerWrap.backBoardRect.x + bleed,
+      y: geom.outerWrap.backBoardRect.y + bleed,
+      width: geom.outerWrap.backBoardRect.width,
+      height: geom.outerWrap.backBoardRect.height,
+    };
+    // Text sits geometrically on Back Cover with stale zone: 'front'
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      textLayers: [
+        {
+          ...CoverTextLayerModel.createPreset('front-title', backRect),
+          zone: 'front' as const,
+          text: 'EX LIBRIS',
+          fontId: 'custom' as const,
+        },
+      ],
+    };
+
+    render(
+      <CricutExportDialog
+        open={true}
+        geometry={geom}
+        studio={studio}
+        customFont={TEST_CUSTOM_FONT}
+        unit="mm"
+        onOpenChange={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    // Smart default selects Back Cover geometrically
+    await waitFor(() => {
+      expect(screen.getByTestId('cricut-scope-back')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('cricut-svg-preview-img')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('cricut-empty-scope-hint')).not.toBeInTheDocument();
+
+    // Switching to Front Cover (empty) shows helpful .status-warning-surface hint pointing to Back Cover
+    await user.click(screen.getByTestId('cricut-scope-front'));
+    await waitFor(() => {
+      const hint = screen.getByTestId('cricut-empty-scope-hint');
+      expect(hint).toHaveTextContent(/No vector cut paths in this scope/i);
+      expect(hint).toHaveTextContent(/Back Cover/i);
+      expect(hint).toHaveClass('status-warning-surface');
+      expect(hint.className).not.toContain('dark:');
+    });
+  });
+
+  it('explains raster-only covers print via Printed Base PDF when no vector designs exist', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      layers: [
+        {
+          id: 'img-1',
+          dataUrl: 'data:image/png;base64,abc',
+          fileName: 'art.png',
+          naturalWidth: 1200,
+          naturalHeight: 1800,
+          xMm: 10,
+          yMm: 10,
+          widthMm: 150,
+          heightMm: 220,
+          clipZone: 'front' as const,
+        },
+      ],
+    };
+
+    render(
+      <CricutExportDialog
+        open={true}
+        geometry={geom}
+        studio={studio}
+        customFont={TEST_CUSTOM_FONT}
+        unit="mm"
+        onOpenChange={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      const hint = screen.getByTestId('cricut-empty-scope-hint');
+      expect(hint).toHaveTextContent(/Export Printed Base PDF/i);
+      expect(hint).toHaveClass('status-warning-surface');
+      expect(hint.className).not.toContain('dark:');
+    });
+  });
 });
