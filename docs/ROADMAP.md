@@ -61,6 +61,7 @@ Related docs: [SPEC.md](./SPEC.md) · [DEVELOPMENT.md](./DEVELOPMENT.md) · [DEP
 - [ ] **Phase B — Local Companion Bridge:** Optional local bridge (`pnpm affinity-bridge`) enabling a one-click *"Send to Affinity"* button via Affinity MCP or macOS `open -a` fallback.
 
 ### Next Craft Enhancements (see [FEATURE_IDEAS.md](./FEATURE_IDEAS.md))
+- [ ] **Cricut Print Then Cut Printable HTV (Transparent 300 DPI PNG) + `.svg` Artwork-Layer HTV Parsing** (isolated Front/Back/Spine transparent-background PNGs with physical `W × H` readout & Letter/Legal Print-Then-Cut bounds check, plus parsing `data:image/svg+xml` artwork layers into Basic Cut SVG paths).
 - [ ] **Bradel Binding** & **Rounded / Backed Spine Arc** calculators.
 - [ ] **Spine Thickness Estimator** (from page count & paper GSM/PPI) with measured-block confirmation reminder.
 - [ ] **Parametric Flap & Pocket Profiles** (tapered/beveled flap tips and diagonal-cut inner pockets).

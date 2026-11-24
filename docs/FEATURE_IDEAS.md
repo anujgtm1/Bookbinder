@@ -71,6 +71,14 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ---
 
+### 14. Cricut Print Then Cut Printable HTV (Transparent 300 DPI PNG) + `.svg` Artwork-Layer HTV Support
+- **Why binders ask for it:** Makers using printable heat-transfer vinyl (Siser EasyColor DTV, Cricut Printable Iron-On) want to print full-color cover art/emblems on their inkjet and have Cricut kiss-cut around the graphic—while users who drop a `.svg` silhouette into **Artwork & Fill** expect it to cut in Basic Cut HTV just like `Designs → Import SVG`.
+- **What it would do:**
+  - **Basic Cut HTV (`.SVG`) Upgrade:** Automatically parse `.svg` files placed via **Artwork & Fill** (`data:image/svg+xml` in `CoverImageLayer`) through `svgStampParser.ts` into flattened cuttable Bezier `<path>` curves in `cricutExport.ts`.
+  - **Print Then Cut HTV Mode (Transparent 300 DPI `.PNG`):** Add a second export mode inside `CricutExportDialog.tsx` exporting the isolated **Front Cover**, **Back Cover**, or **Spine** panel (artwork + text + ornaments) onto a **transparent background** (omitting the solid base cloth fill so the blade kiss-cuts cleanly around the graphic), displaying exact physical `W × H` (`in` / `mm`) dimensions to verify in Cricut Design Space, optional HTV mirror, and a live check against Cricut’s Print-Then-Cut Letter/Legal bounds (`6.75 × 9.25"` Letter).
+
+---
+
 ## Intentional Scope Guardrails & Recorded Product Decisions (What *Not* to Build)
 To keep Bookbinder fast, focused, and joyful rather than bloated:
 - **Skip full text-block signature imposition** — excellent dedicated open-source tools already exist for that (`bookbinder-js`, `Wynkyn`), and linking to them as companion tools is far better than duplicating them.
