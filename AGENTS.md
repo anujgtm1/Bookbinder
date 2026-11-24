@@ -24,10 +24,13 @@ For user docs see [`README.md`](./README.md); for module layout & scripts see [`
     - If a recent feature was awkward or touched too many files to add, treat that as a design smell and refactor toward a cleaner pattern (e.g., Strategy/Registry, shared lib, or Geometry IR).
     - Check whether modules should be split or combined, extract shared utilities into `src/lib/`, and pull static data/assets/magic strings out into `src/resources/`.
     - Audit end-to-end user-flow test coverage (`e2e/` + Vitest) and close any gaps before starting the next feature wave.
-- **Subagent Delegation Workflow:**
+- **Subagent Delegation Workflow (Git Worktrees + Branch Review):**
   - Keep the main conversation lean by acting as an orchestrator: delegate multi-file features, architecture refactors, broad codebase audits, and test-hardening passes to focused subagents with tight, explicit file scopes.
-  - Run independent subagents in parallel only when their file scopes have **zero overlap** (e.g. `src/core/` vs. `README.md`/`docs/`, or disjoint studio modules).
-  - Have subagents verify inside the sandbox (`pnpm typecheck && pnpm lint && pnpm test`) and leave the working tree uncommitted; the main agent verifies the integrated build + Playwright E2E, splits changes into tiny separated atomic commits, and pushes `develop`.
+  - Launch each subagent in its own isolated git worktree (`Workspace: 'share'`) on a dedicated short-lived branch created off `develop` (e.g., `subagent/<topic>`). Parallel subagents should still target disjoint file scopes so merges stay conflict-free.
+  - Inside its worktree branch, each subagent runs verification (`pnpm typecheck && pnpm lint && pnpm test`) and splits its own work into tiny, separated Conventional Commits (`feat(...)`, `refactor(...)`, `test(unit):`, etc.) before reporting back.
+  - When control returns to the main agent, review the subagent's commits and diff (`git log --stat develop..subagent/<topic>` and `git diff develop..subagent/<topic>`):
+    - If everything makes sense and meets architectural guardrails, integrate the branch into `develop` (prefer linear rebase/fast-forward or clean cherry-pick/merge), delete the temporary `subagent/*` branch, run the integrated Verification Gate (`typecheck`, `lint`, `test`, `build`, and Playwright E2E), and push `develop`.
+    - If a branch is off-spec, bloated, or introduces regressions, discard the branch cleanly (`git branch -D subagent/<topic>`) and relaunch a fresh subagent with sharper context instead of patching bad output onto `develop`.
   - Handle trivial 1–2 file fixes or targeted lookups directly without unnecessary delegation overhead.
 - **Verification Gate:** Before pushing feature or refactor work, run:
   ```bash
