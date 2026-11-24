@@ -24,6 +24,7 @@ import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExpor
 import { createSampleBookProject } from '@/resources/sampleProject';
 import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
+import { remapStudioForGeometryChange } from '@/studio/studioGeometryRemap';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
@@ -61,11 +62,17 @@ export function App() {
     ) {
       setActiveTab('outer');
     }
-    setProject((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      parameters,
-    }));
+    setProject((prev) => {
+      const prevGeometry = calculateCaseGeometry(prev.parameters);
+      const nextGeometry = calculateCaseGeometry(parameters);
+      const studio = remapStudioForGeometryChange(prev.studio, prevGeometry, nextGeometry);
+      return {
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        parameters,
+        studio,
+      };
+    });
   };
 
   const handleStudioChange = (studio: CoverStudioState) => {
