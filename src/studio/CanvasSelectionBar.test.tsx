@@ -365,6 +365,67 @@ describe('CanvasSelectionBar', () => {
     expect(onDetachConstraint).toHaveBeenCalledTimes(3);
     expect(callbacks.onQuickAlign).not.toHaveBeenCalled();
   });
+
+  it('keeps exactly one roving tab stop on mount, when Unpin mounts, and when Unpin unmounts', async () => {
+    const user = userEvent.setup();
+    const callbacks = createCallbacks();
+
+    function StatefulToolbar() {
+      const [layer, setLayer] = useState<CoverTextLayer>(() => makeTextLayer());
+      return (
+        <CanvasSelectionBar
+          selection={{ kind: 'text', layer }}
+          {...callbacks}
+          onQuickAlign={(slot) =>
+            setLayer((prev) => ({
+              ...prev,
+              layoutConstraint: {
+                anchorZone: 'front',
+                horizontal: { kind: 'center' },
+                vertical: {
+                  kind: slot === 'upper' ? 'top-third' : slot === 'lower' ? 'bottom-third' : 'center',
+                },
+              },
+            }))
+          }
+          onDetachConstraint={() =>
+            setLayer((prev) => ({ ...prev, layoutConstraint: undefined }))
+          }
+        />
+      );
+    }
+
+    render(<StatefulToolbar />);
+
+    const getTabbableItems = () =>
+      Array.from(
+        screen
+          .getByTestId('canvas-selection-bar')
+          .querySelectorAll<HTMLElement>('button:not([disabled]), input[type="color"]:not([disabled])'),
+      ).filter((el) => el.tabIndex === 0);
+
+    // 1. On initial mount before any focusin, exactly one toolbar item is tabbable
+    const initialTabbable = getTabbableItems();
+    expect(initialTabbable).toHaveLength(1);
+    expect(initialTabbable[0]).toBe(screen.getByTestId('selection-align-upper'));
+
+    // 2. Focus & click Center -> Unpin mounts, yet Center remains the sole tab stop
+    const centerBtn = screen.getByTestId('selection-align-center');
+    await user.click(centerBtn);
+    const unpinBtn = screen.getByTestId('selection-bar-unpin-btn');
+    expect(unpinBtn).toBeInTheDocument();
+    const afterPinTabbable = getTabbableItems();
+    expect(afterPinTabbable).toHaveLength(1);
+    expect(afterPinTabbable[0]).toBe(centerBtn);
+    expect(unpinBtn.tabIndex).toBe(-1);
+
+    // 3. Click Unpin -> Unpin unmounts, and toolbar immediately normalizes back to one tab stop
+    await user.click(unpinBtn);
+    expect(screen.queryByTestId('selection-bar-unpin-btn')).not.toBeInTheDocument();
+    const afterUnpinTabbable = getTabbableItems();
+    expect(afterUnpinTabbable).toHaveLength(1);
+    expect(afterUnpinTabbable[0]).toBe(screen.getByTestId('selection-align-upper'));
+  });
 });
 
 describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · Bottom ⅓ alignment', () => {
@@ -509,5 +570,61 @@ describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · B
 
     await user.click(screen.getByTestId('selection-delete-btn'));
     expect(latestState.textLayers).toHaveLength(1);
+  }, 15_000);
+
+  it('detaches imageFit constraint when rotating a Fit Front image from either the selection bar or sidebar', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const spec = computeStudioCanvasSpec(geom);
+
+    const coverImg = CoverImageLayerModel.createInRect({
+      id: 'img-fit-rot',
+      dataUrl: 'data:image/png;base64,AAA',
+      fileName: 'portrait-cover.png',
+      naturalWidth: 1000,
+      naturalHeight: 1500,
+      targetRect: spec.frontArtworkRect,
+      clipZone: 'front',
+    });
+
+    let latestState: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      layers: [coverImg],
+    };
+
+    function StatefulHarness() {
+      const [studio, setStudio] = useState<CoverStudioState>(latestState);
+      return (
+        <CoverStyler
+          params={DEFAULT_BOOK_PARAMETERS}
+          geometry={geom}
+          studio={studio}
+          onChange={(next) => {
+            latestState = next;
+            setStudio(next);
+          }}
+          onStatusMessage={vi.fn()}
+        />
+      );
+    }
+
+    render(<StatefulHarness />);
+
+    // 1. Pin via Fit Front -> imageFit: 'cover' active
+    await user.click(screen.getByTestId('quick-fit-front'));
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBe('cover');
+
+    // 2. Rotate 90° from selection bar -> imageFit detaches cleanly
+    await user.click(screen.getByTestId('selection-rotate-90'));
+    expect(latestState.layers[0].rotationDeg).toBe(90);
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBeUndefined();
+
+    // 3. Re-pin via Fit Front, then rotate 90° from sidebar ArtworkControlsCard -> imageFit also detaches
+    await user.click(screen.getByTestId('quick-fit-front'));
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBe('cover');
+
+    await user.click(screen.getByTestId('layer-rotate-90-btn'));
+    expect(latestState.layers[0].rotationDeg).toBe(180);
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBeUndefined();
   }, 15_000);
 });

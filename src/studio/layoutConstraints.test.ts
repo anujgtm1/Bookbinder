@@ -7,6 +7,7 @@ import { BookParametersModel, DEFAULT_BOOK_PARAMETERS, type BookParameters } fro
 import {
   CoverOrnamentLayerModel,
   CoverTextLayerModel,
+  rotateOrnament90,
   type CoverOrnamentLayer,
   type CoverTextLayer,
 } from '@/types/coverElements';
@@ -608,5 +609,69 @@ describe('Declarative Layout Constraints (Pin / Detach Conditions)', () => {
     // Second pass is idempotent and returns exact same reference
     const secondPass = applyStudioLayoutConstraints(resolved, geometry);
     expect(secondPass).toBe(resolved);
+  });
+
+  it('detaches inset-both on 90° ornament rotation via handleUpdateOrnament while preserving constraint on color/flip edits', () => {
+    const { params, geometry } = makeGeometry();
+    const spec = computeStudioCanvasSpec(geometry);
+    const frame = CoverOrnamentLayerModel.createForZone(
+      'frame-double-rule',
+      spec.frontBoardRect,
+      'front',
+      '#d9b566',
+    );
+    const harness = createActionHarness(params, {
+      ...CoverStudioModel.createDefault(),
+      ornaments: [frame],
+    });
+
+    // Pin frame to 12 mm inset-both margin
+    act(() => {
+      harness.getActions().handleFitOrnamentWithMargin(frame.id, 12);
+    });
+    harness.rerenderStudio();
+    expect(harness.getStudio().ornaments[0].layoutConstraint).toEqual({
+      anchorZone: 'front',
+      horizontal: { kind: 'inset-both', marginMm: 12 },
+      vertical: { kind: 'inset-both', marginMm: 12 },
+    });
+
+    // Color & flip edits keep 12 mm margin pin intact
+    act(() => {
+      harness.getActions().handleUpdateOrnament(frame.id, { color: '#f5efe2', flipX: true });
+    });
+    harness.rerenderStudio();
+    expect(harness.getStudio().ornaments[0].layoutConstraint).toEqual({
+      anchorZone: 'front',
+      horizontal: { kind: 'inset-both', marginMm: 12 },
+      vertical: { kind: 'inset-both', marginMm: 12 },
+    });
+
+    // Rotating 90° via ClassicDesignsCard patch shape detaches inset-both so resize won't snap it back
+    const pinnedFrame = harness.getStudio().ornaments[0];
+    const rotated = rotateOrnament90(pinnedFrame);
+    act(() => {
+      harness.getActions().handleUpdateOrnament(frame.id, {
+        xMm: rotated.xMm,
+        yMm: rotated.yMm,
+        widthMm: rotated.widthMm,
+        heightMm: rotated.heightMm,
+        rotationDeg: rotated.rotationDeg,
+      });
+    });
+    harness.rerenderStudio();
+
+    const afterRotate = harness.getStudio().ornaments[0];
+    expect(afterRotate.rotationDeg).toBe(90);
+    expect(afterRotate.layoutConstraint).toBeUndefined();
+    expect(afterRotate.widthMm).toBeGreaterThan(afterRotate.heightMm);
+
+    // Subsequent book resize keeps rotated landscape proportions instead of snapping back to portrait 12 mm inset
+    const a6Geom = makeGeometry(
+      BookParametersModel.applyPreset(DEFAULT_BOOK_PARAMETERS, 'a6-notebook'),
+    ).geometry;
+    const remapped = remapStudioForGeometryChange(harness.getStudio(), geometry, a6Geom);
+    const a6Spec = computeStudioCanvasSpec(a6Geom);
+    expect(remapped.ornaments[0].widthMm).not.toBeCloseTo(a6Spec.frontBoardRect.width - 24, 0);
   });
 });
