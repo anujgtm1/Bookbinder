@@ -161,9 +161,14 @@ export function CanvasSelectionBar({
       );
 
     const items = getItems();
-    if (items.length > 0 && !items.some((el) => el.tabIndex === 0)) {
-      items.forEach((el, idx) => {
-        el.tabIndex = idx === 0 ? 0 : -1;
+    const tabbableCount = items.filter((el) => el.tabIndex === 0).length;
+    if (items.length > 0 && tabbableCount !== 1) {
+      const activeEl =
+        document.activeElement instanceof HTMLElement && items.includes(document.activeElement)
+          ? document.activeElement
+          : items[0];
+      items.forEach((el) => {
+        el.tabIndex = el === activeEl ? 0 : -1;
       });
     }
 

@@ -635,6 +635,7 @@ export function CoverStyler({
       actions.updateLayer(activeSelection.layer.id, (layer) => ({
         ...layer,
         rotationDeg: nextQuarterTurn(layer.rotationDeg),
+        layoutConstraint: detachConstraintOnResize(layer.layoutConstraint),
       }));
     }
   };
@@ -1301,7 +1302,24 @@ export function CoverStyler({
           )
         }
         onUpdateLayer={(id, patch) =>
-          actions.updateLayer(id, (layer) => ({ ...layer, ...patch }))
+          actions.updateLayer(id, (layer) => {
+            const resizesOrRotates =
+              patch.widthMm !== undefined ||
+              patch.heightMm !== undefined ||
+              patch.rotationDeg !== undefined;
+            const hasExplicitConstraint = Object.prototype.hasOwnProperty.call(
+              patch,
+              'layoutConstraint',
+            );
+            const next = { ...layer, ...patch };
+            if (resizesOrRotates && !hasExplicitConstraint) {
+              return {
+                ...next,
+                layoutConstraint: detachConstraintOnResize(layer.layoutConstraint),
+              };
+            }
+            return next;
+          })
         }
         onReorderLayer={(id, direction) =>
           applyStudioChange({

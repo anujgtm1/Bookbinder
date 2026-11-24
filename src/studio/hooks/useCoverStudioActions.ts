@@ -243,9 +243,24 @@ export function useCoverStudioActions({
   };
 
   const handleUpdateOrnament = (id: string, patch: Partial<CoverOrnamentLayer>) => {
+    const resizesOrRotates =
+      patch.widthMm !== undefined ||
+      patch.heightMm !== undefined ||
+      patch.rotationDeg !== undefined;
+    const hasExplicitConstraint = Object.prototype.hasOwnProperty.call(patch, 'layoutConstraint');
     onChange({
       ...studio,
-      ornaments: (studio.ornaments ?? []).map((o) => (o.id === id ? { ...o, ...patch } : o)),
+      ornaments: (studio.ornaments ?? []).map((o) => {
+        if (o.id !== id) return o;
+        const next: CoverOrnamentLayer = { ...o, ...patch };
+        if (resizesOrRotates && !hasExplicitConstraint) {
+          return {
+            ...next,
+            layoutConstraint: detachConstraintOnResize(o.layoutConstraint),
+          };
+        }
+        return next;
+      }),
     });
   };
 
