@@ -11,7 +11,7 @@ import {
   evaluatePrintMediaFit,
   evaluateRollWidth,
 } from './geometry';
-import { generateInnerTemplatesPdf, planInnerTemplateLayout } from './pdfExport';
+import { generateInnerTemplatesPdf, generateOuterWrapPdf, planInnerTemplateLayout } from './pdfExport';
 import { generateInnerTemplatesSvg } from './svgExport';
 
 describe('calculateCaseGeometry', () => {
@@ -628,5 +628,104 @@ describe('calculateCaseGeometry', () => {
     const firstSize = pdfDoc.getPage(0).getSize();
     expect(UnitConverter.pointsToMm(firstSize.width)).toBeCloseTo(PAGE_SIZES.tabloid.widthMm, 2);
     expect(UnitConverter.pointsToMm(firstSize.height)).toBeCloseTo(PAGE_SIZES.tabloid.heightMm, 2);
+  });
+
+  it('evaluates roll-custom width with clamping and side margins', () => {
+    // 366 x 259 mm cover fits 300 mm custom roll (290 mm printable) rotated 90° with 31 mm spare
+    const fit300 = evaluatePrintMediaFit('roll-custom', 366, 259, 10, {
+      customRollWidthMm: 300,
+    });
+    expect(fit300.status).toBe('fits-roll');
+    expect(fit300.mediaId).toBe('roll-custom');
+    expect(fit300.summary).toContain('Custom Roll (300 mm)');
+    expect(fit300.summary).toContain('31 mm spare width');
+
+    // Too narrow: 250 mm custom roll (240 mm printable) cannot fit 366 x 259 mm -> suggests Tabloid (1-sheet fit)
+    const tooNarrow = evaluatePrintMediaFit('roll-custom', 366, 259, 10, {
+      customRollWidthMm: 250,
+    });
+    expect(tooNarrow.status).toBe('does-not-fit');
+    expect(tooNarrow.suggestedMediaId).toBe('tabloid');
+    expect(tooNarrow.summary).toContain('Custom Roll (250 mm)');
+
+    // Larger wrap exceeding Tabloid as well suggests 13" roll
+    const tooNarrowWide = evaluatePrintMediaFit('roll-custom', 460, 300, 10, {
+      customRollWidthMm: 250,
+    });
+    expect(tooNarrowWide.status).toBe('does-not-fit');
+    expect(tooNarrowWide.suggestedMediaId).toBe('roll-13');
+
+    // Out-of-range width clamps to min 200 mm (190 mm printable)
+    const clampedMin = evaluatePrintMediaFit('roll-custom', 185, 220, 10, {
+      customRollWidthMm: 100,
+    });
+    expect(clampedMin.status).toBe('fits-roll');
+    expect(clampedMin.summary).toContain('Custom Roll (200 mm)');
+
+    // Asymmetric left + right side margins reduce printable roll width
+    const tightMargins = evaluatePrintMediaFit('roll-custom', 366, 259, 10, {
+      customRollWidthMm: 280,
+      margins: { topMm: 5, bottomMm: 5, leftMm: 15, rightMm: 15 },
+    });
+    // 280 - 30 = 250 mm printable < 259 mm -> does-not-fit
+    expect(tightMargins.status).toBe('does-not-fit');
+    expect(tightMargins.summary).toContain('250 mm printable');
+  });
+
+  it('evaluates desktop cut sheets against asymmetric printer margins (bottom gripper dead zone & borderless)', () => {
+    // US Letter Landscape = 279.4 x 215.9 mm
+    // Standard 5 mm margins -> safe box = 269.4 x 205.9 mm -> 260 x 200 mm fits 1 sheet Landscape
+    const standardFit = evaluatePrintMediaFit('letter', 260, 200, 10, {
+      margins: { topMm: 5, bottomMm: 5, leftMm: 5, rightMm: 5 },
+    });
+    expect(standardFit.status).toBe('fits-1-sheet');
+    expect(standardFit.sheetPageWidthMm).toBeCloseTo(279.4, 2);
+    expect(standardFit.sheetPageHeightMm).toBeCloseTo(215.9, 2);
+
+    // Fine-Art Sheet (Top 5, Bottom 20, Left 5, Right 5):
+    // Landscape safe height = 215.9 - 25 = 190.9 mm (< 200 mm!)
+    // Portrait safe box = 205.9 x 254.4 mm -> 260 x 200 fits as 2-sheet Portrait tile!
+    const fineArtFit = evaluatePrintMediaFit('letter', 260, 200, 10, {
+      margins: { topMm: 5, bottomMm: 20, leftMm: 5, rightMm: 5 },
+    });
+    expect(fineArtFit.status).toBe('fits-2-sheet-tile');
+    expect(fineArtFit.sheetPageWidthMm).toBeCloseTo(215.9, 2);
+    expect(fineArtFit.sheetPageHeightMm).toBeCloseTo(279.4, 2);
+
+    // Roll Cut-Sheet (Bottom 30 mm): Portrait safe height = 279.4 - 35 = 244.4 mm -> 366 x 259 mm exceeds Portrait safe height!
+    const cutSheetOverflow = evaluatePrintMediaFit('letter', 366, 259, 10, {
+      margins: { topMm: 5, bottomMm: 30, leftMm: 5, rightMm: 5 },
+    });
+    expect(cutSheetOverflow.status).toBe('does-not-fit');
+
+    // Borderless (0 mm all sides): 275 x 212 mm fits 1 sheet US Letter Landscape (impossible with 5 mm margins)
+    const borderlessFit = evaluatePrintMediaFit('letter', 275, 212, 10, {
+      margins: { topMm: 0, bottomMm: 0, leftMm: 0, rightMm: 0 },
+    });
+    expect(borderlessFit.status).toBe('fits-1-sheet');
+    expect(borderlessFit.sheetPageWidthMm).toBeCloseTo(279.4, 2);
+    expect(borderlessFit.sheetPageHeightMm).toBeCloseTo(215.9, 2);
+  });
+
+  it('composes multi-up nested roll PDF with inner pieces and custom roll width via generateOuterWrapPdf', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const bytes = await generateOuterWrapPdf(geom, 'single', {
+      printMediaId: 'roll-custom',
+      customRollWidthMm: 914,
+      includeScaleBar: true,
+      rollNesting: {
+        enabled: true,
+        copies: 2,
+        gutterMm: 10,
+        packInnerPockets: true,
+        allowRotation: true,
+      },
+    });
+
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(1);
+    const sz = doc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(914, 1);
+    expect(UnitConverter.pointsToMm(sz.height)).toBeGreaterThan(250);
   });
 });

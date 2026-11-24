@@ -133,7 +133,7 @@ describe('CanvasSelectionBar', () => {
     expect(flipH).toHaveAttribute('aria-pressed', 'true');
     expect(flipV).toHaveAttribute('aria-pressed', 'false');
     expect(rotateBtn).not.toHaveAttribute('aria-pressed');
-    expect(rotateBtn).toHaveTextContent('180°');
+    expect(rotateBtn).toHaveAttribute('data-rotation', '180');
 
     await user.click(flipH);
     await user.click(flipV);
@@ -196,11 +196,44 @@ describe('CanvasSelectionBar', () => {
     expect(screen.getByTestId('selection-element-badge')).toHaveTextContent('Botanical Crest');
     expect(screen.getByTestId('selection-flip-h')).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByTestId('selection-flip-v')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('selection-rotate-90')).toHaveTextContent('270°');
+    expect(screen.getByTestId('selection-rotate-90')).toHaveAttribute('data-rotation', '270');
+    expect(screen.getByTestId('selection-rotate-90')).toHaveAccessibleName('Rotate 90° clockwise');
     expect(screen.getByTestId('selection-color-input')).toHaveValue('#f5efe2');
 
     await user.click(screen.getByTestId('selection-align-lower'));
     expect(callbacks.onQuickAlign).toHaveBeenCalledWith('lower');
+  });
+
+  it('shows contextual 6 mm / 12 mm / 18 mm margin presets for frame and corner ornaments', async () => {
+    const user = userEvent.setup();
+    const callbacks = createCallbacks();
+    const onFitMargin = vi.fn();
+    const frameOrn = makeOrnamentLayer({
+      presetId: 'frame-double-rule',
+      color: '#d9b566',
+    });
+
+    render(
+      <CanvasSelectionBar
+        selection={{ kind: 'ornament', layer: frameOrn }}
+        onFitMargin={onFitMargin}
+        {...callbacks}
+      />,
+    );
+
+    expect(screen.queryByTestId('selection-align-upper')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('selection-align-lower')).not.toBeInTheDocument();
+    expect(screen.getByTestId('selection-margin-6')).toBeInTheDocument();
+    expect(screen.getByTestId('selection-margin-12')).toBeInTheDocument();
+    expect(screen.getByTestId('selection-margin-18')).toBeInTheDocument();
+    expect(screen.getByTestId('selection-align-center')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('selection-margin-6'));
+    await user.click(screen.getByTestId('selection-margin-12'));
+    await user.click(screen.getByTestId('selection-margin-18'));
+    expect(onFitMargin).toHaveBeenNthCalledWith(1, 6);
+    expect(onFitMargin).toHaveBeenNthCalledWith(2, 12);
+    expect(onFitMargin).toHaveBeenNthCalledWith(3, 18);
   });
 
   it('renders for Image selection without foil color controls', async () => {
@@ -221,7 +254,7 @@ describe('CanvasSelectionBar', () => {
     );
     expect(screen.getByTestId('selection-element-badge')).toHaveTextContent('Image');
     expect(screen.getByTestId('selection-element-badge')).toHaveTextContent('botanical-cover.png');
-    expect(screen.getByTestId('selection-rotate-90')).toHaveTextContent('90°');
+    expect(screen.getByTestId('selection-rotate-90')).toHaveAttribute('data-rotation', '0');
 
     // Color group is omitted for raster/image layers
     expect(screen.queryByTestId('selection-color-input')).not.toBeInTheDocument();
