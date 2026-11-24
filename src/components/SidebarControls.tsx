@@ -8,6 +8,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { BindingStyleIcon } from '@/components/BindingStyleIcon';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
@@ -55,21 +56,25 @@ export interface SidebarControlsProps {
 
 interface MeasurementFieldProps {
   readonly label: string;
+  readonly ledgerCode?: string;
   readonly valueMm: number;
   readonly unit: UnitSystem;
   readonly minMm: number;
   readonly maxMm: number;
   readonly testId?: string;
+  readonly compactRow?: boolean;
   readonly onCommitMm: (mm: number) => void;
 }
 
 function MeasurementField({
   label,
+  ledgerCode,
   valueMm,
   unit,
   minMm,
   maxMm,
   testId,
+  compactRow = false,
   onCommitMm,
 }: MeasurementFieldProps) {
   const inputId = useId();
@@ -86,38 +91,60 @@ function MeasurementField({
   const minDisplay = UnitConverter.toDisplay(minMm, unit);
   const maxDisplay = UnitConverter.toDisplay(maxMm, unit);
 
+  const inputEl = (
+    <Input
+      id={inputId}
+      data-testid={testId}
+      type="number"
+      inputMode="decimal"
+      step={UnitConverter.stepForUnit(unit)}
+      min={Number(minDisplay.toFixed(2))}
+      max={Number(maxDisplay.toFixed(2))}
+      value={draft}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => {
+        setIsFocused(false);
+        setDraft(UnitConverter.formatValue(valueMm, unit));
+      }}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        const numeric = Number.parseFloat(raw);
+        if (Number.isFinite(numeric)) {
+          const mm = UnitConverter.fromDisplay(numeric, unit);
+          const clamped = Math.min(maxMm, Math.max(minMm, mm));
+          onCommitMm(clamped);
+        }
+      }}
+      className={compactRow ? 'h-7 px-2 text-right font-mono text-xs' : 'font-mono'}
+    />
+  );
+
+  if (compactRow) {
+    return (
+      <div className="grid grid-cols-[minmax(0,1fr)_86px] items-center gap-2 px-2.5 py-1.5">
+        <div className="min-w-0">
+          <Label htmlFor={inputId} className="block truncate text-xs font-medium text-foreground">
+            {label}
+          </Label>
+          {ledgerCode && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              {ledgerCode} · {unit}
+            </span>
+          )}
+        </div>
+        {inputEl}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
         <Label htmlFor={inputId}>{label}</Label>
         <span className="font-mono text-[11px] text-muted-foreground">{unit}</span>
       </div>
-      <Input
-        id={inputId}
-        data-testid={testId}
-        type="number"
-        inputMode="decimal"
-        step={UnitConverter.stepForUnit(unit)}
-        min={Number(minDisplay.toFixed(2))}
-        max={Number(maxDisplay.toFixed(2))}
-        value={draft}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => {
-          setIsFocused(false);
-          setDraft(UnitConverter.formatValue(valueMm, unit));
-        }}
-        onChange={(e) => {
-          const raw = e.target.value;
-          setDraft(raw);
-          const numeric = Number.parseFloat(raw);
-          if (Number.isFinite(numeric)) {
-            const mm = UnitConverter.fromDisplay(numeric, unit);
-            const clamped = Math.min(maxMm, Math.max(minMm, mm));
-            onCommitMm(clamped);
-          }
-        }}
-        className="font-mono"
-      />
+      {inputEl}
     </div>
   );
 }
@@ -161,17 +188,22 @@ export function SidebarControls({
     <aside
       id="book-spec-rail"
       aria-label="Case Dimensions and Settings"
-      className="flex flex-col gap-4 rounded-lg border border-border border-t-2 border-t-brass-bright/75 bg-card p-4 shadow-xs lg:sticky lg:top-[58px] lg:max-h-[calc(100vh-74px)] lg:overflow-y-auto"
+      className="washi-sheet flex flex-col gap-3.5 rounded-md border border-border border-t-2 border-t-vermilion p-3.5 lg:sticky lg:top-[64px] lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto"
     >
-      {/* Folio Rail Title & Unit System Toggle */}
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-serif text-sm font-semibold tracking-tight text-foreground">
-          Book Specifications
-        </span>
+      {/* Washi Spec Sheet Title & Sharp Sumi-Ink Unit Toggle */}
+      <div className="flex items-center justify-between gap-2 border-b border-border/80 pb-2.5">
+        <div>
+          <span className="block font-serif text-base font-semibold leading-tight tracking-tight text-foreground">
+            Book Specifications
+          </span>
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground">
+            SPEC LEDGER · 01
+          </span>
+        </div>
         <div
           role="group"
           aria-label="Unit system"
-          className="inline-flex rounded-full border border-input bg-muted/80 p-0.5"
+          className="inline-flex rounded-[3px] border border-input bg-secondary/80 p-0.5"
         >
           {(['mm', 'in'] as const).map((unitOption) => {
             const active = params.unit === unitOption;
@@ -182,9 +214,9 @@ export function SidebarControls({
                 aria-pressed={active}
                 data-testid={`unit-toggle-${unitOption}`}
                 onClick={() => update({ unit: unitOption })}
-                className={`min-w-10 rounded-full px-2.5 py-0.5 font-mono text-xs font-medium transition-colors cursor-pointer ${
+                className={`min-w-9 rounded-[2px] px-2 py-0.5 font-mono text-xs font-medium motion-safe:transition-colors cursor-pointer ${
                   active
-                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    ? 'bg-primary text-primary-foreground shadow-2xs'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -195,9 +227,36 @@ export function SidebarControls({
         </div>
       </div>
 
-      {/* Binding Style Selector */}
-      <div className="space-y-1.5">
+      {/* Binding Style Selector + Architectural Cross-Section Diagrams */}
+      <div className="space-y-2">
         <Label htmlFor="binding-style">Binding Style</Label>
+        <div
+          role="group"
+          aria-label="Binding style quick diagrams"
+          className="grid grid-cols-5 gap-1"
+        >
+          {BINDING_STYLES.map((style) => {
+            const active = params.bindingStyle === style.id;
+            return (
+              <button
+                key={style.id}
+                type="button"
+                aria-pressed={active}
+                aria-label={style.label}
+                title={style.label}
+                data-testid={`binding-diagram-${style.id}`}
+                onClick={() => update({ bindingStyle: style.id })}
+                className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-[2px] border px-0.5 py-1 motion-safe:transition-colors ${
+                  active
+                    ? 'border-vermilion bg-card text-foreground shadow-2xs ring-1 ring-vermilion/30'
+                    : 'border-border/80 bg-secondary/40 text-muted-foreground hover:border-foreground/35 hover:bg-card/80 hover:text-foreground'
+                }`}
+              >
+                <BindingStyleIcon style={style.id} className="h-5 w-9" showLabel />
+              </button>
+            );
+          })}
+        </div>
         <Select
           value={params.bindingStyle}
           onValueChange={(val) => update({ bindingStyle: val as BindingStyle })}
@@ -219,7 +278,7 @@ export function SidebarControls({
             type="button"
             data-testid="recommend-flexible-spine-btn"
             onClick={() => update({ bindingStyle: 'flexible-spine' })}
-            className="w-full cursor-pointer rounded-md border border-brass/50 bg-brass/10 px-2.5 py-1.5 text-left text-[11px] font-medium text-foreground transition-colors hover:bg-brass/20"
+            className="w-full cursor-pointer rounded-md border border-brass/50 bg-brass/10 px-2.5 py-1.5 text-left text-[11px] font-medium text-foreground motion-safe:transition-colors hover:bg-brass/20"
           >
             Tip: Thin book ({params.pbThicknessMm} mm) — switch to{' '}
             <strong className="underline">Flexible Spine</strong>
@@ -404,38 +463,47 @@ export function SidebarControls({
         </Select>
       </div>
 
-      {/* Primary Paperback Dimensions */}
-      <fieldset className="space-y-2.5">
-        <legend className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Paperback Dimensions
+      {/* Primary Paperback Dimensions — Compact Ruled Ledger */}
+      <fieldset className="space-y-1.5">
+        <legend className="mb-1 flex w-full items-center justify-between font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          <span>Paperback Dimensions</span>
+          <span>H · W · SPINE</span>
         </legend>
-        <MeasurementField
-          label="Height / Length (PB_H)"
-          valueMm={params.pbHeightMm}
-          unit={params.unit}
-          minMm={BOOK_PARAM_BOUNDS.pbHeightMm.min}
-          maxMm={BOOK_PARAM_BOUNDS.pbHeightMm.max}
-          testId="input-pb-height"
-          onCommitMm={(pbHeightMm) => update({ pbHeightMm })}
-        />
-        <MeasurementField
-          label="Width (PB_W)"
-          valueMm={params.pbWidthMm}
-          unit={params.unit}
-          minMm={BOOK_PARAM_BOUNDS.pbWidthMm.min}
-          maxMm={BOOK_PARAM_BOUNDS.pbWidthMm.max}
-          testId="input-pb-width"
-          onCommitMm={(pbWidthMm) => update({ pbWidthMm })}
-        />
-        <MeasurementField
-          label="Spine Thickness (PB_THICK)"
-          valueMm={params.pbThicknessMm}
-          unit={params.unit}
-          minMm={BOOK_PARAM_BOUNDS.pbThicknessMm.min}
-          maxMm={BOOK_PARAM_BOUNDS.pbThicknessMm.max}
-          testId="input-pb-thickness"
-          onCommitMm={(pbThicknessMm) => update({ pbThicknessMm })}
-        />
+        <div className="divide-y divide-border/80 rounded-md border border-border/90 bg-card/70">
+          <MeasurementField
+            label="Height / Length"
+            ledgerCode="PB_H"
+            valueMm={params.pbHeightMm}
+            unit={params.unit}
+            minMm={BOOK_PARAM_BOUNDS.pbHeightMm.min}
+            maxMm={BOOK_PARAM_BOUNDS.pbHeightMm.max}
+            testId="input-pb-height"
+            compactRow
+            onCommitMm={(pbHeightMm) => update({ pbHeightMm })}
+          />
+          <MeasurementField
+            label="Width"
+            ledgerCode="PB_W"
+            valueMm={params.pbWidthMm}
+            unit={params.unit}
+            minMm={BOOK_PARAM_BOUNDS.pbWidthMm.min}
+            maxMm={BOOK_PARAM_BOUNDS.pbWidthMm.max}
+            testId="input-pb-width"
+            compactRow
+            onCommitMm={(pbWidthMm) => update({ pbWidthMm })}
+          />
+          <MeasurementField
+            label="Spine Thickness"
+            ledgerCode="PB_THICK"
+            valueMm={params.pbThicknessMm}
+            unit={params.unit}
+            minMm={BOOK_PARAM_BOUNDS.pbThicknessMm.min}
+            maxMm={BOOK_PARAM_BOUNDS.pbThicknessMm.max}
+            testId="input-pb-thickness"
+            compactRow
+            onCommitMm={(pbThicknessMm) => update({ pbThicknessMm })}
+          />
+        </div>
       </fieldset>
 
       {/* Target Print Media Selector */}

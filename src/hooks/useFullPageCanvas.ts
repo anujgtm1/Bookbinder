@@ -7,7 +7,7 @@ export const FULL_PAGE_STAGE_DEFAULT_CLASS =
   'relative h-[470px] w-full border-y sm:h-[510px]';
 
 export const FULL_PAGE_EXIT_BUTTON_CLASS =
-  'pointer-events-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-brass-bright/45 bg-[#12211d]/92 px-3 py-1.5 text-xs font-medium text-[#f6efe2] shadow-lg backdrop-blur-md transition-colors hover:border-brass-bright/80 hover:bg-[#19302a]';
+  'pointer-events-auto inline-flex cursor-pointer items-center gap-1.5 rounded-[3px] border border-brass-bright/55 bg-[#111413]/95 px-3 py-1.5 text-xs font-medium text-[#f5efe4] shadow-lg backdrop-blur-md motion-safe:transition-colors hover:border-brass-bright hover:bg-[#19201e]';
 
 export function getFullPageStageClass(isExpanded: boolean): string {
   return isExpanded ? FULL_PAGE_STAGE_EXPANDED_CLASS : FULL_PAGE_STAGE_DEFAULT_CLASS;
