@@ -23,6 +23,11 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { evaluateFlapDepth, resolveBindingStrategy } from '@/core/bindingStyles';
 import { calculateMaxSlipFlapForSheetMm, resolveSlipFlapWidthMm } from '@/core/geometry';
+import {
+  CUSTOM_ROLL_WIDTH_BOUNDS,
+  loadSavedCustomRollWidthMm,
+  saveCustomRollWidthMm,
+} from '@/core/printerMargins';
 import { A4_SHEET, ROLL_TOTAL_MARGIN_MM, US_LETTER_SHEET } from '@/resources/paperSpecs';
 import {
   BINDING_STYLES,
@@ -438,7 +443,17 @@ export function SidebarControls({
         <Label htmlFor="print-media">Target Print Media</Label>
         <Select
           value={params.printMedia}
-          onValueChange={(val) => update({ printMedia: val as PrintMediaId })}
+          onValueChange={(val) => {
+            const nextMedia = val as PrintMediaId;
+            if (nextMedia === 'roll-custom' && params.customRollWidthMm === undefined) {
+              update({
+                printMedia: nextMedia,
+                customRollWidthMm: loadSavedCustomRollWidthMm(),
+              });
+            } else {
+              update({ printMedia: nextMedia });
+            }
+          }}
         >
           <SelectTrigger id="print-media" data-testid="print-media-select">
             <SelectValue />
@@ -451,6 +466,22 @@ export function SidebarControls({
             ))}
           </SelectContent>
         </Select>
+        {params.printMedia === 'roll-custom' && (
+          <div className="rounded-md border border-border/80 bg-secondary/35 p-2.5">
+            <MeasurementField
+              label="Custom Roll Width"
+              valueMm={params.customRollWidthMm ?? CUSTOM_ROLL_WIDTH_BOUNDS.defaultMm}
+              unit={params.unit}
+              minMm={CUSTOM_ROLL_WIDTH_BOUNDS.minMm}
+              maxMm={CUSTOM_ROLL_WIDTH_BOUNDS.maxMm}
+              testId="sidebar-custom-roll-width"
+              onCommitMm={(customRollWidthMm) => {
+                saveCustomRollWidthMm(customRollWidthMm);
+                update({ customRollWidthMm });
+              }}
+            />
+          </div>
+        )}
         <p className="text-[11px] leading-snug text-muted-foreground">
           {(() => {
             const spec = getPrintMediaSpec(params.printMedia);

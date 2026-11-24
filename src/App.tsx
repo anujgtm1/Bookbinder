@@ -103,6 +103,9 @@ export function App() {
         includeScaleBar: options?.includeScaleBar,
         appendInnerPocketsPage: options?.appendInnerPocketsPage,
         innerPageSizeId: options?.innerPageSizeId ?? project.parameters.pdfPageSize,
+        customRollWidthMm: options?.customRollWidthMm ?? project.parameters.customRollWidthMm,
+        printerMargins: options?.printerMargins,
+        rollNesting: options?.rollNesting,
       });
       const filename =
         effectiveSplitMode === 'three-piece'

@@ -107,6 +107,9 @@ export function MeasureAndCutPanel({
       includeScaleBar: selection.includeScaleBar,
       appendInnerPocketsPage: selection.appendInnerPocketsPage,
       innerPageSizeId: selection.pageSizeId,
+      customRollWidthMm: selection.customRollWidthMm,
+      printerMargins: selection.printerMargins,
+      rollNesting: selection.rollNesting,
     });
   };
 
