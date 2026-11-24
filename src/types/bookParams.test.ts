@@ -272,4 +272,30 @@ describe('BookParametersModel', () => {
     });
     expect(invalid.softcoverPocketMode).toBeUndefined();
   });
+
+  it('parses, preserves, and serializes interiorStyle cleanly with undefined default for backwards compatibility', () => {
+    const defaults = BookParametersModel.createDefault();
+    expect(defaults.interiorStyle).toBeUndefined();
+
+    const folded = BookParametersModel.clampAndNormalize({
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(folded.interiorStyle).toBe('folded-endpapers');
+
+    const roundTripped = BookParametersModel.deserialize(BookParametersModel.serialize(folded));
+    expect(roundTripped.interiorStyle).toBe('folded-endpapers');
+
+    const slip = BookParametersModel.clampAndNormalize({
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'slip-pockets',
+    });
+    expect(slip.interiorStyle).toBe('slip-pockets');
+
+    const invalid = BookParametersModel.deserialize({
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'bogus-interior',
+    });
+    expect(invalid.interiorStyle).toBeUndefined();
+  });
 });

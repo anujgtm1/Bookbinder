@@ -1,6 +1,8 @@
+import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
+import { DEFAULT_BOOK_PARAMETERS, PAGE_SIZES } from '@/types/bookParams';
 import { GeometryPrimitives } from '@/types/geometry';
+import { UnitConverter } from '@/types/units';
 import {
   calculateCaseGeometry,
   calculateChipboardCutList,
@@ -9,6 +11,8 @@ import {
   evaluatePrintMediaFit,
   evaluateRollWidth,
 } from './geometry';
+import { generateInnerTemplatesPdf, planInnerTemplateLayout } from './pdfExport';
+import { generateInnerTemplatesSvg } from './svgExport';
 
 describe('calculateCaseGeometry', () => {
   it('computes exact default chipboard cut list from SPEC.md', () => {
@@ -519,5 +523,110 @@ describe('calculateCaseGeometry', () => {
     expect(frontPocket.scoreLines).toHaveLength(1);
     expect(frontPocket.scoreLines[0]?.x1).toBeCloseTo(76.32, 2);
     expect(frontPocket.glueFlapPolygons).toHaveLength(1);
+  });
+
+  it('computes Folded Glue-In Endpapers (2 × PB_W × PB_H, 0 glue flaps, 1 center fold) for chipboard hardcovers', () => {
+    // Default slip-pockets mode
+    const defaultGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    expect(defaultGeom.interiorStyle).toBe('slip-pockets');
+    expect(defaultGeom.frontPocket.kind).toBe('slip-pocket');
+    expect(defaultGeom.backPocket.kind).toBe('slip-pocket');
+
+    // Rigid 3-board hardcover with folded-endpapers
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(foldedGeom.interiorStyle).toBe('folded-endpapers');
+
+    for (const [side, piece] of [
+      ['back', foldedGeom.backPocket],
+      ['front', foldedGeom.frontPocket],
+    ] as const) {
+      expect(piece.kind).toBe('folded-endpaper');
+      expect(piece.side).toBe(side);
+      expect(piece.label).toBe(side === 'front' ? 'Front Folded Endpaper' : 'Back Folded Endpaper');
+      expect(piece.pocketWidthMm).toBe(140);
+      expect(piece.pocketHeightMm).toBe(216);
+      expect(piece.flapWidthMm).toBe(0);
+      expect(piece.totalWidthMm).toBe(280);
+      expect(piece.totalHeightMm).toBe(216);
+      expect(piece.outerCutPolygon).toEqual([
+        { x: 0, y: 0 },
+        { x: 280, y: 0 },
+        { x: 280, y: 216 },
+        { x: 0, y: 216 },
+      ]);
+      expect(piece.faceRect).toEqual({ x: 0, y: 0, width: 280, height: 216 });
+      expect(piece.glueFlapPolygons).toHaveLength(0);
+      expect(piece.scoreLines).toEqual([
+        { x1: 140, y1: 0, x2: 140, y2: 216, label: 'Center Fold (Pastedown / Flyleaf)' },
+      ]);
+    }
+
+    // Flexible-spine (2-board chipboard) also supports folded-endpapers
+    const flexFolded = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'flexible-spine',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(flexFolded.frontPocket.kind).toBe('folded-endpaper');
+    expect(flexFolded.frontPocket.totalWidthMm).toBe(210);
+    expect(flexFolded.frontPocket.totalHeightMm).toBe(148);
+    expect(flexFolded.frontPocket.glueFlapPolygons).toHaveLength(0);
+    expect(flexFolded.frontPocket.scoreLines).toHaveLength(1);
+
+    // Boardless softcover-jacket (separate pockets) stays untouched even if interiorStyle is set
+    const separateSoft = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(separateSoft.frontPocket.kind).toBe('slip-pocket');
+    expect(separateSoft.frontPocket.outerCutPolygon).toHaveLength(6);
+    expect(separateSoft.frontPocket.glueFlapPolygons).toHaveLength(1);
+  });
+
+  it('exports valid SVG and PDF templates for Folded Glue-In Endpapers with zero glue flaps and center fold score lines', async () => {
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'folded-endpapers',
+    });
+
+    // SVG export compatibility
+    const svg = generateInnerTemplatesSvg(foldedGeom);
+    expect(svg).toContain('FOLDED ENDPAPERS (PASTEDOWN + FLYLEAF) &amp; SPINE LINER');
+    expect(svg).toContain('data-label="Back Folded Endpaper"');
+    expect(svg).toContain('data-label="Front Folded Endpaper"');
+    expect(svg).toContain('data-label="Center Fold (Pastedown / Flyleaf)"');
+    expect(svg).toContain('PASTEDOWN');
+    expect(svg).toContain('FLYLEAF');
+    expect(svg).not.toContain('OPEN EDGE:');
+    expect(svg).not.toContain('Shaded = Apply Glue Here');
+    // Glue-flaps layer contains zero paths
+    const glueGroupMatch = svg.match(/<g id="glue-flaps"[^>]*>([\s\S]*?)<\/g>/);
+    expect(glueGroupMatch?.[1].trim()).toBe('');
+
+    // PDF export compatibility (Tabloid packs 280x216 sheets cleanly rotated 90° without clipping)
+    const tabloidPlan = planInnerTemplateLayout(foldedGeom, 'tabloid', { includeLegend: true });
+    expect(tabloidPlan.placements.every((p) => !p.clipped)).toBe(true);
+
+    const { bytes, plan } = await generateInnerTemplatesPdf(foldedGeom, 'tabloid', {
+      includeLegend: true,
+    });
+    expect(bytes.byteLength).toBeGreaterThan(1000);
+    const pdfDoc = await PDFDocument.load(bytes);
+    expect(pdfDoc.getPageCount()).toBe(plan.pageCount);
+    expect(pdfDoc.getTitle()).toBe(
+      'Bookbinder — Folded Endpapers (Pastedown + Flyleaf) & Spine Liner',
+    );
+    const firstSize = pdfDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(firstSize.width)).toBeCloseTo(PAGE_SIZES.tabloid.widthMm, 2);
+    expect(UnitConverter.pointsToMm(firstSize.height)).toBeCloseTo(PAGE_SIZES.tabloid.heightMm, 2);
   });
 });

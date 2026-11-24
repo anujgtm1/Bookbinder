@@ -1,11 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { calculateCaseGeometry } from '@/core/geometry';
+import * as storage from '@/core/storage';
 import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
 import { MeasureAndCutPanel } from './MeasureAndCutPanel';
 
 describe('MeasureAndCutPanel', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   it('renders the full CutListCard, blueprint canvas with CAD dimensions, and export buttons', async () => {
     const user = userEvent.setup();
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
@@ -134,5 +138,45 @@ describe('MeasureAndCutPanel', () => {
     expect(stage).toHaveAttribute('data-expanded', 'true');
     await user.click(screen.getByTestId('measure-exit-fullscreen-btn'));
     expect(stage).toHaveAttribute('data-expanded', 'false');
+  });
+
+  it('downloads the Printable Bench Recipe & Cutting Jigs PDF and renders the collapsible SlipcaseCard', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const onStatusMessage = vi.fn();
+    const bytesDownloadSpy = vi.spyOn(storage, 'triggerBytesDownload').mockImplementation(() => {});
+
+    render(
+      <MeasureAndCutPanel
+        geometry={geom}
+        params={DEFAULT_BOOK_PARAMETERS}
+        bookTitle="Twenty Thousand Leagues"
+        splitMode="single"
+        pageSizeId="letter"
+        unit="mm"
+        onDownloadOuterSvg={vi.fn()}
+        onDownloadOuterPdf={vi.fn()}
+        onStatusMessage={onStatusMessage}
+      />,
+    );
+
+    const benchBtn = screen.getByTestId('measure-download-bench-jigs-btn');
+    expect(benchBtn).toHaveAccessibleName('Download Printable Bench Recipe and Cutting Jigs PDF');
+
+    await user.click(benchBtn);
+    await waitFor(() => {
+      expect(bytesDownloadSpy).toHaveBeenCalledTimes(1);
+    });
+    const [bytes, filename, mimeType] = bytesDownloadSpy.mock.calls[0];
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    expect(bytes.byteLength).toBeGreaterThan(1500);
+    expect(filename).toBe('bindery_bench_recipe_and_jigs.pdf');
+    expect(mimeType).toBe('application/pdf');
+    expect(onStatusMessage).toHaveBeenCalledWith('Exported bindery_bench_recipe_and_jigs.pdf');
+
+    // Matching Slipcase Calculator card is mounted below the blueprint and expands cleanly
+    expect(screen.getByTestId('slipcase-card')).toBeInTheDocument();
+    await user.click(screen.getByTestId('toggle-slipcase-calculator'));
+    expect(screen.getByTestId('slipcase-cut-table')).toBeInTheDocument();
   });
 });

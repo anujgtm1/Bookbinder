@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
+import { CoverOrnamentLayerModel, CoverTextLayerModel } from '@/types/coverElements';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { CoverImageLayerModel } from '@/types/studioLayer';
 import { CoverStyler } from './CoverStyler';
@@ -363,5 +365,206 @@ describe('CoverStyler', () => {
     await user.keyboard('{Escape}');
     expect(stage).toHaveAttribute('data-expanded', 'false');
     expect(screen.queryByTestId('studio-exit-fullscreen-btn')).not.toBeInTheDocument();
+  });
+
+  it('supports Undo & Redo buttons and Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z shortcuts cleanly', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const initialLayer = CoverImageLayerModel.createInRect({
+      id: 'layer-history',
+      dataUrl: 'data:image/png;base64,AAA',
+      fileName: 'cover-art.png',
+      naturalWidth: 1000,
+      naturalHeight: 1500,
+      targetRect: { x: 200, y: 20, width: 140, height: 210 },
+    });
+    const onStatusMessage = vi.fn();
+    let latestState: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      layers: [initialLayer],
+    };
+
+    function StatefulHarness() {
+      const [studio, setStudio] = useState<CoverStudioState>(latestState);
+      return (
+        <CoverStyler
+          params={DEFAULT_BOOK_PARAMETERS}
+          geometry={geom}
+          studio={studio}
+          onChange={(next) => {
+            latestState = next;
+            setStudio(next);
+          }}
+          onStatusMessage={onStatusMessage}
+        />
+      );
+    }
+
+    render(<StatefulHarness />);
+
+    const undoBtn = screen.getByTestId('studio-undo-btn');
+    const redoBtn = screen.getByTestId('studio-redo-btn');
+    const duplicateBtn = screen.getByTestId('studio-duplicate-btn');
+
+    // Action buttons must never carry aria-pressed
+    expect(undoBtn).not.toHaveAttribute('aria-pressed');
+    expect(redoBtn).not.toHaveAttribute('aria-pressed');
+    expect(duplicateBtn).not.toHaveAttribute('aria-pressed');
+    expect(undoBtn).toBeDisabled();
+    expect(redoBtn).toBeDisabled();
+
+    const originalWidth = latestState.layers[0].widthMm;
+    await user.click(screen.getByTestId('quick-fit-fullWrap'));
+    const fittedWidth = latestState.layers[0].widthMm;
+    expect(fittedWidth).toBeGreaterThan(originalWidth);
+    expect(undoBtn).toBeEnabled();
+
+    // Undo via header button
+    await user.click(undoBtn);
+    expect(latestState.layers[0].widthMm).toBe(originalWidth);
+    expect(onStatusMessage).toHaveBeenLastCalledWith('Undid last change');
+    expect(redoBtn).toBeEnabled();
+
+    // Redo via header button
+    await user.click(redoBtn);
+    expect(latestState.layers[0].widthMm).toBe(fittedWidth);
+    expect(onStatusMessage).toHaveBeenLastCalledWith('Redid change');
+
+    // Undo via Cmd/Ctrl+Z and Redo via Cmd/Ctrl+Shift+Z
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(latestState.layers[0].widthMm).toBe(originalWidth);
+
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(latestState.layers[0].widthMm).toBe(fittedWidth);
+  });
+
+  it('supports Cmd/Ctrl+D duplicate, Cmd/Ctrl+C/V copy-paste, and Arrow-key nudge without hijacking text inputs', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const frontRect = {
+      x: geom.outerWrap.bleedMm + geom.outerWrap.frontBoardRect.x,
+      y: geom.outerWrap.bleedMm + geom.outerWrap.frontBoardRect.y,
+      width: geom.outerWrap.frontBoardRect.width,
+      height: geom.outerWrap.frontBoardRect.height,
+    };
+    const initialText = CoverTextLayerModel.createPreset('front-title', frontRect, {
+      fontId: 'eb-garamond',
+      color: '#f5efe0',
+    });
+    const initialOrnament = CoverOrnamentLayerModel.createForZone(
+      'frame-double-rule',
+      frontRect,
+      'front',
+      '#d4af37',
+    );
+    const onStatusMessage = vi.fn();
+
+    let latestState: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      textLayers: [initialText],
+      ornaments: [initialOrnament],
+    };
+
+    function StatefulHarness() {
+      const [studio, setStudio] = useState<CoverStudioState>(latestState);
+      return (
+        <CoverStyler
+          params={DEFAULT_BOOK_PARAMETERS}
+          geometry={geom}
+          studio={studio}
+          onChange={(next) => {
+            latestState = next;
+            setStudio(next);
+          }}
+          onStatusMessage={onStatusMessage}
+        />
+      );
+    }
+
+    render(<StatefulHarness />);
+
+    // Select text layer on canvas
+    await user.click(screen.getByTestId('studio-cover-text-0'));
+
+    // Cmd/Ctrl+D duplicates selected text layer
+    fireEvent.keyDown(window, { key: 'd', metaKey: true });
+    expect(latestState.textLayers).toHaveLength(2);
+    expect(onStatusMessage).toHaveBeenLastCalledWith('Duplicated element');
+
+    // ArrowRight nudges selected (duplicated) text layer by 1 mm; Shift+ArrowDown nudges by 5 mm
+    const duplicatedBeforeX = latestState.textLayers[1].xMm;
+    const duplicatedBeforeY = latestState.textLayers[1].yMm;
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(latestState.textLayers[1].xMm).toBeCloseTo(duplicatedBeforeX + 1, 2);
+    fireEvent.keyDown(window, { key: 'ArrowDown', shiftKey: true });
+    expect(latestState.textLayers[1].yMm).toBeCloseTo(duplicatedBeforeY + 5, 2);
+
+    // Arrow keys inside an editable input MUST NOT nudge the selected element
+    await user.click(screen.getByTestId('studio-tool-spine'));
+    const spineTitleInput = screen.getByTestId('studio-spine-title-input');
+    const xBeforeInputKey = latestState.textLayers[1].xMm;
+    fireEvent.keyDown(spineTitleInput, { key: 'ArrowRight' });
+    expect(latestState.textLayers[1].xMm).toBe(xBeforeInputKey);
+
+    // Select ornament -> Cmd/Ctrl+C then Cmd/Ctrl+V copies & pastes ornament
+    await user.click(screen.getByTestId('studio-ornament-0'));
+    fireEvent.keyDown(window, { key: 'c', ctrlKey: true });
+    expect(onStatusMessage).toHaveBeenLastCalledWith('Copied element');
+
+    fireEvent.keyDown(window, { key: 'v', ctrlKey: true });
+    expect(latestState.ornaments).toHaveLength(2);
+    expect(onStatusMessage).toHaveBeenLastCalledWith('Pasted element');
+    expect(latestState.ornaments[1].id).not.toBe(latestState.ornaments[0].id);
+  });
+
+  it('toggles non-printing surface material and foil finish visual previews in 2D and 3D without mutating studio state', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const onChange = vi.fn();
+
+    render(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={{
+          ...CoverStudioModel.createDefault(),
+          spineText: {
+            ...CoverStudioModel.createDefault().spineText,
+            title: 'The Left Hand of Darkness',
+          },
+        }}
+        onChange={onChange}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    // Default matte-paper renders no extra 2D texture overlay
+    expect(screen.queryByTestId('cover2d-material-overlay')).not.toBeInTheDocument();
+
+    // Select bookcloth-linen in 2D -> renders non-printing 2D texture overlay
+    await user.click(screen.getByTestId('material-bookcloth-linen'));
+    expect(screen.getByTestId('material-bookcloth-linen')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('cover2d-material-overlay')).toHaveAttribute(
+      'data-material',
+      'bookcloth-linen',
+    );
+
+    // Switch to 3D Book -> select pebbled-leather + gold-foil
+    await user.click(screen.getByTestId('studio-view-3d-btn'));
+    await user.click(screen.getByTestId('material-pebbled-leather'));
+    await user.click(screen.getByTestId('foil-gold-foil'));
+
+    expect(screen.getByTestId('book3d-stage')).toHaveAttribute('data-material', 'pebbled-leather');
+    expect(screen.getByTestId('book3d-stage')).toHaveAttribute('data-foil-finish', 'gold-foil');
+    expect(screen.getByTestId('book3d-front-material-overlay')).toHaveAttribute(
+      'data-material',
+      'pebbled-leather',
+    );
+    expect(screen.getByTestId('book3d-foil-gradient-spine')).toHaveAttribute(
+      'data-foil-finish',
+      'gold-foil',
+    );
+    // Purely visual preview: never mutates persisted studio state
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
