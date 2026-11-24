@@ -42,12 +42,18 @@ import {
   type PrintMediaId,
   type SplitMode,
 } from '@/types/bookParams';
+import { rotateOrnament90 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
-import { CoverImageLayerModel } from '@/types/studioLayer';
+import { CoverImageLayerModel, nextQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
 import type { EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
+import {
+  CanvasSelectionBar,
+  type CanvasSelectionTarget,
+  type VerticalAlignSlot,
+} from './CanvasSelectionBar';
 import { CoverCanvas2D } from './CoverCanvas2D';
 import { CoverStudioToolDock, type StudioToolTab } from './CoverStudioToolDock';
 import { CoverWorkbenchHeader } from './CoverWorkbenchHeader';
@@ -539,15 +545,135 @@ export function CoverStyler({
     () => studio.layers.find((l) => l.id === selectedLayerId) ?? null,
     [studio.layers, selectedLayerId],
   );
-  const hasSelectedElement = useMemo(
+  const selectedTextLayer = useMemo(
     () =>
-      Boolean(
-        selectedLayer ||
-          (selectedTextId && (studio.textLayers ?? []).some((t) => t.id === selectedTextId)) ||
-          (selectedOrnamentId && (studio.ornaments ?? []).some((o) => o.id === selectedOrnamentId)),
-      ),
-    [selectedLayer, selectedTextId, selectedOrnamentId, studio.textLayers, studio.ornaments],
+      selectedTextId
+        ? ((studio.textLayers ?? []).find((t) => t.id === selectedTextId) ?? null)
+        : null,
+    [studio.textLayers, selectedTextId],
   );
+  const selectedOrnamentLayer = useMemo(
+    () =>
+      selectedOrnamentId
+        ? ((studio.ornaments ?? []).find((o) => o.id === selectedOrnamentId) ?? null)
+        : null,
+    [studio.ornaments, selectedOrnamentId],
+  );
+  const activeSelection = useMemo<CanvasSelectionTarget | null>(() => {
+    if (selectedTextLayer) return { kind: 'text', layer: selectedTextLayer };
+    if (selectedOrnamentLayer) return { kind: 'ornament', layer: selectedOrnamentLayer };
+    if (selectedLayer) return { kind: 'image', layer: selectedLayer };
+    return null;
+  }, [selectedTextLayer, selectedOrnamentLayer, selectedLayer]);
+  const hasSelectedElement = activeSelection !== null;
+
+  const handleSelectionFlipH = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleUpdateTextLayer(activeSelection.layer.id, {
+        flipX: !activeSelection.layer.flipX,
+      });
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleUpdateOrnament(activeSelection.layer.id, {
+        flipX: !activeSelection.layer.flipX,
+      });
+    } else {
+      actions.updateLayer(activeSelection.layer.id, (layer) => ({
+        ...layer,
+        flipX: !layer.flipX,
+      }));
+    }
+  };
+
+  const handleSelectionFlipV = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleUpdateTextLayer(activeSelection.layer.id, {
+        flipY: !activeSelection.layer.flipY,
+      });
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleUpdateOrnament(activeSelection.layer.id, {
+        flipY: !activeSelection.layer.flipY,
+      });
+    } else {
+      actions.updateLayer(activeSelection.layer.id, (layer) => ({
+        ...layer,
+        flipY: !layer.flipY,
+      }));
+    }
+  };
+
+  const handleSelectionRotate90 = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleUpdateTextLayer(activeSelection.layer.id, {
+        rotationDeg: nextQuarterTurn(activeSelection.layer.rotationDeg),
+      });
+    } else if (activeSelection.kind === 'ornament') {
+      const rotated = rotateOrnament90(activeSelection.layer);
+      actions.handleUpdateOrnament(activeSelection.layer.id, {
+        xMm: rotated.xMm,
+        yMm: rotated.yMm,
+        widthMm: rotated.widthMm,
+        heightMm: rotated.heightMm,
+        rotationDeg: rotated.rotationDeg,
+      });
+    } else {
+      actions.updateLayer(activeSelection.layer.id, (layer) => ({
+        ...layer,
+        rotationDeg: nextQuarterTurn(layer.rotationDeg),
+      }));
+    }
+  };
+
+  const handleSelectionQuickAlign = (slot: VerticalAlignSlot) => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleQuickAlignText(activeSelection.layer.id, slot);
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleQuickAlignOrnament(activeSelection.layer.id, slot);
+    } else {
+      actions.handleQuickAlignImage(activeSelection.layer.id, slot);
+    }
+  };
+
+  const handleSelectionChangeColor = (hex: string) => {
+    if (!activeSelection || activeSelection.kind === 'image') return;
+    if (activeSelection.kind === 'text') {
+      applyStudioChange(
+        {
+          ...studio,
+          textLayers: (studio.textLayers ?? []).map((t) =>
+            t.id === activeSelection.layer.id ? { ...t, color: hex } : t,
+          ),
+        },
+        { coalesceKey: 'color' },
+      );
+    } else {
+      applyStudioChange(
+        {
+          ...studio,
+          ornaments: (studio.ornaments ?? []).map((o) =>
+            o.id === activeSelection.layer.id ? { ...o, color: hex } : o,
+          ),
+        },
+        { coalesceKey: 'color' },
+      );
+    }
+  };
+
+  const handleSelectionDelete = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleDeleteTextLayer(activeSelection.layer.id);
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleDeleteOrnament(activeSelection.layer.id);
+    } else {
+      const remaining = studio.layers.filter((l) => l.id !== activeSelection.layer.id);
+      applyStudioChange({ ...studio, layers: remaining });
+      setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
+    }
+  };
 
   const visibleSnapGuides =
     elementSnapGuides.length > 0 ? elementSnapGuides : activeSnapGuides;
@@ -654,7 +780,7 @@ export function CoverStyler({
               viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
             void actions.handleAddImageFiles(files, dropPt);
           }}
-          className={`cutting-mat-surface flex items-center justify-center overflow-hidden transition-colors ${getFullPageStageClass(isExpanded)} ${
+          className={`cutting-mat-surface flex flex-col overflow-hidden transition-colors ${getFullPageStageClass(isExpanded)} ${
             isDraggingOver
               ? 'border-brass-bright ring-2 ring-inset ring-brass-bright/70'
               : eyedropperTarget
@@ -662,6 +788,25 @@ export function CoverStyler({
                 : 'border-border/80'
           }`}
         >
+          {/* Docked Contextual Canvas Selection Bar (normal & Full Screen 2D modes) */}
+          {viewMode === '2d' && (
+            <CanvasSelectionBar
+              selection={activeSelection}
+              controlsId="studio-mat-viewport"
+              onFlipH={handleSelectionFlipH}
+              onFlipV={handleSelectionFlipV}
+              onRotate90={handleSelectionRotate90}
+              onQuickAlign={handleSelectionQuickAlign}
+              onChangeColor={handleSelectionChangeColor}
+              onDuplicate={() => {
+                handleDuplicateSelected();
+              }}
+              onDelete={handleSelectionDelete}
+              onDeselect={handleClearSelection}
+            />
+          )}
+
+          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
           {/* Contextual Top Banner (Eyedropper active & Full-Page Exit Pill) */}
           <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
             {eyedropperTarget && (
@@ -946,6 +1091,7 @@ export function CoverStyler({
               </HudGroup>
             </FloatingHudToolbar>
           </div>
+          </div>
         </div>
 
         {/* Non-Printing Visual Material & Foil Preview Strip */}
@@ -1132,6 +1278,7 @@ export function CoverStyler({
         onFitOrnamentToBoard={actions.handleFitOrnamentToBoard}
         onFitOrnamentWithMargin={actions.handleFitOrnamentWithMargin}
         onCenterOrnament={actions.handleCenterOrnament}
+        onQuickAlignOrnament={actions.handleQuickAlignOrnament}
         onDeleteOrnament={actions.handleDeleteOrnament}
         onUpdateSpineText={actions.updateSpineText}
         onSavePreset={actions.handleSaveDesignPreset}

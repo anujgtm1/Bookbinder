@@ -48,6 +48,10 @@ export interface ClassicDesignsCardProps {
   readonly onFitOrnamentToBoard: (id: string) => void;
   readonly onFitOrnamentWithMargin?: (id: string, marginMm: number) => void;
   readonly onCenterOrnament?: (id: string) => void;
+  readonly onQuickAlignOrnament?: (
+    id: string,
+    verticalSlot: 'upper' | 'center' | 'lower',
+  ) => void;
   readonly onDeleteOrnament: (id: string) => void;
   /** When true, omits the outer Card wrapper and header (used inside CoverElementsCard). */
   readonly embedded?: boolean;
@@ -98,6 +102,7 @@ export function ClassicDesignsCard({
   onFitOrnamentToBoard,
   onFitOrnamentWithMargin,
   onCenterOrnament,
+  onQuickAlignOrnament,
   onDeleteOrnament,
   embedded = false,
 }: ClassicDesignsCardProps) {
@@ -470,19 +475,69 @@ export function ClassicDesignsCard({
               >
                 Wide (18 mm)
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-6 px-2 text-[11px]"
-                title="Center ornament horizontally and vertically on its board"
-                data-testid="ornament-center-btn"
-                onClick={() => onCenterOrnament?.(selectedOrnament.id)}
-              >
-                Center
-              </Button>
+              {!onQuickAlignOrnament && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px]"
+                  title="Center ornament horizontally and vertically on its board"
+                  data-testid="ornament-center-btn"
+                  onClick={() => onCenterOrnament?.(selectedOrnament.id)}
+                >
+                  Center
+                </Button>
+              )}
             </div>
           </div>
+
+          {/* Unified Top ⅓ · Center · Bottom ⅓ Vertical Alignment */}
+          {onQuickAlignOrnament && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                Vertical Position
+              </span>
+              <div
+                className="flex flex-wrap items-center gap-1"
+                role="group"
+                aria-label="Align ornament vertically in cover zone"
+              >
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px]"
+                  title="Align ornament to upper third of its zone"
+                  data-testid="ornament-align-upper"
+                  onClick={() => onQuickAlignOrnament(selectedOrnament.id, 'upper')}
+                >
+                  Top ⅓
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px]"
+                  title="Center ornament horizontally and vertically in its zone"
+                  data-testid="ornament-center-btn"
+                  onClick={() => onQuickAlignOrnament(selectedOrnament.id, 'center')}
+                >
+                  Center
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-[11px]"
+                  title="Align ornament to lower third of its zone"
+                  data-testid="ornament-align-lower"
+                  onClick={() => onQuickAlignOrnament(selectedOrnament.id, 'lower')}
+                >
+                  Bottom ⅓
+                </Button>
+              </div>
+            </div>
+          )}
 
           {selectedOrnament.presetId === 'custom-svg' && (
             <div className="flex flex-wrap items-center justify-between gap-2">

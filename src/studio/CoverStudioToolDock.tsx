@@ -87,6 +87,10 @@ export interface CoverStudioToolDockProps {
   readonly onFitOrnamentToBoard: (id: string) => void;
   readonly onFitOrnamentWithMargin: (id: string, marginMm: number) => void;
   readonly onCenterOrnament: (id: string) => void;
+  readonly onQuickAlignOrnament?: (
+    id: string,
+    verticalSlot: 'upper' | 'center' | 'lower',
+  ) => void;
   readonly onDeleteOrnament: (id: string) => void;
   // Spine actions
   readonly onUpdateSpineText: (patch: Partial<SpineTypographyConfig>) => void;
@@ -150,6 +154,7 @@ export function CoverStudioToolDock({
   onFitOrnamentToBoard,
   onFitOrnamentWithMargin,
   onCenterOrnament,
+  onQuickAlignOrnament,
   onDeleteOrnament,
   onUpdateSpineText,
   onSavePreset,
@@ -335,6 +340,7 @@ export function CoverStudioToolDock({
           onFitOrnamentToBoard={onFitOrnamentToBoard}
           onFitOrnamentWithMargin={onFitOrnamentWithMargin}
           onCenterOrnament={onCenterOrnament}
+          onQuickAlignOrnament={onQuickAlignOrnament}
           onDeleteOrnament={onDeleteOrnament}
         />
       </TabsContent>

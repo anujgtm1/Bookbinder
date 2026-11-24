@@ -34,6 +34,7 @@ import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import type { CoverStudioState, SpineTypographyConfig } from '@/types/studio';
 import {
   CoverImageLayerModel,
+  getLayerVisualRect,
   type CoverImageLayer,
   type LayerClipZone,
   type QuickFitTarget,
@@ -145,6 +146,18 @@ export function useCoverStudioActions({
       width: base.width,
       height: base.height,
     };
+  };
+
+  const getArtworkRectForZone = (zone: CoverElementZone): Rect2D => {
+    switch (zone) {
+      case 'back':
+        return spec.backArtworkRect;
+      case 'spine':
+        return spec.spineArtworkRect;
+      case 'front':
+      default:
+        return spec.frontArtworkRect;
+    }
   };
 
   const handleAddTextPreset = (preset: CoverTextPresetKind) => {
@@ -317,6 +330,51 @@ export function useCoverStudioActions({
       ornaments: (studio.ornaments ?? []).map((o) =>
         o.id === id ? CoverOrnamentLayerModel.centerInBoard(o, getBoardRectInCanvas(o.zone)) : o,
       ),
+    });
+  };
+
+  const handleQuickAlignOrnament = (id: string, verticalSlot: 'upper' | 'center' | 'lower') => {
+    const ratio = verticalSlot === 'upper' ? 0.24 : verticalSlot === 'lower' ? 0.78 : 0.5;
+    onChange({
+      ...studio,
+      ornaments: (studio.ornaments ?? []).map((o) => {
+        if (o.id !== id) return o;
+        const zone = getArtworkRectForZone(o.zone);
+        const rawY = zone.y + zone.height * ratio - o.heightMm / 2;
+        const clampedY =
+          o.heightMm >= zone.height
+            ? zone.y + (zone.height - o.heightMm) / 2
+            : Math.min(zone.y + zone.height - o.heightMm, Math.max(zone.y, rawY));
+        return {
+          ...o,
+          xMm: roundTo(zone.x + (zone.width - o.widthMm) / 2, 2),
+          yMm: roundTo(clampedY, 2),
+        };
+      }),
+    });
+  };
+
+  const handleQuickAlignImage = (id: string, verticalSlot: 'upper' | 'center' | 'lower') => {
+    const ratio = verticalSlot === 'upper' ? 0.24 : verticalSlot === 'lower' ? 0.78 : 0.5;
+    updateLayer(id, (layer) => {
+      const targetZone: CoverElementZone =
+        layer.clipZone === 'back' || layer.clipZone === 'spine' || layer.clipZone === 'front'
+          ? layer.clipZone
+          : 'front';
+      const zone = getArtworkRectForZone(targetZone);
+      const vis = getLayerVisualRect(layer);
+      const targetCx = zone.x + zone.width / 2;
+      const rawVisY = zone.y + zone.height * ratio - vis.height / 2;
+      const clampedVisY =
+        vis.height >= zone.height
+          ? zone.y + (zone.height - vis.height) / 2
+          : Math.min(zone.y + zone.height - vis.height, Math.max(zone.y, rawVisY));
+      const targetCy = clampedVisY + vis.height / 2;
+      return {
+        ...layer,
+        xMm: roundTo(targetCx - layer.widthMm / 2, 2),
+        yMm: roundTo(targetCy - layer.heightMm / 2, 2),
+      };
     });
   };
 
@@ -785,6 +843,8 @@ export function useCoverStudioActions({
     handleFitOrnamentToBoard,
     handleFitOrnamentWithMargin,
     handleCenterOrnament,
+    handleQuickAlignOrnament,
+    handleQuickAlignImage,
     handleDeleteOrnament,
     handleSaveDesignPreset,
     handleApplyDesignPreset,
