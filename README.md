@@ -1,17 +1,17 @@
 # Bookbinder Studio
 
-Design and print removable hardcover cases, flexible-spine covers, 1-piece fold-and-glue slip covers, classic dust jackets, replacement paperback covers, matching inner pockets, and Cricut HTV foil SVGs—all right in your browser. No accounts, no subscriptions, and nothing ever leaves your device.
+Design and print removable hardcover cases, flexible-spine covers, 1-piece fold-and-glue slip covers, classic dust jackets, replacement paperback covers, matching inner pockets or folded glue-in endpapers, slipcase boxes, and Cricut HTV foil SVGs—all right in your browser. No accounts, no subscriptions, and nothing ever leaves your device.
 
 **[Launch Bookbinder Studio →](https://anujgtm.com/Bookbinder/)**
 
-![Bookbinder Studio — Cover & Spine Styler](./docs/screenshots/cover-styler.png)
+![Bookbinder Studio — Tokyo Bindery Desk Cover Studio with Sample Book and Contextual Selection Bar](./docs/screenshots/cover-styler.png)
 
 ## What You Can Make
 
 | Cover Style | Chipboard | Flaps / Inner Pockets | Best For |
 | --- | --- | --- | --- |
-| **Rigid 3-Board Hardcover** | Front, Back & Spine boards (`9 mm` hinges) | Separate slip-in pockets + spine liner | Removable heirloom hardcovers (`≥ 8 mm` spines) with zero damage to the paperback |
-| **Flexible-Spine 2-Board** | Front & Back boards + cloth spine gap | Separate slip-in pockets + spine liner | Thin `3–8 mm` notebooks & chapbooks that need to open completely flat |
+| **Rigid 3-Board Hardcover** | Front, Back & Spine boards (`9 mm` hinges) | Removable slip-in pockets **or** folded glue-in endpapers + spine liner | Removable heirloom hardcovers or traditional case rebinds (`≥ 8 mm` spines) |
+| **Flexible-Spine 2-Board** | Front & Back boards + cloth spine gap | Removable slip-in pockets **or** folded glue-in endpapers + spine liner | Thin `3–8 mm` notebooks & chapbooks that open completely flat |
 | **Fold-and-Glue Slip Cover** | None (`0` boards) | Built-in `20–65 mm` flaps **or** **Separate Glue-In Pockets (2-Sheet)** + 4 wrap-over glue tabs | 1-piece printable slip covers or seamless 2-sheet home prints (zero tape seam on `1× US Letter / A4` + detached fore-edge pockets on Page 2) |
 | **Classic Dust Jacket** | None (`0` boards) | Adjustable `20–100 mm` fold-in flaps (no glue) | Publisher-style wrap-around dust jackets with 4 vertical score folds |
 | **Replacement Paperback Cover** | None (`0` boards) | Flush trim (none needed) | 1-piece cardstock wraps (`Back + Spine + Front`) glued directly onto a paperback textblock spine |
@@ -20,24 +20,25 @@ Design and print removable hardcover cases, flexible-spine covers, 1-piece fold-
 
 - **Book Presets & Units** — Enter custom dimensions with a `mm` / `in` toggle, or start from built-in presets for **A6**, **Mass Market**, **Manga B6**, and **US Trade**.
 - **Chipboard Cut Lists & Diagrams** — Exact board measurements, score stops, material guidance, and visual gluing/folding diagrams tailored to each binding style.
-- **Smart Flap-Depth Guardrails** — Live recommended minimum flap depth right beside the flap slider (`≥ 35%` / `35 mm` floor for glued Slip Covers; `≥ 45%` / `45 mm` floor for unglued Dust Jackets) with 1-click **Fit Letter**, **Fit A4**, **Deep (38 mm)**, and **Classic (70 mm)** presets.
-- **Paper & Roll Fit Checks** — Instantly see whether your wrap fits **US Letter (`8.5 × 11"`)**, **A4 (`210 × 297 mm`)**, **US Legal (`8.5 × 14"`)**, **Tabloid (`11 × 17"`)**, or **`13"–44"`** roll printers with live `1 sheet` vs. `2 sheets (tiled)` status badges.
-- **CAD Blueprint** — Manual cutting dimension chains, a cumulative steel-ruler datum strip, **45° corner miter** callouts, and **grain direction arrows** for leather, paper, and bookcloth.
-- **3-Piece Quarter-Bound Split Mode** — Split wider hardcover wraps cleanly into separate spine, front, and back pieces for quarter-bound styles or smaller home printers.
+- **Printable Bench Recipe Card & Cutting Jigs PDF** — Export a clean bench-side spec card with your chipboard cut list, assembly checklist, and cut-out **scrap-chipboard jigs** (exact-width hinge spacer strips and a 45° corner miter gauge).
+- **Matching Slipcase Box Calculator** — Expand the built-in slipcase calculator to compute a 5-panel chipboard cut list directly from your finished hardcover dimensions, adjust slide clearance and thumb-notch radius live, and export ready-to-cut **Slipcase SVG** and **PDF** templates.
+- **Smart Flap-Depth Guardrails** — Live recommended minimum flap depth beside the flap slider (`≥ 35%` / `35 mm` floor for glued Slip Covers; `≥ 45%` / `45 mm` floor for unglued Dust Jackets) with 1-click **Fit Letter**, **Fit A4**, **Deep (38 mm)**, and **Classic (70 mm)** presets.
+- **Paper & Roll Fit Checks** — Instantly see whether your wrap fits **US Letter (`8.5 × 11"`)**, **A4 (`210 × 297 mm`)**, **US Legal (`8.5 × 14"`)**, **Tabloid (`11 × 17"`)**, **`13"–44"`** rolls, or any **Custom Roll Width** with live `1 sheet` vs. `2 sheets (tiled)` fit badges.
+- **Cutting Blueprint** — Manual cutting dimension chains, a cumulative steel-ruler datum strip, **45° corner miter** callouts, **grain direction arrows**, and **3-Piece Quarter-Bound Split Mode** for wider wraps.
 
-![Bookbinder Studio — Measure & Cut Chipboard Cut List and CAD Blueprint](./docs/screenshots/structural-templates.png)
+![Bookbinder Studio — Measure & Cut Specimen Cut List, Bench Recipe & Jigs PDF, and Cutting Blueprint](./docs/screenshots/structural-templates.png)
 
 ## Cover Design Studio
 
-- **Drag-and-Drop Artwork & Zone-Aware Fit** — Layer `PNG`, `JPG`, `WEBP`, and `SVG` images anywhere on your cover, sample exact colors with the built-in **eyedropper**, and use **Fit Front** / **Fit Back** (automatically framing the visible cover face without spilling onto tuck flaps or glue tabs) or **Fit Full Wrap**.
-- **No-Crop Edge Extensions** — Extend cover artwork smoothly across hardcover turn-in pasting stubs using **Edge Smear**, **Soft Mirror**, or **Mirror** modes.
-- **Cover & Spine Typography** — Add generic **`+ Text`**, **Front Title**, **Front Author**, **Back Blurb**, and **Spine** lettering with inline list renaming (synced directly with the cover), curated literary fonts, or your own uploaded `.ttf`, `.otf`, and `.woff` font files.
-- **17 Classic Foil Designs & Custom SVG Stamps** — Dress up your covers with frames, corner flourishes, dividers, emblems, and 6 spine motifs—or import custom vector `.svg` stamps with **Fill**, **Outline**, and **Fill + Thicken** line-weight control.
-- **Safe-Margin Snap Guides & Flip** — Snap magnetically to cover centers and balanced margins, use 1-click **Tight**, **Classic**, **Wide**, and **Center** margin fit presets, and apply **Horizontal & Vertical Flip** to artwork, ornaments, or text.
-- **Live Print, Paper-Fit & Flap-Depth Preflight** — Catch board coverage gaps, shallow flaps (highlighted directly on the 2D canvas), low spine contrast, optional **DPI** warnings, and paper-fit overflows before wasting paper or vinyl—each with **1-click fixes**.
-- **Openable 3D Book Preview, Full Screen & Atelier Themes** — Orbit your folded book, swing open the front cover in live 3D, expand any canvas into **Full Screen** focus mode (`Esc` to exit), and switch between warm Light and Dark atelier themes.
+- **3-Column Bindery Workbench (Light & Dark Modes)** — Style on a warm walnut desk with a left **Spec Ledger**, center cutting-mat stage, docked right **Design Inspector**, and switchable Light (washi paper) and Dark (woven linen) themes—or expand any canvas into **Full Screen** focus mode (`Esc` to exit).
+- **1-Click Sample Book & Visual Material / Foil Previews** — Load a complete classic hardcover + marbled endpaper project in one click, then preview non-printing **Matte Paper**, **Bookcloth Linen**, or **Pebbled Leather** textures alongside **Gold**, **Silver**, or **Copper Foil** sheen in both 2D and 3D.
+- **Contextual Canvas Selection Bar & Studio Controls** — Click any element on the canvas for instant docked alignment (**`Top ⅓ / Center / Bottom ⅓`** for text and artwork, or **`6 / 12 / 18 mm`** board margin presets for frames), **`Flip H/V`**, **`90°`** rotation, and foil swatches—backed by full **Undo/Redo**, **Copy/Paste/Duplicate**, **Arrow-key nudging**, and direct **OS clipboard image paste (`Cmd/Ctrl+V`)**.
+- **Drag-and-Drop Artwork & No-Crop Edge Extensions** — Layer `PNG`, `JPG`, `WEBP`, and `SVG` images anywhere on your cover, sample colors with the **eyedropper**, use zone-aware **Fit Front / Fit Back / Fit Full Wrap**, and extend cover art smoothly across turn-in margins using **Edge Smear**, **Soft Mirror**, or **Mirror**.
+- **Cover & Spine Typography** — Add generic **`+ Text`**, **Front Title**, **Front Author**, **Back Blurb**, and **Spine** lettering with inline list renaming, curated literary fonts, or your own `.ttf`, `.otf`, and `.woff` fonts.
+- **17 Classic Foil Designs & Custom SVG Stamps** — Place frames, corner flourishes, dividers, emblems, and 6 spine motifs—or import custom vector `.svg` stamps with **Fill**, **Outline**, and **Fill + Thicken** stroke control.
+- **Live Preflight & Openable 3D Book Preview** — Catch board coverage gaps, shallow flaps, low spine contrast, DPI warnings, and paper-fit overflows with **1-click fixes**, then orbit your folded book and swing open the front cover in live 3D to inspect your marbled endpapers.
 
-![Bookbinder Studio — Interactive 3D Folded Book Preview](./docs/screenshots/book-3d-preview.png)
+![Bookbinder Studio — Dark Mode Interactive 3D Book Preview with Bookcloth, Gold Foil, and Open Cover Revealing Marbled Endpapers](./docs/screenshots/book-3d-preview.png)
 
 ## Reusable Series Design Presets
 
@@ -45,32 +46,32 @@ Design and print removable hardcover cases, flexible-spine covers, 1-piece fold-
 - **Automatic Proportional Refitting** — Apply a saved style to books of different heights, widths, or spine thicknesses and watch every element refit cleanly.
 - **Built-In Starter Themes & Sharing** — Includes **4 classic starter series themes**, plus portable `.json` preset export and import for backup or sharing.
 
-## Inner Pockets & Endpapers
+## Inner Pockets & Folded Glue-In Endpapers
 
-- **Mirrored Pockets & Spine Liner** — Auto-generated Front and Back slip-in pocket envelopes with **45° mitered glue flaps** plus a **Spine Reinforcement Liner**.
-- **Styled Endpapers & Seamless Patterns** — Pick from curated endpaper swatches, sync in one click with **Match Cover Color**, place draggable/flippable pocket art, or turn any motif into a 1-click seamless **Tile Pattern**.
-- **Auto-Paginated Printing** — Export **US Letter (`8.5 × 11"`)**, **A4 (`210 × 297 mm`)**, **US Legal (`8.5 × 14"`)**, or **Tabloid (`11 × 17"`)** PDFs with an optional **`50 × 50 mm` Calibration & Legend** block and **Cut & Fold** lines.
-- **Smart Cover-Style Handling** — Cleanly marked **Built-In** on 1-piece Fold-and-Glue Slip Covers (automatically unlocking when switched to **Separate Glue-In Pockets** 2-sheet mode) and **Not Needed** on Classic Dust Jackets & Replacement Paperback Covers so you never print extra pocket sheets.
+- **Removable Slip-In Pockets or Folded Glue-In Endpapers** — Switch in one click between **Removable Slip-In Pockets** (mirrored front/back pockets with 45° mitered glue flaps + spine reinforcement liner) and **Folded Glue-In Endpapers** (double-width `PASTEDOWN + FLYLEAF` sheets with center fold lines for traditional case rebinds).
+- **Styled Endpapers & Seamless Patterns** — Pick curated endpaper swatches, sync in one click with **Match Cover Color**, drag and resize pocket art, or turn any motif into a 1-click seamless **Tile Pattern**.
+- **Auto-Paginated Printing** — Export **US Letter (`8.5 × 11"`)**, **A4 (`210 × 297 mm`)**, **US Legal (`8.5 × 14"`)**, or **Tabloid (`11 × 17"`)** PDFs with an optional **`50 × 50 mm` Scale-Check & Legend** block and **Cut & Fold** lines.
+- **Smart Cover-Style Handling** — Cleanly marked **Built-In** on 1-piece Fold-and-Glue Slip Covers (automatically unlocking in **Separate Glue-In Pockets** 2-sheet mode) and **Not Needed** on Classic Dust Jackets & Replacement Paperback Covers so you never print extra sheets.
 
-![Bookbinder Studio — Inner Slip-In Pockets & Seamless Tiled Endpapers](./docs/screenshots/inner-pockets.png)
+![Bookbinder Studio — Inner Slip-In Pockets & Folded Glue-In Endpapers with Seamless Marbled Pattern](./docs/screenshots/inner-pockets.png)
 
 ## Print & Cutting-Machine Exports
 
-- **Unified Print & Export PDF Dialog** — Clicking any PDF button in **Cover Studio**, **Measure & Cut**, or **Inner Pockets** opens a dedicated Export Dialog where you can compare paper sizes live (`US Letter (8.5 × 11")`, `A4 (210 × 297 mm)`, `US Legal (8.5 × 14")`, `Tabloid (11 × 17")`, `Exact Wrap Size`, or `13"–44"` rolls) with instant **`1 sheet`** vs. **`2 sheets (tiled)`** fit badges, a live sheet-layout preview, and **1-click fixes** whenever a cover exceeds your chosen sheet.
-- **Flexible Multi-Sheet Tiling & Calibration** — Choose between printing on a single larger sheet (e.g., `1× US Legal`) or tiling across `2× US Letter / A4` sheets with configurable overlap (`10 / 15 / 20 mm`), shaded tape-zone guides, blue alignment crosshairs, and an optional **`50 mm` Scale-Check Ruler** bar to verify print scale before cutting.
-- **`300 / 600 DPI` Print-Ready Cover PDFs** — Crisp embedded vector text and ornaments over `300` or `600 DPI` full-bleed artwork, with **Cut, Fold & Glue Guides** or clean **Registration Marks Only**, plus **Single Wrap** or **3-Piece Split** output.
-- **Hybrid Printed Base + Cricut HTV Foil Workflow** — Switch **Print Layers** to **Base Only (For HTV)** (`outer_cover_base_for_htv.pdf`) to print background artwork with outer `3 mm` center-alignment ticks and zero double-vision text ghosting, or jump straight there from the **Export Printed Base PDF…** button inside the Cricut dialog.
-- **Cricut, Silhouette & ScanNCut HTV & Foil SVGs** — Preview vector cut paths on a crisp high-contrast carrier mat (readable in Dark & Light themes), export **Spine**, **Front Cover**, **Back Cover**, or **Full Wrap** designs with flattened glyph paths (zero `<text>` tags), weeding box, corner alignment marks, **HTV Mirror**, and **Split Mats by Foil Color** so Design Space separates multi-color foil designs automatically.
-- **Auto-Paginated Inner Pockets PDFs** — Packs pockets and spine liner across `US Letter`, `A4`, `US Legal`, or `Tabloid` pages with an optional **`50 × 50 mm` calibration square & legend**.
-- **Cut-Only SVGs, PDFs & Affinity Round-Trip SVGs** — Cutting outlines for hand knives, plotters, or laser cutters, plus cleanly layered SVGs ready for further editing in Affinity Designer.
+- **Unified Print & Export PDF Dialog** — Clicking any PDF button in **Cover Studio**, **Measure & Cut**, or **Inner Pockets** opens a shared Export Dialog comparing **US Letter**, **A4**, **US Legal**, **Tabloid**, **Exact Wrap Size**, **`13"–44"`** wide-format rolls, and **Custom Roll Width (`200–1600 mm`)** with live sheet-layout previews and **1-click fixes**.
+- **Wide-Format Roll Multi-Up / Gang-Sheet Nesting** — On any wide-format or custom roll, enable **Multi-Up / Roll Strip** to pack multiple copies side-by-side (`Fill Row`, configurable `6 / 10 / 15 mm` cut gutters, automatic 90° rotation, optional inner pocket packing, and live roll efficiency readout).
+- **Asymmetric Printer Margins & 1-Click Calibration Sheet** — Dial in non-uniform printer unprintable margins (or choose presets like **Fine-Art / Heavy Sheet**), preview hatched dead zones directly on the sheet, and download a 1-click **Printer Margin Calibration Sheet PDF** to measure your exact desktop printer margins.
+- **Flexible Multi-Sheet Tiling & Calibration** — Print on a single larger sheet or tile across `2× US Letter / A4` sheets with configurable overlap (`10 / 15 / 20 mm`), shaded tape-zone guides, alignment crosshairs, and an optional **`50 mm` Scale-Check Ruler** bar to verify print scale before cutting.
+- **`300 / 600 DPI` Cover PDFs & Hybrid HTV Workflow** — Crisp embedded vector text and ornaments over `300` or `600 DPI` artwork, with **Cut, Fold & Glue Guides** or **Registration Marks Only**, **Single Wrap** or **3-Piece Split**, plus **Base Only (For HTV)** (`outer_cover_base_for_htv.pdf`) with outer `3 mm` center-alignment ticks for zero-ghosting foil pressing.
+- **Cricut, Silhouette & ScanNCut HTV & Foil SVGs** — Preview vector cut paths on a crisp always-light carrier mat, export **Spine**, **Front Cover**, **Back Cover**, or **Full Cover Wrap** designs with flattened glyph curves (zero `<text>` tags), weeding box, corner alignment marks, **HTV Mirror**, and **Split Mats by Foil Color**.
+- **Cut-Only SVGs, PDFs & Affinity Round-Trip SVGs** — Clean cutting outlines for hand knives, plotters, or laser cutters, plus layered SVGs ready for further illustration in Affinity Designer or Inkscape.
 
-![Bookbinder Studio — Unified Print & Export PDF Dialog with Live Tiling Preview](./docs/screenshots/pdf-export-dialog.png)
+![Bookbinder Studio — Unified Print & Export PDF Dialog with 36-inch Custom Roll Multi-Up Nesting Preview](./docs/screenshots/pdf-export-dialog.png)
 
-![Bookbinder Studio — Cricut & Silhouette HTV Foil SVG Export Dialog](./docs/screenshots/cricut-htv-dialog.png)
+![Bookbinder Studio — Cricut & Silhouette HTV Foil SVG Export Dialog with Front Cover Gold Lettering and Compass Rose](./docs/screenshots/cricut-htv-dialog.png)
 
 ## Private & Local-First
 
-- Runs 100% offline in your browser—no accounts, no cloud uploads, and no tracking.
+- Runs completely offline in your browser—no accounts, no cloud uploads, and no tracking.
 - Projects auto-save locally and can be backed up or shared anytime as portable `.json` files.
 
 ---
