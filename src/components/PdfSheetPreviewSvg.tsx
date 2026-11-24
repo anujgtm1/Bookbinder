@@ -4,7 +4,14 @@ import { Button } from '@/components/ui/button';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import type { InnerPdfLayoutPlan, InnerPieceKind } from '@/core/pdfExport';
-import { ROLL_TOTAL_MARGIN_MM, getPrintMediaSpec } from '@/resources/paperSpecs';
+import {
+  DEFAULT_PRINTER_MARGINS,
+  clampPrinterMargins,
+  computePrintableSafeBox,
+  type PrinterMargins,
+} from '@/core/printerMargins';
+import type { RollNestPlan } from '@/core/rollNesting';
+import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PrintMediaId, SplitMode } from '@/types/bookParams';
 import type { CaseGeometry, PrintMediaFitEvaluation } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
@@ -19,6 +26,9 @@ export interface PdfSheetPreviewProps {
   readonly tileOverlapMm: number;
   readonly includeScaleBar: boolean;
   readonly innerPlan: InnerPdfLayoutPlan;
+  readonly printerMargins?: PrinterMargins;
+  readonly customRollWidthMm?: number;
+  readonly rollNestPlan?: RollNestPlan | null;
   readonly onChangePrintMedia: (mediaId: PrintMediaId) => void;
   readonly onChangeSplitMode?: (mode: SplitMode) => void;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
@@ -54,9 +64,67 @@ const INNER_PIECE_STYLES: Record<
   },
 };
 
+const ROLL_ITEM_PALETTE = [
+  { fill: 'rgba(30, 77, 68, 0.18)', stroke: '#1e4d44', text: '#163a33' },
+  { fill: 'rgba(166, 123, 46, 0.2)', stroke: '#a67b2e', text: '#6e4e14' },
+  { fill: 'rgba(29, 91, 214, 0.16)', stroke: '#1d5bd6', text: '#16429e' },
+  { fill: 'rgba(124, 58, 237, 0.16)', stroke: '#7c3aed', text: '#5b21b6' },
+  { fill: 'rgba(190, 24, 93, 0.15)', stroke: '#be185d', text: '#9d174d' },
+] as const;
+
+function UnprintableMarginStrips({
+  sheetW,
+  sheetH,
+  margins,
+  hatchId,
+}: {
+  readonly sheetW: number;
+  readonly sheetH: number;
+  readonly margins: PrinterMargins;
+  readonly hatchId: string;
+}) {
+  const top = Math.min(sheetH, Math.max(0, margins.topMm));
+  const bottom = Math.min(sheetH - top, Math.max(0, margins.bottomMm));
+  const left = Math.min(sheetW, Math.max(0, margins.leftMm));
+  const right = Math.min(sheetW - left, Math.max(0, margins.rightMm));
+  const middleH = Math.max(0, sheetH - top - bottom);
+
+  if (top <= 0 && bottom <= 0 && left <= 0 && right <= 0) {
+    return null;
+  }
+
+  return (
+    <g data-testid="preview-unprintable-margin" aria-hidden="true">
+      <defs>
+        <pattern
+          id={hatchId}
+          width={6}
+          height={6}
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)"
+        >
+          <rect width={6} height={6} fill="rgba(148, 163, 184, 0.22)" />
+          <line x1={0} y1={0} x2={0} y2={6} stroke="rgba(100, 116, 139, 0.38)" strokeWidth={1.2} />
+        </pattern>
+      </defs>
+      {top > 0 && <rect x={0} y={0} width={sheetW} height={top} fill={`url(#${hatchId})`} />}
+      {bottom > 0 && (
+        <rect x={0} y={sheetH - bottom} width={sheetW} height={bottom} fill={`url(#${hatchId})`} />
+      )}
+      {left > 0 && middleH > 0 && (
+        <rect x={0} y={top} width={left} height={middleH} fill={`url(#${hatchId})`} />
+      )}
+      {right > 0 && middleH > 0 && (
+        <rect x={sheetW - right} y={top} width={right} height={middleH} fill={`url(#${hatchId})`} />
+      )}
+    </g>
+  );
+}
+
 function computeReducibleFlapMm(
   geometry: CaseGeometry,
   mediaId: PrintMediaId,
+  margins: PrinterMargins,
 ): number | null {
   const strategy = resolveBindingStrategy(geometry);
   if (
@@ -68,9 +136,9 @@ function computeReducibleFlapMm(
   }
   const spec = getPrintMediaSpec(mediaId);
   if (spec.kind !== 'sheet' || spec.longMm === null || spec.shortMm === null) return null;
-  const shortPrintable = spec.shortMm - ROLL_TOTAL_MARGIN_MM;
-  if (geometry.outerWrap.heightMm > shortPrintable + 0.05) return null;
-  const longPrintable = spec.longMm - ROLL_TOTAL_MARGIN_MM;
+  const landscapeSafe = computePrintableSafeBox(spec.longMm, spec.shortMm, margins);
+  if (geometry.outerWrap.heightMm > landscapeSafe.heightMm + 0.05) return null;
+  const longPrintable = landscapeSafe.widthMm;
   const rawMaxFlap =
     Math.floor(((longPrintable - geometry.outerWrap.innerWidthMm) / 2) * 10 + 1e-9) / 10;
   if (rawMaxFlap < strategy.flapConfig.minMm) return null;
@@ -193,6 +261,9 @@ export function PdfSheetPreviewSvg({
   tileOverlapMm,
   includeScaleBar,
   innerPlan,
+  printerMargins,
+  customRollWidthMm,
+  rollNestPlan,
   onChangePrintMedia,
   onChangeSplitMode,
   onReduceFlapWidth,
@@ -200,6 +271,13 @@ export function PdfSheetPreviewSvg({
   const uid = useId().replace(/:/g, '');
   const tile1ClipId = `${uid}-tile-1`;
   const tile2ClipId = `${uid}-tile-2`;
+  const singleHatchId = `${uid}-margin-single`;
+  const tile1HatchId = `${uid}-margin-tile-1`;
+  const tile2HatchId = `${uid}-margin-tile-2`;
+  const rollHatchId = `${uid}-margin-roll`;
+  const effectiveMargins = printerMargins
+    ? clampPrinterMargins(printerMargins)
+    : DEFAULT_PRINTER_MARGINS;
   const bindingStrategy = resolveBindingStrategy(geometry);
   const wrapW = geometry.outerWrap.widthMm;
   const wrapH = geometry.outerWrap.heightMm;
@@ -345,21 +423,279 @@ export function PdfSheetPreviewSvg({
     );
   }
 
+  // 2b. Wide-Format Roll Multi-Up / Gang-Sheet Strip Preview
+  if (splitMode === 'single' && rollNestPlan) {
+    const rollW = Math.max(1, rollNestPlan.rollWidthMm);
+    const stripH = Math.max(rollNestPlan.usedLengthMm, 80);
+    const sideMargin = rollNestPlan.sideMarginMm;
+    const itemColorMap = new Map<string, (typeof ROLL_ITEM_PALETTE)[number]>();
+    const copyCounts = new Map<string, number>();
+    for (const rect of rollNestPlan.placements) {
+      copyCounts.set(rect.itemId, (copyCounts.get(rect.itemId) ?? 0) + 1);
+      if (!itemColorMap.has(rect.itemId)) {
+        const idx = itemColorMap.size % ROLL_ITEM_PALETTE.length;
+        itemColorMap.set(rect.itemId, ROLL_ITEM_PALETTE[idx]);
+      }
+    }
+
+    // Group placements into shelf rows to draw subtle dashed cut gutters
+    const shelfRows = new Map<number, typeof rollNestPlan.placements[number][]>();
+    for (const rect of rollNestPlan.placements) {
+      const key = roundTo(rect.yMm, 1);
+      const list = shelfRows.get(key) ?? [];
+      list.push(rect);
+      shelfRows.set(key, list);
+    }
+    const sortedRowYs = [...shelfRows.keys()].sort((a, b) => a - b);
+
+    const activeRollSpec = getPrintMediaSpec(printMediaId);
+    const rollTitle =
+      printMediaId === 'roll-custom'
+        ? `Custom Roll (${roundTo(rollW, 1)} mm)`
+        : activeRollSpec.label;
+
+    return (
+      <div
+        data-testid="pdf-export-sheet-preview"
+        className="drafting-surface flex flex-col gap-2.5 rounded-lg border border-border p-3.5"
+      >
+        <div
+          data-testid="pdf-roll-strip-preview"
+          className="flex flex-wrap items-center justify-between gap-2 text-xs"
+        >
+          <span className="status-success-text flex items-center gap-1.5 font-medium">
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            Roll Strip Preview — {rollTitle}
+          </span>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {rollNestPlan.placements.length}{' '}
+            {rollNestPlan.placements.length === 1 ? 'piece' : 'pieces'} •{' '}
+            {UnitConverter.format(rollNestPlan.usedLengthMm, unit)} roll length •{' '}
+            {rollNestPlan.efficiencyPct}% efficiency
+          </span>
+        </div>
+
+        <div className="flex items-center justify-center py-1">
+          <svg
+            role="img"
+            aria-label={`Nested roll strip preview on ${rollTitle}`}
+            viewBox={`0 0 ${rollW} ${stripH}`}
+            className="max-h-56 w-full max-w-[560px] rounded border border-border/90 bg-[#fffdf9] shadow-xs"
+          >
+            {/* Left & Right unprintable roll side margins */}
+            {sideMargin > 0 && (
+              <g data-testid="preview-unprintable-margin" aria-hidden="true">
+                <defs>
+                  <pattern
+                    id={rollHatchId}
+                    width={10}
+                    height={10}
+                    patternUnits="userSpaceOnUse"
+                    patternTransform="rotate(45)"
+                  >
+                    <rect width={10} height={10} fill="rgba(148, 163, 184, 0.24)" />
+                    <line
+                      x1={0}
+                      y1={0}
+                      x2={0}
+                      y2={10}
+                      stroke="rgba(100, 116, 139, 0.4)"
+                      strokeWidth={1.8}
+                    />
+                  </pattern>
+                </defs>
+                <rect x={0} y={0} width={sideMargin} height={stripH} fill={`url(#${rollHatchId})`} />
+                <rect
+                  x={rollW - sideMargin}
+                  y={0}
+                  width={sideMargin}
+                  height={stripH}
+                  fill={`url(#${rollHatchId})`}
+                />
+              </g>
+            )}
+
+            {/* Printable width guide lines */}
+            <rect
+              x={sideMargin}
+              y={0}
+              width={rollNestPlan.printableWidthMm}
+              height={stripH}
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth={Math.max(1, rollW * 0.002)}
+              strokeDasharray="8 5"
+            />
+
+            {/* Cut gutter guides between nested pieces */}
+            {sortedRowYs.map((rowY, rowIdx) => {
+              const rowRects = (shelfRows.get(rowY) ?? []).slice().sort((a, b) => a.xMm - b.xMm);
+              const rowMaxH = Math.max(...rowRects.map((r) => r.heightMm), 0);
+              const nextRowY = sortedRowYs[rowIdx + 1];
+              return (
+                <g key={rowY} aria-hidden="true">
+                  {rowRects.slice(0, -1).map((leftRect, i) => {
+                    const rightRect = rowRects[i + 1];
+                    const midX = (leftRect.xMm + leftRect.widthMm + rightRect.xMm) / 2;
+                    return (
+                      <line
+                        key={`${leftRect.itemId}-${leftRect.copyIndex}-v`}
+                        x1={midX}
+                        y1={rowY}
+                        x2={midX}
+                        y2={rowY + rowMaxH}
+                        stroke="#64748b"
+                        strokeWidth={Math.max(1, rollW * 0.0018)}
+                        strokeDasharray="6 4"
+                      />
+                    );
+                  })}
+                  {nextRowY !== undefined && (
+                    <line
+                      x1={sideMargin}
+                      y1={(rowY + rowMaxH + nextRowY) / 2}
+                      x2={sideMargin + rollNestPlan.printableWidthMm}
+                      y2={(rowY + rowMaxH + nextRowY) / 2}
+                      stroke="#64748b"
+                      strokeWidth={Math.max(1, rollW * 0.0018)}
+                      strokeDasharray="6 4"
+                    />
+                  )}
+                </g>
+              );
+            })}
+
+            {/* Placed nested items */}
+            {rollNestPlan.placements.map((rect) => {
+              const palette = itemColorMap.get(rect.itemId) ?? ROLL_ITEM_PALETTE[0];
+              const totalCopies = copyCounts.get(rect.itemId) ?? 1;
+              const titleLabel =
+                totalCopies > 1 ? `${rect.label} #${rect.copyIndex + 1}` : rect.label;
+              const fontSize = Math.max(
+                10,
+                Math.min(22, Math.min(rect.widthMm, rect.heightMm) * 0.11),
+              );
+              const dimFontSize = Math.max(8, fontSize * 0.72);
+              const badgeW = Math.min(rect.widthMm * 0.35, 34);
+              const badgeH = Math.min(rect.heightMm * 0.2, 16);
+              return (
+                <g
+                  key={`${rect.itemId}-${rect.copyIndex}`}
+                  data-testid="roll-nest-placed-item"
+                >
+                  <rect
+                    x={rect.xMm}
+                    y={rect.yMm}
+                    width={rect.widthMm}
+                    height={rect.heightMm}
+                    fill={palette.fill}
+                    stroke={palette.stroke}
+                    strokeWidth={Math.max(1.5, rollW * 0.0025)}
+                    rx={2}
+                  />
+                  <text
+                    x={rect.xMm + rect.widthMm / 2}
+                    y={rect.yMm + rect.heightMm / 2 - dimFontSize * 0.45}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={fontSize}
+                    fontWeight={600}
+                    fill={palette.text}
+                  >
+                    {titleLabel}
+                  </text>
+                  <text
+                    x={rect.xMm + rect.widthMm / 2}
+                    y={rect.yMm + rect.heightMm / 2 + fontSize * 0.72}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={dimFontSize}
+                    fontFamily="monospace"
+                    fill={palette.text}
+                    opacity={0.85}
+                  >
+                    {roundTo(rect.widthMm, 0)} × {roundTo(rect.heightMm, 0)} mm
+                  </text>
+                  {rect.rotated90 && badgeW >= 18 && badgeH >= 10 && (
+                    <g>
+                      <rect
+                        x={rect.xMm + rect.widthMm - badgeW - 4}
+                        y={rect.yMm + 4}
+                        width={badgeW}
+                        height={badgeH}
+                        rx={3}
+                        fill="rgba(255,255,255,0.9)"
+                        stroke={palette.stroke}
+                        strokeWidth={1}
+                      />
+                      <text
+                        x={rect.xMm + rect.widthMm - badgeW / 2 - 4}
+                        y={rect.yMm + 4 + badgeH / 2}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize={Math.max(7.5, badgeH * 0.62)}
+                        fontFamily="monospace"
+                        fontWeight={700}
+                        fill={palette.text}
+                      >
+                        90°
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+
+            {includeScaleBar && rollW >= 70 && stripH >= 24 && (
+              <ScaleBarSvg x={sideMargin + 4} y={4} />
+            )}
+          </svg>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>
+            Roll width: <strong className="font-mono">{UnitConverter.format(rollW, unit)}</strong> •
+            Gutter: <strong className="font-mono">{rollNestPlan.gutterMm} mm</strong>
+          </span>
+          <span>
+            Roll efficiency:{' '}
+            <strong className="font-mono text-foreground">{rollNestPlan.efficiencyPct}%</strong>
+          </span>
+        </div>
+
+        {rollNestPlan.unplacedIds.length > 0 && (
+          <p className="flex items-center gap-1.5 rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {rollNestPlan.unplacedIds.length}{' '}
+            {rollNestPlan.unplacedIds.length === 1 ? 'item exceeds' : 'items exceed'} the printable
+            roll width ({roundTo(rollNestPlan.printableWidthMm, 1)} mm) and could not be placed.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   // 3. Outer "Does Not Fit" warning + 1-click quick-switch buttons (for specific sheets & rolls)
   if (activeFit.status === 'does-not-fit' && printMediaId !== 'exact-auto') {
     const selectedSpec = getPrintMediaSpec(printMediaId);
     const legalSpec = getPrintMediaSpec('legal');
     const tabloidSpec = getPrintMediaSpec('tabloid');
     const exactAutoSpec = getPrintMediaSpec('exact-auto');
-    const legalFit = evaluatePrintMediaFit('legal', wrapW, wrapH, tileOverlapMm);
-    const tabloidFit = evaluatePrintMediaFit('tabloid', wrapW, wrapH, tileOverlapMm);
-    const reducibleFlapMm = computeReducibleFlapMm(geometry, printMediaId);
+    const fitOpts = { customRollWidthMm, margins: effectiveMargins };
+    const legalFit = evaluatePrintMediaFit('legal', wrapW, wrapH, tileOverlapMm, fitOpts);
+    const tabloidFit = evaluatePrintMediaFit('tabloid', wrapW, wrapH, tileOverlapMm, fitOpts);
+    const reducibleFlapMm = computeReducibleFlapMm(geometry, printMediaId, effectiveMargins);
 
     const suggestedOther =
       activeFit.suggestedMediaId &&
       activeFit.suggestedMediaId !== 'legal' &&
       activeFit.suggestedMediaId !== 'tabloid'
         ? getPrintMediaSpec(activeFit.suggestedMediaId)
+        : null;
+
+    const selectedSafeLandscape =
+      selectedSpec.kind === 'sheet' && selectedSpec.shortMm && selectedSpec.longMm
+        ? computePrintableSafeBox(selectedSpec.longMm, selectedSpec.shortMm, effectiveMargins)
         : null;
 
     return (
@@ -375,8 +711,8 @@ export function PdfSheetPreviewSvg({
               {selectedSpec.label}
             </p>
             <p className="text-muted-foreground">
-              {selectedSpec.kind === 'sheet' && selectedSpec.shortMm && selectedSpec.longMm
-                ? `${selectedSpec.label} printable area is ${roundTo(selectedSpec.shortMm - ROLL_TOTAL_MARGIN_MM, 1)} × ${roundTo(selectedSpec.longMm - ROLL_TOTAL_MARGIN_MM, 1)} mm (exceeds even 2 tiled sheets). Choose a larger sheet or Exact Wrap Size below:`
+              {selectedSafeLandscape
+                ? `${selectedSpec.label} printable safe area is ${roundTo(selectedSafeLandscape.heightMm, 1)} × ${roundTo(selectedSafeLandscape.widthMm, 1)} mm (exceeds even 2 tiled sheets). Choose a larger sheet or Exact Wrap Size below:`
                 : activeFit.summary}
             </p>
           </div>
@@ -470,7 +806,7 @@ export function PdfSheetPreviewSvg({
       >
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-medium text-foreground">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+            <CheckCircle2 className="status-success-text h-3.5 w-3.5" aria-hidden="true" />
             {printMediaId === 'exact-auto'
               ? `${exactAutoSpec.shortLabel} (${exactAutoSpec.dimensionsLabel})`
               : activeFit.summary}
@@ -522,13 +858,14 @@ export function PdfSheetPreviewSvg({
     );
   }
 
-  // 5. Outer Fits on 1 Sheet (Centered)
+  // 5. Outer Fits on 1 Sheet (Centered inside printable safe box)
   const activeMediaSpec = getPrintMediaSpec(printMediaId);
   const sheetW = activeFit.sheetPageWidthMm;
   const sheetH = activeFit.sheetPageHeightMm;
+  const safeBox = computePrintableSafeBox(sheetW, sheetH, effectiveMargins);
   if (activeFit.status === 'fits-1-sheet') {
-    const originX = (sheetW - wrapW) / 2;
-    const originY = (sheetH - wrapH) / 2;
+    const originX = safeBox.xMm + (safeBox.widthMm - wrapW) / 2;
+    const originY = safeBox.yMm + (safeBox.heightMm - wrapH) / 2;
     const orientationLabel = sheetW > sheetH ? 'Landscape' : 'Portrait';
 
     return (
@@ -537,7 +874,7 @@ export function PdfSheetPreviewSvg({
         className="drafting-surface flex flex-col gap-2 rounded-lg border border-border p-3.5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+          <span className="status-success-text flex items-center gap-1.5 font-medium">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
             1× {activeMediaSpec.label} {orientationLabel} — Centered
           </span>
@@ -553,35 +890,46 @@ export function PdfSheetPreviewSvg({
             viewBox={`0 0 ${sheetW} ${sheetH}`}
             className="h-40 max-w-full rounded border border-border/90 bg-[#fffdf9] shadow-xs"
           >
-            {/* 5 mm unprintable sheet margin */}
+            <UnprintableMarginStrips
+              sheetW={sheetW}
+              sheetH={sheetH}
+              margins={effectiveMargins}
+              hatchId={singleHatchId}
+            />
+            {/* Printable safe-box boundary */}
             <rect
-              x={5}
-              y={5}
-              width={sheetW - 10}
-              height={sheetH - 10}
+              x={safeBox.xMm}
+              y={safeBox.yMm}
+              width={safeBox.widthMm}
+              height={safeBox.heightMm}
               fill="none"
-              stroke="#cbd5e1"
+              stroke="#94a3b8"
               strokeWidth={1}
               strokeDasharray="4 3"
             />
             <CoverCreaseLines geometry={geometry} originX={originX} originY={originY} />
-            {includeScaleBar && <ScaleBarSvg x={7} y={7} />}
+            {includeScaleBar && <ScaleBarSvg x={safeBox.xMm + 2} y={safeBox.yMm + 2} />}
           </svg>
         </div>
       </div>
     );
   }
 
-  // 6. Outer Fits on 2 Tiled Sheets (Side-by-Side Sheet 1 Left & Sheet 2 Right)
+  // 6. Outer Fits on 2 Tiled Sheets (Side-by-Side Sheet 1 Left & Sheet 2 Right, inside safe box)
   const halfOverlap = tileOverlapMm / 2;
   const wrapHalfWithOverlap = wrapW / 2 + halfOverlap;
-  const leftMargin = (sheetW - wrapHalfWithOverlap) / 2;
-  const drawOriginY = (sheetH - wrapH) / 2;
+  const leftMargin = safeBox.xMm + (safeBox.widthMm - wrapHalfWithOverlap) / 2;
+  const drawOriginY = safeBox.yMm + (safeBox.heightMm - wrapH) / 2;
   const p1SeamX = leftMargin + wrapW / 2;
   const p2OriginX = leftMargin - (wrapW / 2 - halfOverlap);
   const p2SeamX = leftMargin + halfOverlap;
+  const seamTopY = Math.max(6, safeBox.yMm + 1);
+  const seamBottomY = Math.min(sheetH - 6, safeBox.yMm + safeBox.heightMm - 1);
+  const seamHeight = Math.max(0, seamBottomY - seamTopY);
+  const crossTopY = Math.min(seamBottomY - 6, seamTopY + 6);
+  const crossBottomY = Math.max(seamTopY + 6, seamBottomY - 6);
   const orientationLabel = sheetW > sheetH ? 'Landscape' : 'Portrait';
-  const reducibleFlapMm = computeReducibleFlapMm(geometry, printMediaId);
+  const reducibleFlapMm = computeReducibleFlapMm(geometry, printMediaId, effectiveMargins);
 
   return (
     <div
@@ -589,7 +937,7 @@ export function PdfSheetPreviewSvg({
       className="drafting-surface flex flex-col gap-2.5 rounded-lg border border-border p-3.5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-medium text-amber-900 dark:text-amber-300">
+        <span className="status-warning-text font-medium">
           2× {activeMediaSpec.label} {orientationLabel} Tiled ({tileOverlapMm} mm overlap &amp; tape
           zone)
         </span>
@@ -612,13 +960,19 @@ export function PdfSheetPreviewSvg({
                 <rect x={Math.max(0, leftMargin)} y={0} width={wrapHalfWithOverlap} height={sheetH} />
               </clipPath>
             </defs>
+            <UnprintableMarginStrips
+              sheetW={sheetW}
+              sheetH={sheetH}
+              margins={effectiveMargins}
+              hatchId={tile1HatchId}
+            />
             <rect
-              x={5}
-              y={5}
-              width={sheetW - 10}
-              height={sheetH - 10}
+              x={safeBox.xMm}
+              y={safeBox.yMm}
+              width={safeBox.widthMm}
+              height={safeBox.heightMm}
               fill="none"
-              stroke="#cbd5e1"
+              stroke="#94a3b8"
               strokeWidth={1}
               strokeDasharray="4 3"
             />
@@ -631,9 +985,9 @@ export function PdfSheetPreviewSvg({
             {/* Amber overlap & tape zone */}
             <rect
               x={p1SeamX - halfOverlap}
-              y={6}
+              y={seamTopY}
               width={tileOverlapMm}
-              height={sheetH - 12}
+              height={seamHeight}
               fill="rgba(217, 119, 6, 0.22)"
               stroke="#d97706"
               strokeWidth={0.7}
@@ -642,21 +996,21 @@ export function PdfSheetPreviewSvg({
             {/* Blue alignment seam + crosshairs */}
             <line
               x1={p1SeamX}
-              y1={6}
+              y1={seamTopY}
               x2={p1SeamX}
-              y2={sheetH - 6}
+              y2={seamBottomY}
               stroke="#1d5bd6"
               strokeWidth={0.9}
               strokeDasharray="3.5 2"
             />
-            {[12, sheetH - 12].map((cy) => (
+            {[crossTopY, crossBottomY].map((cy) => (
               <g key={cy} stroke="#1d5bd6" strokeWidth={0.9} fill="none">
                 <circle cx={p1SeamX} cy={cy} r={3} />
                 <line x1={p1SeamX - 5} y1={cy} x2={p1SeamX + 5} y2={cy} />
                 <line x1={p1SeamX} y1={cy - 5} x2={p1SeamX} y2={cy + 5} />
               </g>
             ))}
-            {includeScaleBar && <ScaleBarSvg x={7} y={7} />}
+            {includeScaleBar && <ScaleBarSvg x={safeBox.xMm + 2} y={safeBox.yMm + 2} />}
           </svg>
           <span className="font-mono text-[10px] font-medium text-muted-foreground">
             Sheet 1 (Left)
@@ -676,13 +1030,19 @@ export function PdfSheetPreviewSvg({
                 <rect x={leftMargin} y={0} width={wrapHalfWithOverlap} height={sheetH} />
               </clipPath>
             </defs>
+            <UnprintableMarginStrips
+              sheetW={sheetW}
+              sheetH={sheetH}
+              margins={effectiveMargins}
+              hatchId={tile2HatchId}
+            />
             <rect
-              x={5}
-              y={5}
-              width={sheetW - 10}
-              height={sheetH - 10}
+              x={safeBox.xMm}
+              y={safeBox.yMm}
+              width={safeBox.widthMm}
+              height={safeBox.heightMm}
               fill="none"
-              stroke="#cbd5e1"
+              stroke="#94a3b8"
               strokeWidth={1}
               strokeDasharray="4 3"
             />
@@ -695,9 +1055,9 @@ export function PdfSheetPreviewSvg({
             {/* Amber overlap & tape zone */}
             <rect
               x={p2SeamX - halfOverlap}
-              y={6}
+              y={seamTopY}
               width={tileOverlapMm}
-              height={sheetH - 12}
+              height={seamHeight}
               fill="rgba(217, 119, 6, 0.22)"
               stroke="#d97706"
               strokeWidth={0.7}
@@ -706,14 +1066,14 @@ export function PdfSheetPreviewSvg({
             {/* Blue alignment seam + crosshairs */}
             <line
               x1={p2SeamX}
-              y1={6}
+              y1={seamTopY}
               x2={p2SeamX}
-              y2={sheetH - 6}
+              y2={seamBottomY}
               stroke="#1d5bd6"
               strokeWidth={0.9}
               strokeDasharray="3.5 2"
             />
-            {[12, sheetH - 12].map((cy) => (
+            {[crossTopY, crossBottomY].map((cy) => (
               <g key={cy} stroke="#1d5bd6" strokeWidth={0.9} fill="none">
                 <circle cx={p2SeamX} cy={cy} r={3} />
                 <line x1={p2SeamX - 5} y1={cy} x2={p2SeamX + 5} y2={cy} />

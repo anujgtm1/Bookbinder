@@ -3,21 +3,20 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 const badgeVariants = cva(
-  'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
+  'inline-flex items-center gap-1 rounded-[2px] border px-2 py-0.5 text-xs font-medium motion-safe:transition-colors',
   {
     variants: {
       variant: {
         default: 'border-transparent bg-primary text-primary-foreground',
-        secondary: 'border-transparent bg-secondary text-secondary-foreground',
+        secondary: 'border-border/60 bg-secondary text-secondary-foreground',
         outline: 'border-border text-foreground',
         brass:
-          'border-brass/35 bg-brass/12 text-foreground',
-        success:
-          'border-emerald-700/30 bg-emerald-600/12 text-emerald-900 dark:text-emerald-300',
-        warning:
-          'border-amber-700/35 bg-amber-500/14 text-amber-900 dark:text-amber-300',
-        destructive:
-          'border-destructive/30 bg-destructive/12 text-destructive',
+          'border-brass/45 bg-brass/12 text-foreground',
+        vermilion:
+          'border-vermilion/55 bg-vermilion/10 text-vermilion',
+        success: 'status-success-surface',
+        warning: 'status-warning-surface',
+        destructive: 'status-danger-surface',
       },
     },
     defaultVariants: {

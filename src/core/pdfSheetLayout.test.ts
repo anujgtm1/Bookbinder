@@ -18,8 +18,8 @@ async function createSamplePdf(widthMm: number, heightMm: number): Promise<Uint8
   return doc.save();
 }
 
-/** Extracts decoded PDF content stream text for a given page index so text overlays can be verified. */
-function extractPageContentText(pdfDoc: PDFDocument, pageIndex: number): string {
+/** Extracts raw decoded PDF content stream string for a given page index. */
+function extractPageRawStream(pdfDoc: PDFDocument, pageIndex: number): string {
   const page = pdfDoc.getPage(pageIndex);
   const contents = page.node.Contents();
   if (!contents) return '';
@@ -42,12 +42,40 @@ function extractPageContentText(pdfDoc: PDFDocument, pageIndex: number): string 
     }
   }
 
-  const rawStream = chunks.join('\n');
+  return chunks.join('\n');
+}
+
+/** Extracts decoded PDF content stream text for a given page index so text overlays can be verified. */
+function extractPageContentText(pdfDoc: PDFDocument, pageIndex: number): string {
+  const rawStream = extractPageRawStream(pdfDoc, pageIndex);
   const decodedHexStrings: string[] = [];
   for (const match of rawStream.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) {
     decodedHexStrings.push(Buffer.from(match[1], 'hex').toString('latin1'));
   }
   return decodedHexStrings.join('\n');
+}
+
+/** Extracts the (xMm, yMm) translation applied when stamping the embedded source PDF page via `drawPage`. */
+function extractEmbeddedPageTranslationMm(
+  pdfDoc: PDFDocument,
+  pageIndex: number,
+): { readonly xMm: number; readonly yMm: number } {
+  const raw = extractPageRawStream(pdfDoc, pageIndex);
+  // pdf-lib draws an embedded page as:
+  //   q 1 0 0 1 <tx> <ty> cm <rotate cm> <scale cm> ... /EmbeddedPdfPage... Do Q
+  const doIndex = raw.indexOf(' Do');
+  expect(doIndex).toBeGreaterThan(-1);
+  const beforeDo = raw.slice(0, doIndex);
+  const lastQIndex = beforeDo.lastIndexOf('q\n');
+  const drawBlock = lastQIndex >= 0 ? beforeDo.slice(lastQIndex) : beforeDo;
+  const match = drawBlock.match(
+    /1\s+0\s+0\s+1\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+cm/,
+  );
+  expect(match).not.toBeNull();
+  return {
+    xMm: UnitConverter.pointsToMm(Number(match![1])),
+    yMm: UnitConverter.pointsToMm(Number(match![2])),
+  };
 }
 
 describe('pdfSheetLayout (layoutPdfToPrintMedia)', () => {
@@ -147,5 +175,69 @@ describe('pdfSheetLayout (layoutPdfToPrintMedia)', () => {
       tileOverlapMm: 20,
     });
     expect(boundary20).toBe(boundarySource);
+  });
+
+  it('centers 1-sheet artwork and overlays strictly inside asymmetric printable safe box (bottom gripper margin >= 20 mm)', async () => {
+    // 250 x 170 mm cover on US Letter Landscape (279.4 x 215.9 mm)
+    // Fine-Art Sheet margins: top=5, bottom=20, left=10, right=5
+    // Safe box: left=10, width=264.4, bottom=20, height=190.9, top=210.9
+    // Expected artwork x = 10 + (264.4 - 250)/2 = 17.2 mm
+    // Expected artwork y (PDF bottom-up) = 20 + (190.9 - 170)/2 = 30.45 mm (>= 20 mm!)
+    const source = await createSamplePdf(250, 170);
+    const outBytes = await layoutPdfToPrintMedia(source, 250, 170, {
+      printMediaId: 'letter',
+      includeScaleBar: true,
+      printerMargins: { topMm: 5, bottomMm: 20, leftMm: 10, rightMm: 5 },
+    });
+
+    const doc = await PDFDocument.load(outBytes);
+    expect(doc.getPageCount()).toBe(1);
+    const sz = doc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(279.4, 2);
+    expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(215.9, 2);
+
+    const pos = extractEmbeddedPageTranslationMm(doc, 0);
+    expect(pos.xMm).toBeCloseTo(17.2, 1);
+    expect(pos.yMm).toBeCloseTo(30.45, 1);
+    expect(pos.yMm).toBeGreaterThanOrEqual(20);
+    expect(pos.yMm + 170).toBeLessThanOrEqual(215.9 - 5 + 0.01);
+
+    // Verify footer and scale bar text are present and positioned above bottom gripper dead zone
+    const text = extractPageContentText(doc, 0);
+    expect(text).toContain('Centered on US Letter');
+    expect(text).toContain('50 mm Scale Check');
+
+    const raw = extractPageRawStream(doc, 0);
+    const tmMatches = [
+      ...raw.matchAll(/1\s+0\s+0\s+1\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+Tm/g),
+    ];
+    expect(tmMatches.length).toBeGreaterThan(0);
+    for (const match of tmMatches) {
+      const textYMm = UnitConverter.pointsToMm(Number(match[2]));
+      expect(textYMm).toBeGreaterThanOrEqual(20);
+      expect(textYMm).toBeLessThanOrEqual(215.9 - 5);
+    }
+  });
+
+  it('places 2-sheet tiled artwork strictly above bottom hardware margin dead zone', async () => {
+    // 360 x 220 mm cover on US Letter Portrait (215.9 x 279.4 mm) with bottom=30 mm, top=5 mm
+    // Safe height = 279.4 - 35 = 244.4 mm -> expected y = 30 + (244.4 - 220)/2 = 42.2 mm (>= 30 mm)
+    const source = await createSamplePdf(360, 220);
+    const outBytes = await layoutPdfToPrintMedia(source, 360, 220, {
+      printMediaId: 'letter',
+      tileOverlapMm: 10,
+      includeScaleBar: true,
+      printerMargins: { topMm: 5, bottomMm: 30, leftMm: 5, rightMm: 5 },
+    });
+
+    const doc = await PDFDocument.load(outBytes);
+    expect(doc.getPageCount()).toBe(2);
+
+    for (const pageIdx of [0, 1]) {
+      const pos = extractEmbeddedPageTranslationMm(doc, pageIdx);
+      expect(pos.yMm).toBeCloseTo(42.2, 1);
+      expect(pos.yMm).toBeGreaterThanOrEqual(30);
+      expect(pos.yMm + 220).toBeLessThanOrEqual(279.4 - 5 + 0.01);
+    }
   });
 });

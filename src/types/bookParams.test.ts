@@ -187,15 +187,25 @@ describe('BookParametersModel', () => {
       expect(rollSpec.rollWidthMm).toBe(jsonRoll.widthMm);
     }
 
+    // Verify custom roll media spec
+    const customRollSpec = getPrintMediaSpec('roll-custom');
+    expect(customRollSpec.kind).toBe('roll');
+    expect(customRollSpec.shortLabel).toBe(paperSpecsData.customRollMedia.name);
+    expect(customRollSpec.dimensionsLabel).toBe(paperSpecsData.customRollMedia.dimensionsLabel);
+    expect(customRollSpec.label).toBe(paperSpecsData.customRollMedia.label);
+    expect(customRollSpec.shortMm).toBeNull();
+    expect(customRollSpec.longMm).toBeNull();
+    expect(customRollSpec.rollWidthMm).toBeNull();
+
     // Verify every PRINT_MEDIA_OPTIONS entry has non-empty canonical fields and consistent count
     expect(PRINT_MEDIA_OPTIONS).toHaveLength(
-      1 + PRIMARY_SHEET_MEDIA_IDS.length + paperSpecsData.rollWidths.length,
+      1 + PRIMARY_SHEET_MEDIA_IDS.length + paperSpecsData.rollWidths.length + 1,
     );
     for (const opt of PRINT_MEDIA_OPTIONS) {
       expect(opt.shortLabel.length).toBeGreaterThan(0);
       expect(opt.dimensionsLabel.length).toBeGreaterThan(0);
       expect(opt.label.length).toBeGreaterThan(0);
-      if (opt.kind !== 'auto') {
+      if (opt.kind !== 'auto' && opt.id !== 'roll-custom') {
         expect(opt.label).toBe(`${opt.shortLabel} (${opt.dimensionsLabel})`);
       }
     }
@@ -271,5 +281,58 @@ describe('BookParametersModel', () => {
       softcoverPocketMode: 'bogus-mode',
     });
     expect(invalid.softcoverPocketMode).toBeUndefined();
+  });
+
+  it('parses, preserves, and serializes interiorStyle cleanly with undefined default for backwards compatibility', () => {
+    const defaults = BookParametersModel.createDefault();
+    expect(defaults.interiorStyle).toBeUndefined();
+
+    const folded = BookParametersModel.clampAndNormalize({
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(folded.interiorStyle).toBe('folded-endpapers');
+
+    const roundTripped = BookParametersModel.deserialize(BookParametersModel.serialize(folded));
+    expect(roundTripped.interiorStyle).toBe('folded-endpapers');
+
+    const slip = BookParametersModel.clampAndNormalize({
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'slip-pockets',
+    });
+    expect(slip.interiorStyle).toBe('slip-pockets');
+
+    const invalid = BookParametersModel.deserialize({
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'bogus-interior',
+    });
+    expect(invalid.interiorStyle).toBeUndefined();
+  });
+
+  it('clamps, preserves, and serializes roll-custom and customRollWidthMm cleanly', () => {
+    const defaults = BookParametersModel.createDefault();
+    expect(defaults.customRollWidthMm).toBeUndefined();
+
+    const valid = BookParametersModel.clampAndNormalize({
+      printMedia: 'roll-custom',
+      customRollWidthMm: 610,
+    });
+    expect(valid.printMedia).toBe('roll-custom');
+    expect(valid.customRollWidthMm).toBe(610);
+
+    const roundTripped = BookParametersModel.deserialize(BookParametersModel.serialize(valid));
+    expect(roundTripped.printMedia).toBe('roll-custom');
+    expect(roundTripped.customRollWidthMm).toBe(610);
+
+    // Clamps below 200 mm and above 1600 mm
+    expect(BookParametersModel.clampAndNormalize({ customRollWidthMm: 50 }).customRollWidthMm).toBe(
+      200,
+    );
+    expect(
+      BookParametersModel.clampAndNormalize({ customRollWidthMm: 2500 }).customRollWidthMm,
+    ).toBe(1600);
+    expect(
+      BookParametersModel.clampAndNormalize({ customRollWidthMm: Number.NaN }).customRollWidthMm,
+    ).toBeUndefined();
   });
 });

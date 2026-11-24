@@ -81,18 +81,26 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
     <section
       aria-label="Chipboard Cut List and Roll Sizing"
       data-testid="cut-list-card"
-      className={cn('rounded-lg border border-border bg-card px-4 py-3 shadow-xs', className)}
+      className={cn(
+        'washi-sheet rounded-md border border-border border-t-2 border-t-vermilion px-4 py-3',
+        className,
+      )}
     >
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5">
-        <h2 className="flex items-center gap-2 font-serif text-base font-semibold tracking-tight text-foreground">
-          <Scissors className="h-4 w-4 text-brass" aria-hidden="true" />
-          {sectionHeading}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="flex items-center gap-2 font-serif text-base font-semibold tracking-tight text-foreground">
+            <Scissors className="h-4 w-4 text-vermilion" aria-hidden="true" />
+            {sectionHeading}
+          </h2>
+          <span className="hidden font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:inline">
+            SPECIMEN DOCKET
+          </span>
+        </div>
         <Badge
           variant={fitBadgeVariant}
           data-testid="roll-recommendation-badge"
           data-fit-status={mediaFit.status}
-          className="rounded-full px-2.5"
+          className="rounded-[2px] px-2.5 font-mono text-[11px]"
         >
           <Printer className="h-3.5 w-3.5" aria-hidden="true" />
           <span>{fitBadgeSummary}</span>
@@ -101,11 +109,14 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
 
       <div className="kettle-stitch-divider grid gap-3.5 pt-2.5 lg:grid-cols-[1.35fr_1fr]">
         {/* Flat Ruled Cut List Columns (driven by BindingStyleStrategy capabilities) */}
-        <div className="grid grid-cols-1 divide-y divide-border/70 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <div className="grid grid-cols-1 divide-y divide-border/80 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           <div className="py-1.5 sm:py-0 sm:pr-3.5" data-testid="cut-cover-boards">
             <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               <span>{usesChipboard ? 'Cover Boards' : 'Chipboard'}</span>
-              <Badge variant={usesChipboard ? 'brass' : 'outline'} className="font-mono text-[10px]">
+              <Badge
+                variant={usesChipboard ? 'vermilion' : 'outline'}
+                className="font-mono text-[10px] font-semibold"
+              >
                 {usesChipboard ? `Qty ${cutList.coverBoards.quantity}` : 'None'}
               </Badge>
             </div>
@@ -149,8 +160,8 @@ export function CutListCard({ geometry, unit, className }: CutListCardProps) {
                         : 'Spine Strip'}
               </span>
               <Badge
-                variant={hasRigidSpine ? 'brass' : 'outline'}
-                className="font-mono text-[10px]"
+                variant={hasRigidSpine ? 'vermilion' : 'outline'}
+                className="font-mono text-[10px] font-semibold"
               >
                 {isSeparateSlipCover
                   ? 'Sheet 2'

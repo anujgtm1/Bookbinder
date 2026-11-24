@@ -5,7 +5,10 @@ import {
 } from '@/components/BlueprintDimensionLines';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, type UnitSystem } from '@/types/units';
-import type { InnerPocketsLayout } from '../pocketRenderEngine';
+import {
+  getFoldedEndpaperHalfLabels,
+  type InnerPocketsLayout,
+} from '../pocketRenderEngine';
 
 export interface PocketBlueprintDimensionsProps {
   readonly geometry: CaseGeometry;
@@ -13,13 +16,17 @@ export interface PocketBlueprintDimensionsProps {
   readonly unit: UnitSystem;
 }
 
-/** Manual-cutting CAD dimension chains and grain-direction arrows for Back Pocket, Spine Liner, and Front Pocket. */
+/** Manual-cutting CAD dimension chains and grain-direction arrows for Back Pocket/Endpaper, Spine Liner, and Front Pocket/Endpaper. */
 export function PocketBlueprintDimensions({
   geometry,
   innerLayout,
   unit,
 }: PocketBlueprintDimensionsProps) {
   const { backPocket, spineLiner, frontPocket } = geometry;
+  const isBackFolded = backPocket.kind === 'folded-endpaper';
+  const isFrontFolded = frontPocket.kind === 'folded-endpaper';
+  const backHalves = isBackFolded ? getFoldedEndpaperHalfLabels('back') : null;
+  const frontHalves = isFrontFolded ? getFoldedEndpaperHalfLabels('front') : null;
 
   return (
     <g data-testid="pockets-blueprint-dimensions">
@@ -35,7 +42,7 @@ export function PocketBlueprintDimensions({
         lengthMm={36}
       />
 
-      {/* Back Pocket Overall Width (top) & Flap/Face Breakdown (bottom) */}
+      {/* Back Piece Overall Width (top) & Flap/Face or Leaf Breakdown (bottom) */}
       <HorizontalDimLine
         x1={innerLayout.backX}
         x2={innerLayout.backX + backPocket.totalWidthMm}
@@ -45,22 +52,45 @@ export function PocketBlueprintDimensions({
         emphasized
         fontSize={4.4}
       />
-      <HorizontalDimLine
-        x1={innerLayout.backX}
-        x2={innerLayout.backFaceRect.x}
-        y={backPocket.totalHeightMm + 11}
-        anchorY={backPocket.totalHeightMm}
-        label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
-        fontSize={4.0}
-      />
-      <HorizontalDimLine
-        x1={innerLayout.backFaceRect.x}
-        x2={innerLayout.backFaceRect.x + backPocket.pocketWidthMm}
-        y={backPocket.totalHeightMm + 11}
-        anchorY={backPocket.totalHeightMm}
-        label={UnitConverter.format(backPocket.pocketWidthMm, unit)}
-        fontSize={4.2}
-      />
+      {isBackFolded && backHalves ? (
+        <>
+          <HorizontalDimLine
+            x1={innerLayout.backX}
+            x2={innerLayout.backX + backPocket.pocketWidthMm}
+            y={backPocket.totalHeightMm + 11}
+            anchorY={backPocket.totalHeightMm}
+            label={`${backHalves.left}: ${UnitConverter.format(backPocket.pocketWidthMm, unit)}`}
+            fontSize={4.0}
+          />
+          <HorizontalDimLine
+            x1={innerLayout.backX + backPocket.pocketWidthMm}
+            x2={innerLayout.backX + backPocket.totalWidthMm}
+            y={backPocket.totalHeightMm + 11}
+            anchorY={backPocket.totalHeightMm}
+            label={`${backHalves.right}: ${UnitConverter.format(backPocket.pocketWidthMm, unit)}`}
+            fontSize={4.0}
+          />
+        </>
+      ) : (
+        <>
+          <HorizontalDimLine
+            x1={innerLayout.backX}
+            x2={innerLayout.backFaceRect.x}
+            y={backPocket.totalHeightMm + 11}
+            anchorY={backPocket.totalHeightMm}
+            label={UnitConverter.formatValue(backPocket.flapWidthMm, unit)}
+            fontSize={4.0}
+          />
+          <HorizontalDimLine
+            x1={innerLayout.backFaceRect.x}
+            x2={innerLayout.backFaceRect.x + backPocket.pocketWidthMm}
+            y={backPocket.totalHeightMm + 11}
+            anchorY={backPocket.totalHeightMm}
+            label={UnitConverter.format(backPocket.pocketWidthMm, unit)}
+            fontSize={4.2}
+          />
+        </>
+      )}
 
       {/* Left Vertical Breakdown for Pocket Flaps & Face Height */}
       {backPocket.faceRect.y > 0.2 ? (
@@ -136,7 +166,7 @@ export function PocketBlueprintDimensions({
         fontSize={3.8}
       />
 
-      {/* Front Pocket Overall Width (top), Face/Flap Breakdown (bottom) & Overall Height (right) */}
+      {/* Front Piece Overall Width (top), Face/Flap or Leaf Breakdown (bottom) & Overall Height (right) */}
       <HorizontalDimLine
         x1={innerLayout.frontX}
         x2={innerLayout.frontX + frontPocket.totalWidthMm}
@@ -146,22 +176,45 @@ export function PocketBlueprintDimensions({
         emphasized
         fontSize={4.4}
       />
-      <HorizontalDimLine
-        x1={innerLayout.frontFaceRect.x}
-        x2={innerLayout.frontFaceRect.x + frontPocket.pocketWidthMm}
-        y={frontPocket.totalHeightMm + 11}
-        anchorY={frontPocket.totalHeightMm}
-        label={UnitConverter.format(frontPocket.pocketWidthMm, unit)}
-        fontSize={4.2}
-      />
-      <HorizontalDimLine
-        x1={innerLayout.frontFaceRect.x + frontPocket.pocketWidthMm}
-        x2={innerLayout.frontX + frontPocket.totalWidthMm}
-        y={frontPocket.totalHeightMm + 11}
-        anchorY={frontPocket.totalHeightMm}
-        label={UnitConverter.formatValue(frontPocket.flapWidthMm, unit)}
-        fontSize={4.0}
-      />
+      {isFrontFolded && frontHalves ? (
+        <>
+          <HorizontalDimLine
+            x1={innerLayout.frontX}
+            x2={innerLayout.frontX + frontPocket.pocketWidthMm}
+            y={frontPocket.totalHeightMm + 11}
+            anchorY={frontPocket.totalHeightMm}
+            label={`${frontHalves.left}: ${UnitConverter.format(frontPocket.pocketWidthMm, unit)}`}
+            fontSize={4.0}
+          />
+          <HorizontalDimLine
+            x1={innerLayout.frontX + frontPocket.pocketWidthMm}
+            x2={innerLayout.frontX + frontPocket.totalWidthMm}
+            y={frontPocket.totalHeightMm + 11}
+            anchorY={frontPocket.totalHeightMm}
+            label={`${frontHalves.right}: ${UnitConverter.format(frontPocket.pocketWidthMm, unit)}`}
+            fontSize={4.0}
+          />
+        </>
+      ) : (
+        <>
+          <HorizontalDimLine
+            x1={innerLayout.frontFaceRect.x}
+            x2={innerLayout.frontFaceRect.x + frontPocket.pocketWidthMm}
+            y={frontPocket.totalHeightMm + 11}
+            anchorY={frontPocket.totalHeightMm}
+            label={UnitConverter.format(frontPocket.pocketWidthMm, unit)}
+            fontSize={4.2}
+          />
+          <HorizontalDimLine
+            x1={innerLayout.frontFaceRect.x + frontPocket.pocketWidthMm}
+            x2={innerLayout.frontX + frontPocket.totalWidthMm}
+            y={frontPocket.totalHeightMm + 11}
+            anchorY={frontPocket.totalHeightMm}
+            label={UnitConverter.formatValue(frontPocket.flapWidthMm, unit)}
+            fontSize={4.0}
+          />
+        </>
+      )}
       <VerticalDimLine
         y1={0}
         y2={frontPocket.totalHeightMm}

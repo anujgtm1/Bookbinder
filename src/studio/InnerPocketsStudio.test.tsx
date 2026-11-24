@@ -200,4 +200,152 @@ describe('InnerPocketsStudio', () => {
     await user.click(screen.getByTestId('pockets-exit-fullscreen-btn'));
     expect(stage).toHaveAttribute('data-expanded', 'false');
   });
+
+  it('toggles between Removable Slip-In Pockets and Folded Glue-In Endpapers on chipboard hardcovers and renders mirrored PASTEDOWN / FLYLEAF annotations', async () => {
+    const user = userEvent.setup();
+    let interiorStyle: 'slip-pockets' | 'folded-endpapers' = 'slip-pockets';
+    const onChangeInteriorStyle = vi.fn((next: 'slip-pockets' | 'folded-endpapers') => {
+      interiorStyle = next;
+    });
+
+    const initialLayer = CoverImageLayerModel.createInRect({
+      id: 'endpaper-art-1',
+      dataUrl: 'data:image/png;base64,AAA',
+      fileName: 'floral.png',
+      naturalWidth: 1200,
+      naturalHeight: 1600,
+      targetRect: { x: 0, y: 0, width: 140, height: 216 },
+      mode: 'cover',
+    });
+    const pocketStyle: PocketStyleConfig = {
+      ...DEFAULT_POCKET_STYLE,
+      layers: [initialLayer],
+    };
+
+    const slipGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      interiorStyle: 'slip-pockets',
+    });
+
+    const { rerender } = render(
+      <InnerPocketsStudio
+        geometry={slipGeom}
+        pocketStyle={pocketStyle}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        interiorStyle={interiorStyle}
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onChangeInteriorStyle={onChangeInteriorStyle}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    const slipBtn = screen.getByTestId('interior-style-slip-pockets');
+    const foldedBtn = screen.getByTestId('interior-style-folded-endpapers');
+    expect(slipBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(foldedBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('Inner Slip-In Pockets & Spine Liner')).toBeInTheDocument();
+    expect(screen.getByTestId('pocket-quick-fit-front')).toHaveTextContent('Fit Front Pocket');
+
+    // Toggle to Folded Glue-In Endpapers
+    await user.click(foldedBtn);
+    expect(onChangeInteriorStyle).toHaveBeenCalledWith('folded-endpapers');
+
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      interiorStyle: 'folded-endpapers',
+    });
+    rerender(
+      <InnerPocketsStudio
+        geometry={foldedGeom}
+        pocketStyle={pocketStyle}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        interiorStyle={interiorStyle}
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onChangeInteriorStyle={onChangeInteriorStyle}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('interior-style-slip-pockets')).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByTestId('interior-style-folded-endpapers')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByText('Folded Glue-In Endpapers & Spine Liner')).toBeInTheDocument();
+    expect(screen.getByTestId('download-styled-inner-pdf-btn')).toHaveTextContent(
+      'Styled Endpapers PDF…',
+    );
+    expect(screen.getByTestId('pocket-quick-fit-front')).toHaveTextContent('Fit Front Endpaper');
+    expect(screen.getByTestId('pocket-quick-fit-back')).toHaveTextContent('Fit Back Endpaper');
+    expect(screen.getByTestId('pocket-copy-other-btn')).toHaveTextContent('Copy to Other Endpaper');
+
+    // Verify accurately mirrored PASTEDOWN / FLYLEAF zone labels in Styled mode
+    expect(screen.getByTestId('endpaper-back-left-zone')).toHaveTextContent('FLYLEAF');
+    expect(screen.getByTestId('endpaper-back-right-zone')).toHaveTextContent('PASTEDOWN');
+    expect(screen.getByTestId('endpaper-front-left-zone')).toHaveTextContent('PASTEDOWN');
+    expect(screen.getByTestId('endpaper-front-right-zone')).toHaveTextContent('FLYLEAF');
+
+    // Switch to Blueprint mode: displays CENTER FOLD and leaf dimension breakdowns without OPEN EDGE
+    await user.click(screen.getByTestId('pockets-view-blueprint-btn'));
+    expect(screen.getAllByText('CENTER FOLD')).toHaveLength(2);
+    expect(screen.getByTestId('endpaper-back-left-zone')).toHaveTextContent('FLYLEAF');
+    expect(screen.getByTestId('endpaper-front-left-zone')).toHaveTextContent('PASTEDOWN');
+    expect(screen.queryByText(/OPEN EDGE/i)).not.toBeInTheDocument();
+
+    // Boardless softcover-jacket hides the chipboard interior style toggle
+    const softGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+    });
+    rerender(
+      <InnerPocketsStudio
+        geometry={softGeom}
+        pocketStyle={pocketStyle}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('interior-style-folded-endpapers')).not.toBeInTheDocument();
+  });
+
+  it('supports graceful uncontrolled local fallback when onChangeInteriorStyle is omitted', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    render(
+      <InnerPocketsStudio
+        geometry={geom}
+        pocketStyle={DEFAULT_POCKET_STYLE}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    const foldedBtn = screen.getByTestId('interior-style-folded-endpapers');
+    expect(foldedBtn).toHaveAttribute('aria-pressed', 'false');
+    await user.click(foldedBtn);
+    expect(foldedBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Folded Glue-In Endpapers & Spine Liner')).toBeInTheDocument();
+  });
 });

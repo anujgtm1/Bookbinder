@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { PDFDocument } from 'pdf-lib';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { calculateCaseGeometry } from '@/core/geometry';
+import * as storageModule from '@/core/storage';
 import type { CoverPdfLayerMode } from '@/studio/renderEngine';
 import {
   DEFAULT_BOOK_PARAMETERS,
@@ -10,6 +12,7 @@ import {
   type PrintMediaId,
   type SplitMode,
 } from '@/types/bookParams';
+import { UnitConverter } from '@/types/units';
 import {
   PdfExportDialog,
   type PdfExportSelection,
@@ -65,6 +68,10 @@ function StatefulPdfExportDialog({
 }
 
 describe('PdfExportDialog', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it('opens native modal dialog for cover-styled A6 slip cover, compares Legal vs tiled Letter, toggles options, and confirms exact selection', async () => {
     const user = userEvent.setup();
     // A6 Slip Cover with 52.5 mm flaps: wrapW = (106*2 + 15) + 52.5*2 = 332 mm, wrapH = 150 + 20 = 170 mm
@@ -414,6 +421,172 @@ describe('PdfExportDialog', () => {
         printMediaId: 'letter',
         pageSizeId: 'letter',
         appendInnerPocketsPage: true,
+      }),
+    );
+  });
+
+  it('supports Custom Roll Width selection, live fit evaluation, and passes customRollWidthMm on confirm', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const onConfirmExport = vi.fn();
+
+    render(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={geom}
+        initialMedia="exact-auto"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    await user.selectOptions(screen.getByTestId('pdf-export-roll-select'), 'roll-custom');
+    const widthInput = screen.getByTestId('pdf-custom-roll-width-input');
+    expect(widthInput).toBeInTheDocument();
+
+    // Enter 610 mm (24") custom roll width
+    await user.clear(widthInput);
+    await user.type(widthInput, '610');
+    expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent('Custom Roll (610 mm)');
+
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onConfirmExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        printMediaId: 'roll-custom',
+        customRollWidthMm: 610,
+      }),
+    );
+  });
+
+  it('expands Printer Margins & Calibration, applies asymmetric preset, downloads 1-click Margin Calibration Sheet PDF, and passes printerMargins on confirm', async () => {
+    const user = userEvent.setup();
+    const downloadSpy = vi.spyOn(storageModule, 'triggerBytesDownload').mockImplementation(() => {});
+    try {
+      const a6Slip = calculateCaseGeometry({
+        ...DEFAULT_BOOK_PARAMETERS,
+        bindingStyle: 'softcover-jacket',
+        pbWidthMm: 105,
+        pbHeightMm: 148,
+        pbThicknessMm: 5,
+        printMedia: 'letter',
+      });
+      const onConfirmExport = vi.fn();
+
+      render(
+        <StatefulPdfExportDialog
+          target="cover-styled"
+          geometry={a6Slip}
+          initialMedia="letter"
+          onConfirmExport={onConfirmExport}
+        />,
+      );
+
+      // Collapsed by default
+      expect(screen.queryByTestId('pdf-margins-preset-select')).not.toBeInTheDocument();
+
+      // Expand Printer Margins & Calibration
+      await user.click(screen.getByTestId('pdf-margins-toggle'));
+      const presetSelect = screen.getByTestId('pdf-margins-preset-select');
+      expect(presetSelect).toBeInTheDocument();
+      expect(screen.getByTestId('preview-unprintable-margin')).toBeInTheDocument();
+
+      // Switch to Fine-Art / Heavy Sheet (Top 5, Bottom 20, Sides 5 mm)
+      await user.selectOptions(presetSelect, 'fine-art-sheet');
+      expect(screen.getByTestId('pdf-margin-bottom')).toHaveValue(20);
+
+      // Download 1-click Margin Calibration Sheet PDF
+      await user.click(screen.getByTestId('pdf-margin-test-sheet-btn'));
+      await waitFor(() => {
+        expect(downloadSpy).toHaveBeenCalledTimes(1);
+      });
+      const [pdfBytes, filename, mimeType] = downloadSpy.mock.calls[0];
+      expect(filename).toBe('printer_margin_calibration_sheet.pdf');
+      expect(mimeType).toBe('application/pdf');
+      expect(pdfBytes.byteLength).toBeGreaterThan(500);
+      expect(new TextDecoder().decode(pdfBytes.slice(0, 5))).toBe('%PDF-');
+
+      // Confirm export passes asymmetric printerMargins
+      await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+      expect(onConfirmExport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          printMediaId: 'letter',
+          printerMargins: expect.objectContaining({
+            topMm: 5,
+            bottomMm: 20,
+            leftMm: 5,
+            rightMm: 5,
+            presetId: 'fine-art-sheet',
+          }),
+        }),
+      );
+    } finally {
+      downloadSpy.mockRestore();
+    }
+  });
+
+  it('enables Wide-Format Roll Multi-Up Nesting (2 across on 36" roll) with live strip preview and gang-sheet PDF queue', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const onConfirmExport = vi.fn();
+
+    render(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={geom}
+        initialMedia="exact-auto"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    // Select 36" Roll -> Roll Nesting section appears with live capacity badge
+    await user.selectOptions(screen.getByTestId('pdf-export-roll-select'), 'roll-36');
+    expect(screen.getByTestId('pdf-roll-nesting-section')).toBeInTheDocument();
+    expect(screen.getByTestId('pdf-roll-capacity-badge')).toHaveTextContent(
+      /Fits \d+ across on 36" roll/i,
+    );
+
+    // Enable Multi-Up / Roll Strip
+    await user.click(screen.getByTestId('pdf-roll-nesting-toggle'));
+    await user.click(screen.getByTestId('pdf-roll-copies-2'));
+
+    // Live Roll Strip Preview renders 2 placed cover rectangles
+    expect(screen.getByTestId('pdf-roll-strip-preview')).toBeInTheDocument();
+    expect(screen.getAllByTestId('roll-nest-placed-item')).toHaveLength(2);
+    expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent(/1 roll strip • 36" Roll/i);
+
+    // Upload another book cover PDF to the gang-sheet queue
+    const extraDoc = await PDFDocument.create();
+    extraDoc.addPage([UnitConverter.mmToPoints(320), UnitConverter.mmToPoints(220)]);
+    const extraBytes = await extraDoc.save();
+    const extraFile = new File([new Uint8Array(extraBytes)], 'second_book_cover.pdf', {
+      type: 'application/pdf',
+    });
+    await user.upload(screen.getByTestId('pdf-roll-gang-upload'), extraFile);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pdf-roll-gang-list')).toHaveTextContent('second_book_cover');
+    });
+    expect(screen.getAllByTestId('roll-nest-placed-item')).toHaveLength(3);
+
+    // Also toggle Pack Inner Pockets beside cover
+    await user.click(screen.getByTestId('pdf-roll-pack-pockets'));
+
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onConfirmExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        printMediaId: 'roll-36',
+        rollNesting: expect.objectContaining({
+          enabled: true,
+          copies: 2,
+          gutterMm: 10,
+          packInnerPockets: true,
+          allowRotation: true,
+          extraQueueItems: [
+            expect.objectContaining({
+              label: 'second_book_cover',
+              copies: 1,
+            }),
+          ],
+        }),
       }),
     );
   });

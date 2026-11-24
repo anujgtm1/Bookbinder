@@ -86,6 +86,16 @@ export const PRINT_MEDIA_OPTIONS: readonly PrintMediaSpec[] = [
       rollWidthMm: roll.widthMm,
     }),
   ),
+  {
+    id: paperSpecsData.customRollMedia.id as PrintMediaId,
+    label: paperSpecsData.customRollMedia.label,
+    shortLabel: paperSpecsData.customRollMedia.name,
+    dimensionsLabel: paperSpecsData.customRollMedia.dimensionsLabel,
+    kind: 'roll',
+    shortMm: null,
+    longMm: null,
+    rollWidthMm: null,
+  },
 ];
 
 export function getPrintMediaSpec(id: PrintMediaId): PrintMediaSpec {

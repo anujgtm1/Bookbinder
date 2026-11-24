@@ -1,13 +1,51 @@
-import { Download, FileText, Printer, Sparkles, X } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Download,
+  FileText,
+  Layers,
+  Plus,
+  Printer,
+  Ruler,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { PDFDocument } from 'pdf-lib';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { PdfSheetPreviewSvg } from '@/components/PdfSheetPreviewSvg';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { evaluateDetachedSlipCoverFit, resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
+import { generateMarginTestSheetPdf } from '@/core/marginTestSheetPdf';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
+import type { RollNestingExportOptions } from '@/core/pdfSheetLayout';
+import {
+  CUSTOM_ROLL_WIDTH_BOUNDS,
+  DEFAULT_PRINTER_MARGINS,
+  PRINTER_MARGIN_BOUNDS,
+  PRINTER_MARGIN_PRESETS,
+  clampCustomRollWidthMm,
+  clampPrinterMargins,
+  getPrinterMarginPreset,
+  loadSavedCustomRollWidthMm,
+  loadSavedPrinterMargins,
+  saveCustomRollWidthMm,
+  savePrinterMargins,
+  type PrinterMarginPresetId,
+  type PrinterMargins,
+} from '@/core/printerMargins';
+import {
+  evaluateSingleItemRollCapacity,
+  packItemsOntoRoll,
+  type RollNestItem,
+  type RollNestPlan,
+} from '@/core/rollNesting';
+import { triggerBytesDownload } from '@/core/storage';
 import type { CoverPdfLayerMode } from '@/studio/renderEngine';
 import {
   PAGE_SIZES,
@@ -39,6 +77,9 @@ export interface PdfExportSelection {
   readonly tileOverlapMm: number;
   readonly exportLayerMode: CoverPdfLayerMode;
   readonly appendInnerPocketsPage: boolean;
+  readonly customRollWidthMm?: number;
+  readonly printerMargins?: PrinterMargins;
+  readonly rollNesting?: RollNestingExportOptions;
 }
 
 export interface OuterPdfExportOptions {
@@ -48,6 +89,9 @@ export interface OuterPdfExportOptions {
   readonly includeScaleBar?: boolean;
   readonly appendInnerPocketsPage?: boolean;
   readonly innerPageSizeId?: PageSizeId;
+  readonly customRollWidthMm?: number;
+  readonly printerMargins?: PrinterMargins;
+  readonly rollNesting?: RollNestingExportOptions;
 }
 
 export interface InnerPdfExportOptions {
@@ -62,6 +106,8 @@ export interface PdfExportDialogProps {
   readonly unit: UnitSystem;
   readonly printMediaId: PrintMediaId;
   readonly onChangePrintMedia: (mediaId: PrintMediaId) => void;
+  readonly customRollWidthMm?: number;
+  readonly onChangeCustomRollWidthMm?: (widthMm: number) => void;
   readonly pageSizeId: PageSizeId;
   readonly onChangePageSize: (sizeId: PageSizeId) => void;
   readonly splitMode: SplitMode;
@@ -76,6 +122,15 @@ export interface PdfExportDialogProps {
   readonly onClose: () => void;
 }
 
+interface GangQueueEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly pdfBytes: Uint8Array;
+  readonly widthMm: number;
+  readonly heightMm: number;
+  readonly copies: number;
+}
+
 const PRIMARY_OUTER_MEDIA_IDS: readonly PrintMediaId[] = [
   ...PRIMARY_SHEET_MEDIA_IDS,
   'exact-auto',
@@ -83,6 +138,7 @@ const PRIMARY_OUTER_MEDIA_IDS: readonly PrintMediaId[] = [
 
 const ROLL_MEDIA_OPTIONS = PRINT_MEDIA_OPTIONS.filter((opt) => opt.kind === 'roll');
 const OVERLAP_CHOICES = [10, 15, 20] as const;
+const ROLL_GUTTER_CHOICES = [6, 10, 15] as const;
 
 const TARGET_TITLES: Record<PdfExportTarget, string> = {
   'cover-styled': 'Print Cover PDF',
@@ -139,6 +195,8 @@ export function PdfExportDialog({
   unit,
   printMediaId,
   onChangePrintMedia,
+  customRollWidthMm: propCustomRollWidthMm,
+  onChangeCustomRollWidthMm,
   pageSizeId,
   onChangePageSize,
   splitMode,
@@ -158,6 +216,12 @@ export function PdfExportDialog({
   const legendSwitchId = useId();
   const appendPocketsSwitchId = useId();
   const rollSelectId = useId();
+  const customRollInputId = useId();
+  const marginsPresetId = useId();
+  const rollNestingSwitchId = useId();
+  const rollRotationSwitchId = useId();
+  const rollPackPocketsSwitchId = useId();
+  const gangUploadInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   const [includeGuides, setIncludeGuides] = useState(defaultIncludeGuides);
@@ -170,6 +234,59 @@ export function PdfExportDialog({
   const [tileOverlapMm, setTileOverlapMm] = useState<number>(10);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Printer margins & calibration state (persisted in localStorage)
+  const [marginsExpanded, setMarginsExpanded] = useState(false);
+  const [printerMargins, setPrinterMargins] = useState<PrinterMargins>(() =>
+    loadSavedPrinterMargins(),
+  );
+  const [generatingTestSheet, setGeneratingTestSheet] = useState(false);
+
+  // Custom roll width state (persisted in localStorage)
+  const [localCustomRollWidthMm, setLocalCustomRollWidthMm] = useState<number>(() =>
+    propCustomRollWidthMm !== undefined
+      ? clampCustomRollWidthMm(propCustomRollWidthMm)
+      : loadSavedCustomRollWidthMm(),
+  );
+  const effectiveCustomRollWidthMm =
+    propCustomRollWidthMm !== undefined
+      ? clampCustomRollWidthMm(propCustomRollWidthMm)
+      : localCustomRollWidthMm;
+  const [customRollDraft, setCustomRollDraft] = useState(() =>
+    UnitConverter.formatValue(effectiveCustomRollWidthMm, unit),
+  );
+  const [customRollFocused, setCustomRollFocused] = useState(false);
+
+  // Wide-format roll nesting & multi-book gang-sheet queue state
+  const [rollNestingEnabled, setRollNestingEnabled] = useState(false);
+  const [rollCopies, setRollCopies] = useState(2);
+  const [rollGutterMm, setRollGutterMm] = useState<number>(10);
+  const [rollAllowRotation, setRollAllowRotation] = useState(true);
+  const [rollPackInnerPockets, setRollPackInnerPockets] = useState(false);
+  const [gangQueue, setGangQueue] = useState<readonly GangQueueEntry[]>([]);
+  const [gangUploadError, setGangUploadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!customRollFocused) {
+      setCustomRollDraft(UnitConverter.formatValue(effectiveCustomRollWidthMm, unit));
+    }
+  }, [effectiveCustomRollWidthMm, unit, customRollFocused]);
+
+  const commitCustomRollWidthMm = useCallback(
+    (nextMm: number) => {
+      const clamped = clampCustomRollWidthMm(nextMm);
+      setLocalCustomRollWidthMm(clamped);
+      saveCustomRollWidthMm(clamped);
+      onChangeCustomRollWidthMm?.(clamped);
+    },
+    [onChangeCustomRollWidthMm],
+  );
+
+  const updatePrinterMargins = useCallback((next: Partial<PrinterMargins>) => {
+    const normalized = clampPrinterMargins(next);
+    setPrinterMargins(normalized);
+    savePrinterMargins(normalized);
+  }, []);
+
   const isOuterTarget = target === 'cover-styled' || target === 'outer-blueprint';
   const isRollSelected = ROLL_MEDIA_OPTIONS.some((opt) => opt.id === printMediaId);
   const bindingStrategy = resolveBindingStrategy(geometry);
@@ -178,8 +295,14 @@ export function PdfExportDialog({
   const effectiveSplitMode: SplitMode = bindingStrategy.capabilities.supportsThreePieceSplit
     ? splitMode
     : 'single';
+  const isRollNestingActive =
+    isOuterTarget && effectiveSplitMode === 'single' && isRollSelected && rollNestingEnabled;
   const effectiveAppendPockets =
-    isOuterTarget && effectiveSplitMode === 'single' && isSeparateSlipCover && appendInnerPocketsPage;
+    isOuterTarget &&
+    effectiveSplitMode === 'single' &&
+    isSeparateSlipCover &&
+    appendInnerPocketsPage &&
+    !(isRollNestingActive && rollPackInnerPockets);
 
   const requestClose = useCallback(() => {
     const dialog = dialogRef.current;
@@ -205,6 +328,12 @@ export function PdfExportDialog({
       setIncludeLegend(defaultIncludeLegend);
       setExportLayerMode(defaultExportLayerMode);
       setAppendInnerPocketsPage(true);
+      setPrinterMargins(loadSavedPrinterMargins());
+      setLocalCustomRollWidthMm(
+        propCustomRollWidthMm !== undefined
+          ? clampCustomRollWidthMm(propCustomRollWidthMm)
+          : loadSavedCustomRollWidthMm(),
+      );
       if (!dialog.open) {
         if (typeof dialog.showModal === 'function') {
           dialog.showModal();
@@ -219,7 +348,7 @@ export function PdfExportDialog({
         dialog.removeAttribute('open');
       }
     }
-  }, [open, defaultIncludeGuides, defaultIncludeLegend, defaultExportLayerMode]);
+  }, [open, defaultIncludeGuides, defaultIncludeLegend, defaultExportLayerMode, propCustomRollWidthMm]);
 
   // Light-dismiss fallback for browsers without native HTMLDialogElement closedby support
   useEffect(() => {
@@ -260,21 +389,149 @@ export function PdfExportDialog({
 
   const wrapW = geometry.outerWrap.widthMm;
   const wrapH = geometry.outerWrap.heightMm;
+  const coverBleedMm = geometry.outerWrap.includeBleed ? geometry.outerWrap.bleedMm : 0;
+  const coverPdfW = wrapW + coverBleedMm * 2;
+  const coverPdfH = wrapH + coverBleedMm * 2;
+
+  const fitOptions = useMemo(
+    () => ({
+      customRollWidthMm: effectiveCustomRollWidthMm,
+      margins: printerMargins,
+    }),
+    [effectiveCustomRollWidthMm, printerMargins],
+  );
 
   const outerFitsByMedia = useMemo(() => {
     const map = new Map<PrintMediaId, PrintMediaFitEvaluation>();
     for (const opt of PRINT_MEDIA_OPTIONS) {
-      map.set(opt.id, evaluatePrintMediaFit(opt.id, wrapW, wrapH, tileOverlapMm));
+      map.set(opt.id, evaluatePrintMediaFit(opt.id, wrapW, wrapH, tileOverlapMm, fitOptions));
     }
     return map;
-  }, [wrapW, wrapH, tileOverlapMm]);
+  }, [wrapW, wrapH, tileOverlapMm, fitOptions]);
 
   const activeFit = useMemo(
     () =>
       outerFitsByMedia.get(printMediaId) ??
-      evaluatePrintMediaFit(printMediaId, wrapW, wrapH, tileOverlapMm),
-    [outerFitsByMedia, printMediaId, wrapW, wrapH, tileOverlapMm],
+      evaluatePrintMediaFit(printMediaId, wrapW, wrapH, tileOverlapMm, fitOptions),
+    [outerFitsByMedia, printMediaId, wrapW, wrapH, tileOverlapMm, fitOptions],
   );
+
+  const activeMediaSpec = getPrintMediaSpec(printMediaId);
+  const activeRollWidthMm = useMemo(() => {
+    if (printMediaId === 'roll-custom') return effectiveCustomRollWidthMm;
+    return activeMediaSpec.rollWidthMm ?? effectiveCustomRollWidthMm;
+  }, [printMediaId, activeMediaSpec.rollWidthMm, effectiveCustomRollWidthMm]);
+
+  const rollSideMarginMm = Math.max(printerMargins.leftMm, printerMargins.rightMm);
+  const rollLeadingMarginMm = Math.max(printerMargins.topMm, printerMargins.bottomMm);
+
+  const rollCapacity = useMemo(
+    () =>
+      evaluateSingleItemRollCapacity(
+        coverPdfW,
+        coverPdfH,
+        activeRollWidthMm,
+        rollSideMarginMm,
+        rollGutterMm,
+      ),
+    [coverPdfW, coverPdfH, activeRollWidthMm, rollSideMarginMm, rollGutterMm],
+  );
+
+  const effectiveMaxAcross = rollAllowRotation
+    ? rollCapacity.recommendedMaxAcross
+    : rollCapacity.maxAcrossUnrotated;
+
+  const rollNestPlan: RollNestPlan | null = useMemo(() => {
+    if (!isRollNestingActive) return null;
+    const items: RollNestItem[] = [
+      {
+        id: 'current-cover',
+        label: 'Cover',
+        widthMm: coverPdfW,
+        heightMm: coverPdfH,
+        copies: Math.max(1, Math.floor(rollCopies)),
+      },
+    ];
+
+    if (rollPackInnerPockets && bindingStrategy.capabilities.usesInnerPockets) {
+      const safeCopies = Math.max(1, Math.floor(rollCopies));
+      items.push(
+        {
+          id: 'inner-back-pocket',
+          label: geometry.backPocket.label,
+          widthMm: geometry.backPocket.totalWidthMm,
+          heightMm: geometry.backPocket.totalHeightMm,
+          copies: safeCopies,
+        },
+        {
+          id: 'inner-front-pocket',
+          label: geometry.frontPocket.label,
+          widthMm: geometry.frontPocket.totalWidthMm,
+          heightMm: geometry.frontPocket.totalHeightMm,
+          copies: safeCopies,
+        },
+      );
+      if (bindingStrategy.capabilities.usesChipboard) {
+        items.push({
+          id: 'inner-spine-liner',
+          label: 'Spine Liner',
+          widthMm: geometry.spineLiner.widthMm,
+          heightMm: geometry.spineLiner.heightMm,
+          copies: safeCopies,
+        });
+      }
+    }
+
+    for (const entry of gangQueue) {
+      if (entry.copies > 0) {
+        items.push({
+          id: entry.id,
+          label: entry.label,
+          widthMm: entry.widthMm,
+          heightMm: entry.heightMm,
+          copies: entry.copies,
+        });
+      }
+    }
+
+    return packItemsOntoRoll(items, {
+      rollWidthMm: activeRollWidthMm,
+      sideMarginMm: rollSideMarginMm,
+      leadingMarginMm: rollLeadingMarginMm,
+      gutterMm: rollGutterMm,
+      allowRotation: rollAllowRotation,
+    });
+  }, [
+    isRollNestingActive,
+    coverPdfW,
+    coverPdfH,
+    rollCopies,
+    rollPackInnerPockets,
+    bindingStrategy.capabilities.usesInnerPockets,
+    bindingStrategy.capabilities.usesChipboard,
+    geometry.backPocket,
+    geometry.frontPocket,
+    geometry.spineLiner,
+    gangQueue,
+    activeRollWidthMm,
+    rollSideMarginMm,
+    rollLeadingMarginMm,
+    rollGutterMm,
+    rollAllowRotation,
+  ]);
+
+  const rollDisplayName = useMemo(() => {
+    if (printMediaId === 'roll-custom') {
+      return `${roundTo(effectiveCustomRollWidthMm, 0)} mm roll`;
+    }
+    return activeMediaSpec.shortLabel.toLowerCase();
+  }, [printMediaId, effectiveCustomRollWidthMm, activeMediaSpec.shortLabel]);
+
+  const isDefaultMargins =
+    Math.abs(printerMargins.topMm - DEFAULT_PRINTER_MARGINS.topMm) < 0.01 &&
+    Math.abs(printerMargins.bottomMm - DEFAULT_PRINTER_MARGINS.bottomMm) < 0.01 &&
+    Math.abs(printerMargins.leftMm - DEFAULT_PRINTER_MARGINS.leftMm) < 0.01 &&
+    Math.abs(printerMargins.rightMm - DEFAULT_PRINTER_MARGINS.rightMm) < 0.01;
 
   const innerPlansByPage = useMemo(() => {
     const map = new Map<PageSizeId, ReturnType<typeof planInnerTemplateLayout>>();
@@ -309,7 +566,6 @@ export function PdfExportDialog({
     [geometry, printMediaId],
   );
 
-  const activeMediaSpec = getPrintMediaSpec(printMediaId);
   const showDetachFlapsCallout =
     isOuterTarget &&
     effectiveSplitMode === 'single' &&
@@ -321,7 +577,8 @@ export function PdfExportDialog({
     isOuterTarget &&
     effectiveSplitMode === 'single' &&
     printMediaId !== 'exact-auto' &&
-    activeFit.status === 'does-not-fit';
+    activeFit.status === 'does-not-fit' &&
+    !(isRollNestingActive && (rollNestPlan?.placements.length ?? 0) > 0);
   const isBusy = Boolean(exporting || isSubmitting);
   const isConfirmDisabled = isBusy || isBlockedUnfitted;
 
@@ -342,8 +599,19 @@ export function PdfExportDialog({
     if (effectiveSplitMode === 'three-piece') {
       return `3 pages • 3-Piece Split (Back, Spine, Front)${dpiSuffix}`;
     }
+    if (isRollNestingActive && rollNestPlan) {
+      const rollLabel =
+        printMediaId === 'roll-custom'
+          ? `Custom Roll (${roundTo(effectiveCustomRollWidthMm, 0)} mm)`
+          : activeMediaSpec.shortLabel;
+      return `1 roll strip • ${rollLabel} • ${rollNestPlan.placements.length} pcs • ${Math.round(rollNestPlan.usedLengthMm)} mm (${rollNestPlan.efficiencyPct}%)${dpiSuffix}`;
+    }
     if (isBlockedUnfitted) {
-      return `Cover exceeds ${activeMediaSpec.label} — choose a larger paper or split layout`;
+      const label =
+        printMediaId === 'roll-custom'
+          ? `Custom Roll (${roundTo(effectiveCustomRollWidthMm, 1)} mm)`
+          : activeMediaSpec.label;
+      return `Cover exceeds ${label} — choose a larger paper or split layout`;
     }
     const pocketsSuffix = effectiveAppendPockets ? ' + Pockets' : '';
     const formatPageCount = (outerCount: number) => {
@@ -352,6 +620,9 @@ export function PdfExportDialog({
     };
     if (printMediaId === 'exact-auto') {
       return `${formatPageCount(1)} • ${activeMediaSpec.shortLabel} (${roundTo(wrapW, 1)} × ${roundTo(wrapH, 1)} mm)${pocketsSuffix}${dpiSuffix}`;
+    }
+    if (printMediaId === 'roll-custom') {
+      return `${formatPageCount(1)} • Custom Roll (${roundTo(effectiveCustomRollWidthMm, 1)} mm)${pocketsSuffix}${dpiSuffix}`;
     }
     if (activeFit.status === 'fits-1-sheet' && activeFit.sheetPageWidthMm && activeFit.sheetPageHeightMm) {
       const orient =
@@ -377,6 +648,9 @@ export function PdfExportDialog({
     exportLayerMode,
     dpi,
     effectiveSplitMode,
+    isRollNestingActive,
+    rollNestPlan,
+    effectiveCustomRollWidthMm,
     isBlockedUnfitted,
     activeMediaSpec,
     effectiveAppendPockets,
@@ -387,6 +661,107 @@ export function PdfExportDialog({
     wrapH,
     tileOverlapMm,
   ]);
+
+  const handleDownloadMarginTestSheet = async () => {
+    setGeneratingTestSheet(true);
+    try {
+      let testPageW: number;
+      let testPageH: number;
+      let testMediaLabel: string;
+
+      if (!isOuterTarget) {
+        const ps = PAGE_SIZES[pageSizeId];
+        testPageW = ps.widthMm;
+        testPageH = ps.heightMm;
+        testMediaLabel = ps.label;
+      } else if (activeMediaSpec.kind === 'sheet' && activeMediaSpec.shortMm && activeMediaSpec.longMm) {
+        testPageW = activeFit.sheetPageWidthMm ?? activeMediaSpec.shortMm;
+        testPageH = activeFit.sheetPageHeightMm ?? activeMediaSpec.longMm;
+        testMediaLabel = activeMediaSpec.label;
+      } else if (activeMediaSpec.kind === 'roll') {
+        testPageW = activeRollWidthMm;
+        testPageH = Math.max(250, Math.min(450, Math.round(wrapH + 40)));
+        testMediaLabel =
+          printMediaId === 'roll-custom'
+            ? `Custom Roll (${roundTo(activeRollWidthMm, 1)} mm)`
+            : activeMediaSpec.label;
+      } else {
+        const ps = PAGE_SIZES[pageSizeId];
+        testPageW = ps.widthMm;
+        testPageH = ps.heightMm;
+        testMediaLabel = ps.label;
+      }
+
+      const bytes = await generateMarginTestSheetPdf({
+        pageWidthMm: testPageW,
+        pageHeightMm: testPageH,
+        mediaLabel: testMediaLabel,
+        unit,
+      });
+      triggerBytesDownload(bytes, 'printer_margin_calibration_sheet.pdf', 'application/pdf');
+    } finally {
+      setGeneratingTestSheet(false);
+    }
+  };
+
+  const readFileAsBytes = (file: File): Promise<Uint8Array> => {
+    if (typeof file.arrayBuffer === 'function') {
+      return file.arrayBuffer().then((buf) => new Uint8Array(buf));
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result instanceof ArrayBuffer) {
+          resolve(new Uint8Array(reader.result));
+        } else {
+          reject(new Error('Expected ArrayBuffer'));
+        }
+      };
+      reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const handleGangUpload = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setGangUploadError(null);
+    const added: GangQueueEntry[] = [];
+    let failedCount = 0;
+
+    for (const file of Array.from(fileList)) {
+      try {
+        const bytes = await readFileAsBytes(file);
+        const doc = await PDFDocument.load(bytes);
+        if (doc.getPageCount() < 1) {
+          failedCount += 1;
+          continue;
+        }
+        const sz = doc.getPage(0).getSize();
+        const widthMm = roundTo(UnitConverter.pointsToMm(sz.width), 1);
+        const heightMm = roundTo(UnitConverter.pointsToMm(sz.height), 1);
+        const cleanLabel = file.name.replace(/\.pdf$/i, '') || 'Book PDF';
+        added.push({
+          id: `gang-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          label: cleanLabel,
+          pdfBytes: bytes,
+          widthMm,
+          heightMm,
+          copies: 1,
+        });
+      } catch {
+        failedCount += 1;
+      }
+    }
+
+    if (added.length > 0) {
+      setGangQueue((prev) => [...prev, ...added]);
+    }
+    if (failedCount > 0) {
+      setGangUploadError(
+        `Could not read ${failedCount} selected ${failedCount === 1 ? 'file' : 'files'} as a valid PDF.`,
+      );
+    }
+  };
 
   const handleConfirm = async () => {
     if (isConfirmDisabled) return;
@@ -402,6 +777,32 @@ export function PdfExportDialog({
       tileOverlapMm,
       exportLayerMode,
       appendInnerPocketsPage: effectiveAppendPockets,
+      ...(printMediaId === 'roll-custom'
+        ? { customRollWidthMm: effectiveCustomRollWidthMm }
+        : {}),
+      ...(!isDefaultMargins ? { printerMargins } : {}),
+      ...(isRollNestingActive
+        ? {
+            rollNesting: {
+              enabled: true,
+              copies: Math.max(1, Math.floor(rollCopies)),
+              gutterMm: rollGutterMm,
+              packInnerPockets:
+                bindingStrategy.capabilities.usesInnerPockets && rollPackInnerPockets,
+              allowRotation: rollAllowRotation,
+              ...(gangQueue.length > 0
+                ? {
+                    extraQueueItems: gangQueue.map((entry) => ({
+                      id: entry.id,
+                      label: entry.label,
+                      pdfBytes: entry.pdfBytes,
+                      copies: entry.copies,
+                    })),
+                  }
+                : {}),
+            },
+          }
+        : {}),
     };
     setIsSubmitting(true);
     try {
@@ -611,6 +1012,54 @@ export function PdfExportDialog({
                 </div>
               )}
 
+              {isOuterTarget && printMediaId === 'roll-custom' && (
+                <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-primary/35 bg-primary/8 px-3.5 py-2 text-xs">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={customRollInputId} className="text-xs font-medium text-foreground">
+                      Custom Roll Width ({unit})
+                    </Label>
+                    <p className="font-mono text-[11px] text-muted-foreground">
+                      {roundTo(effectiveCustomRollWidthMm, 1)} mm (
+                      {UnitConverter.formatValue(effectiveCustomRollWidthMm, 'in', 1)} in) • Range{' '}
+                      {CUSTOM_ROLL_WIDTH_BOUNDS.minMm}–{CUSTOM_ROLL_WIDTH_BOUNDS.maxMm} mm
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      id={customRollInputId}
+                      data-testid="pdf-custom-roll-width-input"
+                      type="number"
+                      inputMode="decimal"
+                      step={unit === 'in' ? '0.5' : '1'}
+                      min={Number(
+                        UnitConverter.toDisplay(CUSTOM_ROLL_WIDTH_BOUNDS.minMm, unit).toFixed(2),
+                      )}
+                      max={Number(
+                        UnitConverter.toDisplay(CUSTOM_ROLL_WIDTH_BOUNDS.maxMm, unit).toFixed(2),
+                      )}
+                      value={customRollDraft}
+                      onFocus={() => setCustomRollFocused(true)}
+                      onBlur={() => {
+                        setCustomRollFocused(false);
+                        setCustomRollDraft(
+                          UnitConverter.formatValue(effectiveCustomRollWidthMm, unit),
+                        );
+                      }}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setCustomRollDraft(raw);
+                        const numeric = Number.parseFloat(raw);
+                        if (Number.isFinite(numeric)) {
+                          commitCustomRollWidthMm(UnitConverter.fromDisplay(numeric, unit));
+                        }
+                      }}
+                      className="h-7 w-24 font-mono text-xs"
+                    />
+                    <span className="font-mono text-[11px] text-muted-foreground">{unit}</span>
+                  </div>
+                </div>
+              )}
+
               {isOuterTarget && effectiveSplitMode === 'three-piece' && (
                 <p className="rounded-md border border-brass/35 bg-brass/10 px-3 py-1.5 text-[11px] text-foreground">
                   3-Piece Split outputs 3 separate panel pages (<strong>Back Board</strong>,{' '}
@@ -621,14 +1070,14 @@ export function PdfExportDialog({
               {showDetachFlapsCallout && detachedSlipFit && onDetachSlipFlaps && (
                 <div
                   data-testid="pdf-detach-flaps-callout"
-                  className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-emerald-700/35 bg-emerald-600/10 px-3.5 py-2.5 text-xs"
+                  className="status-success-surface flex flex-wrap items-center justify-between gap-2.5 rounded-lg border px-3.5 py-2.5 text-xs"
                 >
                   <div className="min-w-0 flex-1 space-y-0.5">
-                    <p className="flex items-center gap-1.5 font-semibold text-emerald-950 dark:text-emerald-200">
-                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+                    <p className="flex items-center gap-1.5 font-semibold">
+                      <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                       Zero-seam home print available on 1× {activeMediaSpec.shortLabel}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[11px] opacity-90">
                       Detach side flaps into Sheet 2 inner pockets so the seamless{' '}
                       <span className="font-mono">
                         {UnitConverter.formatDimensions(
@@ -664,10 +1113,286 @@ export function PdfExportDialog({
               tileOverlapMm={tileOverlapMm}
               includeScaleBar={includeScaleBar}
               innerPlan={activeInnerPlan}
+              printerMargins={printerMargins}
+              customRollWidthMm={effectiveCustomRollWidthMm}
+              rollNestPlan={rollNestPlan}
               onChangePrintMedia={onChangePrintMedia}
               onChangeSplitMode={onChangeSplitMode}
               onReduceFlapWidth={onReduceFlapWidth}
             />
+
+            {/* Section 2b: Wide-Format Roll Nesting & Gang-Run Panel */}
+            {isOuterTarget && effectiveSplitMode === 'single' && isRollSelected && (
+              <div
+                data-testid="pdf-roll-nesting-section"
+                className="flex flex-col gap-3 rounded-lg border border-border bg-secondary/25 p-3.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label htmlFor={rollNestingSwitchId} className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <Layers className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                        Enable Multi-Up / Roll Strip
+                      </Label>
+                      <Badge
+                        variant={rollCapacity.recommendedMaxAcross > 0 ? 'success' : 'destructive'}
+                        data-testid="pdf-roll-capacity-badge"
+                        className="rounded-full font-mono text-[10px]"
+                      >
+                        {rollCapacity.recommendedMaxAcross > 0
+                          ? `Fits ${rollCapacity.recommendedMaxAcross} across on ${rollDisplayName} — ${Math.round(rollCapacity.widthUtilizationPct)}% width`
+                          : `Exceeds ${rollDisplayName} width (${roundTo(rollCapacity.printableWidthMm, 0)} mm printable)`}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Nest multiple copies side-by-side or combine other book PDFs into a single roll-width gang strip.
+                    </p>
+                  </div>
+                  <Switch
+                    id={rollNestingSwitchId}
+                    data-testid="pdf-roll-nesting-toggle"
+                    checked={rollNestingEnabled}
+                    onCheckedChange={(checked) => {
+                      setRollNestingEnabled(checked);
+                      if (checked && rollCopies < 2 && effectiveMaxAcross >= 2) {
+                        setRollCopies(Math.min(2, effectiveMaxAcross));
+                      }
+                    }}
+                  />
+                </div>
+
+                {rollNestingEnabled && (
+                  <div className="grid gap-2.5 border-t border-border/70 pt-3 sm:grid-cols-2">
+                    {/* Copies Selector */}
+                    <div className="flex flex-col justify-between gap-1.5 rounded-md border border-border bg-card/80 px-3 py-2">
+                      <span className="text-xs font-medium text-foreground">Copies of Current Cover</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={rollCopies === 1 ? 'default' : 'outline'}
+                          data-testid="pdf-roll-copies-1"
+                          className="h-7 px-2.5 font-mono text-[11px]"
+                          onClick={() => setRollCopies(1)}
+                        >
+                          1
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={rollCopies === 2 ? 'default' : 'outline'}
+                          data-testid="pdf-roll-copies-2"
+                          className="h-7 px-2.5 font-mono text-[11px]"
+                          onClick={() => setRollCopies(2)}
+                        >
+                          2
+                        </Button>
+                        {effectiveMaxAcross >= 2 && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={rollCopies === effectiveMaxAcross ? 'default' : 'outline'}
+                            data-testid="pdf-roll-copies-fill"
+                            className="h-7 px-2.5 font-mono text-[11px]"
+                            onClick={() => setRollCopies(effectiveMaxAcross)}
+                          >
+                            Fill Row ({effectiveMaxAcross})
+                          </Button>
+                        )}
+                        <Input
+                          type="number"
+                          min={1}
+                          max={50}
+                          aria-label="Custom cover copies"
+                          data-testid="pdf-roll-copies-input"
+                          value={rollCopies}
+                          onChange={(e) => {
+                            const val = Number.parseInt(e.target.value, 10);
+                            if (Number.isFinite(val)) {
+                              setRollCopies(Math.max(1, Math.min(50, val)));
+                            }
+                          }}
+                          className="h-7 w-16 font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Gutter Selector */}
+                    <div className="flex flex-col justify-between gap-1.5 rounded-md border border-border bg-card/80 px-3 py-2">
+                      <span className="text-xs font-medium text-foreground">Cut Gutter Spacing</span>
+                      <div className="inline-flex gap-1" role="group" aria-label="Cut gutter spacing">
+                        {ROLL_GUTTER_CHOICES.map((mm) => (
+                          <Button
+                            key={mm}
+                            type="button"
+                            size="sm"
+                            variant={rollGutterMm === mm ? 'default' : 'outline'}
+                            aria-pressed={rollGutterMm === mm}
+                            data-testid={`pdf-roll-gutter-${mm}`}
+                            className="h-7 px-2.5 font-mono text-[11px]"
+                            onClick={() => setRollGutterMm(mm)}
+                          >
+                            {mm} mm
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Allow 90° Rotation */}
+                    <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card/80 px-3 py-2">
+                      <div className="space-y-0.5">
+                        <Label htmlFor={rollRotationSwitchId} className="text-xs">
+                          Allow 90° Rotation
+                        </Label>
+                        <p className="text-[11px] text-muted-foreground">
+                          Auto-rotate covers when more copies fit across the roll.
+                        </p>
+                      </div>
+                      <Switch
+                        id={rollRotationSwitchId}
+                        data-testid="pdf-roll-allow-rotation"
+                        checked={rollAllowRotation}
+                        onCheckedChange={setRollAllowRotation}
+                      />
+                    </div>
+
+                    {/* Pack Inner Pockets / Endpapers beside cover */}
+                    {bindingStrategy.capabilities.usesInnerPockets && (
+                      <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card/80 px-3 py-2">
+                        <div className="space-y-0.5">
+                          <Label htmlFor={rollPackPocketsSwitchId} className="text-xs">
+                            Pack Inner Pockets / Endpapers
+                          </Label>
+                          <p className="text-[11px] text-muted-foreground">
+                            Nest inner pockets &amp; liner right beside the cover on the roll.
+                          </p>
+                        </div>
+                        <Switch
+                          id={rollPackPocketsSwitchId}
+                          data-testid="pdf-roll-pack-pockets"
+                          checked={rollPackInnerPockets}
+                          onCheckedChange={setRollPackInnerPockets}
+                        />
+                      </div>
+                    )}
+
+                    {/* Gang-Sheet Queue: Add Other Book PDFs */}
+                    <div className="flex flex-col gap-2 rounded-md border border-border bg-card/80 px-3 py-2 sm:col-span-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="space-y-0.5">
+                          <span className="text-xs font-medium text-foreground">
+                            Gang-Sheet Queue (Other Book PDFs)
+                          </span>
+                          <p className="text-[11px] text-muted-foreground">
+                            Drop in exported Bookbinder PDFs to print multiple different books on the same roll strip.
+                          </p>
+                        </div>
+                        <div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 px-2.5 text-[11px]"
+                            onClick={() => gangUploadInputRef.current?.click()}
+                          >
+                            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                            Add Other Book PDFs
+                          </Button>
+                          <input
+                            ref={gangUploadInputRef}
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            multiple
+                            aria-label="Add other book PDFs to gang sheet"
+                            data-testid="pdf-roll-gang-upload"
+                            className="sr-only"
+                            onChange={(e) => {
+                              void handleGangUpload(e.target.files);
+                              e.target.value = '';
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {gangUploadError && (
+                        <p className="text-[11px] text-destructive">{gangUploadError}</p>
+                      )}
+
+                      {gangQueue.length > 0 && (
+                        <ul className="space-y-1.5" data-testid="pdf-roll-gang-list">
+                          {gangQueue.map((item) => (
+                            <li
+                              key={item.id}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/80 bg-secondary/35 px-2.5 py-1.5 text-xs"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <span className="font-medium text-foreground">{item.label}</span>
+                                <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                                  {item.widthMm} × {item.heightMm} mm
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 w-6 p-0 font-mono text-xs"
+                                  aria-label={`Decrease copies for ${item.label}`}
+                                  onClick={() =>
+                                    setGangQueue((prev) =>
+                                      prev.map((q) =>
+                                        q.id === item.id
+                                          ? { ...q, copies: Math.max(1, q.copies - 1) }
+                                          : q,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  −
+                                </Button>
+                                <span className="min-w-5 text-center font-mono text-[11px]">
+                                  {item.copies}×
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 w-6 p-0 font-mono text-xs"
+                                  aria-label={`Increase copies for ${item.label}`}
+                                  onClick={() =>
+                                    setGangQueue((prev) =>
+                                      prev.map((q) =>
+                                        q.id === item.id
+                                          ? { ...q, copies: Math.min(50, q.copies + 1) }
+                                          : q,
+                                      ),
+                                    )
+                                  }
+                                >
+                                  +
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                  aria-label={`Remove ${item.label}`}
+                                  onClick={() =>
+                                    setGangQueue((prev) => prev.filter((q) => q.id !== item.id))
+                                  }
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                </Button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Section 3: Print & Export Options */}
             <div
@@ -758,12 +1483,12 @@ export function PdfExportDialog({
 
               {/* Include Detached Pockets (Page 2) for 2-Sheet Slip Cover */}
               {isOuterTarget && effectiveSplitMode === 'single' && isSeparateSlipCover && (
-                <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-700/30 bg-emerald-600/8 px-3 py-2">
+                <div className="status-success-surface flex items-center justify-between gap-3 rounded-md border px-3 py-2">
                   <div className="space-y-0.5">
-                    <Label htmlFor={appendPocketsSwitchId} className="text-xs">
+                    <Label htmlFor={appendPocketsSwitchId} className="text-xs text-current">
                       Include Detached Pockets (Page 2)
                     </Label>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[11px] opacity-90">
                       Appends {detachedInnerPlan.pageCount}{' '}
                       {detachedInnerPlan.pageCount === 1 ? 'page' : 'pages'} of detached
                       fore-edge pockets ({PAGE_SIZES[resolvedInnerPageSizeId].shortLabel}).
@@ -889,6 +1614,128 @@ export function PdfExportDialog({
                   </div>
                 </div>
               )}
+
+              {/* Collapsible Printer Margins & Calibration */}
+              <div className="rounded-md border border-border bg-secondary/25 sm:col-span-2">
+                <button
+                  type="button"
+                  aria-expanded={marginsExpanded}
+                  data-testid="pdf-margins-toggle"
+                  onClick={() => setMarginsExpanded((prev) => !prev)}
+                  className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-xs font-medium text-foreground hover:bg-secondary/50"
+                >
+                  <span className="flex items-center gap-2">
+                    <Ruler className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                    Printer Margins &amp; Calibration
+                    {!isDefaultMargins && (
+                      <Badge variant="outline" className="rounded-full font-mono text-[10px]">
+                        T:{printerMargins.topMm} B:{printerMargins.bottomMm} L:
+                        {printerMargins.leftMm} R:{printerMargins.rightMm} mm
+                      </Badge>
+                    )}
+                  </span>
+                  {marginsExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                  )}
+                </button>
+
+                {marginsExpanded && (
+                  <div className="space-y-3 border-t border-border/70 px-3 py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Label htmlFor={marginsPresetId} className="text-[11px] text-muted-foreground">
+                          Margin Preset:
+                        </Label>
+                        <select
+                          id={marginsPresetId}
+                          data-testid="pdf-margins-preset-select"
+                          value={printerMargins.presetId ?? 'custom'}
+                          onChange={(e) => {
+                            const presetId = e.target.value as PrinterMarginPresetId;
+                            const preset = getPrinterMarginPreset(presetId);
+                            if (preset.margins) {
+                              updatePrinterMargins({ ...preset.margins, presetId });
+                            } else {
+                              updatePrinterMargins({ ...printerMargins, presetId: 'custom' });
+                            }
+                          }}
+                          className="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                        >
+                          {PRINTER_MARGIN_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={generatingTestSheet}
+                        data-testid="pdf-margin-test-sheet-btn"
+                        className="h-7 gap-1.5 px-2.5 text-[11px]"
+                        onClick={() => void handleDownloadMarginTestSheet()}
+                      >
+                        <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                        {generatingTestSheet
+                          ? 'Generating Sheet…'
+                          : 'Print Margin Test Sheet (PDF)'}
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {(
+                        [
+                          { key: 'topMm', label: 'Top (mm)', testId: 'pdf-margin-top' },
+                          { key: 'bottomMm', label: 'Bottom (mm)', testId: 'pdf-margin-bottom' },
+                          { key: 'leftMm', label: 'Left (mm)', testId: 'pdf-margin-left' },
+                          { key: 'rightMm', label: 'Right (mm)', testId: 'pdf-margin-right' },
+                        ] as const
+                      ).map(({ key, label, testId }) => (
+                        <div key={key} className="space-y-1">
+                          <Label
+                            htmlFor={testId}
+                            className="text-[11px] font-normal text-muted-foreground"
+                          >
+                            {label}
+                          </Label>
+                          <Input
+                            id={testId}
+                            data-testid={testId}
+                            type="number"
+                            inputMode="decimal"
+                            step="0.5"
+                            min={PRINTER_MARGIN_BOUNDS.minMm}
+                            max={PRINTER_MARGIN_BOUNDS.maxMm}
+                            value={printerMargins[key]}
+                            onChange={(e) => {
+                              const val = Number.parseFloat(e.target.value);
+                              if (Number.isFinite(val)) {
+                                updatePrinterMargins({
+                                  ...printerMargins,
+                                  [key]: val,
+                                  presetId: undefined,
+                                });
+                              }
+                            }}
+                            className="h-7 font-mono text-xs"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-[11px] text-muted-foreground">
+                      Artwork, footers, and scale bars stay strictly inside your printer&apos;s
+                      unprintable dead zones (useful for heavy fine-art or roll-printer bottom
+                      gripper margins).
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

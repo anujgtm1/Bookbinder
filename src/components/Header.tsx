@@ -1,5 +1,6 @@
-import { BookOpen, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
+import { Moon, PanelLeftClose, PanelLeftOpen, Sparkles, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import atelierColophonImg from '@/assets/atelier/atelier-colophon.jpg';
 import { Button } from '@/components/ui/button';
 import {
   COLOR_SCHEME_STORAGE_KEY,
@@ -17,9 +18,15 @@ export interface HeaderProps {
   readonly statusMessage: string | null;
   readonly sidebarOpen?: boolean;
   readonly onToggleSidebar?: () => void;
+  readonly onLoadSampleBook?: () => void;
 }
 
-export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: HeaderProps) {
+export function Header({
+  statusMessage,
+  sidebarOpen = true,
+  onToggleSidebar,
+  onLoadSampleBook,
+}: HeaderProps) {
   const [override, setOverride] = useState<ColorSchemeOverride>(() => readStoredColorScheme());
   const [systemScheme, setSystemScheme] = useState<ResolvedColorScheme>(() =>
     getSystemColorScheme(),
@@ -58,7 +65,7 @@ export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: H
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur-xs">
+    <header className="washi-header sticky top-0 z-30 border-t-2 border-t-vermilion border-b border-border">
       <a
         href="#main-workspace"
         className="visually-hidden fixed left-3 top-3 z-50 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-md"
@@ -66,17 +73,20 @@ export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: H
         Skip to workspace
       </a>
 
-      <div className="mx-auto flex max-w-[1680px] items-center justify-between gap-3 px-3 py-2 sm:px-5">
-        <div className="flex items-center gap-2.5">
+      <div className="mx-auto flex max-w-[1760px] items-center justify-between gap-3 px-3 py-2 sm:px-5">
+        {/* Editorial Press Masthead Mark */}
+        <div className="flex min-w-0 items-center gap-2.5">
           {onToggleSidebar && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={onToggleSidebar}
               aria-expanded={sidebarOpen}
               aria-controls="book-spec-rail"
-              aria-label={sidebarOpen ? 'Collapse book dimensions rail' : 'Expand book dimensions rail'}
+              aria-label={
+                sidebarOpen ? 'Collapse book dimensions rail' : 'Expand book dimensions rail'
+              }
               title={sidebarOpen ? 'Hide Book Spec Rail' : 'Show Book Spec Rail'}
               data-testid="toggle-sidebar-btn"
             >
@@ -88,27 +98,54 @@ export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: H
             </Button>
           )}
 
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-mat text-brass-bright ring-1 ring-brass-bright/45 shadow-xs">
-            <BookOpen className="h-4 w-4" aria-hidden="true" />
-          </div>
-          <div className="flex items-baseline gap-2.5">
-            <h1 className="font-serif text-lg font-semibold leading-none tracking-tight text-foreground sm:text-xl">
+          <span className="colophon-frame h-9 w-9 sm:h-10 sm:w-10" aria-hidden="true">
+            <img
+              src={atelierColophonImg}
+              alt=""
+              width={40}
+              height={40}
+              className="colophon-emblem h-full w-full object-contain"
+            />
+          </span>
+
+          <div className="flex min-w-0 flex-col">
+            <h1 className="truncate font-serif text-lg font-semibold leading-none tracking-tight text-foreground sm:text-xl">
               Bookbinder Studio
             </h1>
-            <span className="hidden text-[11px] font-medium tracking-wide text-muted-foreground md:inline">
+            <span className="mt-0.5 hidden font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground sm:inline">
               Book Cover &amp; Case Workbench
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Right Editorial Press Controls */}
+        <div className="flex shrink-0 items-center gap-2">
+          {onLoadSampleBook && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 border-vermilion/45 bg-card/80 px-2.5 text-xs font-medium text-foreground hover:border-vermilion hover:bg-vermilion/10"
+              onClick={onLoadSampleBook}
+              data-testid="load-sample-book-btn"
+              aria-label="Load sample book project"
+              title="Load sample classic hardcover with marbled endpapers"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-vermilion" aria-hidden="true" />
+              <span className="hidden sm:inline">Sample Book</span>
+            </Button>
+          )}
           <div
             role="status"
             aria-live="polite"
             data-testid="status-message"
-            className="hidden max-w-72 truncate rounded-full border border-border/80 bg-secondary/70 px-2.5 py-1 text-[11px] text-muted-foreground sm:block"
+            className="hidden max-w-56 items-center gap-1.5 border-l border-border/80 pl-2.5 font-mono text-[11px] text-muted-foreground xl:inline-flex"
           >
-            {statusMessage ?? 'Auto-saved locally'}
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-vermilion"
+            />
+            <span className="truncate">{statusMessage ?? 'Auto-saved locally'}</span>
           </div>
           <Button
             variant="outline"
@@ -120,7 +157,7 @@ export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: H
             title={resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           >
             {resolved === 'dark' ? (
-              <Sun className="h-4 w-4" aria-hidden="true" />
+              <Sun className="h-4 w-4 text-brass-bright" aria-hidden="true" />
             ) : (
               <Moon className="h-4 w-4" aria-hidden="true" />
             )}

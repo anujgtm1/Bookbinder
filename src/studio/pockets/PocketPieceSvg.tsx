@@ -6,7 +6,11 @@ import {
 } from '@/types/geometry';
 import type { PocketStyleConfig } from '@/types/studio';
 import { UnitConverter, type UnitSystem } from '@/types/units';
-import { computePocketImagePlacement, type PocketImagePlacement } from '../pocketRenderEngine';
+import {
+  computePocketImagePlacement,
+  getFoldedEndpaperHalfLabels,
+  type PocketImagePlacement,
+} from '../pocketRenderEngine';
 
 export type PocketViewMode = 'styled' | 'blueprint';
 
@@ -155,6 +159,10 @@ export function PocketPieceGuidesSvg({
   const center = GeometryPrimitives.rectCenter(pocket.faceRect);
   const openX = pocket.openEdge === 'right' ? pocket.faceRect.x + pocket.faceRect.width : 0;
   const isStyled = viewMode === 'styled';
+  const isFoldedEndpaper = pocket.kind === 'folded-endpaper';
+  const halves = isFoldedEndpaper ? getFoldedEndpaperHalfLabels(pocket.side) : null;
+  const leftHalfCenterX = pocket.pocketWidthMm / 2;
+  const rightHalfCenterX = pocket.pocketWidthMm + pocket.pocketWidthMm / 2;
 
   return (
     <g transform={`translate(${offsetX}, ${offsetY})`} pointerEvents="none">
@@ -186,18 +194,187 @@ export function PocketPieceGuidesSvg({
               strokeDasharray="4 2.5"
             />
           ))}
-          <line
-            x1={openX}
-            y1={pocket.faceRect.y}
-            x2={openX}
-            y2={pocket.faceRect.y + pocket.faceRect.height}
-            stroke="#0F8A47"
-            strokeWidth="1.5"
-          />
+          {!isFoldedEndpaper && (
+            <line
+              x1={openX}
+              y1={pocket.faceRect.y}
+              x2={openX}
+              y2={pocket.faceRect.y + pocket.faceRect.height}
+              stroke="#0F8A47"
+              strokeWidth="1.5"
+            />
+          )}
         </>
       )}
 
-      {viewMode === 'blueprint' ? (
+      {isFoldedEndpaper && halves ? (
+        viewMode === 'blueprint' ? (
+          <>
+            <text
+              x={center.x}
+              y={12}
+              textAnchor="middle"
+              fontSize="6.5"
+              fontWeight="700"
+              fill={PAPER_INK_FILL}
+            >
+              {pocket.label.toUpperCase()}
+            </text>
+            <text
+              x={center.x}
+              y={19}
+              textAnchor="middle"
+              fontSize="4.8"
+              fill={PAPER_INK_FILL}
+              opacity="0.72"
+            >
+              Sheet: {UnitConverter.formatDimensions(pocket.totalWidthMm, pocket.totalHeightMm, unit)}
+            </text>
+
+            {/* Left Half Annotation */}
+            <text
+              x={leftHalfCenterX}
+              y={center.y - 4}
+              textAnchor="middle"
+              fontSize="6.5"
+              fontWeight="700"
+              letterSpacing="0.5"
+              fill={PAPER_INK_FILL}
+              data-testid={`endpaper-${pocket.side}-left-zone`}
+            >
+              {halves.left}
+            </text>
+            <text
+              x={leftHalfCenterX}
+              y={center.y + 4}
+              textAnchor="middle"
+              fontSize="5"
+              fill={PAPER_INK_FILL}
+              opacity="0.72"
+            >
+              {UnitConverter.formatDimensions(pocket.pocketWidthMm, pocket.pocketHeightMm, unit)}
+            </text>
+            <text
+              x={leftHalfCenterX}
+              y={center.y + 11.5}
+              textAnchor="middle"
+              fontSize="4.3"
+              fill="#1D5BD6"
+              opacity="0.85"
+            >
+              {halves.left === 'PASTEDOWN' ? 'Glues to board' : 'Tips onto textblock'}
+            </text>
+
+            {/* Right Half Annotation */}
+            <text
+              x={rightHalfCenterX}
+              y={center.y - 4}
+              textAnchor="middle"
+              fontSize="6.5"
+              fontWeight="700"
+              letterSpacing="0.5"
+              fill={PAPER_INK_FILL}
+              data-testid={`endpaper-${pocket.side}-right-zone`}
+            >
+              {halves.right}
+            </text>
+            <text
+              x={rightHalfCenterX}
+              y={center.y + 4}
+              textAnchor="middle"
+              fontSize="5"
+              fill={PAPER_INK_FILL}
+              opacity="0.72"
+            >
+              {UnitConverter.formatDimensions(pocket.pocketWidthMm, pocket.pocketHeightMm, unit)}
+            </text>
+            <text
+              x={rightHalfCenterX}
+              y={center.y + 11.5}
+              textAnchor="middle"
+              fontSize="4.3"
+              fill="#1D5BD6"
+              opacity="0.85"
+            >
+              {halves.right === 'PASTEDOWN' ? 'Glues to board' : 'Tips onto textblock'}
+            </text>
+
+            <text
+              x={pocket.pocketWidthMm}
+              y={pocket.totalHeightMm - 8}
+              textAnchor="middle"
+              fontSize="4.4"
+              fontWeight="600"
+              fill="#1D5BD6"
+            >
+              CENTER FOLD
+            </text>
+          </>
+        ) : (
+          showGuides && (
+            <>
+              {/* Subtle translucent zone pills so PASTEDOWN / FLYLEAF stay legible on light or dark endpapers */}
+              <g opacity="0.78">
+                <rect
+                  x={leftHalfCenterX - 24}
+                  y={6.5}
+                  width={48}
+                  height={9}
+                  rx={2}
+                  fill={PAPER_SHEET_FILL}
+                  fillOpacity="0.82"
+                />
+                <text
+                  x={leftHalfCenterX}
+                  y={12.5}
+                  textAnchor="middle"
+                  fontSize="4.6"
+                  fontWeight="700"
+                  letterSpacing="0.45"
+                  fill={PAPER_INK_FILL}
+                  data-testid={`endpaper-${pocket.side}-left-zone`}
+                >
+                  {halves.left}
+                </text>
+                <rect
+                  x={rightHalfCenterX - 24}
+                  y={6.5}
+                  width={48}
+                  height={9}
+                  rx={2}
+                  fill={PAPER_SHEET_FILL}
+                  fillOpacity="0.82"
+                />
+                <text
+                  x={rightHalfCenterX}
+                  y={12.5}
+                  textAnchor="middle"
+                  fontSize="4.6"
+                  fontWeight="700"
+                  letterSpacing="0.45"
+                  fill={PAPER_INK_FILL}
+                  data-testid={`endpaper-${pocket.side}-right-zone`}
+                >
+                  {halves.right}
+                </text>
+              </g>
+              {showEmptyLabel && (
+                <text
+                  x={center.x}
+                  y={center.y}
+                  textAnchor="middle"
+                  fontSize="6.5"
+                  fontWeight="600"
+                  fill={PAPER_INK_FILL}
+                  opacity="0.32"
+                >
+                  {pocket.label.toUpperCase()}
+                </text>
+              )}
+            </>
+          )
+        )
+      ) : viewMode === 'blueprint' ? (
         <>
           <text
             x={center.x}

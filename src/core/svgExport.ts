@@ -256,6 +256,7 @@ export function generateOuterWrapSvg(geometry: CaseGeometry, splitMode: SplitMod
  */
 export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
   const { backPocket, spineLiner, frontPocket } = geometry;
+  const isFoldedEndpapers = frontPocket.kind === 'folded-endpaper';
   const pad = 10;
   const gap = 14;
   const calHeaderH = 58; // 50 mm calibration square + breathing room
@@ -283,26 +284,26 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
   ].join('\n    ');
 
   const cutPaths = [
-    `<path d="${shiftPoly(backPocket.outerCutPolygon, backX, piecesTopY)}" data-label="Back Pocket Envelope" />`,
+    `<path d="${shiftPoly(backPocket.outerCutPolygon, backX, piecesTopY)}" data-label="${escapeXml(backPocket.label)}" />`,
     svgRect(
       { x: linerX, y: linerY, width: spineLiner.widthMm, height: spineLiner.heightMm },
       'data-label="Spine Reinforcement Liner"',
     ),
-    `<path d="${shiftPoly(frontPocket.outerCutPolygon, frontX, piecesTopY)}" data-label="Front Pocket Envelope" />`,
+    `<path d="${shiftPoly(frontPocket.outerCutPolygon, frontX, piecesTopY)}" data-label="${escapeXml(frontPocket.label)}" />`,
   ].join('\n    ');
 
   const scoreLines = [
     ...backPocket.scoreLines.map(
       (l) =>
-        `<line x1="${fmtMm(l.x1 + backX)}" y1="${fmtMm(l.y1 + piecesTopY)}" x2="${fmtMm(l.x2 + backX)}" y2="${fmtMm(l.y2 + piecesTopY)}" />`,
+        `<line x1="${fmtMm(l.x1 + backX)}" y1="${fmtMm(l.y1 + piecesTopY)}" x2="${fmtMm(l.x2 + backX)}" y2="${fmtMm(l.y2 + piecesTopY)}"${l.label ? ` data-label="${escapeXml(l.label)}"` : ''} />`,
     ),
     ...spineLiner.scoreLines.map(
       (l) =>
-        `<line x1="${fmtMm(l.x1 + linerX)}" y1="${fmtMm(l.y1 + linerY)}" x2="${fmtMm(l.x2 + linerX)}" y2="${fmtMm(l.y2 + linerY)}" />`,
+        `<line x1="${fmtMm(l.x1 + linerX)}" y1="${fmtMm(l.y1 + linerY)}" x2="${fmtMm(l.x2 + linerX)}" y2="${fmtMm(l.y2 + linerY)}"${l.label ? ` data-label="${escapeXml(l.label)}"` : ''} />`,
     ),
     ...frontPocket.scoreLines.map(
       (l) =>
-        `<line x1="${fmtMm(l.x1 + frontX)}" y1="${fmtMm(l.y1 + piecesTopY)}" x2="${fmtMm(l.x2 + frontX)}" y2="${fmtMm(l.y2 + piecesTopY)}" />`,
+        `<line x1="${fmtMm(l.x1 + frontX)}" y1="${fmtMm(l.y1 + piecesTopY)}" x2="${fmtMm(l.x2 + frontX)}" y2="${fmtMm(l.y2 + piecesTopY)}"${l.label ? ` data-label="${escapeXml(l.label)}"` : ''} />`,
     ),
   ].join('\n    ');
 
@@ -322,14 +323,47 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
   };
 
   const pocketDim = `${roundTo(frontPocket.pocketWidthMm, 1)} × ${roundTo(frontPocket.pocketHeightMm, 1)} mm`;
+  const sheetDim = `${roundTo(frontPocket.totalWidthMm, 1)} × ${roundTo(frontPocket.totalHeightMm, 1)} mm`;
   const linerDim = `${roundTo(spineLiner.widthMm, 1)} × ${roundTo(spineLiner.heightMm, 1)} mm`;
+
+  const svgTitle = isFoldedEndpapers
+    ? 'Folded Endpapers (Pastedown + Flyleaf) &amp; Spine Liner — Vector Templates'
+    : 'Inner Pockets &amp; Spine Liner — Vector Templates';
+  const headerTitle = isFoldedEndpapers
+    ? 'FOLDED ENDPAPERS (PASTEDOWN + FLYLEAF) &amp; SPINE LINER'
+    : 'INNER POCKETS &amp; SPINE LINER';
+  const legendLine = isFoldedEndpapers
+    ? 'Solid Red = Cut • Dashed Blue = Center Fold &amp; Score Lines'
+    : 'Solid Red = Cut • Dashed Blue = Score &amp; Fold • Shaded = Apply Glue Here';
+
+  const backPieceNotes = isFoldedEndpapers
+    ? `    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(piecesTopY + 12)}" font-size="4.8" font-weight="600" text-anchor="middle">BACK FOLDED ENDPAPER</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(piecesTopY + 18)}" font-size="3.6" fill="#555555" text-anchor="middle">${escapeXml(sheetDim)}</text>
+    <text x="${fmtMm(backX + backPocket.pocketWidthMm * 0.5)}" y="${fmtMm(backCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">FLYLEAF</text>
+    <text x="${fmtMm(backX + backPocket.pocketWidthMm * 0.5)}" y="${fmtMm(backCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmtMm(backX + backPocket.pocketWidthMm * 1.5)}" y="${fmtMm(backCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">PASTEDOWN</text>
+    <text x="${fmtMm(backX + backPocket.pocketWidthMm * 1.5)}" y="${fmtMm(backCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(pocketDim)}</text>`
+    : `    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">BACK POCKET</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: RIGHT (SPINE)</text>`;
+
+  const frontPieceNotes = isFoldedEndpapers
+    ? `    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(piecesTopY + 12)}" font-size="4.8" font-weight="600" text-anchor="middle">FRONT FOLDED ENDPAPER</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(piecesTopY + 18)}" font-size="3.6" fill="#555555" text-anchor="middle">${escapeXml(sheetDim)}</text>
+    <text x="${fmtMm(frontX + frontPocket.pocketWidthMm * 0.5)}" y="${fmtMm(frontCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">PASTEDOWN</text>
+    <text x="${fmtMm(frontX + frontPocket.pocketWidthMm * 0.5)}" y="${fmtMm(frontCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmtMm(frontX + frontPocket.pocketWidthMm * 1.5)}" y="${fmtMm(frontCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">FLYLEAF</text>
+    <text x="${fmtMm(frontX + frontPocket.pocketWidthMm * 1.5)}" y="${fmtMm(frontCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(pocketDim)}</text>`
+    : `    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">FRONT POCKET</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: LEFT (SPINE)</text>`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
      width="${fmtMm(contentW)}mm"
      height="${fmtMm(totalH)}mm"
      viewBox="0 0 ${fmtMm(contentW)} ${fmtMm(totalH)}">
-  <title>Inner Pockets &amp; Spine Liner — Vector Templates</title>
+  <title>${svgTitle}</title>
   <g id="glue-flaps" fill="#e6dccb" fill-opacity="0.65" stroke="none">
     ${glueFlapPaths}
   </g>
@@ -343,16 +377,12 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
     <rect x="${fmtMm(pad)}" y="${fmtMm(pad)}" width="50" height="50" fill="none" stroke="#222222" stroke-width="0.5" data-label="50x50mm Calibration Square" />
     <text x="${fmtMm(pad + 25)}" y="${fmtMm(pad + 22)}" font-size="4.5" font-weight="600" text-anchor="middle">50 × 50 mm</text>
     <text x="${fmtMm(pad + 25)}" y="${fmtMm(pad + 30)}" font-size="3.4" text-anchor="middle">50 mm Scale Check</text>
-    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 18)}" font-size="5" font-weight="700">INNER POCKETS &amp; SPINE LINER</text>
-    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 27)}" font-size="3.8" fill="#555555">Solid Red = Cut • Dashed Blue = Score &amp; Fold • Shaded = Apply Glue Here</text>
-    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">BACK POCKET</text>
-    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
-    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: RIGHT (SPINE)</text>
+    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 18)}" font-size="5" font-weight="700">${headerTitle}</text>
+    <text x="${fmtMm(pad + 58)}" y="${fmtMm(pad + 27)}" font-size="3.8" fill="#555555">${legendLine}</text>
+${backPieceNotes}
     <text x="${fmtMm(linerCenter.x)}" y="${fmtMm(linerCenter.y - 3)}" font-size="4.8" font-weight="600" text-anchor="middle">SPINE LINER</text>
     <text x="${fmtMm(linerCenter.x)}" y="${fmtMm(linerCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(linerDim)}</text>
-    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">FRONT POCKET</text>
-    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
-    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: LEFT (SPINE)</text>
+${frontPieceNotes}
   </g>
 </svg>
 `;

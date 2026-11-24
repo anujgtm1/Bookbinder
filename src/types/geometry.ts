@@ -1,5 +1,5 @@
 import { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS } from '@/resources/paperSpecs';
-import type { BindingStyle, PrintMediaId, SoftcoverPocketMode } from './bookParams';
+import type { BindingStyle, InteriorStyle, PrintMediaId, SoftcoverPocketMode } from './bookParams';
 import { roundTo } from './units';
 
 export { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS };
@@ -195,6 +195,7 @@ export interface SpineLinerGeometry {
 }
 
 export interface PocketEnvelopeGeometry {
+  readonly kind?: 'slip-pocket' | 'folded-endpaper';
   readonly side: 'front' | 'back';
   readonly label: string;
   readonly pocketWidthMm: number;
@@ -212,6 +213,7 @@ export interface PocketEnvelopeGeometry {
 export interface CaseGeometry {
   readonly bindingStyle: BindingStyle;
   readonly softcoverPocketMode?: SoftcoverPocketMode;
+  readonly interiorStyle?: InteriorStyle;
   readonly cutList: ChipboardCutList;
   readonly outerWrap: OuterWrapGeometry;
   readonly splitPanels: readonly SplitWrapPanel[];

@@ -12,6 +12,7 @@ import {
   Ruler,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -41,12 +42,18 @@ import {
   type PrintMediaId,
   type SplitMode,
 } from '@/types/bookParams';
+import { rotateOrnament90 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
-import { CoverImageLayerModel } from '@/types/studioLayer';
+import { CoverImageLayerModel, nextQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
 import type { EyedropperTarget } from './ArtworkControlsCard';
 import { Book3DPreview } from './Book3DPreview';
+import {
+  CanvasSelectionBar,
+  type CanvasSelectionTarget,
+  type VerticalAlignSlot,
+} from './CanvasSelectionBar';
 import { CoverCanvas2D } from './CoverCanvas2D';
 import { CoverStudioToolDock, type StudioToolTab } from './CoverStudioToolDock';
 import { CoverWorkbenchHeader } from './CoverWorkbenchHeader';
@@ -60,9 +67,28 @@ import {
 import type { CustomFontAsset } from './fonts';
 import { useCoverElementsInteraction } from './hooks/useCoverElementsInteraction';
 import { useCoverStudioActions } from './hooks/useCoverStudioActions';
+import { useStudioHistory, type StudioHistoryPushOptions } from './hooks/useStudioHistory';
+import {
+  FOIL_FINISHES,
+  SURFACE_MATERIALS,
+  type FoilFinishId,
+  type SurfaceMaterialId,
+} from './materialPreview';
 import { PreflightEngine } from './preflight';
 import { computeStudioCanvasSpec, type CoverPdfLayerMode } from './renderEngine';
 import { buildCanvasSnapTargets } from './snapGuides';
+import {
+  NUDGE_SHIFT_STEP_MM,
+  NUDGE_STEP_MM,
+  createClipboardItemFromSelection,
+  duplicateSelectedInStudio,
+  isEditableKeyboardTarget,
+  nudgeSelectedInStudio,
+  pasteClipboardItemToStudio,
+  type StudioClipboardItem,
+  type StudioElementSelection,
+  type StudioPasteResult,
+} from './studioClipboard';
 import { useInteractiveLayers } from './useInteractiveLayers';
 
 export interface CoverStylerProps {
@@ -103,6 +129,8 @@ export function CoverStyler({
   const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
   const [book3DAngle, setBook3DAngle] = useState<Book3DCameraAngle>(DEFAULT_BOOK_3D_ANGLE);
   const [book3DCoverOpen, setBook3DCoverOpen] = useState(false);
+  const [surfaceMaterial, setSurfaceMaterial] = useState<SurfaceMaterialId>('matte-paper');
+  const [foilFinish, setFoilFinish] = useState<FoilFinishId>('ink');
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => studio.layers[studio.layers.length - 1]?.id ?? null,
   );
@@ -135,10 +163,57 @@ export function CoverStyler({
   const svgRef = useRef<SVGSVGElement>(null);
   const studioRef = useRef(studio);
   const onChangeRef = useRef(onChange);
+  const onStatusMessageRef = useRef(onStatusMessage);
+  const clipboardRef = useRef<StudioClipboardItem | null>(null);
+  const pasteCountRef = useRef(0);
   useEffect(() => {
     studioRef.current = studio;
     onChangeRef.current = onChange;
-  }, [studio, onChange]);
+    onStatusMessageRef.current = onStatusMessage;
+  }, [studio, onChange, onStatusMessage]);
+
+  const handleApplyFromHistory = useCallback((next: CoverStudioState) => {
+    studioRef.current = next;
+    onChangeRef.current(next);
+  }, []);
+
+  const { canUndo, canRedo, undo, redo, recordChange } = useStudioHistory(
+    studio,
+    handleApplyFromHistory,
+  );
+
+  const applyStudioChange = useCallback(
+    (next: CoverStudioState, options?: StudioHistoryPushOptions) => {
+      recordChange(next, options);
+    },
+    [recordChange],
+  );
+
+  const applyActionChange = useCallback(
+    (next: CoverStudioState) => {
+      applyStudioChange(next);
+    },
+    [applyStudioChange],
+  );
+  const actionOnChangeRef = useRef(applyActionChange);
+  useEffect(() => {
+    actionOnChangeRef.current = applyActionChange;
+  }, [applyActionChange]);
+
+  const applyElementChange = useCallback(
+    (next: CoverStudioState) => {
+      const cur = studioRef.current;
+      const isStructuralDelete =
+        (next.textLayers?.length ?? 0) !== (cur.textLayers?.length ?? 0) ||
+        (next.ornaments?.length ?? 0) !== (cur.ornaments?.length ?? 0);
+      applyStudioChange(next, isStructuralDelete ? undefined : { coalesceKey: 'drag' });
+    },
+    [applyStudioChange],
+  );
+  const elementOnChangeRef = useRef(applyElementChange);
+  useEffect(() => {
+    elementOnChangeRef.current = applyElementChange;
+  }, [applyElementChange]);
 
   const spec = useMemo(() => computeStudioCanvasSpec(geometry, PRINT_DPI), [geometry]);
   const canvasBounds = useMemo<Rect2D>(
@@ -180,6 +255,66 @@ export function CoverStyler({
     setSelectedOrnamentId(null);
   }, []);
 
+  const selectPastedResult = useCallback(
+    (result: StudioPasteResult) => {
+      if (result.pastedKind === 'image') {
+        handleSelectImageLayer(result.pastedId);
+      } else if (result.pastedKind === 'text') {
+        handleSelectText(result.pastedId);
+      } else {
+        handleSelectOrnament(result.pastedId);
+      }
+    },
+    [handleSelectImageLayer, handleSelectText, handleSelectOrnament],
+  );
+
+  const reconcileSelectionWithStudio = useCallback((restored: CoverStudioState) => {
+    setSelectedLayerId((prev) =>
+      prev && restored.layers.some((layer) => layer.id === prev) ? prev : null,
+    );
+    setSelectedTextId((prev) =>
+      prev && (restored.textLayers ?? []).some((layer) => layer.id === prev) ? prev : null,
+    );
+    setSelectedOrnamentId((prev) =>
+      prev && (restored.ornaments ?? []).some((layer) => layer.id === prev) ? prev : null,
+    );
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (!undo()) return false;
+    reconcileSelectionWithStudio(studioRef.current);
+    onStatusMessageRef.current('Undid last change');
+    return true;
+  }, [undo, reconcileSelectionWithStudio]);
+
+  const handleRedo = useCallback(() => {
+    if (!redo()) return false;
+    reconcileSelectionWithStudio(studioRef.current);
+    onStatusMessageRef.current('Redid change');
+    return true;
+  }, [redo, reconcileSelectionWithStudio]);
+
+  const handleDuplicateSelected = useCallback(() => {
+    const selection: StudioElementSelection = {
+      imageId: selectedLayerId,
+      textId: selectedTextId,
+      ornamentId: selectedOrnamentId,
+    };
+    const result = duplicateSelectedInStudio(studioRef.current, selection, canvasBounds);
+    if (!result) return false;
+    applyStudioChange(result.studio);
+    selectPastedResult(result);
+    onStatusMessageRef.current('Duplicated element');
+    return true;
+  }, [
+    selectedLayerId,
+    selectedTextId,
+    selectedOrnamentId,
+    canvasBounds,
+    applyStudioChange,
+    selectPastedResult,
+  ]);
+
   const {
     activeSnapGuides,
     suppressNextClickRef,
@@ -196,7 +331,12 @@ export function CoverStyler({
     snapEnabled,
     enabled: viewMode === '2d',
     onChangeLayers: (nextLayers) => {
-      onChangeRef.current({ ...studioRef.current, layers: nextLayers });
+      const cur = studioRef.current;
+      const isStructuralDelete = nextLayers.length !== cur.layers.length;
+      applyStudioChange(
+        { ...cur, layers: nextLayers },
+        isStructuralDelete ? undefined : { coalesceKey: 'drag' },
+      );
     },
     onSelectLayer: handleSelectImageLayer,
   });
@@ -204,7 +344,7 @@ export function CoverStyler({
   const { elementSnapGuides, startTextDrag, startOrnamentDrag, startOrnamentResize } =
     useCoverElementsInteraction({
       studioRef,
-      onChangeRef,
+      onChangeRef: elementOnChangeRef,
       toSvgMm,
       suppressNextClickRef,
       snapTargets,
@@ -222,8 +362,8 @@ export function CoverStyler({
     spec,
     studio,
     studioRef,
-    onChange,
-    onChangeRef,
+    onChange: applyActionChange,
+    onChangeRef: actionOnChangeRef,
     onUpdateParams,
     onStatusMessage,
     customFont,
@@ -241,6 +381,150 @@ export function CoverStyler({
     onClearSelection: handleClearSelection,
     toSvgMm,
   });
+
+  const handleAddImageFilesRef = useRef(actions.handleAddImageFiles);
+  useEffect(() => {
+    handleAddImageFilesRef.current = actions.handleAddImageFiles;
+  }, [actions.handleAddImageFiles]);
+
+  // Global keyboard shortcuts: Undo/Redo, Copy/Paste/Duplicate, and 2D Arrow-key Nudge
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isEditableKeyboardTarget(e.target)) return;
+      if (document.querySelector('dialog[open]')) return;
+
+      const selection: StudioElementSelection = {
+        imageId: selectedLayerId,
+        textId: selectedTextId,
+        ornamentId: selectedOrnamentId,
+      };
+      const lowerKey = e.key.toLowerCase();
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && !e.altKey) {
+        if (!e.shiftKey && lowerKey === 'z') {
+          e.preventDefault();
+          handleUndo();
+          return;
+        }
+        if ((e.shiftKey && lowerKey === 'z') || lowerKey === 'y') {
+          e.preventDefault();
+          handleRedo();
+          return;
+        }
+        if (!e.shiftKey && lowerKey === 'c') {
+          const selectedBrowserText =
+            typeof window.getSelection === 'function'
+              ? (window.getSelection()?.toString() ?? '')
+              : '';
+          if (selectedBrowserText.length > 0) return;
+          const copied = createClipboardItemFromSelection(studioRef.current, selection);
+          if (copied) {
+            e.preventDefault();
+            clipboardRef.current = copied;
+            pasteCountRef.current = 0;
+            onStatusMessageRef.current('Copied element');
+          }
+          return;
+        }
+        if (!e.shiftKey && lowerKey === 'v') {
+          const item = clipboardRef.current;
+          if (item) {
+            e.preventDefault();
+            pasteCountRef.current += 1;
+            const pasted = pasteClipboardItemToStudio(
+              studioRef.current,
+              item,
+              canvasBounds,
+              pasteCountRef.current,
+            );
+            if (pasted) {
+              applyStudioChange(pasted.studio);
+              selectPastedResult(pasted);
+              onStatusMessageRef.current('Pasted element');
+            }
+          }
+          return;
+        }
+        if (!e.shiftKey && lowerKey === 'd') {
+          const item = createClipboardItemFromSelection(studioRef.current, selection);
+          if (item) {
+            e.preventDefault();
+            handleDuplicateSelected();
+          }
+          return;
+        }
+      }
+
+      if (
+        viewMode === '2d' &&
+        !mod &&
+        !e.altKey &&
+        !e.defaultPrevented &&
+        (e.key === 'ArrowUp' ||
+          e.key === 'ArrowDown' ||
+          e.key === 'ArrowLeft' ||
+          e.key === 'ArrowRight')
+      ) {
+        const targetEl = e.target instanceof Element ? e.target : null;
+        if (targetEl?.closest('[role="toolbar"]')) return;
+
+        const step = e.shiftKey ? NUDGE_SHIFT_STEP_MM : NUDGE_STEP_MM;
+        const dxMm = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+        const dyMm = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        const nudged = nudgeSelectedInStudio(studioRef.current, selection, dxMm, dyMm, canvasBounds);
+        if (nudged) {
+          e.preventDefault();
+          applyStudioChange(nudged, { coalesceKey: 'arrow-nudge' });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    viewMode,
+    selectedLayerId,
+    selectedTextId,
+    selectedOrnamentId,
+    canvasBounds,
+    handleUndo,
+    handleRedo,
+    handleDuplicateSelected,
+    applyStudioChange,
+    selectPastedResult,
+  ]);
+
+  // OS Clipboard Image Paste (screenshots or copied images dropped directly onto cover canvas)
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (isEditableKeyboardTarget(e.target)) return;
+      if (document.querySelector('dialog[open]')) return;
+
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageFiles: File[] = [];
+      for (const item of items) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length === 0 && e.clipboardData?.files) {
+        for (const file of Array.from(e.clipboardData.files)) {
+          if (file.type.startsWith('image/')) {
+            imageFiles.push(file);
+          }
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        void handleAddImageFilesRef.current(imageFiles);
+      }
+    };
+
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
 
   const preflight = useMemo(
     () =>
@@ -261,6 +545,135 @@ export function CoverStyler({
     () => studio.layers.find((l) => l.id === selectedLayerId) ?? null,
     [studio.layers, selectedLayerId],
   );
+  const selectedTextLayer = useMemo(
+    () =>
+      selectedTextId
+        ? ((studio.textLayers ?? []).find((t) => t.id === selectedTextId) ?? null)
+        : null,
+    [studio.textLayers, selectedTextId],
+  );
+  const selectedOrnamentLayer = useMemo(
+    () =>
+      selectedOrnamentId
+        ? ((studio.ornaments ?? []).find((o) => o.id === selectedOrnamentId) ?? null)
+        : null,
+    [studio.ornaments, selectedOrnamentId],
+  );
+  const activeSelection = useMemo<CanvasSelectionTarget | null>(() => {
+    if (selectedTextLayer) return { kind: 'text', layer: selectedTextLayer };
+    if (selectedOrnamentLayer) return { kind: 'ornament', layer: selectedOrnamentLayer };
+    if (selectedLayer) return { kind: 'image', layer: selectedLayer };
+    return null;
+  }, [selectedTextLayer, selectedOrnamentLayer, selectedLayer]);
+  const hasSelectedElement = activeSelection !== null;
+
+  const handleSelectionFlipH = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleUpdateTextLayer(activeSelection.layer.id, {
+        flipX: !activeSelection.layer.flipX,
+      });
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleUpdateOrnament(activeSelection.layer.id, {
+        flipX: !activeSelection.layer.flipX,
+      });
+    } else {
+      actions.updateLayer(activeSelection.layer.id, (layer) => ({
+        ...layer,
+        flipX: !layer.flipX,
+      }));
+    }
+  };
+
+  const handleSelectionFlipV = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleUpdateTextLayer(activeSelection.layer.id, {
+        flipY: !activeSelection.layer.flipY,
+      });
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleUpdateOrnament(activeSelection.layer.id, {
+        flipY: !activeSelection.layer.flipY,
+      });
+    } else {
+      actions.updateLayer(activeSelection.layer.id, (layer) => ({
+        ...layer,
+        flipY: !layer.flipY,
+      }));
+    }
+  };
+
+  const handleSelectionRotate90 = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleUpdateTextLayer(activeSelection.layer.id, {
+        rotationDeg: nextQuarterTurn(activeSelection.layer.rotationDeg),
+      });
+    } else if (activeSelection.kind === 'ornament') {
+      const rotated = rotateOrnament90(activeSelection.layer);
+      actions.handleUpdateOrnament(activeSelection.layer.id, {
+        xMm: rotated.xMm,
+        yMm: rotated.yMm,
+        widthMm: rotated.widthMm,
+        heightMm: rotated.heightMm,
+        rotationDeg: rotated.rotationDeg,
+      });
+    } else {
+      actions.updateLayer(activeSelection.layer.id, (layer) => ({
+        ...layer,
+        rotationDeg: nextQuarterTurn(layer.rotationDeg),
+      }));
+    }
+  };
+
+  const handleSelectionQuickAlign = (slot: VerticalAlignSlot) => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleQuickAlignText(activeSelection.layer.id, slot);
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleQuickAlignOrnament(activeSelection.layer.id, slot);
+    } else {
+      actions.handleQuickAlignImage(activeSelection.layer.id, slot);
+    }
+  };
+
+  const handleSelectionChangeColor = (hex: string) => {
+    if (!activeSelection || activeSelection.kind === 'image') return;
+    if (activeSelection.kind === 'text') {
+      applyStudioChange(
+        {
+          ...studio,
+          textLayers: (studio.textLayers ?? []).map((t) =>
+            t.id === activeSelection.layer.id ? { ...t, color: hex } : t,
+          ),
+        },
+        { coalesceKey: 'color' },
+      );
+    } else {
+      applyStudioChange(
+        {
+          ...studio,
+          ornaments: (studio.ornaments ?? []).map((o) =>
+            o.id === activeSelection.layer.id ? { ...o, color: hex } : o,
+          ),
+        },
+        { coalesceKey: 'color' },
+      );
+    }
+  };
+
+  const handleSelectionDelete = () => {
+    if (!activeSelection) return;
+    if (activeSelection.kind === 'text') {
+      actions.handleDeleteTextLayer(activeSelection.layer.id);
+    } else if (activeSelection.kind === 'ornament') {
+      actions.handleDeleteOrnament(activeSelection.layer.id);
+    } else {
+      const remaining = studio.layers.filter((l) => l.id !== activeSelection.layer.id);
+      applyStudioChange({ ...studio, layers: remaining });
+      setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
+    }
+  };
 
   const visibleSnapGuides =
     elementSnapGuides.length > 0 ? elementSnapGuides : activeSnapGuides;
@@ -287,6 +700,9 @@ export function CoverStyler({
           includeScaleBar: selection.includeScaleBar,
           appendInnerPocketsPage: selection.appendInnerPocketsPage,
           innerPageSizeId: selection.pageSizeId,
+          customRollWidthMm: selection.customRollWidthMm,
+          printerMargins: selection.printerMargins,
+          rollNesting: selection.rollNesting,
         });
         return;
       }
@@ -301,22 +717,37 @@ export function CoverStyler({
       exportLayerMode: selection.exportLayerMode,
       appendInnerPocketsPage: selection.appendInnerPocketsPage,
       innerPageSizeId: selection.pageSizeId,
+      customRollWidthMm: selection.customRollWidthMm,
+      printerMargins: selection.printerMargins,
+      rollNesting: selection.rollNesting,
     });
   };
 
   return (
-    <div className="flex flex-col gap-4" data-testid="cover-styler">
-      {/* Edge-to-Edge Unified Outer Case Wrap Workbench connected flush under the Folio Index Tabs */}
-      <section
-        aria-label="Interactive Cover and Spine Workbench"
-        className="overflow-hidden rounded-b-lg rounded-tr-lg border border-border bg-card shadow-xs"
-      >
+    <div
+      className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_350px] xl:items-start"
+      data-testid="cover-styler"
+    >
+      {/* Center Column: Calm Washi Export Bar + Walnut-Framed Self-Healing Cutting Mat */}
+      <div className="flex min-w-0 flex-col gap-3">
         <CoverWorkbenchHeader
           geometry={geometry}
           spec={spec}
           unit={effectiveParams.unit}
           exportingKind={actions.exportingKind}
           exportingOuterPdf={exportingOuterPdf}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          canDuplicate={hasSelectedElement}
+          onUndo={() => {
+            handleUndo();
+          }}
+          onRedo={() => {
+            handleRedo();
+          }}
+          onDuplicate={() => {
+            handleDuplicateSelected();
+          }}
           onOpenMeasureAndCut={onOpenMeasureAndCut}
           onExportPrintPdf={() => {
             setPdfExportLayerModeDefault('full');
@@ -336,33 +767,84 @@ export function CoverStyler({
           }
         />
 
-        {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage */}
-        <div
-          id="studio-mat-viewport"
-          data-testid="studio-canvas-stage"
-          data-expanded={isExpanded ? 'true' : 'false'}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDraggingOver(true);
-          }}
-          onDragLeave={() => setIsDraggingOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDraggingOver(false);
-            const files = Array.from(e.dataTransfer.files ?? []);
-            if (files.length === 0) return;
-            const dropPt =
-              viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
-            void actions.handleAddImageFiles(files, dropPt);
-          }}
-          className={`cutting-mat-surface flex items-center justify-center overflow-hidden transition-colors ${getFullPageStageClass(isExpanded)} ${
-            isDraggingOver
-              ? 'border-brass-bright ring-2 ring-inset ring-brass-bright/70'
-              : eyedropperTarget
-                ? 'border-amber-400 cursor-crosshair'
-                : 'border-border/80'
-          }`}
+        <section
+          aria-label="Interactive Cover and Spine Workbench"
+          className="cutting-mat-on-desk overflow-hidden rounded-[3px]"
         >
+          {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage resting on the Walnut Desk */}
+          <div
+            id="studio-mat-viewport"
+            data-testid="studio-canvas-stage"
+            data-expanded={isExpanded ? 'true' : 'false'}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(true);
+            }}
+            onDragLeave={() => setIsDraggingOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(false);
+              const files = Array.from(e.dataTransfer.files ?? []);
+              if (files.length === 0) return;
+              const dropPt =
+                viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
+              void actions.handleAddImageFiles(files, dropPt);
+            }}
+            className={`cutting-mat-surface flex flex-col overflow-hidden motion-safe:transition-colors ${getFullPageStageClass(isExpanded)} ${
+              !isExpanded
+                ? 'border-y-0 xl:h-[calc(100vh-248px)] xl:min-h-[480px] xl:max-h-[650px]'
+                : ''
+            } ${
+              isDraggingOver
+                ? 'ring-2 ring-inset ring-brass-bright/80'
+                : eyedropperTarget
+                  ? 'cursor-crosshair ring-2 ring-inset ring-amber-400'
+                  : ''
+            }`}
+          >
+            {/* Subtle Printed Brass Corner Registration Ticks */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-2 left-2 z-10 h-3 w-3 border-t border-l border-brass-bright/45"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-2 right-2 z-10 h-3 w-3 border-t border-r border-brass-bright/45"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-2 left-2 z-10 h-3 w-3 border-b border-l border-brass-bright/45"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute right-2 bottom-2 z-10 h-3 w-3 border-r border-b border-brass-bright/45"
+            />
+
+            {/* Docked Contextual Canvas Selection Bar (normal & Full Screen 2D modes) */}
+            {viewMode === '2d' && (
+              <CanvasSelectionBar
+                selection={activeSelection}
+              controlsId="studio-mat-viewport"
+              onFlipH={handleSelectionFlipH}
+              onFlipV={handleSelectionFlipV}
+              onRotate90={handleSelectionRotate90}
+              onQuickAlign={handleSelectionQuickAlign}
+              onFitMargin={
+                activeSelection?.kind === 'ornament'
+                  ? (marginMm) =>
+                      actions.handleFitOrnamentWithMargin(activeSelection.layer.id, marginMm)
+                  : undefined
+              }
+              onChangeColor={handleSelectionChangeColor}
+              onDuplicate={() => {
+                handleDuplicateSelected();
+              }}
+              onDelete={handleSelectionDelete}
+              onDeselect={handleClearSelection}
+            />
+          )}
+
+          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden pt-10">
           {/* Contextual Top Banner (Eyedropper active & Full-Page Exit Pill) */}
           <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
             {eyedropperTarget && (
@@ -418,6 +900,7 @@ export function CoverStyler({
               eyedropperTarget={eyedropperTarget}
               showGuides={showGuides}
               showPreflightOverlays={showPreflightOverlays}
+              surfaceMaterial={surfaceMaterial}
               preflight={preflight}
               activeIssueId={activeIssueId}
               visibleSnapGuides={visibleSnapGuides}
@@ -453,6 +936,8 @@ export function CoverStyler({
                 customFont={customFont}
                 angle={book3DAngle}
                 isCoverOpen={book3DCoverOpen}
+                surfaceMaterial={surfaceMaterial}
+                foilFinish={foilFinish}
                 onAngleChange={setBook3DAngle}
               />
             </div>
@@ -644,25 +1129,112 @@ export function CoverStyler({
               </HudGroup>
             </FloatingHudToolbar>
           </div>
+          </div>
         </div>
 
+        {/* Non-Printing Visual Material & Foil Preview Strip */}
+        {(viewMode === '2d' || viewMode === '3d') && (
+          <div
+            data-testid="studio-preview-finish-bar"
+            className="washi-sheet flex flex-wrap items-center justify-between gap-2 border-t border-border px-3.5 py-1.5 text-xs shadow-none"
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                title="Visual-only material & foil preview — never changes printed PDF, PNG, or SVG exports"
+              >
+                <Sparkles className="h-3 w-3 text-vermilion" aria-hidden="true" />
+                Preview
+              </span>
+
+              <div
+                role="group"
+                aria-label="Surface material preview"
+                className="inline-flex flex-wrap items-center gap-1"
+              >
+                <span className="mr-0.5 text-[11px] text-muted-foreground">Surface:</span>
+                {SURFACE_MATERIALS.map((mat) => {
+                  const active = surfaceMaterial === mat.id;
+                  return (
+                    <button
+                      key={mat.id}
+                      type="button"
+                      aria-pressed={active}
+                      title={`${mat.label} — ${mat.description} (visual preview only)`}
+                      data-testid={`material-${mat.id}`}
+                      onClick={() => setSurfaceMaterial(mat.id)}
+                      className={`inline-flex cursor-pointer items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium motion-safe:transition-colors ${
+                        active
+                          ? 'border-vermilion/70 bg-vermilion/12 text-foreground shadow-2xs'
+                          : 'border-border/80 bg-card/75 text-muted-foreground hover:bg-accent hover:text-foreground'
+                      }`}
+                    >
+                      {mat.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {viewMode === '3d' && (
+                <div
+                  role="group"
+                  aria-label="Foil finish preview"
+                  className="inline-flex flex-wrap items-center gap-1"
+                >
+                  <span className="mr-0.5 text-[11px] text-muted-foreground">Foil:</span>
+                  {FOIL_FINISHES.map((foil) => {
+                    const active = foilFinish === foil.id;
+                    return (
+                      <button
+                        key={foil.id}
+                        type="button"
+                        aria-pressed={active}
+                        title={`${foil.label} (visual 3D preview only)`}
+                        data-testid={`foil-${foil.id}`}
+                        onClick={() => setFoilFinish(foil.id)}
+                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium motion-safe:transition-colors ${
+                          active
+                            ? 'border-vermilion/70 bg-vermilion/12 text-foreground shadow-2xs'
+                            : 'border-border/80 bg-card/75 text-muted-foreground hover:bg-accent hover:text-foreground'
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/25"
+                          style={{ backgroundColor: foil.swatchHex }}
+                        />
+                        {foil.shortLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <span className="font-mono text-[10.5px] text-muted-foreground/85">
+              Visual preview only
+            </span>
+          </div>
+        )}
+
         {/* Subtle Contextual Hint Footer Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-muted-foreground">
-          <span>
+        <div className="washi-sheet flex flex-wrap items-center justify-between gap-2 border-t border-border/80 px-3.5 py-1.5 text-[11.5px] text-muted-foreground shadow-none">
+          <span className="min-w-0 flex-1 truncate">
             {viewMode === '3d'
               ? 'Drag directly on the hardcover volume (or use Arrow keys) to inspect Front, Spine, and Back proportions.'
               : viewMode === 'blueprint'
                 ? 'Solid Red: 45° Miter Cut Line • Dashed Blue: Board Guides • Brass: Hinge Spacers • Green: Bleed.'
                 : selectedLayer
-                  ? `Selected "${selectedLayer.fileName}" — drag to position, pull corners or scroll wheel to resize, Backspace to remove.`
-                  : 'Drop PNG, JPG, WEBP, or SVG artwork anywhere onto the cutting mat, or add Cover Text & Classic Designs below.'}
+                  ? `Selected "${selectedLayer.fileName}" — drag or Arrow keys to nudge, pull corners or scroll wheel to resize, Cmd/Ctrl+D to duplicate.`
+                  : 'Drop or paste (Cmd/Ctrl+V) PNG, JPG, WEBP, or SVG artwork onto the cutting mat, or style in the right inspector.'}
           </span>
-          <span className="font-mono text-[11px] text-brass">
+          <span className="shrink-0 font-mono text-[11px] font-medium text-vermilion">
             {spec.totalWidthMm.toFixed(1)} × {spec.totalHeightMm.toFixed(1)} mm @ 300 DPI
           </span>
         </div>
-      </section>
+        </section>
+      </div>
 
+      {/* Right Docked Washi Studio Inspector (directly beside cutting mat on desktop xl:) */}
       <CoverStudioToolDock
         activeTab={activeToolTab}
         onTabChange={setActiveToolTab}
@@ -704,16 +1276,28 @@ export function CoverStyler({
           actions.updateLayer(id, (layer) => ({ ...layer, ...patch }))
         }
         onReorderLayer={(id, direction) =>
-          onChange({ ...studio, layers: CoverImageLayerModel.reorder(studio.layers, id, direction) })
+          applyStudioChange({
+            ...studio,
+            layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
+          })
         }
         onDeleteLayer={(id) => {
           const remaining = studio.layers.filter((l) => l.id !== id);
-          onChange({ ...studio, layers: remaining });
+          applyStudioChange({ ...studio, layers: remaining });
           if (selectedLayerId === id) {
             setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
           }
         }}
-        onUpdateStudio={actions.updateStudio}
+        onUpdateStudio={(patch) => {
+          const keys = Object.keys(patch);
+          const isColorOnly =
+            keys.length > 0 &&
+            keys.every((k) => k === 'backBgColor' || k === 'spineBgColor' || k === 'frontBgColor');
+          applyStudioChange(
+            { ...studio, ...patch },
+            isColorOnly ? { coalesceKey: 'color' } : undefined,
+          );
+        }}
         onToggleEyedropper={(target) => {
           setViewMode('2d');
           setEyedropperTarget((prev) => (prev === target ? null : target));
@@ -734,6 +1318,7 @@ export function CoverStyler({
         onFitOrnamentToBoard={actions.handleFitOrnamentToBoard}
         onFitOrnamentWithMargin={actions.handleFitOrnamentWithMargin}
         onCenterOrnament={actions.handleCenterOrnament}
+        onQuickAlignOrnament={actions.handleQuickAlignOrnament}
         onDeleteOrnament={actions.handleDeleteOrnament}
         onUpdateSpineText={actions.updateSpineText}
         onSavePreset={actions.handleSaveDesignPreset}
@@ -788,6 +1373,12 @@ export function CoverStyler({
           setLocalPrintMedia(mediaId);
           onUpdateParams?.({ printMedia: mediaId });
         }}
+        customRollWidthMm={effectiveParams.customRollWidthMm}
+        onChangeCustomRollWidthMm={
+          onUpdateParams
+            ? (customRollWidthMm) => onUpdateParams({ customRollWidthMm })
+            : undefined
+        }
         pageSizeId={activePageSize}
         onChangePageSize={(sizeId) => {
           setLocalPageSize(sizeId);

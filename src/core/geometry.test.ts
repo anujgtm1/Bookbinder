@@ -1,6 +1,8 @@
+import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
+import { DEFAULT_BOOK_PARAMETERS, PAGE_SIZES } from '@/types/bookParams';
 import { GeometryPrimitives } from '@/types/geometry';
+import { UnitConverter } from '@/types/units';
 import {
   calculateCaseGeometry,
   calculateChipboardCutList,
@@ -9,6 +11,8 @@ import {
   evaluatePrintMediaFit,
   evaluateRollWidth,
 } from './geometry';
+import { generateInnerTemplatesPdf, generateOuterWrapPdf, planInnerTemplateLayout } from './pdfExport';
+import { generateInnerTemplatesSvg } from './svgExport';
 
 describe('calculateCaseGeometry', () => {
   it('computes exact default chipboard cut list from SPEC.md', () => {
@@ -519,5 +523,209 @@ describe('calculateCaseGeometry', () => {
     expect(frontPocket.scoreLines).toHaveLength(1);
     expect(frontPocket.scoreLines[0]?.x1).toBeCloseTo(76.32, 2);
     expect(frontPocket.glueFlapPolygons).toHaveLength(1);
+  });
+
+  it('computes Folded Glue-In Endpapers (2 × PB_W × PB_H, 0 glue flaps, 1 center fold) for chipboard hardcovers', () => {
+    // Default slip-pockets mode
+    const defaultGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    expect(defaultGeom.interiorStyle).toBe('slip-pockets');
+    expect(defaultGeom.frontPocket.kind).toBe('slip-pocket');
+    expect(defaultGeom.backPocket.kind).toBe('slip-pocket');
+
+    // Rigid 3-board hardcover with folded-endpapers
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(foldedGeom.interiorStyle).toBe('folded-endpapers');
+
+    for (const [side, piece] of [
+      ['back', foldedGeom.backPocket],
+      ['front', foldedGeom.frontPocket],
+    ] as const) {
+      expect(piece.kind).toBe('folded-endpaper');
+      expect(piece.side).toBe(side);
+      expect(piece.label).toBe(side === 'front' ? 'Front Folded Endpaper' : 'Back Folded Endpaper');
+      expect(piece.pocketWidthMm).toBe(140);
+      expect(piece.pocketHeightMm).toBe(216);
+      expect(piece.flapWidthMm).toBe(0);
+      expect(piece.totalWidthMm).toBe(280);
+      expect(piece.totalHeightMm).toBe(216);
+      expect(piece.outerCutPolygon).toEqual([
+        { x: 0, y: 0 },
+        { x: 280, y: 0 },
+        { x: 280, y: 216 },
+        { x: 0, y: 216 },
+      ]);
+      expect(piece.faceRect).toEqual({ x: 0, y: 0, width: 280, height: 216 });
+      expect(piece.glueFlapPolygons).toHaveLength(0);
+      expect(piece.scoreLines).toEqual([
+        { x1: 140, y1: 0, x2: 140, y2: 216, label: 'Center Fold (Pastedown / Flyleaf)' },
+      ]);
+    }
+
+    // Flexible-spine (2-board chipboard) also supports folded-endpapers
+    const flexFolded = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'flexible-spine',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(flexFolded.frontPocket.kind).toBe('folded-endpaper');
+    expect(flexFolded.frontPocket.totalWidthMm).toBe(210);
+    expect(flexFolded.frontPocket.totalHeightMm).toBe(148);
+    expect(flexFolded.frontPocket.glueFlapPolygons).toHaveLength(0);
+    expect(flexFolded.frontPocket.scoreLines).toHaveLength(1);
+
+    // Boardless softcover-jacket (separate pockets) stays untouched even if interiorStyle is set
+    const separateSoft = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(separateSoft.frontPocket.kind).toBe('slip-pocket');
+    expect(separateSoft.frontPocket.outerCutPolygon).toHaveLength(6);
+    expect(separateSoft.frontPocket.glueFlapPolygons).toHaveLength(1);
+  });
+
+  it('exports valid SVG and PDF templates for Folded Glue-In Endpapers with zero glue flaps and center fold score lines', async () => {
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'rigid-case',
+      interiorStyle: 'folded-endpapers',
+    });
+
+    // SVG export compatibility
+    const svg = generateInnerTemplatesSvg(foldedGeom);
+    expect(svg).toContain('FOLDED ENDPAPERS (PASTEDOWN + FLYLEAF) &amp; SPINE LINER');
+    expect(svg).toContain('data-label="Back Folded Endpaper"');
+    expect(svg).toContain('data-label="Front Folded Endpaper"');
+    expect(svg).toContain('data-label="Center Fold (Pastedown / Flyleaf)"');
+    expect(svg).toContain('PASTEDOWN');
+    expect(svg).toContain('FLYLEAF');
+    expect(svg).not.toContain('OPEN EDGE:');
+    expect(svg).not.toContain('Shaded = Apply Glue Here');
+    // Glue-flaps layer contains zero paths
+    const glueGroupMatch = svg.match(/<g id="glue-flaps"[^>]*>([\s\S]*?)<\/g>/);
+    expect(glueGroupMatch?.[1].trim()).toBe('');
+
+    // PDF export compatibility (Tabloid packs 280x216 sheets cleanly rotated 90° without clipping)
+    const tabloidPlan = planInnerTemplateLayout(foldedGeom, 'tabloid', { includeLegend: true });
+    expect(tabloidPlan.placements.every((p) => !p.clipped)).toBe(true);
+
+    const { bytes, plan } = await generateInnerTemplatesPdf(foldedGeom, 'tabloid', {
+      includeLegend: true,
+    });
+    expect(bytes.byteLength).toBeGreaterThan(1000);
+    const pdfDoc = await PDFDocument.load(bytes);
+    expect(pdfDoc.getPageCount()).toBe(plan.pageCount);
+    expect(pdfDoc.getTitle()).toBe(
+      'Bookbinder — Folded Endpapers (Pastedown + Flyleaf) & Spine Liner',
+    );
+    const firstSize = pdfDoc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(firstSize.width)).toBeCloseTo(PAGE_SIZES.tabloid.widthMm, 2);
+    expect(UnitConverter.pointsToMm(firstSize.height)).toBeCloseTo(PAGE_SIZES.tabloid.heightMm, 2);
+  });
+
+  it('evaluates roll-custom width with clamping and side margins', () => {
+    // 366 x 259 mm cover fits 300 mm custom roll (290 mm printable) rotated 90° with 31 mm spare
+    const fit300 = evaluatePrintMediaFit('roll-custom', 366, 259, 10, {
+      customRollWidthMm: 300,
+    });
+    expect(fit300.status).toBe('fits-roll');
+    expect(fit300.mediaId).toBe('roll-custom');
+    expect(fit300.summary).toContain('Custom Roll (300 mm)');
+    expect(fit300.summary).toContain('31 mm spare width');
+
+    // Too narrow: 250 mm custom roll (240 mm printable) cannot fit 366 x 259 mm -> suggests Tabloid (1-sheet fit)
+    const tooNarrow = evaluatePrintMediaFit('roll-custom', 366, 259, 10, {
+      customRollWidthMm: 250,
+    });
+    expect(tooNarrow.status).toBe('does-not-fit');
+    expect(tooNarrow.suggestedMediaId).toBe('tabloid');
+    expect(tooNarrow.summary).toContain('Custom Roll (250 mm)');
+
+    // Larger wrap exceeding Tabloid as well suggests 13" roll
+    const tooNarrowWide = evaluatePrintMediaFit('roll-custom', 460, 300, 10, {
+      customRollWidthMm: 250,
+    });
+    expect(tooNarrowWide.status).toBe('does-not-fit');
+    expect(tooNarrowWide.suggestedMediaId).toBe('roll-13');
+
+    // Out-of-range width clamps to min 200 mm (190 mm printable)
+    const clampedMin = evaluatePrintMediaFit('roll-custom', 185, 220, 10, {
+      customRollWidthMm: 100,
+    });
+    expect(clampedMin.status).toBe('fits-roll');
+    expect(clampedMin.summary).toContain('Custom Roll (200 mm)');
+
+    // Asymmetric left + right side margins reduce printable roll width
+    const tightMargins = evaluatePrintMediaFit('roll-custom', 366, 259, 10, {
+      customRollWidthMm: 280,
+      margins: { topMm: 5, bottomMm: 5, leftMm: 15, rightMm: 15 },
+    });
+    // 280 - 30 = 250 mm printable < 259 mm -> does-not-fit
+    expect(tightMargins.status).toBe('does-not-fit');
+    expect(tightMargins.summary).toContain('250 mm printable');
+  });
+
+  it('evaluates desktop cut sheets against asymmetric printer margins (bottom gripper dead zone & borderless)', () => {
+    // US Letter Landscape = 279.4 x 215.9 mm
+    // Standard 5 mm margins -> safe box = 269.4 x 205.9 mm -> 260 x 200 mm fits 1 sheet Landscape
+    const standardFit = evaluatePrintMediaFit('letter', 260, 200, 10, {
+      margins: { topMm: 5, bottomMm: 5, leftMm: 5, rightMm: 5 },
+    });
+    expect(standardFit.status).toBe('fits-1-sheet');
+    expect(standardFit.sheetPageWidthMm).toBeCloseTo(279.4, 2);
+    expect(standardFit.sheetPageHeightMm).toBeCloseTo(215.9, 2);
+
+    // Fine-Art Sheet (Top 5, Bottom 20, Left 5, Right 5):
+    // Landscape safe height = 215.9 - 25 = 190.9 mm (< 200 mm!)
+    // Portrait safe box = 205.9 x 254.4 mm -> 260 x 200 fits as 2-sheet Portrait tile!
+    const fineArtFit = evaluatePrintMediaFit('letter', 260, 200, 10, {
+      margins: { topMm: 5, bottomMm: 20, leftMm: 5, rightMm: 5 },
+    });
+    expect(fineArtFit.status).toBe('fits-2-sheet-tile');
+    expect(fineArtFit.sheetPageWidthMm).toBeCloseTo(215.9, 2);
+    expect(fineArtFit.sheetPageHeightMm).toBeCloseTo(279.4, 2);
+
+    // Roll Cut-Sheet (Bottom 30 mm): Portrait safe height = 279.4 - 35 = 244.4 mm -> 366 x 259 mm exceeds Portrait safe height!
+    const cutSheetOverflow = evaluatePrintMediaFit('letter', 366, 259, 10, {
+      margins: { topMm: 5, bottomMm: 30, leftMm: 5, rightMm: 5 },
+    });
+    expect(cutSheetOverflow.status).toBe('does-not-fit');
+
+    // Borderless (0 mm all sides): 275 x 212 mm fits 1 sheet US Letter Landscape (impossible with 5 mm margins)
+    const borderlessFit = evaluatePrintMediaFit('letter', 275, 212, 10, {
+      margins: { topMm: 0, bottomMm: 0, leftMm: 0, rightMm: 0 },
+    });
+    expect(borderlessFit.status).toBe('fits-1-sheet');
+    expect(borderlessFit.sheetPageWidthMm).toBeCloseTo(279.4, 2);
+    expect(borderlessFit.sheetPageHeightMm).toBeCloseTo(215.9, 2);
+  });
+
+  it('composes multi-up nested roll PDF with inner pieces and custom roll width via generateOuterWrapPdf', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const bytes = await generateOuterWrapPdf(geom, 'single', {
+      printMediaId: 'roll-custom',
+      customRollWidthMm: 914,
+      includeScaleBar: true,
+      rollNesting: {
+        enabled: true,
+        copies: 2,
+        gutterMm: 10,
+        packInnerPockets: true,
+        allowRotation: true,
+      },
+    });
+
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(1);
+    const sz = doc.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(914, 1);
+    expect(UnitConverter.pointsToMm(sz.height)).toBeGreaterThan(250);
   });
 });

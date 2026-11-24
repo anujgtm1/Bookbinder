@@ -67,6 +67,12 @@
       "dimensionsLabel": "1118 mm"
     }
   ],
+  "customRollMedia": {
+    "id": "roll-custom",
+    "name": "Custom Roll",
+    "dimensionsLabel": "Custom",
+    "label": "Custom Roll Width…"
+  },
   "exactAutoMedia": {
     "id": "exact-auto",
     "name": "Exact Wrap Size",

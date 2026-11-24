@@ -441,14 +441,11 @@ export function CoverTextCard({
                   <Button
                     type="button"
                     size="sm"
-                    variant={rotDeg ? 'secondary' : 'outline'}
+                    variant="outline"
                     className="h-7 px-2 text-[11px]"
-                    aria-pressed={Boolean(rotDeg)}
-                    title={
-                      rotDeg
-                        ? `Rotated ${rotDeg}° — click to rotate 90° clockwise`
-                        : 'Rotate text 90° clockwise'
-                    }
+                    aria-label="Rotate text 90° clockwise"
+                    title="Rotate 90° clockwise"
+                    data-rotation={rotDeg}
                     data-testid="cover-text-rotate-90-btn"
                     onClick={() =>
                       onUpdateTextLayer(selectedText.id, {
@@ -457,7 +454,7 @@ export function CoverTextCard({
                     }
                   >
                     <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
-                    {rotDeg ? `${rotDeg}°` : '90°'}
+                    90°
                   </Button>
                 );
               })()}

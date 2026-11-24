@@ -151,20 +151,18 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('layer-flip-v-btn')).toHaveAttribute('aria-pressed', 'false');
 
     const layerRotateBtn = page.getByTestId('layer-rotate-90-btn');
-    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(layerRotateBtn).toHaveAttribute('data-rotation', '0');
     await layerRotateBtn.click();
-    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'true');
-    await expect(layerRotateBtn).toContainText('90°');
+    await expect(layerRotateBtn).toHaveAttribute('data-rotation', '90');
     await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(90\)/);
     await layerRotateBtn.click();
-    await expect(layerRotateBtn).toContainText('180°');
+    await expect(layerRotateBtn).toHaveAttribute('data-rotation', '180');
     await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(180\)/);
     await layerRotateBtn.click();
-    await expect(layerRotateBtn).toContainText('270°');
+    await expect(layerRotateBtn).toHaveAttribute('data-rotation', '270');
     await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(270\)/);
     await layerRotateBtn.click();
-    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'false');
-    await expect(layerRotateBtn).toContainText('90°');
+    await expect(layerRotateBtn).toHaveAttribute('data-rotation', '0');
 
     await page.getByTestId('studio-eyedropper-both-btn').click();
     await expect(page.getByTestId('eyedropper-active-banner')).toBeVisible();
@@ -385,20 +383,19 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('pocket-layer-count-badge')).toHaveText('2 images');
 
     const pocketRotateBtn = page.getByTestId('pocket-layer-rotate-90-btn');
-    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(pocketRotateBtn).toHaveAttribute('data-rotation', '0');
     await pocketRotateBtn.click();
-    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'true');
-    await expect(pocketRotateBtn).toContainText('90°');
+    await expect(pocketRotateBtn).toHaveAttribute('data-rotation', '90');
     await expect(page.getByTestId('pocket-layer-1')).toHaveAttribute('transform', /rotate\(90\)/);
     await pocketRotateBtn.click();
-    await expect(pocketRotateBtn).toContainText('180°');
+    await expect(pocketRotateBtn).toHaveAttribute('data-rotation', '180');
     await pocketRotateBtn.click();
-    await expect(pocketRotateBtn).toContainText('270°');
+    await expect(pocketRotateBtn).toHaveAttribute('data-rotation', '270');
     await pocketRotateBtn.click();
-    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(pocketRotateBtn).toHaveAttribute('data-rotation', '0');
     // Leave at 90° so Styled Pockets PDF export exercises rotated pocket image rendering
     await pocketRotateBtn.click();
-    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(pocketRotateBtn).toHaveAttribute('data-rotation', '90');
 
     // Export Styled Pockets PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-styled-inner-pdf-btn').click();
@@ -705,17 +702,16 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
 
     // Rotate Cover Text 90° -> 180° -> 270° -> 0° and leave at 90° for Cricut export verification
     const textRotateBtn = page.getByTestId('cover-text-rotate-90-btn');
-    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(textRotateBtn).toHaveAttribute('data-rotation', '0');
     await textRotateBtn.click();
-    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'true');
-    await expect(textRotateBtn).toContainText('90°');
+    await expect(textRotateBtn).toHaveAttribute('data-rotation', '90');
     await expect(page.getByTestId('studio-cover-text-0')).toHaveAttribute('transform', /rotate\(90\)/);
     await textRotateBtn.click();
-    await expect(textRotateBtn).toContainText('180°');
+    await expect(textRotateBtn).toHaveAttribute('data-rotation', '180');
     await textRotateBtn.click();
-    await expect(textRotateBtn).toContainText('270°');
+    await expect(textRotateBtn).toHaveAttribute('data-rotation', '270');
     await textRotateBtn.click();
-    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(textRotateBtn).toHaveAttribute('data-rotation', '0');
     await textRotateBtn.click();
     await expect(page.getByTestId('studio-cover-text-0')).toHaveAttribute('transform', /rotate\(90\)/);
 
@@ -758,20 +754,19 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const ornW0 = Number(await spineOrnRect.getAttribute('width'));
     const ornH0 = Number(await spineOrnRect.getAttribute('height'));
     const ornRotateBtn = page.getByTestId('ornament-rotate-90-btn');
-    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(ornRotateBtn).toHaveAttribute('data-rotation', '0');
     await ornRotateBtn.click();
-    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'true');
-    await expect(ornRotateBtn).toContainText('90°');
+    await expect(ornRotateBtn).toHaveAttribute('data-rotation', '90');
     expect(Number(await spineOrnRect.getAttribute('width'))).toBeCloseTo(ornH0, 1);
     expect(Number(await spineOrnRect.getAttribute('height'))).toBeCloseTo(ornW0, 1);
     await ornRotateBtn.click();
-    await expect(ornRotateBtn).toContainText('180°');
+    await expect(ornRotateBtn).toHaveAttribute('data-rotation', '180');
     await ornRotateBtn.click();
-    await expect(ornRotateBtn).toContainText('270°');
+    await expect(ornRotateBtn).toHaveAttribute('data-rotation', '270');
     await ornRotateBtn.click();
-    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(ornRotateBtn).toHaveAttribute('data-rotation', '0');
     await ornRotateBtn.click();
-    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(ornRotateBtn).toHaveAttribute('data-rotation', '90');
 
     const customSvgStamp = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,5 65,40 95,50 65,60 50,95 35,60 5,50 35,40" fill="#000"/></svg>',

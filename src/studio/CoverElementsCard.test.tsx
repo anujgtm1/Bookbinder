@@ -84,8 +84,7 @@ describe('CoverElementsCard', () => {
     fireEvent.click(screen.getByTestId('cover-text-flip-v-btn'));
     expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { flipY: true });
     const rotateTextBtn = screen.getByTestId('cover-text-rotate-90-btn');
-    expect(rotateTextBtn).toHaveAttribute('aria-pressed', 'false');
-    expect(rotateTextBtn).toHaveTextContent('90°');
+    expect(rotateTextBtn).toHaveAttribute('data-rotation', '0');
     fireEvent.click(rotateTextBtn);
     expect(onUpdateTextLayer).toHaveBeenCalledWith(titleLayer.id, { rotationDeg: 90 });
   });
@@ -147,8 +146,7 @@ describe('CoverElementsCard', () => {
     fireEvent.click(screen.getByTestId('ornament-flip-v-btn'));
     expect(onUpdateOrnament).toHaveBeenCalledWith(frame.id, { flipY: true });
     const rotateOrnBtn = screen.getByTestId('ornament-rotate-90-btn');
-    expect(rotateOrnBtn).toHaveAttribute('aria-pressed', 'false');
-    expect(rotateOrnBtn).toHaveTextContent('90°');
+    expect(rotateOrnBtn).toHaveAttribute('data-rotation', '0');
     fireEvent.click(rotateOrnBtn);
     const frameCx = frame.xMm + frame.widthMm / 2;
     const frameCy = frame.yMm + frame.heightMm / 2;

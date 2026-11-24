@@ -21,8 +21,10 @@ import {
   triggerTextDownload,
 } from '@/core/storage';
 import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExport';
+import { createSampleBookProject } from '@/resources/sampleProject';
 import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
+import { remapStudioForGeometryChange } from '@/studio/studioGeometryRemap';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
@@ -60,11 +62,17 @@ export function App() {
     ) {
       setActiveTab('outer');
     }
-    setProject((prev) => ({
-      ...prev,
-      updatedAt: new Date().toISOString(),
-      parameters,
-    }));
+    setProject((prev) => {
+      const prevGeometry = calculateCaseGeometry(prev.parameters);
+      const nextGeometry = calculateCaseGeometry(parameters);
+      const studio = remapStudioForGeometryChange(prev.studio, prevGeometry, nextGeometry);
+      return {
+        ...prev,
+        updatedAt: new Date().toISOString(),
+        parameters,
+        studio,
+      };
+    });
   };
 
   const handleStudioChange = (studio: CoverStudioState) => {
@@ -102,6 +110,9 @@ export function App() {
         includeScaleBar: options?.includeScaleBar,
         appendInnerPocketsPage: options?.appendInnerPocketsPage,
         innerPageSizeId: options?.innerPageSizeId ?? project.parameters.pdfPageSize,
+        customRollWidthMm: options?.customRollWidthMm ?? project.parameters.customRollWidthMm,
+        printerMargins: options?.printerMargins,
+        rollNesting: options?.rollNesting,
       });
       const filename =
         effectiveSplitMode === 'three-piece'
@@ -183,19 +194,26 @@ export function App() {
     setStatusMessage('Reset to default dimensions');
   };
 
+  const handleLoadSampleBook = () => {
+    setProject(createSampleBookProject());
+    setActiveTab('outer');
+    setStatusMessage('Loaded sample book: Twenty Thousand Leagues Under the Seas');
+  };
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="bindery-walnut-desk flex min-h-screen flex-col text-foreground">
       <Header
         statusMessage={statusMessage}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        onLoadSampleBook={handleLoadSampleBook}
       />
 
       <main
         id="main-workspace"
         tabIndex={-1}
-        className={`mx-auto grid max-w-[1680px] grid-cols-1 gap-4 px-3 py-4 sm:px-5 ${
-          sidebarOpen ? 'lg:grid-cols-[310px_minmax(0,1fr)]' : 'lg:grid-cols-1'
+        className={`mx-auto grid w-full max-w-[1760px] flex-1 grid-cols-1 items-start gap-4 px-3 py-3.5 sm:px-5 ${
+          sidebarOpen ? 'lg:grid-cols-[276px_minmax(0,1fr)]' : 'lg:grid-cols-1'
         }`}
       >
         {sidebarOpen && (
@@ -208,41 +226,47 @@ export function App() {
           />
         )}
 
-        <div className="flex min-w-0 flex-col gap-4">
-          {/* 3-Tab Hybrid Folio Workbench: Measure & Cut, Cover Studio, Inner Pockets */}
+        <div className="flex min-w-0 flex-col">
+          {/* 3-Tab Folio Workbench Navigation sitting cleanly above the active workspace */}
           <Tabs
             value={activeTab}
             onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
-            className="flex flex-col"
+            className="flex flex-col gap-3"
           >
-            <div className="flex flex-wrap items-end justify-between gap-2 px-1">
-              <TabsList className="h-auto gap-1.5 rounded-none bg-transparent p-0">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <TabsList
+                aria-label="Workbench modes"
+                className="h-auto flex-wrap justify-start gap-1.5 rounded-none bg-transparent p-0"
+              >
                 <TabsTrigger
                   value="measure"
                   data-testid="nav-measure"
-                  className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
+                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
                 >
-                  <Ruler className="h-4 w-4 text-brass" aria-hidden="true" />
+                  <Ruler className="folio-index-tab-icon h-4 w-4 shrink-0" aria-hidden="true" />
                   Measure &amp; Cut
                 </TabsTrigger>
                 <TabsTrigger
                   value="outer"
                   data-testid="nav-outer"
-                  className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
+                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
                 >
-                  <BookMarked className="h-4 w-4 text-brass" aria-hidden="true" />
+                  <BookMarked
+                    className="folio-index-tab-icon h-4 w-4 shrink-0"
+                    aria-hidden="true"
+                  />
                   Cover Studio
                 </TabsTrigger>
                 <TabsTrigger
                   value="pockets"
                   data-testid="nav-pockets"
-                  className="folio-index-tab -mb-px px-4 py-2 text-sm font-medium data-[state=active]:shadow-none"
+                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
                 >
                   <FolderOpen
-                    className={`h-4 w-4 text-brass ${!usesInnerPockets ? 'opacity-60' : ''}`}
+                    className={`folio-index-tab-icon h-4 w-4 shrink-0 ${!usesInnerPockets ? 'opacity-65' : ''}`}
                     aria-hidden="true"
                   />
-                  <span className={!usesInnerPockets ? 'opacity-65' : undefined}>Inner Pockets</span>
+                  <span className={!usesInnerPockets ? 'opacity-75' : undefined}>Inner Pockets</span>
                   {!usesInnerPockets && bindingStrategy.innerPocketsNotice && (
                     <Badge
                       variant="outline"
@@ -258,11 +282,13 @@ export function App() {
 
             <TabsContent value="measure" className="mt-0">
               <MeasureAndCutPanel
+                params={project.parameters}
                 geometry={geometry}
                 splitMode={project.parameters.splitMode}
                 printMediaId={project.parameters.printMedia}
                 pageSizeId={project.parameters.pdfPageSize}
                 unit={project.parameters.unit}
+                bookTitle={project.studio.spineText.title || undefined}
                 exportingOuterPdf={exportingTarget === 'outer-pdf'}
                 onChangePrintMedia={(printMedia) => handlePatchParams({ printMedia })}
                 onChangePageSize={(pdfPageSize) => handlePatchParams({ pdfPageSize })}
@@ -271,6 +297,7 @@ export function App() {
                 onDetachSlipFlaps={() => handlePatchParams({ softcoverPocketMode: 'separate' })}
                 onDownloadOuterSvg={handleDownloadOuterSvg}
                 onDownloadOuterPdf={handleDownloadOuterPdf}
+                onStatusMessage={setStatusMessage}
               />
             </TabsContent>
 
@@ -294,10 +321,10 @@ export function App() {
                 <section
                   aria-label="Inner Pockets Notice"
                   data-testid="pockets-not-needed-notice"
-                  className="rounded-b-lg rounded-tr-lg border border-border bg-card p-6 shadow-xs sm:p-8"
+                  className="washi-sheet rounded-md border border-border border-t-2 border-t-vermilion p-6 sm:p-8"
                 >
                   <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-                    <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-full border border-emerald-700/30 bg-emerald-600/12 text-emerald-800 dark:text-emerald-300">
+                    <div className="status-success-surface mb-3 inline-flex h-11 w-11 items-center justify-center rounded-md border">
                       <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <Badge variant="outline" className="mb-2 font-mono text-[10px] uppercase">
@@ -345,12 +372,14 @@ export function App() {
               ) : (
                 <InnerPocketsStudio
                   geometry={geometry}
+                  interiorStyle={project.parameters.interiorStyle}
                   pocketStyle={project.studio.pocketStyle}
                   coverMatchColor={project.studio.spineBgColor}
                   pdfPageSize={project.parameters.pdfPageSize}
                   printMediaId={project.parameters.printMedia}
                   unit={project.parameters.unit}
                   exportingInnerPdf={exportingTarget === 'inner-pdf'}
+                  onChangeInteriorStyle={(interiorStyle) => handlePatchParams({ interiorStyle })}
                   onChangePocketStyle={(pocketStyle) =>
                     handleStudioChange({ ...project.studio, pocketStyle })
                   }

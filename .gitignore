@@ -15,6 +15,9 @@ test-results
 blob-report
 playwright/.cache
 
+# Local subagent git worktrees
+.worktrees
+
 # Editor & OS
 .DS_Store
 .vscode/*
