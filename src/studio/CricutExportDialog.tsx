@@ -13,8 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { triggerBlobDownload, triggerTextDownload } from '@/core/storage';
-import { getPageSizeSpec } from '@/resources/paperSpecs';
-import type { PageSizeId } from '@/types/bookParams';
+import { PRIMARY_SHEET_MEDIA_IDS, getPageSizeSpec } from '@/resources/paperSpecs';
 import type { CaseGeometry } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
 import { UnitConverter, type UnitSystem } from '@/types/units';
@@ -50,8 +49,6 @@ export interface CricutExportDialogProps {
   readonly onStatusMessage: (message: string) => void;
   readonly onOpenBasePdfForHtv?: () => void;
 }
-
-const PTC_SHEET_IDS: readonly PageSizeId[] = ['letter', 'a4', 'legal', 'tabloid'];
 
 /**
  * Native modal <dialog closedby="any"> for Cricut Design Space / Silhouette Studio / ScanNCut:
@@ -982,7 +979,7 @@ export function CricutExportDialog({
                 </div>
 
                 <div className="flex flex-wrap gap-1.5" data-testid="cricut-ptc-sheet-badges">
-                  {PTC_SHEET_IDS.map((sheetId) => {
+                  {PRIMARY_SHEET_MEDIA_IDS.map((sheetId) => {
                     const sheetSpec = getPageSizeSpec(sheetId);
                     const boundsInfo = CRICUT_PTC_SHEET_BOUNDS_MM[sheetId];
                     const fits =
@@ -1082,8 +1079,9 @@ export function CricutExportDialog({
                     data-testid="cricut-ptc-overflow-warning"
                     className="status-warning-surface rounded-md border px-2.5 py-2 text-[11px] font-medium"
                   >
-                    Exceeds Cricut Print Then Cut max sheet bounds (Tabloid 9.25 × 15.25&quot;).
-                    Export individual Front, Back, or Spine panels — or enable{' '}
+                    Exceeds Cricut Print Then Cut max sheet bounds (
+                    {getPageSizeSpec('tabloid').shortLabel} {CRICUT_PTC_SHEET_BOUNDS_MM.tabloid.labelIn}
+                    ). Export individual Front, Back, or Spine panels — or enable{' '}
                     <strong>Trim to Design Bounds</strong>.
                   </p>
                 )}
