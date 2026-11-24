@@ -24,6 +24,11 @@ For user docs see [`README.md`](./README.md); for module layout & scripts see [`
     - If a recent feature was awkward or touched too many files to add, treat that as a design smell and refactor toward a cleaner pattern (e.g., Strategy/Registry, shared lib, or Geometry IR).
     - Check whether modules should be split or combined, extract shared utilities into `src/lib/`, and pull static data/assets/magic strings out into `src/resources/`.
     - Audit end-to-end user-flow test coverage (`e2e/` + Vitest) and close any gaps before starting the next feature wave.
+- **Subagent Delegation Workflow:**
+  - Keep the main conversation lean by acting as an orchestrator: delegate multi-file features, architecture refactors, broad codebase audits, and test-hardening passes to focused subagents with tight, explicit file scopes.
+  - Run independent subagents in parallel only when their file scopes have **zero overlap** (e.g. `src/core/` vs. `README.md`/`docs/`, or disjoint studio modules).
+  - Have subagents verify inside the sandbox (`pnpm typecheck && pnpm lint && pnpm test`) and leave the working tree uncommitted; the main agent verifies the integrated build + Playwright E2E, splits changes into tiny separated atomic commits, and pushes `develop`.
+  - Handle trivial 1–2 file fixes or targeted lookups directly without unnecessary delegation overhead.
 - **Verification Gate:** Before pushing feature or refactor work, run:
   ```bash
   pnpm typecheck && pnpm lint && pnpm test && pnpm build
