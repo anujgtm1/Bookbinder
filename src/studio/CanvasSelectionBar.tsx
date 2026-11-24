@@ -3,6 +3,7 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   Image as ImageIcon,
+  PinOff,
   RotateCw,
   Sparkles,
   Trash2,
@@ -16,8 +17,14 @@ import {
   type CoverOrnamentLayer,
   type CoverTextLayer,
 } from '@/types/coverElements';
+import {
+  describeLayoutConstraint,
+  hasActiveLayoutConstraint,
+  type LayerLayoutConstraint,
+} from '@/types/layoutConstraints';
 import { normalizeQuarterTurn, type CoverImageLayer } from '@/types/studioLayer';
 import { getClassicOrnamentSpec } from './classicOrnaments';
+import { verticalSlotToPinKind } from './layoutConstraints';
 
 export type VerticalAlignSlot = 'upper' | 'center' | 'lower';
 
@@ -34,6 +41,7 @@ export interface CanvasSelectionBarProps {
   readonly onRotate90: () => void;
   readonly onQuickAlign: (slot: VerticalAlignSlot) => void;
   readonly onFitMargin?: (marginMm: number) => void;
+  readonly onDetachConstraint?: () => void;
   readonly onChangeColor?: (hex: string) => void;
   readonly onDuplicate: () => void;
   readonly onDelete: () => void;
@@ -64,6 +72,30 @@ function isFrameLikeSelection(selection: CanvasSelectionTarget): boolean {
   return selection.kind === 'ornament' && isFrameLikeOrnament(selection.layer);
 }
 
+function isMarginPresetPinned(
+  constraint: LayerLayoutConstraint | undefined,
+  marginMm: number,
+): boolean {
+  return (
+    constraint?.horizontal?.kind === 'inset-both' &&
+    constraint?.vertical?.kind === 'inset-both' &&
+    Math.abs(constraint.horizontal.marginMm - marginMm) < 0.05 &&
+    Math.abs(constraint.vertical.marginMm - marginMm) < 0.05
+  );
+}
+
+function isAlignSlotPinned(
+  constraint: LayerLayoutConstraint | undefined,
+  slot: VerticalAlignSlot,
+): boolean {
+  if (!constraint) return false;
+  if (constraint.imageFit && constraint.imageFit !== 'free') return false;
+  return (
+    constraint.horizontal?.kind === 'center' &&
+    constraint.vertical?.kind === verticalSlotToPinKind(slot)
+  );
+}
+
 const ACTION_BTN_CLASS =
   'inline-flex min-h-6.5 min-w-6.5 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] font-medium leading-none whitespace-nowrap text-[#f6efe2]/90 motion-safe:transition-colors hover:bg-[#f6efe2]/12 hover:text-white aria-pressed:border-brass-bright/70 aria-pressed:bg-brass-bright aria-pressed:font-semibold aria-pressed:text-[#19140a] aria-pressed:hover:bg-brass-bright aria-pressed:hover:text-[#19140a] [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10';
 
@@ -92,7 +124,8 @@ function describeSelection(selection: CanvasSelectionTarget): {
  * Follows modern-web-guidance (`toolbar`):
  * - Uses native `focusgroup="toolbar wrap"` with a roving-tabindex fallback when unsupported.
  * - Uses real `<button type="button">`, with `aria-pressed` strictly on stateful toggles
- *   (`Flip H`, `Flip V`) and never on one-shot action buttons.
+ *   (pin alignment slots, frame margin presets, `Flip H`, `Flip V`) and never on one-shot
+ *   action buttons (`Unpin`, `90°`, `Duplicate`, `Delete`, `Deselect`).
  */
 export function CanvasSelectionBar({
   selection,
@@ -102,6 +135,7 @@ export function CanvasSelectionBar({
   onRotate90,
   onQuickAlign,
   onFitMargin,
+  onDetachConstraint,
   onChangeColor,
   onDuplicate,
   onDelete,
@@ -110,6 +144,9 @@ export function CanvasSelectionBar({
   const barRef = useRef<HTMLDivElement>(null);
   const selectionKind = selection?.kind ?? null;
   const selectionId = selection?.layer.id ?? null;
+  const constraint = selection?.layer.layoutConstraint;
+  const isPinned = hasActiveLayoutConstraint(constraint);
+  const showUnpin = Boolean(isPinned && onDetachConstraint);
 
   useEffect(() => {
     const bar = barRef.current;
@@ -172,7 +209,7 @@ export function CanvasSelectionBar({
       bar.removeEventListener('focusin', onFocusIn);
       bar.removeEventListener('keydown', onKeyDown);
     };
-  }, [selectionKind, selectionId]);
+  }, [selectionKind, selectionId, showUnpin]);
 
   if (!selection) {
     return null;
@@ -184,6 +221,7 @@ export function CanvasSelectionBar({
   const rotDeg = normalizeQuarterTurn(selection.layer.rotationDeg);
   const activeColor =
     selection.kind === 'text' || selection.kind === 'ornament' ? selection.layer.color : null;
+  const constraintSummary = describeLayoutConstraint(constraint);
 
   return (
     <div
@@ -228,27 +266,47 @@ export function CanvasSelectionBar({
             aria-label="Frame margin fit"
             className="inline-flex items-center gap-0.5 rounded-md border border-[#f6efe2]/14 bg-white/[0.04] p-0.5"
           >
-            {FRAME_MARGIN_PRESETS.map(({ marginMm, label, title }) => (
-              <button
-                key={marginMm}
-                type="button"
-                title={title}
-                data-testid={`selection-margin-${marginMm}`}
-                onClick={() => onFitMargin(marginMm)}
-                className={ACTION_BTN_CLASS}
-              >
-                {label}
-              </button>
-            ))}
-            <button
-              type="button"
-              title="Center horizontally and vertically in zone"
-              data-testid="selection-align-center"
-              onClick={() => onQuickAlign('center')}
-              className={ACTION_BTN_CLASS}
-            >
-              Center
-            </button>
+            {FRAME_MARGIN_PRESETS.map(({ marginMm, label, title }) => {
+              const pinned = isMarginPresetPinned(constraint, marginMm);
+              return (
+                <button
+                  key={marginMm}
+                  type="button"
+                  aria-pressed={pinned}
+                  title={pinned ? `Pinned (${label} margin) — click to unpin` : title}
+                  data-testid={`selection-margin-${marginMm}`}
+                  onClick={() =>
+                    pinned && onDetachConstraint ? onDetachConstraint() : onFitMargin(marginMm)
+                  }
+                  className={ACTION_BTN_CLASS}
+                >
+                  {label}
+                </button>
+              );
+            })}
+            {(() => {
+              const centerPinned = isAlignSlotPinned(constraint, 'center');
+              return (
+                <button
+                  type="button"
+                  aria-pressed={centerPinned}
+                  title={
+                    centerPinned
+                      ? 'Pinned (Center) — click to unpin'
+                      : 'Pin horizontally and vertically centered in zone'
+                  }
+                  data-testid="selection-align-center"
+                  onClick={() =>
+                    centerPinned && onDetachConstraint
+                      ? onDetachConstraint()
+                      : onQuickAlign('center')
+                  }
+                  className={ACTION_BTN_CLASS}
+                >
+                  Center
+                </button>
+              );
+            })()}
           </div>
         ) : (
           <div
@@ -256,19 +314,43 @@ export function CanvasSelectionBar({
             aria-label="Vertical alignment"
             className="inline-flex items-center gap-0.5 rounded-md border border-[#f6efe2]/14 bg-white/[0.04] p-0.5"
           >
-            {ALIGN_SLOTS.map(({ slot, label, title }) => (
-              <button
-                key={slot}
-                type="button"
-                title={title}
-                data-testid={`selection-align-${slot}`}
-                onClick={() => onQuickAlign(slot)}
-                className={ACTION_BTN_CLASS}
-              >
-                {label}
-              </button>
-            ))}
+            {ALIGN_SLOTS.map(({ slot, label, title }) => {
+              const pinned = isAlignSlotPinned(constraint, slot);
+              return (
+                <button
+                  key={slot}
+                  type="button"
+                  aria-pressed={pinned}
+                  title={pinned ? `Pinned (${label}) — click to unpin` : title}
+                  data-testid={`selection-align-${slot}`}
+                  onClick={() =>
+                    pinned && onDetachConstraint ? onDetachConstraint() : onQuickAlign(slot)
+                  }
+                  className={ACTION_BTN_CLASS}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
+        )}
+
+        {showUnpin && onDetachConstraint && (
+          <button
+            type="button"
+            title={
+              constraintSummary
+                ? `Unpin (${constraintSummary}) — keep current position`
+                : 'Unpin layout condition — keep current position'
+            }
+            aria-label="Unpin layout condition"
+            data-testid="selection-bar-unpin-btn"
+            onClick={onDetachConstraint}
+            className="inline-flex min-h-6.5 min-w-6.5 cursor-pointer items-center justify-center gap-1 rounded-md border border-brass-bright/45 bg-brass-bright/12 px-2 py-1 text-[11px] font-medium leading-none whitespace-nowrap text-brass-bright motion-safe:transition-colors hover:bg-brass-bright/22 hover:text-white [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10"
+          >
+            <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
+            Unpin
+          </button>
         )}
 
         <span role="separator" aria-orientation="vertical" className={SEPARATOR_CLASS} />

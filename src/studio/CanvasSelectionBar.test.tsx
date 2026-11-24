@@ -111,13 +111,14 @@ describe('CanvasSelectionBar', () => {
     expect(screen.getByTestId('selection-element-badge')).toHaveTextContent('Text');
     expect(screen.getByTestId('selection-element-badge')).toHaveTextContent('THE ODYSSEY');
 
-    // Vertical alignment action buttons never carry aria-pressed
+    // Vertical alignment pin toggle buttons carry aria-pressed="false" when unpinned
     const alignUpper = screen.getByTestId('selection-align-upper');
     const alignCenter = screen.getByTestId('selection-align-center');
     const alignLower = screen.getByTestId('selection-align-lower');
-    expect(alignUpper).not.toHaveAttribute('aria-pressed');
-    expect(alignCenter).not.toHaveAttribute('aria-pressed');
-    expect(alignLower).not.toHaveAttribute('aria-pressed');
+    expect(alignUpper).toHaveAttribute('aria-pressed', 'false');
+    expect(alignCenter).toHaveAttribute('aria-pressed', 'false');
+    expect(alignLower).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('selection-bar-unpin-btn')).not.toBeInTheDocument();
 
     await user.click(alignUpper);
     await user.click(alignCenter);

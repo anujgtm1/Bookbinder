@@ -44,6 +44,7 @@ import {
 } from '@/types/bookParams';
 import { rotateOrnament90 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
+import { detachConstraintOnResize } from '@/types/layoutConstraints';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { CoverImageLayerModel, nextQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
@@ -628,6 +629,7 @@ export function CoverStyler({
         widthMm: rotated.widthMm,
         heightMm: rotated.heightMm,
         rotationDeg: rotated.rotationDeg,
+        layoutConstraint: detachConstraintOnResize(activeSelection.layer.layoutConstraint),
       });
     } else {
       actions.updateLayer(activeSelection.layer.id, (layer) => ({
@@ -844,6 +846,15 @@ export function CoverStyler({
                 activeSelection?.kind === 'ornament'
                   ? (marginMm) =>
                       actions.handleFitOrnamentWithMargin(activeSelection.layer.id, marginMm)
+                  : undefined
+              }
+              onDetachConstraint={
+                activeSelection
+                  ? () =>
+                      actions.handleDetachConstraint({
+                        kind: activeSelection.kind,
+                        id: activeSelection.layer.id,
+                      })
                   : undefined
               }
               onChangeColor={handleSelectionChangeColor}
@@ -1276,7 +1287,13 @@ export function CoverStyler({
           actions.updateLayer(id, (layer) => ({ ...layer, clipZone }))
         }
         onScaleLayer={(id, factor) =>
-          actions.updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
+          actions.updateLayer(id, (layer) => {
+            const scaled = CoverImageLayerModel.scaleAroundCenter(layer, factor);
+            return {
+              ...scaled,
+              layoutConstraint: detachConstraintOnResize(layer.layoutConstraint),
+            };
+          })
         }
         onToggleLayerFlip={(id, axis) =>
           actions.updateLayer(id, (layer) =>
