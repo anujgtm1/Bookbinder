@@ -5,9 +5,9 @@
 ## Architecture Fit for GitHub Pages
 
 Bookbinder Studio is a 100% client-side static Vite + React application:
-- All geometry calculations, `1:1 mm` SVG generation, `300 / 600 DPI` canvas compositing, `@pdf-lib/fontkit` glyph outlining, and `pdf-lib` single-sheet / 2-sheet tiled PDF generation run entirely in the browser.
-- All 6 curated literary fonts (`@fontsource/*`) and declarative specs (`src/resources/paperSpecs.json`, `src/resources/ornaments/*.svg`) are bundled as static assets inside `dist/` with zero runtime CDN dependencies.
-- Project auto-save and Series Design Presets use browser `localStorage` + local `.json` import/export.
+- All geometry calculations, slipcase box math, `1:1 mm` SVG generation, `300 / 600 DPI` canvas compositing, `@pdf-lib/fontkit` glyph outlining, bench recipe & cutting jigs PDFs, margin calibration sheets, and `pdf-lib` single-sheet / 2-sheet tiled / wide-format roll-nested PDF generation run entirely in the browser.
+- All 6 curated literary fonts (`@fontsource/*`), bespoke Tokyo Bindery Desk craft images (`src/assets/atelier/*`), and declarative specs (`src/resources/paperSpecs.json`, `src/resources/ornaments/*.svg`, `src/resources/sampleProject.ts`) are bundled as static assets inside `dist/` with zero runtime CDN dependencies.
+- Project auto-save, Series Design Presets, saved asymmetric printer margins, and custom roll widths use browser `localStorage` + local `.json` import/export.
 - No backend server, database, or secret API key is required.
 
 Production URL: **[https://anujgtm.com/Bookbinder/](https://anujgtm.com/Bookbinder/)**
