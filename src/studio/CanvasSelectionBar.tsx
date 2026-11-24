@@ -197,7 +197,7 @@ export function CanvasSelectionBar({
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="z-20 flex w-full shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-brass-bright/30 bg-[#12211d]/95 px-3 py-1.5 text-xs text-[#f6efe2] shadow-sm backdrop-blur-md"
+      className="absolute inset-x-0 top-0 z-20 flex w-full shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-brass-bright/30 bg-[#12211d]/95 px-3 py-1.5 text-xs text-[#f6efe2] shadow-sm backdrop-blur-md"
     >
       {/* Active Element Badge */}
       <div className="flex min-w-0 items-center gap-1.5" data-testid="selection-element-badge">

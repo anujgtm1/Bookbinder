@@ -818,7 +818,7 @@ export function CoverStyler({
             />
           )}
 
-          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden pt-10">
           {/* Contextual Top Banner (Eyedropper active & Full-Page Exit Pill) */}
           <div className="pointer-events-none absolute top-3 right-3 z-20 flex items-center gap-2">
             {eyedropperTarget && (
