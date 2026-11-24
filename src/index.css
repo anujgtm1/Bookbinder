@@ -1,13 +1,14 @@
 @import 'tailwindcss';
 
 /*
- * Bindery Cutting Mat — Folio Workbench Theme
- * Follows modern-web-guidance:
+ * Tokyo Bindery Desk — Warm Smoked Walnut, Handmade Washi & Sumi Ink Theme
+ * Follows modern-web-guidance (dark-mode, color, toolbar):
  * - color-scheme: light dark on :root mirrored from <meta name="color-scheme">
- * - light-dark() with prefers-color-scheme fallbacks
+ * - light-dark() with @media (prefers-color-scheme: dark) fallbacks
+ * - WCAG 4.5:1 text & 3:1 non-text contrast in light & dark schemes
  * - Motion transitions opt-in via @media (prefers-reduced-motion: no-preference)
  * - Accessible toolbar states via [aria-pressed="true"], @media (hover: hover),
- *   @media (pointer: coarse), and forced-colors: active
+ *   @media (pointer: coarse), and @media (forced-colors: active)
  */
 :root {
   color-scheme: light dark;
@@ -20,94 +21,109 @@
     color-scheme: light;
   }
 
-  /* Tier 1: Bindery Cutting Mat & Cotton Paper palette tokens */
-  --bg-light: #f2ece1;
-  --bg-dark: #141210;
-  --fg-light: #231f1b;
-  --fg-dark: #f3ede2;
+  /* Tier 1: Smoked Walnut Desk, Unbleached Washi Paper, Sumi Ink & Vermilion Hanko tokens */
+  --bg-light: #2b1e14;
+  --bg-dark: #100c09;
+  --fg-light: #1a1715;
+  --fg-dark: #f5efe4;
 
-  --card-light: #faf6ee;
+  --card-light: #faf7f0;
   --card-dark: #1c1916;
-  --card-fg-light: #231f1b;
-  --card-fg-dark: #f3ede2;
+  --card-fg-light: #1a1715;
+  --card-fg-dark: #f5efe4;
 
-  --popover-light: #fcf9f3;
-  --popover-dark: #231f1b;
-  --popover-fg-light: #231f1b;
-  --popover-fg-dark: #f3ede2;
+  --popover-light: #fcfaf4;
+  --popover-dark: #221e1a;
+  --popover-fg-light: #1a1715;
+  --popover-fg-dark: #f5efe4;
 
-  /* Bindery Spruce (light) / Burnished Brass Foil (dark) — AAA contrast */
-  --primary-light: #1e4d44;
-  --primary-dark: #d4ac5a;
-  --primary-fg-light: #fffdf8;
-  --primary-fg-dark: #19140a;
+  /* Bold Sumi Ink CTA (light) / Burnished Brass Foil CTA (dark) — AAA contrast */
+  --primary-light: #1a1715;
+  --primary-dark: #deb765;
+  --primary-fg-light: #faf7f0;
+  --primary-fg-dark: #17130d;
 
-  /* Warm rag secondary & muted surfaces */
-  --secondary-light: #ebe3d4;
-  --secondary-dark: #26221d;
-  --secondary-fg-light: #2a241e;
-  --secondary-fg-dark: #ece5d8;
+  /* Tactile unbleached rag & kuro-washi secondary surfaces */
+  --secondary-light: #f1eadc;
+  --secondary-dark: #25211c;
+  --secondary-fg-light: #231e19;
+  --secondary-fg-dark: #efe8dc;
 
-  --muted-light: #e5dccb;
-  --muted-dark: #231f1a;
-  --muted-fg-light: #5c5347;
-  --muted-fg-dark: #aca192;
+  --muted-light: #eae1d0;
+  --muted-dark: #221e19;
+  --muted-fg-light: #574e43;
+  --muted-fg-dark: #b3a797;
 
-  --accent-light: #e3d7c3;
-  --accent-dark: #302a23;
-  --accent-fg-light: #231f1b;
-  --accent-fg-dark: #f3ede2;
+  --accent-light: #e7dcc8;
+  --accent-dark: #2e2923;
+  --accent-fg-light: #1a1715;
+  --accent-fg-dark: #f5efe4;
 
-  --destructive-light: #b93822;
+  --destructive-light: #b8321c;
   --destructive-dark: #ef6f54;
   --destructive-fg-light: #fffdf8;
   --destructive-fg-dark: #1f0a06;
 
-  --border-light: #d7ccb9;
-  --border-dark: #332d26;
-  --input-light: #cabda7;
-  --input-dark: #3d362e;
-  --ring-light: #a67b2e;
-  --ring-dark: #d4ac5a;
+  /* Crisp press-hairline borders (meets 3:1 non-text boundary contrast on washi) */
+  --border-light: #cbbda6;
+  --border-dark: #3b332b;
+  --input-light: #b7a78e;
+  --input-dark: #4a4137;
+  --ring-light: #c63d27;
+  --ring-dark: #ef6f54;
 
-  /* Craft accent tokens: Antique Brass, Vermilion Cut-Line, Bookcloth Sage */
-  --brass-light: #a67b2e;
-  --brass-dark: #d4ac5a;
-  --brass-bright-light: #c59b48;
-  --brass-bright-dark: #dfb96a;
-  --vermilion-light: #c84b31;
+  /* Craft accent tokens: Vermilion Hanko Red, Burnished Brass, Bindery Spruce */
+  --brass-light: #9e7324;
+  --brass-dark: #deb765;
+  --brass-bright-light: #b88b35;
+  --brass-bright-dark: #e8c476;
+  --vermilion-light: #c63d27;
   --vermilion-dark: #ef6f54;
-  --sage-light: #4a6d5e;
-  --sage-dark: #7ba693;
+  --sage-light: #235046;
+  --sage-dark: #7db09c;
 
-  /* Self-healing cutting mat workbench surface */
-  --mat-bg-light: #1b3a34;
-  --mat-bg-dark: #112420;
-  --mat-grid-minor-light: rgba(235, 224, 198, 0.075);
-  --mat-grid-minor-dark: rgba(212, 172, 90, 0.065);
-  --mat-grid-major-light: rgba(235, 224, 198, 0.16);
-  --mat-grid-major-dark: rgba(212, 172, 90, 0.14);
-  --mat-fg-light: #efe8d8;
-  --mat-fg-dark: #e8dfcd;
+  /* Physical desk & washi paper overlay veils (reactive to light-dark() & OS theme) */
+  --desk-veil-top-light: rgba(28, 19, 13, 0.16);
+  --desk-veil-top-dark: rgba(11, 8, 6, 0.72);
+  --desk-veil-bottom-light: rgba(20, 14, 9, 0.28);
+  --desk-veil-bottom-dark: rgba(8, 6, 4, 0.82);
+  --washi-veil-top-light: rgba(251, 248, 241, 0.78);
+  --washi-veil-top-dark: rgba(27, 24, 21, 0.93);
+  --washi-veil-bottom-light: rgba(247, 242, 231, 0.83);
+  --washi-veil-bottom-dark: rgba(22, 19, 16, 0.95);
+  --washi-edge-light: rgba(255, 253, 248, 0.72);
+  --washi-edge-dark: rgba(245, 239, 228, 0.06);
+  --washi-shadow-light: rgba(14, 8, 3, 0.42);
+  --washi-shadow-dark: rgba(0, 0, 0, 0.68);
 
-  /* Floating HUD pill over the cutting mat */
-  --hud-bg-light: rgba(18, 33, 29, 0.92);
-  --hud-bg-dark: rgba(14, 21, 19, 0.94);
-  --hud-fg-light: #f6efe2;
-  --hud-fg-dark: #f4ede0;
-  --hud-border-light: rgba(197, 155, 72, 0.36);
-  --hud-border-dark: rgba(212, 172, 90, 0.34);
+  /* Self-healing spruce cutting mat workbench surface */
+  --mat-bg-light: #16332d;
+  --mat-bg-dark: #0f231f;
+  --mat-grid-minor-light: rgba(222, 183, 101, 0.08);
+  --mat-grid-minor-dark: rgba(222, 183, 101, 0.065);
+  --mat-grid-major-light: rgba(222, 183, 101, 0.18);
+  --mat-grid-major-dark: rgba(222, 183, 101, 0.15);
+  --mat-fg-light: #f3ecdd;
+  --mat-fg-dark: #ebe2cf;
+
+  /* Sharp anodized-dark + brass drafting HUD over the cutting mat */
+  --hud-bg-light: rgba(17, 20, 19, 0.94);
+  --hud-bg-dark: rgba(12, 15, 14, 0.96);
+  --hud-fg-light: #f5efe4;
+  --hud-fg-dark: #f5efe4;
+  --hud-border-light: rgba(222, 183, 101, 0.48);
+  --hud-border-dark: rgba(222, 183, 101, 0.44);
 
   /* Light drafting paper backing (used inside CutList diagram) */
-  --drafting-bg-light: #f5efe3;
+  --drafting-bg-light: #f6f1e6;
   --drafting-bg-dark: #181613;
   --drafting-grid-light: #e2d8c5;
   --drafting-grid-dark: #2a241e;
 
   --scrollbar-track-light: #ebe3d4;
   --scrollbar-track-dark: #1c1916;
-  --scrollbar-thumb-light: #b6a892;
-  --scrollbar-thumb-dark: #574f45;
+  --scrollbar-thumb-light: #9e8f79;
+  --scrollbar-thumb-dark: #5f564b;
 
   /* Semantic defaults (light fallback) */
   --background: var(--bg-light);
@@ -133,6 +149,12 @@
   --brass-bright: var(--brass-bright-light);
   --vermilion: var(--vermilion-light);
   --sage: var(--sage-light);
+  --desk-veil-top: var(--desk-veil-top-light);
+  --desk-veil-bottom: var(--desk-veil-bottom-light);
+  --washi-veil-top: var(--washi-veil-top-light);
+  --washi-veil-bottom: var(--washi-veil-bottom-light);
+  --washi-edge: var(--washi-edge-light);
+  --washi-shadow: var(--washi-shadow-light);
   --mat-bg: var(--mat-bg-light);
   --mat-grid-minor: var(--mat-grid-minor-light);
   --mat-grid-major: var(--mat-grid-major-light);
@@ -145,8 +167,8 @@
   --scrollbar-track: var(--scrollbar-track-light);
   --scrollbar-thumb: var(--scrollbar-thumb-light);
 
-  /* Crisp cardstock 6px base radius */
-  --radius: 0.375rem;
+  /* Crisp knife-cut 3px cardstock corners */
+  --radius: 0.1875rem;
 
   @media (prefers-color-scheme: dark) {
     --background: var(--bg-dark);
@@ -172,6 +194,12 @@
     --brass-bright: var(--brass-bright-dark);
     --vermilion: var(--vermilion-dark);
     --sage: var(--sage-dark);
+    --desk-veil-top: var(--desk-veil-top-dark);
+    --desk-veil-bottom: var(--desk-veil-bottom-dark);
+    --washi-veil-top: var(--washi-veil-top-dark);
+    --washi-veil-bottom: var(--washi-veil-bottom-dark);
+    --washi-edge: var(--washi-edge-dark);
+    --washi-shadow: var(--washi-shadow-dark);
     --mat-bg: var(--mat-bg-dark);
     --mat-grid-minor: var(--mat-grid-minor-dark);
     --mat-grid-major: var(--mat-grid-major-dark);
@@ -209,6 +237,12 @@
     --brass-bright: light-dark(var(--brass-bright-light), var(--brass-bright-dark));
     --vermilion: light-dark(var(--vermilion-light), var(--vermilion-dark));
     --sage: light-dark(var(--sage-light), var(--sage-dark));
+    --desk-veil-top: light-dark(var(--desk-veil-top-light), var(--desk-veil-top-dark));
+    --desk-veil-bottom: light-dark(var(--desk-veil-bottom-light), var(--desk-veil-bottom-dark));
+    --washi-veil-top: light-dark(var(--washi-veil-top-light), var(--washi-veil-top-dark));
+    --washi-veil-bottom: light-dark(var(--washi-veil-bottom-light), var(--washi-veil-bottom-dark));
+    --washi-edge: light-dark(var(--washi-edge-light), var(--washi-edge-dark));
+    --washi-shadow: light-dark(var(--washi-shadow-light), var(--washi-shadow-dark));
     --mat-bg: light-dark(var(--mat-bg-light), var(--mat-bg-dark));
     --mat-grid-minor: light-dark(var(--mat-grid-minor-light), var(--mat-grid-minor-dark));
     --mat-grid-major: light-dark(var(--mat-grid-major-light), var(--mat-grid-major-dark));
@@ -222,7 +256,7 @@
     --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
   }
 
-  accent-color: var(--primary);
+  accent-color: var(--vermilion);
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
@@ -252,10 +286,10 @@
   --color-sage: var(--sage);
   --color-mat: var(--mat-bg);
   --color-mat-foreground: var(--mat-fg);
-  --radius-sm: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 1px);
   --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 6px);
+  --radius-lg: calc(var(--radius) + 1px);
+  --radius-xl: calc(var(--radius) + 3px);
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'EB Garamond', Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -280,18 +314,146 @@
   }
 }
 
-/* Self-healing bindery cutting mat with dual-scale major/minor millimeter grid */
+/* Physical Smoked-Walnut Bindery Workbench Surface */
+.bindery-walnut-desk {
+  background-color: var(--background);
+  background-image:
+    linear-gradient(180deg, var(--desk-veil-top), var(--desk-veil-bottom)),
+    url('./assets/atelier/desk-walnut.jpg');
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+}
+
+/* Tactile Handmade Japanese Washi Paper Sheet resting on the walnut desk */
+.washi-sheet {
+  background-color: var(--card);
+  background-image:
+    linear-gradient(180deg, var(--washi-veil-top), var(--washi-veil-bottom)),
+    url('./assets/atelier/washi-paper.jpg');
+  background-size: 100% 100%, 380px 380px;
+  background-repeat: no-repeat, repeat;
+  color: var(--card-foreground);
+  box-shadow:
+    0 14px 30px -10px var(--washi-shadow),
+    0 2px 6px -1px rgba(15, 9, 4, 0.22),
+    inset 0 1px 0 var(--washi-edge);
+}
+
+/* Sticky Editorial Masthead Washi Header */
+.washi-header {
+  background-color: var(--card);
+  background-image:
+    linear-gradient(180deg, var(--washi-veil-top), var(--washi-veil-bottom)),
+    url('./assets/atelier/washi-paper.jpg');
+  background-size: 100% 100%, 380px 380px;
+  background-repeat: no-repeat, repeat;
+  color: var(--card-foreground);
+  box-shadow:
+    0 10px 24px -10px var(--washi-shadow),
+    inset 0 -1px 0 var(--border);
+}
+
+/* Woodcut Colophon Emblem — prints directly into washi paper in light mode, framed plaque in dark mode */
+.colophon-frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.colophon-emblem {
+  mix-blend-mode: multiply;
+}
+
+:root:has(> head > meta[name='color-scheme'][content='dark']) .colophon-frame {
+  background-color: #f6f0e2;
+  border: 1px solid var(--brass);
+  padding: 2px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(:has(> head > meta[name='color-scheme'][content='light'])) .colophon-frame {
+    background-color: #f6f0e2;
+    border: 1px solid var(--brass);
+    padding: 2px;
+  }
+}
+
+/* Traditional Japanese Vermilion Hanko Square Seal */
+.hanko-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--vermilion);
+  color: var(--vermilion);
+  border-radius: 2px;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+/* Editorial Masthead Navigation Tab with Vermilion Press Active Rule */
+.editorial-nav-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 0;
+  border: 0;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: color 140ms ease, box-shadow 140ms ease;
+  }
+
+  &[data-state='active'] {
+    color: var(--foreground);
+    font-weight: 600;
+    box-shadow: inset 0 -2.5px 0 var(--vermilion);
+    background-color: transparent;
+  }
+
+  @media (hover: hover) {
+    &:hover:not([data-state='active']) {
+      color: var(--foreground);
+      box-shadow: inset 0 -1.5px 0 var(--border);
+    }
+  }
+}
+
+/* Self-healing bindery cutting mat with dual-scale brass millimeter grid & ruler lip */
 .cutting-mat-surface {
   background-color: var(--mat-bg);
   color: var(--mat-fg);
   background-image:
-    radial-gradient(ellipse at 50% 42%, rgba(255, 248, 228, 0.045), transparent 68%),
+    radial-gradient(ellipse at 50% 42%, rgba(255, 248, 228, 0.055), transparent 68%),
     linear-gradient(to right, var(--mat-grid-major) 1px, transparent 1px),
     linear-gradient(to bottom, var(--mat-grid-major) 1px, transparent 1px),
     linear-gradient(to right, var(--mat-grid-minor) 1px, transparent 1px),
     linear-gradient(to bottom, var(--mat-grid-minor) 1px, transparent 1px);
   background-size: 100% 100%, 80px 80px, 80px 80px, 16px 16px, 16px 16px;
-  box-shadow: inset 0 1px 0 rgba(255, 248, 228, 0.08), inset 0 0 42px rgba(0, 0, 0, 0.24);
+  box-shadow:
+    inset 0 0 0 1px rgba(222, 183, 101, 0.24),
+    inset 0 0 0 8px rgba(10, 24, 20, 0.34),
+    inset 0 0 48px rgba(0, 0, 0, 0.34);
+}
+
+/* Physical cutting mat shadow framing when resting on the walnut desk */
+.cutting-mat-on-desk {
+  border: 1px solid rgba(222, 183, 101, 0.34);
+  box-shadow:
+    0 20px 38px -12px rgba(8, 4, 1, 0.62),
+    0 4px 10px -2px rgba(8, 4, 1, 0.36),
+    inset 0 0 0 1px rgba(222, 183, 101, 0.22),
+    inset 0 0 48px rgba(0, 0, 0, 0.34);
 }
 
 /* Light cotton-paper drafting grid (secondary diagrams) */
@@ -317,46 +479,20 @@
   border-block-start: 1px dashed var(--border);
 }
 
-/* Folder-style paper index tabs anchored to top edge of workbench */
-.folio-index-tab {
-  position: relative;
-  border: 1px solid var(--border);
-  border-bottom-color: transparent;
-  border-radius: 0.5rem 0.5rem 0 0;
-  background-color: var(--secondary);
-  color: var(--muted-foreground);
-  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease;
-
-  &[data-state='active'] {
-    background-color: var(--card);
-    color: var(--foreground);
-    border-color: var(--border);
-    box-shadow: inset 0 2.5px 0 var(--brass-bright);
-    z-index: 2;
-  }
-
-  @media (hover: hover) {
-    &:hover:not([data-state='active']) {
-      background-color: var(--accent);
-      color: var(--foreground);
-    }
-  }
-}
-
-/* Floating HUD pill toolbar on the cutting mat (per modern-web-guidance toolbar) */
+/* Sharp anodized-dark + burnished-brass drafting HUD toolbar over the cutting mat */
 .hud-toolbar {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  border-radius: 9999px;
+  gap: 0.2rem;
+  border-radius: 3px;
   border: 1px solid var(--hud-border);
   background-color: var(--hud-bg);
   color: var(--hud-fg);
-  padding: 0.25rem 0.375rem;
+  padding: 0.22rem 0.3rem;
   backdrop-filter: blur(10px);
   box-shadow:
-    0 10px 28px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 248, 228, 0.1);
+    0 12px 28px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(222, 183, 101, 0.16);
 }
 
 .hud-toolbar-separator {
@@ -364,7 +500,7 @@
   inline-size: 1px;
   block-size: 1.125rem;
   margin-inline: 0.2rem;
-  border-inline-start: 1px solid rgba(246, 239, 226, 0.22);
+  border-inline-start: 1px solid rgba(222, 183, 101, 0.28);
 }
 
 .hud-toolbar-btn {
@@ -374,9 +510,9 @@
   gap: 0.35rem;
   min-inline-size: 1.75rem;
   min-block-size: 1.75rem;
-  padding-inline: 0.625rem;
-  padding-block: 0.25rem;
-  border-radius: 9999px;
+  padding-inline: 0.55rem;
+  padding-block: 0.22rem;
+  border-radius: 2px;
   border: 1px solid transparent;
   background-color: transparent;
   color: var(--hud-fg);
@@ -385,12 +521,15 @@
   line-height: 1;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
 
   &[aria-pressed='true'] {
     background-color: var(--brass-bright);
-    color: #19140a;
-    border-color: rgba(255, 255, 255, 0.28);
+    color: #17130d;
+    border-color: rgba(255, 250, 238, 0.35);
     font-weight: 600;
   }
 
@@ -401,7 +540,7 @@
 
   @media (hover: hover) {
     &:hover:not([aria-pressed='true']):not([aria-disabled='true']) {
-      background-color: rgba(246, 239, 226, 0.12);
+      background-color: rgba(245, 239, 228, 0.12);
     }
   }
 
@@ -412,6 +551,24 @@
 }
 
 @media (forced-colors: active) {
+  .bindery-walnut-desk,
+  .washi-sheet,
+  .washi-header,
+  .cutting-mat-surface,
+  .cutting-mat-on-desk {
+    background-image: none;
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+    box-shadow: none;
+  }
+
+  .editorial-nav-tab[data-state='active'] {
+    box-shadow: none;
+    border-bottom: 2.5px solid Highlight;
+    color: Highlight;
+  }
+
   .hud-toolbar {
     border-color: ButtonText;
     background-color: Canvas;
@@ -498,7 +655,7 @@ dialog:modal {
 dialog::backdrop {
   overflow: hidden;
   overscroll-behavior: contain;
-  background-color: rgba(15, 23, 42, 0.55);
+  background-color: rgba(12, 9, 6, 0.62);
   backdrop-filter: blur(2px);
 }
 
@@ -529,7 +686,7 @@ dialog.bindery-modal[open] {
 
   ::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
-    border-radius: 9999px;
+    border-radius: 2px;
   }
 
   ::-webkit-scrollbar-track {
