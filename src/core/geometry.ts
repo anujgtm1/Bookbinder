@@ -563,6 +563,7 @@ export function calculatePocketEnvelope(
       ];
 
       return {
+        kind: 'slip-pocket',
         side,
         label: 'Back Pocket Envelope',
         pocketWidthMm,
@@ -595,6 +596,7 @@ export function calculatePocketEnvelope(
     ];
 
     return {
+      kind: 'slip-pocket',
       side,
       label: 'Front Pocket Envelope',
       pocketWidthMm,
@@ -607,6 +609,47 @@ export function calculatePocketEnvelope(
       faceRect: { x: 0, y: 0, width: pocketWidthMm, height: pocketHeightMm },
       scoreLines: [{ x1: x1, y1: 0, x2: x1, y2: pocketHeightMm, label: 'Fore-Edge Flap Fold' }],
       glueFlapPolygons: [foreFlap],
+    };
+  }
+
+  // Traditional Folded Glue-In Endpaper Sheet (Pastedown + Flyleaf folded down the center)
+  // for chipboard hardcovers ('rigid-case' and 'flexible-spine').
+  if (
+    resolveBindingStrategy(params).capabilities.usesChipboard &&
+    params.interiorStyle === 'folded-endpapers'
+  ) {
+    const leafW = roundTo(params.pbWidthMm, 2);
+    const totalWidthMm = roundTo(leafW * 2, 2);
+    const totalHeightMm = roundTo(params.pbHeightMm, 2);
+    const outerCutPolygon: Polygon2D = [
+      { x: 0, y: 0 },
+      { x: totalWidthMm, y: 0 },
+      { x: totalWidthMm, y: totalHeightMm },
+      { x: 0, y: totalHeightMm },
+    ];
+
+    return {
+      kind: 'folded-endpaper',
+      side,
+      label: side === 'front' ? 'Front Folded Endpaper' : 'Back Folded Endpaper',
+      pocketWidthMm: leafW,
+      pocketHeightMm: totalHeightMm,
+      flapWidthMm: 0,
+      totalWidthMm,
+      totalHeightMm,
+      openEdge,
+      outerCutPolygon,
+      faceRect: { x: 0, y: 0, width: totalWidthMm, height: totalHeightMm },
+      scoreLines: [
+        {
+          x1: leafW,
+          y1: 0,
+          x2: leafW,
+          y2: totalHeightMm,
+          label: 'Center Fold (Pastedown / Flyleaf)',
+        },
+      ],
+      glueFlapPolygons: [],
     };
   }
 
@@ -654,6 +697,7 @@ export function calculatePocketEnvelope(
     ];
 
     return {
+      kind: 'slip-pocket',
       side,
       label: 'Back Pocket Envelope',
       pocketWidthMm,
@@ -710,6 +754,7 @@ export function calculatePocketEnvelope(
   ];
 
   return {
+    kind: 'slip-pocket',
     side,
     label: 'Front Pocket Envelope',
     pocketWidthMm,
@@ -748,6 +793,7 @@ export function calculateCaseGeometry(params: BookParameters): CaseGeometry {
     ...(params.softcoverPocketMode !== undefined
       ? { softcoverPocketMode: params.softcoverPocketMode }
       : {}),
+    interiorStyle: params.interiorStyle ?? 'slip-pockets',
     cutList,
     outerWrap,
     splitPanels,

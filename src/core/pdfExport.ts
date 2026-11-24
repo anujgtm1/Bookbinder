@@ -468,6 +468,36 @@ function renderPocket(
 
   const centerLocal = GeometryPrimitives.rectCenter(pocket.faceRect);
   const center = transformPoint(centerLocal, placement, pocket.totalHeightMm);
+
+  if (pocket.kind === 'folded-endpaper') {
+    const sheetDim = `${roundTo(pocket.totalWidthMm, 1)} × ${roundTo(pocket.totalHeightMm, 1)} mm`;
+    const leafDim = `${roundTo(pocket.pocketWidthMm, 1)} × ${roundTo(pocket.pocketHeightMm, 1)} mm`;
+    const halfSummary =
+      pocket.side === 'front'
+        ? 'Left: Pastedown • Right: Flyleaf'
+        : 'Left: Flyleaf • Right: Pastedown';
+
+    writer.drawText(pocket.label.toUpperCase(), center.x - 28, center.y - 6, boldFont, 8.5);
+    writer.drawText(
+      `Sheet: ${sheetDim} (Leaf: ${leafDim})`,
+      center.x - 28,
+      center.y + 1,
+      font,
+      7.2,
+      rgb(0.3, 0.3, 0.3),
+    );
+    writer.drawText(halfSummary, center.x - 28, center.y + 8, font, 6.8, scoreColor);
+    writer.drawText(
+      'Score & fold along center dashed line',
+      center.x - 28,
+      center.y + 14,
+      font,
+      6.5,
+      rgb(0.45, 0.38, 0.3),
+    );
+    return;
+  }
+
   const dimLabel = `${roundTo(pocket.pocketWidthMm, 1)} × ${roundTo(pocket.pocketHeightMm, 1)} mm`;
 
   writer.drawText(pocket.label.toUpperCase(), center.x - 24, center.y - 4, boldFont, 8.5);
@@ -539,9 +569,19 @@ function renderCalibrationAndLegend(
   const y = placement.yMm;
   const dark = rgb(0.12, 0.12, 0.12);
   const muted = rgb(0.38, 0.38, 0.38);
+  const isFoldedEndpapers = geometry.frontPocket.kind === 'folded-endpaper';
 
   writer.drawText('BOOKBINDER STUDIO', x, y + 3, boldFont, 8.5, dark);
-  writer.drawText('Inner Pockets & Spine Liner', x, y + 8, font, 6.8, muted);
+  writer.drawText(
+    isFoldedEndpapers
+      ? 'Folded Endpapers (Pastedown + Flyleaf) & Spine Liner'
+      : 'Inner Pockets & Spine Liner',
+    x,
+    y + 8,
+    font,
+    isFoldedEndpapers ? 6.0 : 6.8,
+    muted,
+  );
 
   // Exact 50.0 mm x 50.0 mm Calibration Square
   const sqY = y + 12;
@@ -571,16 +611,27 @@ function renderCalibrationAndLegend(
     { x: x + 12, y: legY + 9 },
     { color: rgb(0.05, 0.35, 0.85), thicknessPt: 0.8, dashArray: [3, 2] },
   );
-  writer.drawText('Dashed = Score & Fold', x + 14, legY + 10, font, 6.6, dark);
+  writer.drawText(
+    isFoldedEndpapers ? 'Dashed = Center Fold / Score' : 'Dashed = Score & Fold',
+    x + 14,
+    legY + 10,
+    font,
+    6.6,
+    dark,
+  );
 
-  writer.drawHatchedPolygon([
-    { x, y: legY + 12.5 },
-    { x: x + 12, y: legY + 12.5 },
-    { x: x + 12, y: legY + 16.5 },
-    { x, y: legY + 16.5 },
-  ]);
-  writer.drawRect(x, legY + 12.5, 12, 4, { borderColor: muted, borderWidthPt: 0.4 });
-  writer.drawText('Hatched = Apply Glue Here', x + 14, legY + 15.5, font, 6.6, dark);
+  if (isFoldedEndpapers) {
+    writer.drawText('Fold in half: Pastedown + Flyleaf', x, legY + 15.5, font, 6.4, muted);
+  } else {
+    writer.drawHatchedPolygon([
+      { x, y: legY + 12.5 },
+      { x: x + 12, y: legY + 12.5 },
+      { x: x + 12, y: legY + 16.5 },
+      { x, y: legY + 16.5 },
+    ]);
+    writer.drawRect(x, legY + 12.5, 12, 4, { borderColor: muted, borderWidthPt: 0.4 });
+    writer.drawText('Hatched = Apply Glue Here', x + 14, legY + 15.5, font, 6.6, dark);
+  }
 
   const spacerNote = `Hinge Spacer: ${roundTo(geometry.cutList.hingeSpacerMm, 1)} mm`;
   writer.drawText(spacerNote, x, legY + 23, boldFont, 6.8, rgb(0.05, 0.35, 0.85));
@@ -607,8 +658,13 @@ export async function generateInnerTemplatesPdf(
   const plan = planInnerTemplateLayout(geometry, pageSizeId, {
     includeLegend: options?.includeLegend,
   });
+  const isFoldedEndpapers = geometry.frontPocket.kind === 'folded-endpaper';
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle('Bookbinder — Inner Pockets & Spine Liner');
+  pdfDoc.setTitle(
+    isFoldedEndpapers
+      ? 'Bookbinder — Folded Endpapers (Pastedown + Flyleaf) & Spine Liner'
+      : 'Bookbinder — Inner Pockets & Spine Liner',
+  );
   pdfDoc.setCreator('Bookbinder Studio');
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
