@@ -1,4 +1,13 @@
-import { FileCode2, FileText, Maximize2, Minimize2, Ruler, ZoomIn, ZoomOut } from 'lucide-react';
+import {
+  ClipboardList,
+  FileCode2,
+  FileText,
+  Maximize2,
+  Minimize2,
+  Ruler,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import { useState } from 'react';
 import { CutListCard } from '@/components/CutListCard';
 import {
@@ -13,19 +22,30 @@ import {
   type OuterPdfExportOptions,
   type PdfExportSelection,
 } from '@/components/PdfExportDialog';
+import { SlipcaseCard } from '@/components/SlipcaseCard';
 import { Button } from '@/components/ui/button';
+import { generateBenchRecipePdf } from '@/core/benchRecipePdf';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
+import { triggerBytesDownload } from '@/core/storage';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
-import type { PageSizeId, PrintMediaId, SplitMode } from '@/types/bookParams';
+import {
+  BookParametersModel,
+  type BookParameters,
+  type PageSizeId,
+  type PrintMediaId,
+  type SplitMode,
+} from '@/types/bookParams';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export interface MeasureAndCutPanelProps {
   readonly geometry: CaseGeometry;
+  readonly params?: BookParameters;
+  readonly bookTitle?: string;
   readonly splitMode: SplitMode;
   readonly printMediaId?: PrintMediaId;
   readonly pageSizeId?: PageSizeId;
@@ -38,10 +58,13 @@ export interface MeasureAndCutPanelProps {
   readonly onDetachSlipFlaps?: () => void;
   readonly onDownloadOuterSvg: () => void;
   readonly onDownloadOuterPdf: (options?: OuterPdfExportOptions) => void | Promise<void>;
+  readonly onStatusMessage?: (message: string) => void;
 }
 
 export function MeasureAndCutPanel({
   geometry,
+  params,
+  bookTitle,
   splitMode,
   printMediaId = 'exact-auto',
   pageSizeId = 'letter',
@@ -54,11 +77,13 @@ export function MeasureAndCutPanel({
   onDetachSlipFlaps,
   onDownloadOuterSvg,
   onDownloadOuterPdf,
+  onStatusMessage,
 }: MeasureAndCutPanelProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showDimensions, setShowDimensions] = useState(true);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [exportingBenchPdf, setExportingBenchPdf] = useState(false);
   const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(printMediaId);
   const [localPageSize, setLocalPageSize] = useState<PageSizeId>(pageSizeId);
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(splitMode);
@@ -83,6 +108,27 @@ export function MeasureAndCutPanel({
       appendInnerPocketsPage: selection.appendInnerPocketsPage,
       innerPageSizeId: selection.pageSizeId,
     });
+  };
+
+  const handleDownloadBenchRecipePdf = async () => {
+    setExportingBenchPdf(true);
+    try {
+      const bytes = await generateBenchRecipePdf(
+        geometry,
+        params ?? BookParametersModel.createDefault(),
+        {
+          pageSizeId: effectivePageSize,
+          unit,
+          bookTitle,
+        },
+      );
+      triggerBytesDownload(bytes, 'bindery_bench_recipe_and_jigs.pdf', 'application/pdf');
+      onStatusMessage?.('Exported bindery_bench_recipe_and_jigs.pdf');
+    } catch {
+      onStatusMessage?.('Failed to generate bench recipe & cutting jigs PDF.');
+    } finally {
+      setExportingBenchPdf(false);
+    }
   };
 
   const adjustZoom = (delta: number) => {
@@ -115,6 +161,17 @@ export function MeasureAndCutPanel({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownloadBenchRecipePdf}
+              disabled={exportingBenchPdf}
+              aria-label="Download Printable Bench Recipe and Cutting Jigs PDF"
+              data-testid="measure-download-bench-jigs-btn"
+            >
+              <ClipboardList className="h-4 w-4" aria-hidden="true" />
+              {exportingBenchPdf ? 'Rendering…' : 'Bench Recipe & Jigs PDF'}
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -278,6 +335,14 @@ export function MeasureAndCutPanel({
           </span>
         </div>
       </section>
+
+      {/* Interactive Matching Slipcase Box Calculator */}
+      <SlipcaseCard
+        geometry={geometry}
+        unit={unit}
+        pageSizeId={effectivePageSize}
+        onStatusMessage={onStatusMessage}
+      />
 
       <PdfExportDialog
         open={pdfDialogOpen}
