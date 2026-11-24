@@ -1,7 +1,7 @@
 import { AlertTriangle, CheckCircle2, Layers } from 'lucide-react';
 import { useId } from 'react';
 import { Button } from '@/components/ui/button';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import type { InnerPdfLayoutPlan, InnerPieceKind } from '@/core/pdfExport';
 import { ROLL_TOTAL_MARGIN_MM, getPrintMediaSpec } from '@/resources/paperSpecs';
@@ -58,7 +58,7 @@ function computeReducibleFlapMm(
   geometry: CaseGeometry,
   mediaId: PrintMediaId,
 ): number | null {
-  const strategy = getBindingStrategy(geometry.bindingStyle);
+  const strategy = resolveBindingStrategy(geometry);
   if (
     !strategy.capabilities.hasFlaps ||
     !strategy.flapConfig ||
@@ -200,7 +200,7 @@ export function PdfSheetPreviewSvg({
   const uid = useId().replace(/:/g, '');
   const tile1ClipId = `${uid}-tile-1`;
   const tile2ClipId = `${uid}-tile-2`;
-  const bindingStrategy = getBindingStrategy(geometry.bindingStyle);
+  const bindingStrategy = resolveBindingStrategy(geometry);
   const wrapW = geometry.outerWrap.widthMm;
   const wrapH = geometry.outerWrap.heightMm;
 
@@ -310,9 +310,8 @@ export function PdfSheetPreviewSvg({
         <div className="flex items-center justify-between gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-medium text-foreground">
             <Layers className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-            3-Piece Split Output (3 separate 1:1 pages)
+            3-Piece Split Output (3 separate pages)
           </span>
-          <span className="font-mono text-[11px] text-muted-foreground">1:1 mm</span>
         </div>
         <div className="grid grid-cols-3 gap-2.5 py-1">
           {geometry.splitPanels.map((panel) => {
@@ -377,7 +376,7 @@ export function PdfSheetPreviewSvg({
             </p>
             <p className="text-muted-foreground">
               {selectedSpec.kind === 'sheet' && selectedSpec.shortMm && selectedSpec.longMm
-                ? `${selectedSpec.label} printable area is ${roundTo(selectedSpec.shortMm - ROLL_TOTAL_MARGIN_MM, 1)} × ${roundTo(selectedSpec.longMm - ROLL_TOTAL_MARGIN_MM, 1)} mm (exceeds even 2 tiled sheets). Choose a larger sheet or 1:1 exact size below:`
+                ? `${selectedSpec.label} printable area is ${roundTo(selectedSpec.shortMm - ROLL_TOTAL_MARGIN_MM, 1)} × ${roundTo(selectedSpec.longMm - ROLL_TOTAL_MARGIN_MM, 1)} mm (exceeds even 2 tiled sheets). Choose a larger sheet or Exact Wrap Size below:`
                 : activeFit.summary}
             </p>
           </div>
@@ -453,7 +452,7 @@ export function PdfSheetPreviewSvg({
     );
   }
 
-  // 4. Outer Exact 1:1 Size or Wide-Format Roll preview
+  // 4. Outer Exact Wrap Size or Wide-Format Roll preview
   if (
     printMediaId === 'exact-auto' ||
     activeFit.status === 'fits-roll' ||
@@ -484,7 +483,7 @@ export function PdfSheetPreviewSvg({
         <div className="flex items-center justify-center py-1">
           <svg
             role="img"
-            aria-label="Exact 1:1 cover wrap layout preview"
+            aria-label="Exact wrap cover layout preview"
             viewBox={`0 0 ${vbW} ${vbH}`}
             className="h-36 max-w-full"
           >
@@ -508,7 +507,7 @@ export function PdfSheetPreviewSvg({
               fontWeight={600}
               fill="#1e4d44"
             >
-              1:1 Exact Wrap ({roundTo(wrapW, 1)} × {roundTo(wrapH, 1)} mm)
+              Exact Wrap ({roundTo(wrapW, 1)} × {roundTo(wrapH, 1)} mm)
             </text>
             {includeScaleBar && <ScaleBarSvg x={pad + 5} y={pad + wrapH - 13} />}
           </svg>
@@ -540,7 +539,7 @@ export function PdfSheetPreviewSvg({
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-            1× {activeMediaSpec.label} {orientationLabel} — Centered at 100%
+            1× {activeMediaSpec.label} {orientationLabel} — Centered
           </span>
           <span className="font-mono text-[11px] text-muted-foreground">
             {roundTo(sheetW, 1)} × {roundTo(sheetH, 1)} mm sheet

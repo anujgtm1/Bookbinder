@@ -107,7 +107,7 @@ describe('generateOuterWrapSvg', () => {
     expect(pbSvg).toContain('SPINE 10 × 148 mm');
     expect(pbSvg).toContain('FRONT COVER');
     expect(pbSvg).toContain(
-      'Paperback Cover 220 × 148 mm • Score 2 spine folds &amp; glue spine to textblock • Scale 1:1 mm',
+      'Paperback Cover 220 × 148 mm • Score 2 spine folds &amp; glue spine to textblock',
     );
     expect(pbSvg).not.toContain('<g id="glue-tabs"');
     expect(pbSvg).not.toContain('GLUE BACK');
@@ -134,7 +134,7 @@ describe('generateOuterWrapSvg', () => {
     expect(djSvg).toContain('BACK COVER');
     expect(djSvg).toContain('FRONT COVER');
     expect(djSvg).toContain(
-      'Dust Jacket 323.5 × 148 mm • 50 mm fold-in flaps • Score 4 vertical folds (no glue) • Scale 1:1 mm',
+      'Dust Jacket 323.5 × 148 mm • 50 mm fold-in flaps • Score 4 vertical folds (no glue)',
     );
     expect(djSvg).not.toContain('<g id="glue-tabs"');
     expect(djSvg).not.toContain('GLUE BACK');

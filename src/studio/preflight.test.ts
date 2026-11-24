@@ -283,8 +283,9 @@ describe('PreflightEngine', () => {
     });
   });
 
-  it('flags 2-sheet tiling with smart flap-shrink or media-switch quick fix, and flags print-media-overflow errors', () => {
-    // 1. A6 softcover with 38 mm deep flaps on US Letter -> 2-sheet tile warning + 1-click Fit Flaps quick fix (25.7 mm)
+  it('flags 2-sheet tiling with smart detach-flaps, flap-shrink, or media-switch quick fix, and flags print-media-overflow errors', () => {
+    // 1. A6 softcover with 38 mm deep flaps on US Letter -> shrinking to 25.7 mm would be shallow (< 36.8 mm),
+    // so preflight prioritizes 1-click Detach Flaps to Separate Inner Pockets (fits 1x US Letter!)
     const a6DeepLetter = BookParametersModel.clampAndNormalize({
       ...BookParametersModel.createDefault(),
       bindingStyle: 'softcover-jacket',
@@ -304,22 +305,46 @@ describe('PreflightEngine', () => {
     expect(flapTileIssue?.severity).toBe('warning');
     expect(flapTileIssue?.title).toContain('Requires 2 tiled pages on US Letter');
     expect(flapTileIssue?.quickFix).toEqual({
-      kind: 'set-jacket-flap-width',
-      flapWidthMm: 25.7,
-      label: 'Fit Flaps to US Letter (25.7 mm)',
+      kind: 'set-softcover-pocket-mode',
+      pocketMode: 'separate',
+      label: 'Detach Flaps to Inner Pockets (Fits 1× US Letter)',
     });
 
-    // Applying the flap quick fix resolves the tiling warning completely
-    const a6Fitted = BookParametersModel.clampAndNormalize({
+    // Applying the detach-flaps quick fix resolves the tiling warning completely (no shallow flap warning either!)
+    const a6Detached = BookParametersModel.clampAndNormalize({
       ...a6DeepLetter,
-      jacketFlapWidthMm: 25.7,
+      softcoverPocketMode: 'separate',
     });
-    const a6FittedReport = PreflightEngine.evaluate(
-      a6Fitted,
-      calculateCaseGeometry(a6Fitted),
+    const a6DetachedReport = PreflightEngine.evaluate(
+      a6Detached,
+      calculateCaseGeometry(a6Detached),
       CoverStudioModel.createDefault(),
     );
-    expect(a6FittedReport.issues.some((i) => i.id === 'print-media-tiled-2-pages')).toBe(false);
+    expect(a6DetachedReport.issues.some((i) => i.id === 'print-media-tiled-2-pages')).toBe(false);
+    expect(a6DetachedReport.issues.some((i) => i.id === 'flap-too-shallow')).toBe(false);
+
+    // 1b. Small pocket book (90 × 140 × 8 mm) on A4 with 55 mm flaps -> maxFlap = 48 mm >= 35 mm minRecommended,
+    // so shrinking integrated flaps stays deep and offers set-jacket-flap-width
+    const smallA4 = BookParametersModel.clampAndNormalize({
+      ...BookParametersModel.createDefault(),
+      bindingStyle: 'softcover-jacket',
+      pbWidthMm: 90,
+      pbHeightMm: 140,
+      pbThicknessMm: 8,
+      jacketFlapWidthMm: 55,
+      printMedia: 'a4',
+    });
+    const smallA4Report = PreflightEngine.evaluate(
+      smallA4,
+      calculateCaseGeometry(smallA4),
+      CoverStudioModel.createDefault(),
+    );
+    const smallA4Tile = smallA4Report.issues.find((i) => i.id === 'print-media-tiled-2-pages');
+    expect(smallA4Tile?.quickFix).toEqual({
+      kind: 'set-jacket-flap-width',
+      flapWidthMm: 48,
+      label: 'Fit Flaps to A4 (48 mm)',
+    });
 
     // 2. Default Trade Digest hardcover (366 x 259 mm) on US Letter -> 2-sheet tile warning + Switch to Tabloid quick fix
     const digestLetter = BookParametersModel.clampAndNormalize({

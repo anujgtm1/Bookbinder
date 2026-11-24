@@ -25,6 +25,7 @@ import { roundTo } from '@/types/units';
 import {
   buildMiteredRectPolygon,
   getBindingStrategy,
+  resolveBindingStrategy,
   resolveFlapWidthFromConfig,
 } from './bindingStyles';
 
@@ -36,7 +37,7 @@ const INNER_VERTICAL_INSET_MM = 1.0; // 1.0 mm inset top & bottom => -2.0 mm hei
 const QUARTER_BOUND_LAP_MM = 3.0;
 
 export function resolveSlipFlapWidthMm(params: BookParameters): number {
-  const strategy = getBindingStrategy(params.bindingStyle);
+  const strategy = resolveBindingStrategy(params);
   const flapConfig = strategy.flapConfig ?? getBindingStrategy('softcover-jacket').flapConfig!;
   return resolveFlapWidthFromConfig(params, flapConfig);
 }
@@ -45,7 +46,7 @@ export function computeMaxFlapWidthForSheet(
   params: Pick<BookParameters, 'bindingStyle' | 'pbWidthMm' | 'pbThicknessMm'>,
   printableWidthMm: number,
 ): number {
-  const strategy = getBindingStrategy(params.bindingStyle);
+  const strategy = resolveBindingStrategy(params);
   if (strategy.computeMaxFlapWidthForSheet) {
     return strategy.computeMaxFlapWidthForSheet(params, printableWidthMm);
   }
@@ -63,14 +64,14 @@ export function calculateMaxSlipFlapForSheetMm(
 }
 
 export function calculateChipboardCutList(params: BookParameters): ChipboardCutList {
-  return getBindingStrategy(params.bindingStyle).calculateCutList(params);
+  return resolveBindingStrategy(params).calculateCutList(params);
 }
 
 export function calculateOuterWrap(
   params: BookParameters,
   cutList: ChipboardCutList,
 ): OuterWrapGeometry {
-  return getBindingStrategy(params.bindingStyle).calculateOuterWrap(params, cutList);
+  return resolveBindingStrategy(params).calculateOuterWrap(params, cutList);
 }
 
 export function calculateSplitWrapPanels(
@@ -211,7 +212,7 @@ export function evaluateRollWidth(
       orientation,
       usedWidthMm,
       spareWidthMm,
-      summary: `Fits on ${sheetLabel} (100% actual size)`,
+      summary: `Fits on ${sheetLabel}`,
     };
   }
 
@@ -237,7 +238,7 @@ export function evaluateRollWidth(
       orientation,
       usedWidthMm,
       spareWidthMm,
-      summary: `Fits on 1× ${legalSpec.label} home sheet (100% actual size)`,
+      summary: `Fits on 1× ${legalSpec.label} home sheet`,
     };
   }
 
@@ -529,15 +530,91 @@ export function calculatePocketEnvelope(
   params: BookParameters,
   cutList: ChipboardCutList,
 ): PocketEnvelopeGeometry {
+  // Back pocket sits inside back cover -> open edge faces spine on the right.
+  // Front pocket sits inside front cover -> open edge faces spine on the left.
+  const openEdge: 'left' | 'right' = side === 'back' ? 'right' : 'left';
+
+  // 2-Sheet Slip Cover ('separate'): clean 6-vertex 1-flap fore-edge pocket at full PB_H + 2.0 mm height
+  // so the outer shell's top/bottom wrap-over glue tabs fold cleanly over the flush top & bottom edges.
+  if (params.bindingStyle === 'softcover-jacket' && params.softcoverPocketMode === 'separate') {
+    const pocketWidthMm = roundTo(cutList.coverBoards.widthMm * (params.pocketDepthPct / 100), 2);
+    const pocketHeightMm = cutList.coverBoards.heightMm;
+    const flap = params.pocketFlapMm;
+    const totalWidthMm = roundTo(pocketWidthMm + flap, 2);
+    const totalHeightMm = pocketHeightMm;
+    const miterInset = Math.min(flap, pocketWidthMm / 2, pocketHeightMm / 2);
+
+    if (openEdge === 'right') {
+      const x0 = flap;
+      const x1 = totalWidthMm;
+      const outerCutPolygon: Polygon2D = [
+        { x: x0, y: 0 },
+        { x: x1, y: 0 },
+        { x: x1, y: pocketHeightMm },
+        { x: x0, y: pocketHeightMm },
+        { x: 0, y: pocketHeightMm - miterInset },
+        { x: 0, y: miterInset },
+      ];
+      const foreFlap: Polygon2D = [
+        { x: x0, y: 0 },
+        { x: 0, y: miterInset },
+        { x: 0, y: pocketHeightMm - miterInset },
+        { x: x0, y: pocketHeightMm },
+      ];
+
+      return {
+        side,
+        label: 'Back Pocket Envelope',
+        pocketWidthMm,
+        pocketHeightMm,
+        flapWidthMm: flap,
+        totalWidthMm,
+        totalHeightMm,
+        openEdge,
+        outerCutPolygon,
+        faceRect: { x: x0, y: 0, width: pocketWidthMm, height: pocketHeightMm },
+        scoreLines: [{ x1: x0, y1: 0, x2: x0, y2: pocketHeightMm, label: 'Fore-Edge Flap Fold' }],
+        glueFlapPolygons: [foreFlap],
+      };
+    }
+
+    const x1 = pocketWidthMm;
+    const outerCutPolygon: Polygon2D = [
+      { x: 0, y: 0 },
+      { x: x1, y: 0 },
+      { x: totalWidthMm, y: miterInset },
+      { x: totalWidthMm, y: pocketHeightMm - miterInset },
+      { x: x1, y: pocketHeightMm },
+      { x: 0, y: pocketHeightMm },
+    ];
+    const foreFlap: Polygon2D = [
+      { x: x1, y: 0 },
+      { x: totalWidthMm, y: miterInset },
+      { x: totalWidthMm, y: pocketHeightMm - miterInset },
+      { x: x1, y: pocketHeightMm },
+    ];
+
+    return {
+      side,
+      label: 'Front Pocket Envelope',
+      pocketWidthMm,
+      pocketHeightMm,
+      flapWidthMm: flap,
+      totalWidthMm,
+      totalHeightMm,
+      openEdge,
+      outerCutPolygon,
+      faceRect: { x: 0, y: 0, width: pocketWidthMm, height: pocketHeightMm },
+      scoreLines: [{ x1: x1, y1: 0, x2: x1, y2: pocketHeightMm, label: 'Fore-Edge Flap Fold' }],
+      glueFlapPolygons: [foreFlap],
+    };
+  }
+
   const pocketWidthMm = cutList.coverBoards.widthMm * (params.pocketDepthPct / 100);
   const pocketHeightMm = Math.max(10, cutList.coverBoards.heightMm - INNER_VERTICAL_INSET_MM * 2);
   const flap = params.pocketFlapMm;
   const totalWidthMm = pocketWidthMm + flap;
   const totalHeightMm = pocketHeightMm + flap * 2;
-
-  // Back pocket sits inside back cover -> open edge faces spine on the right.
-  // Front pocket sits inside front cover -> open edge faces spine on the left.
-  const openEdge: 'left' | 'right' = side === 'back' ? 'right' : 'left';
   const miterInset = Math.min(flap, pocketWidthMm / 2, pocketHeightMm / 2);
 
   if (openEdge === 'right') {
@@ -668,6 +745,9 @@ export function calculateCaseGeometry(params: BookParameters): CaseGeometry {
 
   return {
     bindingStyle: params.bindingStyle ?? 'rigid-case',
+    ...(params.softcoverPocketMode !== undefined
+      ? { softcoverPocketMode: params.softcoverPocketMode }
+      : {}),
     cutList,
     outerWrap,
     splitPanels,

@@ -1,4 +1,8 @@
-import { evaluateFlapDepth, getBindingStrategy } from '@/core/bindingStyles';
+import {
+  evaluateDetachedSlipCoverFit,
+  evaluateFlapDepth,
+  resolveBindingStrategy,
+} from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import { contrastRatio, parseHexRgb, relativeLuminance } from '@/lib/color';
 import {
@@ -7,10 +11,15 @@ import {
   type BindingStyle,
   type BookParameters,
   type PrintMediaId,
+  type SoftcoverPocketMode,
 } from '@/types/bookParams';
 import { ROLL_TOTAL_MARGIN_MM, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
-import type { CoverImageLayer, QuickFitTarget } from '@/types/studioLayer';
+import {
+  getLayerVisualRect,
+  type CoverImageLayer,
+  type QuickFitTarget,
+} from '@/types/studioLayer';
 import { MM_PER_INCH, PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { computeStudioCanvasSpec, resolveZoneClipRect } from './renderEngine';
 
@@ -70,6 +79,11 @@ export type PreflightQuickFix =
   | {
       readonly kind: 'set-jacket-flap-width';
       readonly flapWidthMm: number;
+      readonly label: string;
+    }
+  | {
+      readonly kind: 'set-softcover-pocket-mode';
+      readonly pocketMode: SoftcoverPocketMode;
       readonly label: string;
     };
 
@@ -270,14 +284,9 @@ export const PreflightEngine = {
       height: geometry.outerWrap.spineRect.height,
     };
 
-    // Resolve each layer's effective visible rect (respecting optional zone clip mask)
+    // Resolve each layer's effective visible rect (respecting rotation & optional zone clip mask)
     const visibleLayers = studio.layers.map((layer) => {
-      const rawRect: Rect2D = {
-        x: layer.xMm,
-        y: layer.yMm,
-        width: layer.widthMm,
-        height: layer.heightMm,
-      };
+      const rawRect = getLayerVisualRect(layer);
       const clipRect = resolveZoneClipRect(spec, layer.clipZone);
       const visibleRect = intersectRect(rawRect, clipRect);
       const onCanvasRect = visibleRect ? intersectRect(visibleRect, canvasRect) : null;
@@ -600,8 +609,7 @@ export const PreflightEngine = {
     }
 
     // 4. Structural, Binding Style & Print Readiness Checks
-    const style = params.bindingStyle ?? 'rigid-case';
-    const strategy = getBindingStrategy(style);
+    const strategy = resolveBindingStrategy(params);
     const { capabilities } = strategy;
 
     if (capabilities.usesChipboard) {
@@ -672,7 +680,7 @@ export const PreflightEngine = {
     }
 
     const flapEval = evaluateFlapDepth(
-      style,
+      params,
       params.pbWidthMm,
       geometry.outerWrap.jacketFlapWidthMm,
     );
@@ -728,22 +736,21 @@ export const PreflightEngine = {
       const suggestedSpec = fit.suggestedMediaId
         ? getPrintMediaSpec(fit.suggestedMediaId)
         : null;
+      const detachedFit = evaluateDetachedSlipCoverFit(params, params.printMedia);
 
       if (fit.status === 'does-not-fit') {
-        allIssues.push({
-          id: 'print-media-overflow',
-          severity: 'error',
-          category: 'structure',
-          title:
-            mediaSpec.kind === 'sheet'
-              ? `Cover does not fit on ${fit.mediaLabel} (even as 2 tiled sheets)`
-              : `Cover does not fit on ${fit.mediaLabel}`,
-          detail:
-            mediaSpec.kind === 'sheet'
-              ? `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable bounds even across 2 tiled pages. Switch to a larger sheet or roll for 100% scale printing.`
-              : `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable width.`,
-          highlights: [],
-          quickFix: suggestedSpec
+        const overflowDetail = detachedFit?.fitsSingleSheet
+          ? `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable bounds — detach the side flaps to Separate Inner Pockets so the seamless outer shell (${roundTo(detachedFit.detachedWidthMm, 1)} × ${roundTo(detachedFit.detachedHeightMm, 1)} mm) fits cleanly on 1× ${mediaSpec.shortLabel}.`
+          : mediaSpec.kind === 'sheet'
+            ? `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable bounds even across 2 tiled pages. Switch to a larger sheet or roll.`
+            : `Outer wrap (${roundTo(geometry.outerWrap.widthMm, 1)} × ${roundTo(geometry.outerWrap.heightMm, 1)} mm) exceeds ${fit.mediaLabel}'s printable width.`;
+        const overflowQuickFix: PreflightQuickFix | undefined = detachedFit?.fitsSingleSheet
+          ? {
+              kind: 'set-softcover-pocket-mode',
+              pocketMode: 'separate',
+              label: `Detach Flaps to Inner Pockets (Fits 1× ${mediaSpec.shortLabel})`,
+            }
+          : suggestedSpec
             ? {
                 kind: 'set-print-media',
                 printMedia: suggestedSpec.id,
@@ -754,7 +761,19 @@ export const PreflightEngine = {
                   kind: 'enable-split-mode',
                   label: 'Enable 3-Piece Split',
                 }
-              : undefined,
+              : undefined;
+
+        allIssues.push({
+          id: 'print-media-overflow',
+          severity: 'error',
+          category: 'structure',
+          title:
+            mediaSpec.kind === 'sheet'
+              ? `Cover does not fit on ${fit.mediaLabel} (even as 2 tiled sheets)`
+              : `Cover does not fit on ${fit.mediaLabel}`,
+          detail: overflowDetail,
+          highlights: [],
+          quickFix: overflowQuickFix,
         });
       } else if (fit.status === 'fits-2-sheet-tile') {
         let detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap and alignment crosshairs — or switch to a larger sheet/roll to print on 1 page.`;
@@ -778,9 +797,21 @@ export const PreflightEngine = {
           const innerW = geometry.outerWrap.innerWidthMm;
           const fitsHeightOnOneSheet = geometry.outerWrap.heightMm <= printableShortMm + 1e-6;
           const fitsWidthWithMaxFlap = innerW + maxFlap * 2 <= printableLongMm + 1e-6;
+          const canShrinkIntegrated = maxFlap >= 22 && fitsHeightOnOneSheet && fitsWidthWithMaxFlap;
+          const shrunkFlapEval = canShrinkIntegrated
+            ? evaluateFlapDepth(params, params.pbWidthMm, maxFlap)
+            : null;
+          const shrunkWouldBeShallow = Boolean(shrunkFlapEval?.isTooShallow);
           const flapNoun = capabilities.hasGlueTabs ? 'slip flaps' : 'fold-in flaps';
 
-          if (maxFlap >= 22 && fitsHeightOnOneSheet && fitsWidthWithMaxFlap) {
+          if (detachedFit?.fitsSingleSheet && (!canShrinkIntegrated || shrunkWouldBeShallow)) {
+            detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap — or detach the side flaps to Separate Inner Pockets so the seamless outer shell (${roundTo(detachedFit.detachedWidthMm, 1)} × ${roundTo(detachedFit.detachedHeightMm, 1)} mm) fits cleanly on 1× ${mediaSpec.shortLabel} with zero tape seam.`;
+            quickFix = {
+              kind: 'set-softcover-pocket-mode',
+              pocketMode: 'separate',
+              label: `Detach Flaps to Inner Pockets (Fits 1× ${mediaSpec.shortLabel})`,
+            };
+          } else if (canShrinkIntegrated) {
             detail = `Print PDF will automatically export a 2-sheet tiled PDF with a ${fit.tileOverlapMm} mm overlap — or shrink ${flapNoun} to ${maxFlap} mm to fit cleanly on 1 ${fit.mediaLabel} sheet.`;
             quickFix = {
               kind: 'set-jacket-flap-width',

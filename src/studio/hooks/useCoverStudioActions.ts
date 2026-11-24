@@ -1,5 +1,5 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import {
   exportDesignPresetsJson,
@@ -16,6 +16,7 @@ import { rgbToHex } from '@/lib/color';
 import {
   getPrintMediaSpec,
   type BookParameters,
+  type PageSizeId,
   type PrintMediaId,
   type SplitMode,
 } from '@/types/bookParams';
@@ -293,6 +294,7 @@ export function useCoverStudioActions({
           strokeWidthMm: o.strokeWidthMm,
           flipX: o.flipX,
           flipY: o.flipY,
+          rotationDeg: o.rotationDeg,
         };
       }),
     });
@@ -493,7 +495,7 @@ export function useCoverStudioActions({
         onSelectImageLayer(fix.layerId);
         break;
       case 'switch-binding-style': {
-        const nextStrategy = getBindingStrategy(fix.bindingStyle);
+        const nextStrategy = resolveBindingStrategy(fix.bindingStyle);
         onUpdateParams?.({ bindingStyle: fix.bindingStyle });
         onStatusMessage(`Switched to ${nextStrategy.shortLabel}`);
         break;
@@ -515,10 +517,19 @@ export function useCoverStudioActions({
         break;
       }
       case 'set-jacket-flap-width': {
-        const activeStrategy = getBindingStrategy(geometry.bindingStyle);
+        const activeStrategy = resolveBindingStrategy(geometry);
         const flapLabel = activeStrategy.flapConfig?.label.toLowerCase() ?? 'flap width';
         onUpdateParams?.({ jacketFlapWidthMm: fix.flapWidthMm });
         onStatusMessage(`Updated ${flapLabel} to ${fix.flapWidthMm} mm`);
+        break;
+      }
+      case 'set-softcover-pocket-mode': {
+        onUpdateParams?.({ softcoverPocketMode: fix.pocketMode });
+        onStatusMessage(
+          fix.pocketMode === 'separate'
+            ? 'Detached side flaps to Separate Inner Pockets (2-Sheet mode)'
+            : 'Switched slip cover back to 1-Piece Integrated Flaps',
+        );
         break;
       }
     }
@@ -668,6 +679,8 @@ export function useCoverStudioActions({
     readonly includeScaleBar?: boolean;
     readonly splitMode?: SplitMode;
     readonly exportLayerMode?: CoverPdfLayerMode;
+    readonly appendInnerPocketsPage?: boolean;
+    readonly innerPageSizeId?: PageSizeId;
   }) => {
     setExportingKind('pdf');
     try {
@@ -689,6 +702,8 @@ export function useCoverStudioActions({
         dpi: effectiveDpi,
         tileOverlapMm: options?.tileOverlapMm,
         includeScaleBar: options?.includeScaleBar,
+        appendInnerPocketsPage: options?.appendInnerPocketsPage,
+        innerPageSizeId: options?.innerPageSizeId,
       });
       triggerBytesDownload(bytes, fileName, 'application/pdf');
       const fit = evaluatePrintMediaFit(
@@ -698,14 +713,15 @@ export function useCoverStudioActions({
         options?.tileOverlapMm,
       );
       const layerTag = isBaseOnly ? ', Base Only for HTV' : '';
+      const pocketsTag = options?.appendInnerPocketsPage ? ' + Pockets' : '';
       onStatusMessage(
         fit.status === 'fits-1-sheet'
-          ? `Exported ${fileName} (100% actual size, centered on 1× ${fit.mediaLabel}, ${effectiveDpi} DPI${layerTag})`
+          ? `Exported ${fileName} (centered on 1× ${fit.mediaLabel}${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
           : fit.status === 'fits-2-sheet-tile'
-            ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap, ${effectiveDpi} DPI${layerTag})`
+            ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
             : isBaseOnly
-              ? `Exported ${fileName} (${effectiveDpi} DPI, Base Only for HTV)`
-              : `Exported ${fileName} (${effectiveDpi} DPI + vector spine text)`,
+              ? `Exported ${fileName} (${effectiveDpi} DPI, Base Only for HTV${pocketsTag})`
+              : `Exported ${fileName} (${effectiveDpi} DPI + vector spine text${pocketsTag})`,
       );
     } catch {
       onStatusMessage('Failed to generate Print-Ready Roll PDF.');
@@ -742,7 +758,7 @@ export function useCoverStudioActions({
       }
       const svg = generateAffinityCoverSvg(geometry, studio, customFont, artworkDataUrl);
       triggerTextDownload(svg, 'outer_cover_300dpi.svg', 'image/svg+xml;charset=utf-8');
-      onStatusMessage('Exported outer_cover_300dpi.svg (1:1 mm Affinity round-trip)');
+      onStatusMessage('Exported outer_cover_300dpi.svg (Affinity round-trip)');
     } catch {
       onStatusMessage('Failed to export Affinity SVG.');
     } finally {

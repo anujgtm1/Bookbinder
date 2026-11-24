@@ -285,6 +285,8 @@ export function CoverStyler({
           printMediaId: selection.printMediaId,
           tileOverlapMm: selection.tileOverlapMm,
           includeScaleBar: selection.includeScaleBar,
+          appendInnerPocketsPage: selection.appendInnerPocketsPage,
+          innerPageSizeId: selection.pageSizeId,
         });
         return;
       }
@@ -297,6 +299,8 @@ export function CoverStyler({
       includeScaleBar: selection.includeScaleBar,
       splitMode: selection.splitMode,
       exportLayerMode: selection.exportLayerMode,
+      appendInnerPocketsPage: selection.appendInnerPocketsPage,
+      innerPageSizeId: selection.pageSizeId,
     });
   };
 
@@ -696,6 +700,9 @@ export function CoverStyler({
             axis === 'x' ? { ...layer, flipX: !layer.flipX } : { ...layer, flipY: !layer.flipY },
           )
         }
+        onUpdateLayer={(id, patch) =>
+          actions.updateLayer(id, (layer) => ({ ...layer, ...patch }))
+        }
         onReorderLayer={(id, direction) =>
           onChange({ ...studio, layers: CoverImageLayerModel.reorder(studio.layers, id, direction) })
         }
@@ -795,6 +802,9 @@ export function CoverStyler({
           onUpdateParams
             ? (widthMm) => onUpdateParams({ jacketFlapWidthMm: widthMm })
             : undefined
+        }
+        onDetachSlipFlaps={
+          onUpdateParams ? () => onUpdateParams({ softcoverPocketMode: 'separate' }) : undefined
         }
         defaultIncludeGuides={studio.cutLineMode === 'full-cut-miter'}
         defaultExportLayerMode={pdfExportLayerModeDefault}

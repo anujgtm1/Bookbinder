@@ -1,5 +1,5 @@
 import { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS } from '@/resources/paperSpecs';
-import type { BindingStyle, PrintMediaId } from './bookParams';
+import type { BindingStyle, PrintMediaId, SoftcoverPocketMode } from './bookParams';
 import { roundTo } from './units';
 
 export { ROLL_TOTAL_MARGIN_MM, STANDARD_ROLL_WIDTHS };
@@ -149,6 +149,7 @@ export interface PrintMediaFitEvaluation {
 
 export interface OuterWrapGeometry {
   readonly bindingStyle: BindingStyle;
+  readonly softcoverPocketMode?: SoftcoverPocketMode;
   readonly widthMm: number;
   readonly heightMm: number;
   readonly innerWidthMm: number;
@@ -210,6 +211,7 @@ export interface PocketEnvelopeGeometry {
 
 export interface CaseGeometry {
   readonly bindingStyle: BindingStyle;
+  readonly softcoverPocketMode?: SoftcoverPocketMode;
   readonly cutList: ChipboardCutList;
   readonly outerWrap: OuterWrapGeometry;
   readonly splitPanels: readonly SplitWrapPanel[];

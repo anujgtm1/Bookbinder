@@ -5,6 +5,20 @@ export type LayerClipZone = 'none' | 'front' | 'spine' | 'back';
 export type QuickFitTarget = 'front' | 'spine' | 'back' | 'fullWrap';
 export type ResizeCorner = 'nw' | 'ne' | 'se' | 'sw';
 export type StubExtensionMode = 'none' | 'edge-smear' | 'soft-mirror' | 'mirror';
+export type QuarterTurnDeg = 0 | 90 | 180 | 270;
+
+/** Normalizes any numeric angle to a quarter-turn clockwise angle (0, 90, 180, or 270). */
+export function normalizeQuarterTurn(deg: unknown): QuarterTurnDeg {
+  if (typeof deg !== 'number' || !Number.isFinite(deg)) return 0;
+  const snapped = (((Math.round(deg / 90) * 90) % 360) + 360) % 360;
+  return snapped === 90 || snapped === 180 || snapped === 270 ? snapped : 0;
+}
+
+/** Advances a quarter-turn angle by 90° clockwise: 0 → 90 → 180 → 270 → 0. */
+export function nextQuarterTurn(deg?: number): QuarterTurnDeg {
+  const current = normalizeQuarterTurn(deg);
+  return ((current + 90) % 360) as QuarterTurnDeg;
+}
 
 export interface CoverImageLayer {
   readonly id: string;
@@ -29,6 +43,34 @@ export interface CoverImageLayer {
   readonly flipX?: boolean;
   /** Flip artwork vertically around its center */
   readonly flipY?: boolean;
+  /** Clockwise quarter-turn rotation around layer center (0, 90, 180, or 270 degrees) */
+  readonly rotationDeg?: QuarterTurnDeg;
+}
+
+/**
+ * Returns the visual axis-aligned bounding box of a cover or pocket image layer,
+ * swapping width and height around its center when rotated 90° or 270°.
+ */
+export function getLayerVisualRect(
+  layer: Pick<CoverImageLayer, 'xMm' | 'yMm' | 'widthMm' | 'heightMm' | 'rotationDeg'>,
+): Rect2D {
+  const rot = normalizeQuarterTurn(layer.rotationDeg);
+  if (rot === 90 || rot === 270) {
+    const cx = layer.xMm + layer.widthMm / 2;
+    const cy = layer.yMm + layer.heightMm / 2;
+    return {
+      x: cx - layer.heightMm / 2,
+      y: cy - layer.widthMm / 2,
+      width: layer.heightMm,
+      height: layer.widthMm,
+    };
+  }
+  return {
+    x: layer.xMm,
+    y: layer.yMm,
+    width: layer.widthMm,
+    height: layer.heightMm,
+  };
 }
 
 export const LAYER_MIN_SIZE_MM = 12;
@@ -99,16 +141,50 @@ export const CoverImageLayerModel = {
     targetRect: Rect2D,
     clipZone: LayerClipZone = layer.clipZone,
   ): CoverImageLayer {
-    const fitted = this.createInRect({
-      id: layer.id,
-      dataUrl: layer.dataUrl,
-      fileName: layer.fileName,
-      naturalWidth: layer.naturalWidth,
-      naturalHeight: layer.naturalHeight,
-      targetRect,
-      clipZone,
-      mode: 'cover',
-    });
+    const rot = normalizeQuarterTurn(layer.rotationDeg);
+    const isQuarterTurn = rot === 90 || rot === 270;
+
+    let fitted: CoverImageLayer;
+    if (isQuarterTurn) {
+      const natW = Math.max(1, layer.naturalWidth);
+      const natH = Math.max(1, layer.naturalHeight);
+      // Visual aspect when rotated 90°/270° is natH / natW, so visual width = heightMm and visual height = widthMm
+      const scale = Math.max(targetRect.width / natH, targetRect.height / natW);
+      const widthMm = roundTo(
+        Math.min(LAYER_MAX_SIZE_MM, Math.max(LAYER_MIN_SIZE_MM, natW * scale)),
+        2,
+      );
+      const heightMm = roundTo(
+        Math.min(LAYER_MAX_SIZE_MM, Math.max(LAYER_MIN_SIZE_MM, natH * scale)),
+        2,
+      );
+      const cx = targetRect.x + targetRect.width / 2;
+      const cy = targetRect.y + targetRect.height / 2;
+      fitted = {
+        id: layer.id,
+        dataUrl: layer.dataUrl,
+        fileName: layer.fileName || 'cover-image.png',
+        naturalWidth: natW,
+        naturalHeight: natH,
+        xMm: roundTo(cx - widthMm / 2, 2),
+        yMm: roundTo(cy - heightMm / 2, 2),
+        widthMm,
+        heightMm,
+        clipZone,
+      };
+    } else {
+      fitted = this.createInRect({
+        id: layer.id,
+        dataUrl: layer.dataUrl,
+        fileName: layer.fileName,
+        naturalWidth: layer.naturalWidth,
+        naturalHeight: layer.naturalHeight,
+        targetRect,
+        clipZone,
+        mode: 'cover',
+      });
+    }
+
     return {
       ...fitted,
       originalDataUrl: layer.originalDataUrl,
@@ -119,6 +195,7 @@ export const CoverImageLayerModel = {
       tiled: layer.tiled,
       flipX: layer.flipX,
       flipY: layer.flipY,
+      rotationDeg: rot !== 0 ? rot : undefined,
     };
   },
 
@@ -174,11 +251,16 @@ export const CoverImageLayerModel = {
     pointerXMm: number,
     pointerYMm: number,
   ): CoverImageLayer {
-    const aspect = layer.naturalWidth / Math.max(1, layer.naturalHeight);
-    const left = layer.xMm;
-    const right = layer.xMm + layer.widthMm;
-    const top = layer.yMm;
-    const bottom = layer.yMm + layer.heightMm;
+    const rot = normalizeQuarterTurn(layer.rotationDeg);
+    const isQuarterTurn = rot === 90 || rot === 270;
+    const vis = getLayerVisualRect(layer);
+    const visAspect = isQuarterTurn
+      ? layer.naturalHeight / Math.max(1, layer.naturalWidth)
+      : layer.naturalWidth / Math.max(1, layer.naturalHeight);
+    const left = vis.x;
+    const right = vis.x + vis.width;
+    const top = vis.y;
+    const bottom = vis.y + vis.height;
 
     const anchorX = corner === 'nw' || corner === 'sw' ? right : left;
     const anchorY = corner === 'nw' || corner === 'ne' ? bottom : top;
@@ -186,26 +268,40 @@ export const CoverImageLayerModel = {
     const rawW = Math.max(LAYER_MIN_SIZE_MM, Math.abs(pointerXMm - anchorX));
     const rawH = Math.max(LAYER_MIN_SIZE_MM, Math.abs(pointerYMm - anchorY));
 
-    // Preserve aspect ratio using whichever axis grew more proportionally
-    let nextW: number;
-    let nextH: number;
-    if (rawW / aspect >= rawH) {
-      nextW = Math.min(LAYER_MAX_SIZE_MM, rawW);
-      nextH = nextW / aspect;
+    // Preserve visual aspect ratio using whichever axis grew more proportionally
+    let nextVisW: number;
+    let nextVisH: number;
+    if (rawW / visAspect >= rawH) {
+      nextVisW = Math.min(LAYER_MAX_SIZE_MM, rawW);
+      nextVisH = nextVisW / visAspect;
     } else {
-      nextH = Math.min(LAYER_MAX_SIZE_MM, rawH);
-      nextW = nextH * aspect;
+      nextVisH = Math.min(LAYER_MAX_SIZE_MM, rawH);
+      nextVisW = nextVisH * visAspect;
     }
 
-    const nextX = corner === 'nw' || corner === 'sw' ? anchorX - nextW : anchorX;
-    const nextY = corner === 'nw' || corner === 'ne' ? anchorY - nextH : anchorY;
+    const nextVisX = corner === 'nw' || corner === 'sw' ? anchorX - nextVisW : anchorX;
+    const nextVisY = corner === 'nw' || corner === 'ne' ? anchorY - nextVisH : anchorY;
+
+    if (isQuarterTurn) {
+      const nextCx = nextVisX + nextVisW / 2;
+      const nextCy = nextVisY + nextVisH / 2;
+      const nextW = nextVisH;
+      const nextH = nextVisW;
+      return {
+        ...layer,
+        xMm: roundTo(nextCx - nextW / 2, 2),
+        yMm: roundTo(nextCy - nextH / 2, 2),
+        widthMm: roundTo(nextW, 2),
+        heightMm: roundTo(nextH, 2),
+      };
+    }
 
     return {
       ...layer,
-      xMm: roundTo(nextX, 2),
-      yMm: roundTo(nextY, 2),
-      widthMm: roundTo(nextW, 2),
-      heightMm: roundTo(nextH, 2),
+      xMm: roundTo(nextVisX, 2),
+      yMm: roundTo(nextVisY, 2),
+      widthMm: roundTo(nextVisW, 2),
+      heightMm: roundTo(nextVisH, 2),
     };
   },
 
@@ -268,6 +364,7 @@ export const CoverImageLayerModel = {
       tiled: obj.tiled === true ? true : undefined,
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
+      rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
     };
   },
 } as const;

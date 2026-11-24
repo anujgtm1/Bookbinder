@@ -22,6 +22,7 @@ import {
   type SpineOrientation,
   type StudioFontId,
 } from './studio';
+import { normalizeQuarterTurn, type QuarterTurnDeg } from './studioLayer';
 import { clampFinite, roundTo } from './units';
 
 export { BUILT_IN_DESIGN_PRESETS };
@@ -51,6 +52,7 @@ export interface NormalizedTextTemplate {
   readonly uppercase?: boolean;
   readonly flipX?: boolean;
   readonly flipY?: boolean;
+  readonly rotationDeg?: QuarterTurnDeg;
 }
 
 export interface NormalizedOrnamentTemplate {
@@ -68,6 +70,7 @@ export interface NormalizedOrnamentTemplate {
   readonly strokeWidthMm: number;
   readonly flipX?: boolean;
   readonly flipY?: boolean;
+  readonly rotationDeg?: QuarterTurnDeg;
   readonly customSvgName?: string;
   readonly customSvgPaths?: readonly string[];
   readonly customSvgViewBox?: { readonly width: number; readonly height: number };
@@ -147,18 +150,19 @@ function isBoxMappedOrnament(presetId: ClassicOrnamentId): boolean {
 }
 
 function resolveNaturalAspectRatio(template: NormalizedOrnamentTemplate): number {
+  let baseAspect = 1.0;
   if (
     template.presetId === 'custom-svg' &&
     template.customSvgViewBox &&
     template.customSvgViewBox.width > 0 &&
     template.customSvgViewBox.height > 0
   ) {
-    return Math.max(0.1, template.customSvgViewBox.width / template.customSvgViewBox.height);
+    baseAspect = Math.max(0.1, template.customSvgViewBox.width / template.customSvgViewBox.height);
+  } else if (template.presetId.startsWith('divider-')) {
+    baseAspect = 5.0;
   }
-  if (template.presetId.startsWith('divider-')) {
-    return 5.0;
-  }
-  return 1.0;
+  const rot = normalizeQuarterTurn(template.rotationDeg);
+  return rot === 90 || rot === 270 ? 1 / baseAspect : baseAspect;
 }
 
 function deserializeTextTemplate(raw: unknown): NormalizedTextTemplate | null {
@@ -204,6 +208,9 @@ function deserializeTextTemplate(raw: unknown): NormalizedTextTemplate | null {
     ...(obj.uppercase === true ? { uppercase: true } : {}),
     ...(obj.flipX === true ? { flipX: true } : {}),
     ...(obj.flipY === true ? { flipY: true } : {}),
+    ...(normalizeQuarterTurn(obj.rotationDeg)
+      ? { rotationDeg: normalizeQuarterTurn(obj.rotationDeg) }
+      : {}),
   };
 }
 
@@ -264,6 +271,9 @@ function deserializeOrnamentTemplate(raw: unknown): NormalizedOrnamentTemplate |
     ),
     ...(obj.flipX === true ? { flipX: true } : {}),
     ...(obj.flipY === true ? { flipY: true } : {}),
+    ...(normalizeQuarterTurn(obj.rotationDeg)
+      ? { rotationDeg: normalizeQuarterTurn(obj.rotationDeg) }
+      : {}),
     ...(typeof obj.customSvgName === 'string' && obj.customSvgName.trim()
       ? { customSvgName: obj.customSvgName.slice(0, 120) }
       : {}),
@@ -370,6 +380,9 @@ export const CoverDesignPresetModel = {
         ...(layer.uppercase ? { uppercase: true } : {}),
         ...(layer.flipX ? { flipX: true } : {}),
         ...(layer.flipY ? { flipY: true } : {}),
+        ...(normalizeQuarterTurn(layer.rotationDeg)
+          ? { rotationDeg: normalizeQuarterTurn(layer.rotationDeg) }
+          : {}),
       };
     });
 
@@ -386,6 +399,9 @@ export const CoverDesignPresetModel = {
         strokeWidthMm: orn.strokeWidthMm,
         ...(orn.flipX ? { flipX: true } : {}),
         ...(orn.flipY ? { flipY: true } : {}),
+        ...(normalizeQuarterTurn(orn.rotationDeg)
+          ? { rotationDeg: normalizeQuarterTurn(orn.rotationDeg) }
+          : {}),
         ...(orn.customSvgName ? { customSvgName: orn.customSvgName } : {}),
         ...(orn.customSvgPaths ? { customSvgPaths: [...orn.customSvgPaths] } : {}),
         ...(orn.customSvgViewBox ? { customSvgViewBox: { ...orn.customSvgViewBox } } : {}),
@@ -451,6 +467,9 @@ export const CoverDesignPresetModel = {
         ...(tpl.uppercase ? { uppercase: true } : {}),
         ...(tpl.flipX ? { flipX: true } : {}),
         ...(tpl.flipY ? { flipY: true } : {}),
+        ...(normalizeQuarterTurn(tpl.rotationDeg)
+          ? { rotationDeg: normalizeQuarterTurn(tpl.rotationDeg) }
+          : {}),
       };
     });
 
@@ -527,6 +546,9 @@ export const CoverDesignPresetModel = {
         strokeWidthMm: tpl.strokeWidthMm,
         ...(tpl.flipX ? { flipX: true } : {}),
         ...(tpl.flipY ? { flipY: true } : {}),
+        ...(normalizeQuarterTurn(tpl.rotationDeg)
+          ? { rotationDeg: normalizeQuarterTurn(tpl.rotationDeg) }
+          : {}),
         ...(tpl.customSvgName ? { customSvgName: tpl.customSvgName } : {}),
         ...(tpl.customSvgPaths ? { customSvgPaths: [...tpl.customSvgPaths] } : {}),
         ...(tpl.customSvgViewBox ? { customSvgViewBox: { ...tpl.customSvgViewBox } } : {}),

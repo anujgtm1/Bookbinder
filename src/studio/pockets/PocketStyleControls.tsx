@@ -9,6 +9,7 @@ import {
   Minus,
   Palette,
   Plus,
+  RotateCw,
   Trash2,
 } from 'lucide-react';
 import { useRef } from 'react';
@@ -30,7 +31,13 @@ import {
   type PocketStyleConfig,
   type PocketStyleScope,
 } from '@/types/studio';
-import { CoverImageLayerModel, type CoverImageLayer } from '@/types/studioLayer';
+import {
+  CoverImageLayerModel,
+  getLayerVisualRect,
+  nextQuarterTurn,
+  normalizeQuarterTurn,
+  type CoverImageLayer,
+} from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 
 export type PocketQuickFitTarget = 'front' | 'back' | 'liner' | 'all';
@@ -223,7 +230,10 @@ export function PocketStyleControls({
         </CardHeader>
 
         <CardContent className="space-y-3.5">
-          {selectedLayer && (
+          {selectedLayer && (() => {
+            const selectedVisualRect = getLayerVisualRect(selectedLayer);
+            const selectedRotationDeg = normalizeQuarterTurn(selectedLayer.rotationDeg);
+            return (
             <div
               className="space-y-2.5 rounded-md border border-primary/30 bg-primary/5 p-2.5"
               data-testid="pocket-selected-layer-controls"
@@ -233,7 +243,7 @@ export function PocketStyleControls({
                   Selected: {selectedLayer.fileName}
                 </span>
                 <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                  {roundTo(selectedLayer.widthMm, 1)} × {roundTo(selectedLayer.heightMm, 1)} mm
+                  {roundTo(selectedVisualRect.width, 1)} × {roundTo(selectedVisualRect.height, 1)} mm
                 </span>
               </div>
 
@@ -294,7 +304,7 @@ export function PocketStyleControls({
                   />
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   <Button
                     type="button"
                     variant={selectedLayer.flipX ? 'default' : 'outline'}
@@ -334,6 +344,29 @@ export function PocketStyleControls({
                     Flip V
                   </Button>
                   <Button
+                    type="button"
+                    variant={selectedRotationDeg ? 'secondary' : 'outline'}
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    aria-label="Rotate selected pocket image 90° clockwise"
+                    aria-pressed={Boolean(selectedRotationDeg)}
+                    title={
+                      selectedRotationDeg
+                        ? `Rotated ${selectedRotationDeg}° — click to rotate 90° clockwise`
+                        : 'Rotate image 90° clockwise'
+                    }
+                    data-testid="pocket-layer-rotate-90-btn"
+                    onClick={() =>
+                      onUpdateLayer(selectedLayer.id, (layer) => ({
+                        ...layer,
+                        rotationDeg: nextQuarterTurn(layer.rotationDeg),
+                      }))
+                    }
+                  >
+                    <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    {selectedRotationDeg ? `${selectedRotationDeg}°` : '90°'}
+                  </Button>
+                  <Button
                     variant="outline"
                     size="icon"
                     className="h-8 w-8"
@@ -364,7 +397,8 @@ export function PocketStyleControls({
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {layers.length > 0 ? (
             <ul className="space-y-1.5" data-testid="pocket-layer-list">

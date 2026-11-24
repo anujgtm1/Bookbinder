@@ -10,11 +10,12 @@ import {
   type PDFFont,
   type PDFPage,
 } from 'pdf-lib';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
+import { appendDetachedInnerPocketsPdf } from '@/core/pdfExport';
 import { layoutPdfToPrintMedia } from '@/core/pdfSheetLayout';
 import { canvasToPngBytes } from '@/lib/canvasImage';
 import { hexToRgb01 } from '@/lib/color';
-import type { PrintMediaId } from '@/types/bookParams';
+import type { PageSizeId, PrintMediaId } from '@/types/bookParams';
 import {
   GeometryPrimitives,
   type CaseGeometry,
@@ -22,6 +23,7 @@ import {
   type Rect2D,
 } from '@/types/geometry';
 import type { CoverStudioState, StudioFontId } from '@/types/studio';
+import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
 import {
   computeCoverTextLinePlacements,
@@ -127,13 +129,13 @@ async function drawCoverCutAndFoldOverlay(
   }
 
   // 3c. Optional trim-waste fold & glue instructions for binding styles with mitered glue tabs
-  const strategy = getBindingStrategy(outerWrap.bindingStyle);
-  if (strategy.capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0) {
-    const w = outerWrap.widthMm;
-    // Print concise 1-2-3 fold & glue instructions inside the top cut-off trim-waste gap
-    // (strictly outside the red cut outline, so it trims cleanly away after cutting)
-    const wasteStartX = bleed + outerWrap.jacketFlapWidthMm * 2 + 3;
-    const wasteEndX = bleed + w - outerWrap.jacketFlapWidthMm * 2 - 3;
+  const strategy = resolveBindingStrategy(outerWrap);
+  if (strategy.capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length >= 2) {
+    // Compute the exact gap between Back Top Glue Tab and Front Top Glue Tab so instructions stay strictly in trim waste
+    const backTopTabBox = GeometryPrimitives.boundingBox(outerWrap.jacketGlueTabPolygons[0]);
+    const frontTopTabBox = GeometryPrimitives.boundingBox(outerWrap.jacketGlueTabPolygons[1]);
+    const wasteStartX = bleed + backTopTabBox.x + backTopTabBox.width + 3;
+    const wasteEndX = bleed + frontTopTabBox.x - 3;
     const wasteWidthMm = wasteEndX - wasteStartX;
     if (wasteWidthMm >= 80 && outerWrap.jacketGlueTabHeightMm >= 8) {
       const noteFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -147,8 +149,9 @@ async function drawCoverCutAndFoldOverlay(
         color: rgb(0.98, 0.97, 0.94),
         opacity: 0.92,
       });
-      const instructionText =
-        'TRIM WASTE • FOLD & GLUE: 1. Fold side flaps inward  2. Glue blank back of 4 tabs  3. Fold tabs over flaps';
+      const instructionText = strategy.capabilities.hasFlaps
+        ? 'TRIM WASTE • FOLD & GLUE: 1. Fold side flaps inward  2. Glue blank back of 4 tabs  3. Fold tabs over flaps'
+        : 'TRIM WASTE • 2-SHEET SLIP COVER: 1. Glue detached pockets inside  2. Fold & glue 4 tabs over pockets';
       const fontSizePt = wasteWidthMm >= 145 ? 6.4 : 5.2;
       const textW = noteFont.widthOfTextAtSize(instructionText, fontSizePt);
       const centerX = toPdfX(wasteStartX + wasteWidthMm / 2);
@@ -322,8 +325,8 @@ async function renderBaseCoverPdfPage(
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle(
     isBaseOnly
-      ? 'Bookbinder — Print-Ready Outer Cover Base (For HTV, 1:1 mm)'
-      : 'Bookbinder — Print-Ready Outer Cover (1:1 mm)',
+      ? 'Bookbinder — Print-Ready Outer Cover Base (For HTV)'
+      : 'Bookbinder — Print-Ready Outer Cover',
   );
   pdfDoc.setCreator('Bookbinder Studio');
 
@@ -398,19 +401,41 @@ async function renderBaseCoverPdfPage(
       const tc = hexToRgb01(textLayer.color);
       const textColor = rgb(tc.r, tc.g, tc.b);
       const isFlipped = Boolean(textLayer.flipX || textLayer.flipY);
+      const rotDeg = normalizeQuarterTurn(textLayer.rotationDeg);
+      // PDF Y-axis points UP, so screen CW +rotDeg equals PDF CCW -rotDeg
+      const pdfRotDeg = rotDeg === 0 ? 0 : -rotDeg;
+      const layerAnchorXPt = toPdfX(textLayer.xMm);
+      const layerAnchorYPt = toPdfY(textLayer.yMm);
+      const rad = (pdfRotDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
 
       if (isFlipped) {
-        const layerAnchorXPt = toPdfX(textLayer.xMm);
-        const layerAnchorYPt = toPdfY(textLayer.yMm);
         const sx = textLayer.flipX ? -1 : 1;
         const sy = textLayer.flipY ? -1 : 1;
-        const tx = layerAnchorXPt * (1 - sx);
-        const ty = layerAnchorYPt * (1 - sy);
+        // Compose R(-rotDeg) * S(sx, sy) around (layerAnchorXPt, layerAnchorYPt)
+        const a = cos * sx;
+        const b = sin * sx;
+        const c = -sin * sy;
+        const d = cos * sy;
+        const e = layerAnchorXPt - a * layerAnchorXPt - c * layerAnchorYPt;
+        const f = layerAnchorYPt - b * layerAnchorXPt - d * layerAnchorYPt;
         page.pushOperators(
           pushGraphicsState(),
-          concatTransformationMatrix(sx, 0, 0, sy, tx, ty),
+          concatTransformationMatrix(a, b, c, d, e, f),
         );
       }
+
+      const rotateTextPt = (px: number, py: number): { readonly x: number; readonly y: number } => {
+        if (isFlipped || pdfRotDeg === 0) return { x: px, y: py };
+        const dx = px - layerAnchorXPt;
+        const dy = py - layerAnchorYPt;
+        return {
+          x: layerAnchorXPt + dx * cos - dy * sin,
+          y: layerAnchorYPt + dx * sin + dy * cos,
+        };
+      };
+      const drawRotate = !isFlipped && pdfRotDeg !== 0 ? degrees(pdfRotDeg) : undefined;
 
       for (const item of lineItems) {
         if (!item.text.trim()) continue;
@@ -441,22 +466,26 @@ async function renderBaseCoverPdfPage(
         if (Math.abs(trackingPt) > 0.05 && chars.length > 1) {
           let cursorX = startXPt;
           for (const ch of chars) {
+            const pt = rotateTextPt(cursorX, baseYPt);
             page.drawText(ch, {
-              x: cursorX,
-              y: baseYPt,
+              x: pt.x,
+              y: pt.y,
               size: item.fontSizePt,
               font: pdfFont,
               color: textColor,
+              rotate: drawRotate,
             });
             cursorX += pdfFont.widthOfTextAtSize(ch, item.fontSizePt) + trackingPt;
           }
         } else {
+          const pt = rotateTextPt(startXPt, baseYPt);
           page.drawText(item.text, {
-            x: startXPt,
-            y: baseYPt,
+            x: pt.x,
+            y: pt.y,
             size: item.fontSizePt,
             font: pdfFont,
             color: textColor,
+            rotate: drawRotate,
           });
         }
       }
@@ -538,6 +567,10 @@ export interface PrintReadyCoverPdfOptions {
   readonly tileOverlapMm?: number;
   /** Draw a 50 mm 1:1 calibration ruler bar for verifying 100% print scale. */
   readonly includeScaleBar?: boolean;
+  /** When true on 2-sheet softcover-jacket ('separate'), appends detached inner pockets page(s) to the exported PDF. */
+  readonly appendInnerPocketsPage?: boolean;
+  /** Sheet size for appended inner pockets page(s). Defaults to 'letter'. */
+  readonly innerPageSizeId?: PageSizeId;
   /** Skip DOM canvas rasterization (useful in headless/unit tests without HTML canvas). */
   readonly skipCanvasRaster?: boolean;
 }
@@ -571,10 +604,20 @@ export async function generatePrintReadyRollPdf(
   );
 
   const printMediaId = options?.printMediaId ?? options?.printMedia ?? 'exact-auto';
-  return layoutPdfToPrintMedia(sourceBytes, spec.totalWidthMm, spec.totalHeightMm, {
+  const outerBytes = await layoutPdfToPrintMedia(sourceBytes, spec.totalWidthMm, spec.totalHeightMm, {
     printMediaId,
     tileOverlapMm: options?.tileOverlapMm,
     includeScaleBar: options?.includeScaleBar,
     bleedMm: spec.bleedMm,
   });
+
+  if (
+    options?.appendInnerPocketsPage &&
+    geometry.bindingStyle === 'softcover-jacket' &&
+    geometry.softcoverPocketMode === 'separate'
+  ) {
+    return appendDetachedInnerPocketsPdf(outerBytes, geometry, options.innerPageSizeId ?? 'letter');
+  }
+
+  return outerBytes;
 }

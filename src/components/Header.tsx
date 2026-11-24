@@ -96,7 +96,7 @@ export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: H
               Bookbinder Studio
             </h1>
             <span className="hidden text-[11px] font-medium tracking-wide text-muted-foreground md:inline">
-              1:1 mm Hardcover Case &amp; Pocket Workbench
+              Book Cover &amp; Case Workbench
             </span>
           </div>
         </div>

@@ -144,11 +144,27 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('layer-flip-v-btn')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /scale\(-1 -1\)/);
 
-    // Toggle flips back off before continuing eyedropper sample
+    // Toggle flips back off, then test Rotate 90° cycle (90° -> 180° -> 270° -> 0°)
     await page.getByTestId('layer-flip-h-btn').click();
     await page.getByTestId('layer-flip-v-btn').click();
     await expect(page.getByTestId('layer-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('layer-flip-v-btn')).toHaveAttribute('aria-pressed', 'false');
+
+    const layerRotateBtn = page.getByTestId('layer-rotate-90-btn');
+    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(layerRotateBtn).toContainText('90°');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(90\)/);
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toContainText('180°');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(180\)/);
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toContainText('270°');
+    await expect(page.getByTestId('studio-layer-0')).toHaveAttribute('transform', /rotate\(270\)/);
+    await layerRotateBtn.click();
+    await expect(layerRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await expect(layerRotateBtn).toContainText('90°');
 
     await page.getByTestId('studio-eyedropper-both-btn').click();
     await expect(page.getByTestId('eyedropper-active-banner')).toBeVisible();
@@ -364,9 +380,25 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const widthAfterResize = Number(await pocketLayer.getAttribute('width'));
     expect(widthAfterResize).toBeGreaterThan(widthBeforeResize + 2);
 
-    // Copy to opposite pocket creates a 2nd interactive layer
+    // Copy to opposite pocket creates a 2nd interactive layer, then test Rotate 90° cycle on pocket artwork
     await page.getByTestId('pocket-copy-other-btn').click();
     await expect(page.getByTestId('pocket-layer-count-badge')).toHaveText('2 images');
+
+    const pocketRotateBtn = page.getByTestId('pocket-layer-rotate-90-btn');
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(pocketRotateBtn).toContainText('90°');
+    await expect(page.getByTestId('pocket-layer-1')).toHaveAttribute('transform', /rotate\(90\)/);
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toContainText('180°');
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toContainText('270°');
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    // Leave at 90° so Styled Pockets PDF export exercises rotated pocket image rendering
+    await pocketRotateBtn.click();
+    await expect(pocketRotateBtn).toHaveAttribute('aria-pressed', 'true');
 
     // Export Styled Pockets PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-styled-inner-pdf-btn').click();
@@ -671,6 +703,22 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('cover-text-flip-h-btn').click();
     await expect(page.getByTestId('cover-text-flip-h-btn')).toHaveAttribute('aria-pressed', 'false');
 
+    // Rotate Cover Text 90° -> 180° -> 270° -> 0° and leave at 90° for Cricut export verification
+    const textRotateBtn = page.getByTestId('cover-text-rotate-90-btn');
+    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(textRotateBtn).toContainText('90°');
+    await expect(page.getByTestId('studio-cover-text-0')).toHaveAttribute('transform', /rotate\(90\)/);
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toContainText('180°');
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toContainText('270°');
+    await textRotateBtn.click();
+    await expect(textRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await textRotateBtn.click();
+    await expect(page.getByTestId('studio-cover-text-0')).toHaveAttribute('transform', /rotate\(90\)/);
+
     // 2. Switch to Classic Designs tool dock tab, add a Double Rule Frame, test 1-click Margin Fit Presets, Spine Botanical Vine, and custom vector SVG stamp
     await page.getByTestId('studio-tool-designs').click();
     await page.getByTestId('add-ornament-frame-double-rule').click();
@@ -700,11 +748,30 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('ornament-cat-spine').click();
     await page.getByTestId('add-ornament-spine-botanical-vine').click();
 
-    // Flip ornament horizontally and vertically cleanly
+    // Flip ornament horizontally and vertically cleanly, then test Rotate 90° cycle
     await page.getByTestId('ornament-flip-h-btn').click();
     await expect(page.getByTestId('ornament-flip-h-btn')).toHaveAttribute('aria-pressed', 'true');
     await page.getByTestId('ornament-flip-v-btn').click();
     await expect(page.getByTestId('ornament-flip-v-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    const spineOrnRect = page.getByTestId('studio-ornament-1').locator('rect').first();
+    const ornW0 = Number(await spineOrnRect.getAttribute('width'));
+    const ornH0 = Number(await spineOrnRect.getAttribute('height'));
+    const ornRotateBtn = page.getByTestId('ornament-rotate-90-btn');
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'true');
+    await expect(ornRotateBtn).toContainText('90°');
+    expect(Number(await spineOrnRect.getAttribute('width'))).toBeCloseTo(ornH0, 1);
+    expect(Number(await spineOrnRect.getAttribute('height'))).toBeCloseTo(ornW0, 1);
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toContainText('180°');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toContainText('270°');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'false');
+    await ornRotateBtn.click();
+    await expect(ornRotateBtn).toHaveAttribute('aria-pressed', 'true');
 
     const customSvgStamp = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,5 65,40 95,50 65,60 50,95 35,60 5,50 35,40" fill="#000"/></svg>',
@@ -1479,5 +1546,65 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     const loadedPdf = await PDFDocument.load(pdfBytes);
     expect(loadedPdf.getPageCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  test('supports 2-Sheet Separate Glue-In Pockets on A6 Fold-and-Glue Slip Cover via Print PDF dialog', async ({
+    page,
+  }) => {
+    // 1. Configure A6 (105 × 148 × 8 mm) Fold-and-Glue Slip Cover with 50 mm flaps
+    await page.getByTestId('preset-select').click();
+    await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
+
+    const thicknessInput = page.getByTestId('input-pb-thickness');
+    await thicknessInput.fill('8');
+    await thicknessInput.blur();
+
+    await page.getByTestId('binding-style-select').click();
+    await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
+    await expect(page.getByTestId('pockets-builtin-badge')).toHaveText('Built-In');
+
+    const flapSlider = page.getByTestId('slider-jacket-flap-width');
+    await flapSlider.fill('50');
+
+    // 2. Open Print PDF dialog -> select US Letter -> shows 2 sheets (tiled) + pdf-detach-flaps-btn
+    await page.getByTestId('studio-export-pdf-btn').click();
+    const pdfDialog = page.getByTestId('pdf-export-dialog');
+    await expect(pdfDialog).toBeVisible();
+
+    await page.getByTestId('pdf-media-option-letter').click();
+    await expect(page.getByTestId('pdf-media-option-letter')).toContainText('2 sheets (tiled)');
+    const detachBtn = page.getByTestId('pdf-detach-flaps-btn');
+    await expect(detachBtn).toBeVisible();
+    await expect(detachBtn).toContainText('Detach Flaps → 1× US Letter + Separate Pockets');
+
+    // 3. Click Detach Flaps -> outer cover shrinks to 221 × 170 mm, flips immediately to 1 sheet, enables append-pockets
+    await detachBtn.click();
+    await expect(pdfDialog).toContainText('221.0 × 170.0 mm');
+    await expect(page.getByTestId('pdf-media-option-letter')).toContainText('1 sheet');
+    await expect(page.getByTestId('pdf-opt-append-pockets')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-export-summary')).toContainText('+ Pockets');
+
+    // 4. Confirm download -> verify 2-page PDF (Page 1 = US Letter Landscape outer shell, Page 2 = detached inner pockets)
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const download = await downloadPromise;
+    await expect(pdfDialog).toBeHidden();
+    expect(download.suggestedFilename()).toBe('outer_cover_print.pdf');
+
+    const pdfBytes = await readFile((await download.path())!);
+    expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    const mergedPdf = await PDFDocument.load(pdfBytes);
+    expect(mergedPdf.getPageCount()).toBe(2);
+    const p1 = mergedPdf.getPage(0).getSize();
+    expect(p1.width).toBeGreaterThan(p1.height); // US Letter Landscape outer shell
+    const p2 = mergedPdf.getPage(1).getSize();
+    expect(p2.height).toBeGreaterThan(p2.width); // US Letter Portrait detached inner pockets
+
+    // 5. Verify Inner Pockets tab no longer shows Built-In badge and renders detached 1-flap pockets
+    await expect(page.getByTestId('pockets-builtin-badge')).toBeHidden();
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
+    await expect(page.getByTestId('styled-front-pocket')).toBeVisible();
+    await expect(page.getByTestId('styled-back-pocket')).toBeVisible();
   });
 });

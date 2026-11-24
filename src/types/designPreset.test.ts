@@ -130,8 +130,8 @@ describe('CoverDesignPresetModel & presetStorage', () => {
         fontSizePt: 20,
         textColor: '#e6c97a',
       },
-      textLayers: [{ ...titleLayer, text: 'VOLUME I' }],
-      ornaments: [frameOrn, customSvg, spineBands],
+      textLayers: [{ ...titleLayer, text: 'VOLUME I', rotationDeg: 90 as const }],
+      ornaments: [{ ...frameOrn, rotationDeg: 180 as const }, customSvg, spineBands],
     };
 
     const captured = CoverDesignPresetModel.captureFromStudio(
@@ -186,6 +186,7 @@ describe('CoverDesignPresetModel & presetStorage', () => {
 
     const appliedFrame = applied.ornaments[0];
     expect(appliedFrame.presetId).toBe('frame-double-rule');
+    expect(appliedFrame.rotationDeg).toBe(180);
     expect(appliedFrame.widthMm).toBeGreaterThan(frameOrn.widthMm + 30);
     expect(appliedFrame.heightMm).toBeGreaterThan(frameOrn.heightMm + 60);
     expect(appliedFrame.xMm).toBeGreaterThanOrEqual(tradeFront.x);
@@ -203,6 +204,7 @@ describe('CoverDesignPresetModel & presetStorage', () => {
     const appliedText = applied.textLayers[0];
     expect(appliedText.xMm).toBeCloseTo(tradeFront.x + tradeFront.width / 2, 0);
     expect(appliedText.fontSizePt).toBe(titleLayer.fontSizePt);
+    expect(appliedText.rotationDeg).toBe(90);
   });
 
   it('gently scales built-in text font sizes for small A6 vs large Royal covers and keeps emblems square', () => {

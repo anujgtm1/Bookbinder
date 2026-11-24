@@ -18,7 +18,12 @@ import type {
 } from '@/types/coverElements';
 import { BUILT_IN_DESIGN_PRESETS, type CoverDesignPreset } from '@/types/designPreset';
 import type { CoverStudioState, SpineTypographyConfig } from '@/types/studio';
-import type { LayerClipZone, QuickFitTarget, StubExtensionMode } from '@/types/studioLayer';
+import type {
+  CoverImageLayer,
+  LayerClipZone,
+  QuickFitTarget,
+  StubExtensionMode,
+} from '@/types/studioLayer';
 import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
 import { ClassicDesignsCard } from './ClassicDesignsCard';
 import { CoverTextCard } from './CoverTextCard';
@@ -57,6 +62,7 @@ export interface CoverStudioToolDockProps {
   readonly onSetLayerClip: (id: string, clipZone: LayerClipZone) => void;
   readonly onScaleLayer: (id: string, factor: number) => void;
   readonly onToggleLayerFlip: (id: string, axis: 'x' | 'y') => void;
+  readonly onUpdateLayer: (id: string, patch: Partial<CoverImageLayer>) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
@@ -125,6 +131,7 @@ export function CoverStudioToolDock({
   onSetLayerClip,
   onScaleLayer,
   onToggleLayerFlip,
+  onUpdateLayer,
   onReorderLayer,
   onDeleteLayer,
   onUpdateStudio,
@@ -294,6 +301,7 @@ export function CoverStudioToolDock({
           onSetLayerClip={onSetLayerClip}
           onScaleLayer={onScaleLayer}
           onToggleLayerFlip={onToggleLayerFlip}
+          onUpdateLayer={onUpdateLayer}
           onReorderLayer={onReorderLayer}
           onDeleteLayer={onDeleteLayer}
           onUpdateStudio={onUpdateStudio}

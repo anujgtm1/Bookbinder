@@ -30,7 +30,7 @@ export interface CricutExportDialogProps {
 
 /**
  * Native modal <dialog closedby="any"> for Cricut Design Space / Silhouette Studio / ScanNCut
- * 1:1 mm vector HTV & foil SVG export with live preview and mat compatibility badges.
+ * Vector HTV & foil SVG export with live preview and mat compatibility badges.
  */
 export function CricutExportDialog({
   open,
@@ -217,7 +217,7 @@ export function CricutExportDialog({
             Cricut / Silhouette / ScanNCut HTV &amp; Foil SVG
           </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            1:1 physical millimeter SVG with flattened vector glyph paths (zero{' '}
+            Vector SVG with flattened glyph paths (zero{' '}
             <code className="font-mono text-[11px]">&lt;text&gt;</code> tags or raster images).
           </p>
         </div>
@@ -398,7 +398,7 @@ export function CricutExportDialog({
                     ? 'Exact Front Cover board area with front title, author, frames & emblems.'
                     : options.scope === 'back-cover'
                       ? 'Exact Back Cover board area with back blurb, colophon & ornaments.'
-                      : 'Full 1:1 mm wrap alignment across Back, Spine, and Front boards.'}
+                      : 'Full wrap alignment across Back, Spine, and Front boards.'}
               </p>
             </div>
 

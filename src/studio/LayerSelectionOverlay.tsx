@@ -1,5 +1,9 @@
 import type { Rect2D } from '@/types/geometry';
-import type { CoverImageLayer, ResizeCorner } from '@/types/studioLayer';
+import {
+  getLayerVisualRect,
+  type CoverImageLayer,
+  type ResizeCorner,
+} from '@/types/studioLayer';
 import type { ActiveSnapGuide } from './snapGuides';
 
 const CORNER_CURSORS: Readonly<Record<ResizeCorner, string>> = {
@@ -147,72 +151,75 @@ export function LayerSelectionOverlay({
       )}
 
       {/* Selection Frame & Corner Resize Handles for Selected Layer */}
-      {selectedLayer && !hideSelection && (
-        <g data-testid="studio-selection-handles">
-          {clipBoundaryRect && (
+      {selectedLayer && !hideSelection && (() => {
+        const visualRect = getLayerVisualRect(selectedLayer);
+        return (
+          <g data-testid="studio-selection-handles">
+            {clipBoundaryRect && (
+              <rect
+                x={clipBoundaryRect.x}
+                y={clipBoundaryRect.y}
+                width={clipBoundaryRect.width}
+                height={clipBoundaryRect.height}
+                fill="none"
+                stroke="#38bdf8"
+                strokeWidth="0.8"
+                strokeDasharray="3 2"
+                pointerEvents="none"
+              />
+            )}
             <rect
-              x={clipBoundaryRect.x}
-              y={clipBoundaryRect.y}
-              width={clipBoundaryRect.width}
-              height={clipBoundaryRect.height}
+              x={visualRect.x}
+              y={visualRect.y}
+              width={visualRect.width}
+              height={visualRect.height}
               fill="none"
-              stroke="#38bdf8"
-              strokeWidth="0.8"
-              strokeDasharray="3 2"
+              stroke="#dfb96a"
+              strokeWidth="1.25"
+              strokeDasharray="4 2"
               pointerEvents="none"
             />
-          )}
-          <rect
-            x={selectedLayer.xMm}
-            y={selectedLayer.yMm}
-            width={selectedLayer.widthMm}
-            height={selectedLayer.heightMm}
-            fill="none"
-            stroke="#dfb96a"
-            strokeWidth="1.25"
-            strokeDasharray="4 2"
-            pointerEvents="none"
-          />
-          {(
-            [
-              { corner: 'nw' as const, x: selectedLayer.xMm, y: selectedLayer.yMm },
-              {
-                corner: 'ne' as const,
-                x: selectedLayer.xMm + selectedLayer.widthMm,
-                y: selectedLayer.yMm,
-              },
-              {
-                corner: 'se' as const,
-                x: selectedLayer.xMm + selectedLayer.widthMm,
-                y: selectedLayer.yMm + selectedLayer.heightMm,
-              },
-              {
-                corner: 'sw' as const,
-                x: selectedLayer.xMm,
-                y: selectedLayer.yMm + selectedLayer.heightMm,
-              },
-            ] as const
-          ).map((handle) => (
-            <rect
-              key={handle.corner}
-              x={handle.x - handleCornerSizeMm / 2}
-              y={handle.y - handleCornerSizeMm / 2}
-              width={handleCornerSizeMm}
-              height={handleCornerSizeMm}
-              rx={1}
-              fill="#faf6ee"
-              stroke="#1e4d44"
-              strokeWidth="1.1"
-              style={{ cursor: CORNER_CURSORS[handle.corner] }}
-              data-testid={`resize-handle-${handle.corner}`}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                onStartResize(selectedLayer, handle.corner);
-              }}
-            />
-          ))}
-        </g>
-      )}
+            {(
+              [
+                { corner: 'nw' as const, x: visualRect.x, y: visualRect.y },
+                {
+                  corner: 'ne' as const,
+                  x: visualRect.x + visualRect.width,
+                  y: visualRect.y,
+                },
+                {
+                  corner: 'se' as const,
+                  x: visualRect.x + visualRect.width,
+                  y: visualRect.y + visualRect.height,
+                },
+                {
+                  corner: 'sw' as const,
+                  x: visualRect.x,
+                  y: visualRect.y + visualRect.height,
+                },
+              ] as const
+            ).map((handle) => (
+              <rect
+                key={handle.corner}
+                x={handle.x - handleCornerSizeMm / 2}
+                y={handle.y - handleCornerSizeMm / 2}
+                width={handleCornerSizeMm}
+                height={handleCornerSizeMm}
+                rx={1}
+                fill="#faf6ee"
+                stroke="#1e4d44"
+                strokeWidth="1.1"
+                style={{ cursor: CORNER_CURSORS[handle.corner] }}
+                data-testid={`resize-handle-${handle.corner}`}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onStartResize(selectedLayer, handle.corner);
+                }}
+              />
+            ))}
+          </g>
+        );
+      })()}
     </>
   );
 }

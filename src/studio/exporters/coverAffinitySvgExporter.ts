@@ -60,7 +60,13 @@ export function generateAffinityCoverSvg(
     .map((layer) => {
       const layerFont = escapeXml(resolveFontCssFamily(layer.fontId, customFont));
       const anchor = layer.align === 'left' ? 'start' : layer.align === 'right' ? 'end' : 'middle';
-      const flipTransform = buildPointFlipTransform(layer.xMm, layer.yMm, layer.flipX, layer.flipY);
+      const flipTransform = buildPointFlipTransform(
+        layer.xMm,
+        layer.yMm,
+        layer.flipX,
+        layer.flipY,
+        layer.rotationDeg,
+      );
       const indent = flipTransform ? '      ' : '    ';
       const lines = computeCoverTextLinePlacements(layer)
         .filter((item) => item.text.trim().length > 0)
@@ -104,7 +110,7 @@ export function generateAffinityCoverSvg(
      width="${fmtMm(spec.totalWidthMm)}mm"
      height="${fmtMm(spec.totalHeightMm)}mm"
      viewBox="0 0 ${fmtMm(spec.totalWidthMm)} ${fmtMm(spec.totalHeightMm)}">
-  <title>Composed Outer Cover — Affinity Round-Trip (1:1 mm, 300 DPI)</title>
+  <title>Composed Outer Cover — Affinity Round-Trip (300 DPI)</title>
   <g id="artwork-layer">
 ${artworkLayer}
   </g>

@@ -1,6 +1,7 @@
 import { loadHtmlImage } from '@/lib/canvasImage';
 import type { CaseGeometry } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
+import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI } from '@/types/units';
 import {
   computeCoverTextLinePlacements,
@@ -73,13 +74,19 @@ export async function renderCoverArtworkCanvas(
       toPx(clipRect.height),
     );
     ctx.clip();
-    if (layer.flipX || layer.flipY) {
+    const layerRot = normalizeQuarterTurn(layer.rotationDeg);
+    if (layer.flipX || layer.flipY || layerRot !== 0) {
       const cx = toPx(layer.xMm + layer.widthMm / 2);
       const cy = toPx(layer.yMm + layer.heightMm / 2);
       const wPx = toPx(layer.widthMm);
       const hPx = toPx(layer.heightMm);
       ctx.translate(cx, cy);
-      ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+      if (layerRot !== 0) {
+        ctx.rotate((layerRot * Math.PI) / 180);
+      }
+      if (layer.flipX || layer.flipY) {
+        ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+      }
       ctx.drawImage(img, -wPx / 2, -hPx / 2, wPx, hPx);
     } else {
       ctx.drawImage(
@@ -123,11 +130,17 @@ export async function renderCoverArtworkCanvas(
       const fontFamily = resolveFontCssFamily(textLayer.fontId, customFont);
       const lineItems = computeCoverTextLinePlacements(textLayer);
       ctx.save();
-      if (textLayer.flipX || textLayer.flipY) {
+      const textRot = normalizeQuarterTurn(textLayer.rotationDeg);
+      if (textLayer.flipX || textLayer.flipY || textRot !== 0) {
         const cx = toPx(textLayer.xMm);
         const cy = toPx(textLayer.yMm);
         ctx.translate(cx, cy);
-        ctx.scale(textLayer.flipX ? -1 : 1, textLayer.flipY ? -1 : 1);
+        if (textRot !== 0) {
+          ctx.rotate((textRot * Math.PI) / 180);
+        }
+        if (textLayer.flipX || textLayer.flipY) {
+          ctx.scale(textLayer.flipX ? -1 : 1, textLayer.flipY ? -1 : 1);
+        }
         ctx.translate(-cx, -cy);
       }
       ctx.fillStyle = textLayer.color;

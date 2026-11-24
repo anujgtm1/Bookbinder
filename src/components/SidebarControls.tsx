@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { evaluateFlapDepth, getBindingStrategy } from '@/core/bindingStyles';
+import { evaluateFlapDepth, resolveBindingStrategy } from '@/core/bindingStyles';
 import { calculateMaxSlipFlapForSheetMm, resolveSlipFlapWidthMm } from '@/core/geometry';
 import { A4_SHEET, ROLL_TOTAL_MARGIN_MM, US_LETTER_SHEET } from '@/resources/paperSpecs';
 import {
@@ -127,12 +127,13 @@ export function SidebarControls({
   const [constructionOpen, setConstructionOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  const strategy = getBindingStrategy(params.bindingStyle);
+  const strategy = resolveBindingStrategy(params);
   const { capabilities, flapConfig } = strategy;
+  const pocketMode = params.softcoverPocketMode ?? 'integrated';
   const activePreset = BookParametersModel.detectPreset(params);
   const validation = BookParametersModel.validate(params);
   const effectiveFlapMm = resolveSlipFlapWidthMm(params);
-  const flapDepthEval = evaluateFlapDepth(params.bindingStyle, params.pbWidthMm, effectiveFlapMm);
+  const flapDepthEval = evaluateFlapDepth(params, params.pbWidthMm, effectiveFlapMm);
   const computeFlapForSheet = (sheetLongMm: number) =>
     strategy.computeMaxFlapWidthForSheet
       ? strategy.computeMaxFlapWidthForSheet(params, sheetLongMm - ROLL_TOTAL_MARGIN_MM)
@@ -220,6 +221,49 @@ export function SidebarControls({
           </button>
         )}
       </div>
+
+      {/* Pocket Construction Mode (Fold-and-Glue Slip Cover: 1-Piece Integrated Flaps vs Separate 2-Sheet Pockets) */}
+      {params.bindingStyle === 'softcover-jacket' && (
+        <div
+          data-testid="softcover-pocket-mode-controls"
+          className="space-y-1.5 rounded-md border border-border/80 bg-secondary/35 p-2.5"
+        >
+          <span className="text-xs font-medium text-foreground">Pocket Construction</span>
+          <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Pocket construction">
+            <button
+              type="button"
+              aria-pressed={pocketMode === 'integrated'}
+              data-testid="softcover-pocket-mode-integrated"
+              onClick={() => update({ softcoverPocketMode: 'integrated' })}
+              className={`cursor-pointer rounded border px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                pocketMode === 'integrated'
+                  ? 'border-primary bg-primary/15 text-primary'
+                  : 'border-border bg-card text-foreground hover:bg-muted'
+              }`}
+            >
+              1-Piece Flaps
+            </button>
+            <button
+              type="button"
+              aria-pressed={pocketMode === 'separate'}
+              data-testid="softcover-pocket-mode-separate"
+              onClick={() => update({ softcoverPocketMode: 'separate' })}
+              className={`cursor-pointer rounded border px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                pocketMode === 'separate'
+                  ? 'border-primary bg-primary/15 text-primary'
+                  : 'border-border bg-card text-foreground hover:bg-muted'
+              }`}
+            >
+              Separate Pockets (2-Sheet)
+            </button>
+          </div>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            {pocketMode === 'separate'
+              ? 'Seamless outer cover prints on Sheet 1 (zero tape seam); deep fore-edge slip pockets unlock in Inner Pockets & Sheet 2.'
+              : 'All-in-one sheet with built-in left/right tuck flaps and 4 wrap-over glue tabs.'}
+          </p>
+        </div>
+      )}
 
       {/* Adjustable Flap Width Controls (Flap-equipped cover styles: Slip Cover & Classic Dust Jacket) */}
       {capabilities.hasFlaps && flapConfig && flapDepthEval && (
@@ -411,12 +455,12 @@ export function SidebarControls({
           {(() => {
             const spec = getPrintMediaSpec(params.printMedia);
             if (spec.kind === 'auto') {
-              return 'Exports exact 1:1 mm wrap size; choose a sheet size to center or auto-tile.';
+              return 'Exports exact wrap size; choose a sheet size to center or auto-tile.';
             }
             if (spec.kind === 'sheet') {
               return 'Print PDF centers on 1 sheet or auto-tiles across 2 sheets with a 10 mm overlap.';
             }
-            return 'Exports exact 1:1 mm roll PDF and checks fit against your selected roll width.';
+            return 'Exports exact roll PDF and checks fit against your selected roll width.';
           })()}
         </p>
       </div>

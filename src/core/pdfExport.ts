@@ -10,7 +10,7 @@ import {
   type SpineLinerGeometry,
 } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
-import { getBindingStrategy } from './bindingStyles';
+import { resolveBindingStrategy } from './bindingStyles';
 import { layoutPdfToPrintMedia, type PdfSheetLayoutOptions } from './pdfSheetLayout';
 
 const PAGE_MARGIN_MM = 7.5;
@@ -541,7 +541,7 @@ function renderCalibrationAndLegend(
   const muted = rgb(0.38, 0.38, 0.38);
 
   writer.drawText('BOOKBINDER STUDIO', x, y + 3, boldFont, 8.5, dark);
-  writer.drawText('Inner Pockets & Spine Liner (1:1 mm)', x, y + 8, font, 6.8, muted);
+  writer.drawText('Inner Pockets & Spine Liner', x, y + 8, font, 6.8, muted);
 
   // Exact 50.0 mm x 50.0 mm Calibration Square
   const sqY = y + 12;
@@ -557,8 +557,7 @@ function renderCalibrationAndLegend(
   writer.drawLine({ x: midX, y: midY - 4 }, { x: midX, y: midY + 4 }, { color: muted, thicknessPt: 0.5 });
 
   writer.drawText('50.0 mm × 50.0 mm', x + 7, sqY + 18, boldFont, 8, dark);
-  writer.drawText('Verify 50mm × 50mm', x + 5, sqY + 33, font, 6.8, dark);
-  writer.drawText('Print at 100% / Actual Size', x + 3, sqY + 39, font, 6.5, muted);
+  writer.drawText('50 mm Scale Check', x + 7, sqY + 35, font, 6.8, muted);
 
   // Visual Legend
   const legY = sqY + CALIBRATION_SIZE_MM + 7;
@@ -609,7 +608,7 @@ export async function generateInnerTemplatesPdf(
     includeLegend: options?.includeLegend,
   });
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle('Bookbinder — Inner Pockets & Spine Liner (1:1 mm)');
+  pdfDoc.setTitle('Bookbinder — Inner Pockets & Spine Liner');
   pdfDoc.setCreator('Bookbinder Studio');
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -622,7 +621,7 @@ export async function generateInnerTemplatesPdf(
   for (let i = 0; i < plan.pageCount; i++) {
     const page = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
     pages.push(page);
-    const footer = `Page ${i + 1} of ${plan.pageCount} • ${PAGE_SIZES[pageSizeId].label} • Scale 1:1 mm (Print at 100% Actual Size)`;
+    const footer = `Page ${i + 1} of ${plan.pageCount} • ${PAGE_SIZES[pageSizeId].label}`;
     page.drawText(footer, {
       x: UnitConverter.mmToPoints(PAGE_MARGIN_MM),
       y: UnitConverter.mmToPoints(4.5),
@@ -676,6 +675,33 @@ export async function generateInnerTemplatesPdf(
   return { bytes, plan };
 }
 
+export interface OuterWrapPdfOptions extends PdfSheetLayoutOptions {
+  /** When true on 2-sheet softcover-jacket ('separate'), appends detached inner pockets page(s) to the exported PDF. */
+  readonly appendInnerPocketsPage?: boolean;
+  /** Sheet size for appended inner pockets page(s). Defaults to 'letter'. */
+  readonly innerPageSizeId?: PageSizeId;
+}
+
+/**
+ * Appends detached inner pockets template page(s) onto an already-generated outer cover PDF.
+ */
+export async function appendDetachedInnerPocketsPdf(
+  outerBytes: Uint8Array,
+  geometry: CaseGeometry,
+  innerPageSizeId: PageSizeId = 'letter',
+): Promise<Uint8Array> {
+  const { bytes: innerBytes } = await generateInnerTemplatesPdf(geometry, innerPageSizeId, {
+    includeLegend: false,
+  });
+  const mergedDoc = await PDFDocument.load(outerBytes);
+  const innerDoc = await PDFDocument.load(innerBytes);
+  const copiedPages = await mergedDoc.copyPages(innerDoc, innerDoc.getPageIndices());
+  for (const copiedPage of copiedPages) {
+    mergedDoc.addPage(copiedPage);
+  }
+  return mergedDoc.save();
+}
+
 /**
  * Generates an exact 1:1 physical mm structural PDF for the Outer Case Wrap
  * (1 page for Single-Piece Continuous Wrap; 3 pages for 3-Piece Quarter-Bound Split).
@@ -683,13 +709,13 @@ export async function generateInnerTemplatesPdf(
 export async function generateOuterWrapPdf(
   geometry: CaseGeometry,
   splitMode: SplitMode,
-  options?: PdfSheetLayoutOptions,
+  options?: OuterWrapPdfOptions,
 ): Promise<Uint8Array> {
   const { outerWrap, splitPanels, cutList } = geometry;
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
 
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle('Bookbinder — Outer Case Wrap Structural Template (1:1 mm)');
+  pdfDoc.setTitle('Bookbinder — Outer Case Wrap Structural Template');
   pdfDoc.setCreator('Bookbinder Studio');
 
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -739,7 +765,7 @@ export async function generateOuterWrapPdf(
       const cy = pageH / 2;
       writer.drawText(panel.label.toUpperCase(), cx - 32, cy - 3, boldFont, 9, guideColor);
       writer.drawText(
-        `${roundTo(panel.widthMm, 1)} × ${roundTo(panel.heightMm, 1)} mm • Scale 1:1 mm`,
+        `${roundTo(panel.widthMm, 1)} × ${roundTo(panel.heightMm, 1)} mm`,
         cx - 32,
         cy + 5,
         font,
@@ -766,7 +792,7 @@ export async function generateOuterWrapPdf(
   }
 
   const shiftedCut = GeometryPrimitives.translatePolygon(outerWrap.outerCutPolygon, bleed, bleed);
-  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const strategy = resolveBindingStrategy(outerWrap);
   const { capabilities, panelLabels } = strategy;
   const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;
 
@@ -895,14 +921,23 @@ export async function generateOuterWrapPdf(
 
   const baseBytes = await pdfDoc.save();
 
-  if (options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)) {
-    return layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
-      ...options,
-      bleedMm: options.bleedMm ?? bleed,
-      documentTitle:
-        options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template (1:1 mm)',
-    });
+  const outerBytes =
+    options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)
+      ? await layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
+          ...options,
+          bleedMm: options.bleedMm ?? bleed,
+          documentTitle:
+            options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template',
+        })
+      : baseBytes;
+
+  if (
+    options?.appendInnerPocketsPage &&
+    geometry.bindingStyle === 'softcover-jacket' &&
+    geometry.softcoverPocketMode === 'separate'
+  ) {
+    return appendDetachedInnerPocketsPdf(outerBytes, geometry, options.innerPageSizeId ?? 'letter');
   }
 
-  return baseBytes;
+  return outerBytes;
 }

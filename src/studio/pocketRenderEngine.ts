@@ -8,7 +8,11 @@ import { canvasToPngBytes, loadHtmlImage } from '@/lib/canvasImage';
 import type { PageSizeId } from '@/types/bookParams';
 import type { CaseGeometry, Polygon2D, Rect2D } from '@/types/geometry';
 import type { PocketImageFitMode, PocketStyleConfig } from '@/types/studio';
-import type { CoverImageLayer } from '@/types/studioLayer';
+import {
+  getLayerVisualRect,
+  normalizeQuarterTurn,
+  type CoverImageLayer,
+} from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
 
 export interface PocketImagePlacement {
@@ -256,38 +260,46 @@ async function renderStyledPiecePng(
     for (const { layer, image } of loadedLayers) {
       const localX = layer.xMm - piece.offsetX;
       const localY = layer.yMm - piece.offsetY;
-      const drawLayerImage = (dx: number, dy: number, dw: number, dh: number) => {
-        if (layer.flipX || layer.flipY) {
+      const rot = normalizeQuarterTurn(layer.rotationDeg);
+      const drawCenteredImage = (cx: number, cy: number, dw: number, dh: number) => {
+        if (layer.flipX || layer.flipY || rot !== 0) {
           ctx.save();
-          ctx.translate(dx + dw / 2, dy + dh / 2);
-          ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+          ctx.translate(cx, cy);
+          if (rot !== 0) {
+            ctx.rotate((rot * Math.PI) / 180);
+          }
+          if (layer.flipX || layer.flipY) {
+            ctx.scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1);
+          }
           ctx.drawImage(image, -dw / 2, -dh / 2, dw, dh);
           ctx.restore();
         } else {
-          ctx.drawImage(image, dx, dy, dw, dh);
+          ctx.drawImage(image, cx - dw / 2, cy - dh / 2, dw, dh);
         }
       };
       if (layer.tiled) {
-        const tileW = Math.max(8, layer.widthMm) * pxPerMm;
-        const tileH = Math.max(8, layer.heightMm) * pxPerMm;
-        const originX = (((localX * pxPerMm) % tileW) + tileW) % tileW;
-        const originY = (((localY * pxPerMm) % tileH) + tileH) % tileH;
-        const startX = originX > 0 ? originX - tileW : 0;
-        const startY = originY > 0 ? originY - tileH : 0;
+        const imgW = Math.max(8, layer.widthMm) * pxPerMm;
+        const imgH = Math.max(8, layer.heightMm) * pxPerMm;
+        const cellW = rot === 90 || rot === 270 ? imgH : imgW;
+        const cellH = rot === 90 || rot === 270 ? imgW : imgH;
+        const vis = getLayerVisualRect(layer);
+        const localVisX = vis.x - piece.offsetX;
+        const localVisY = vis.y - piece.offsetY;
+        const originX = (((localVisX * pxPerMm) % cellW) + cellW) % cellW;
+        const originY = (((localVisY * pxPerMm) % cellH) + cellH) % cellH;
+        const startX = originX > 0 ? originX - cellW : 0;
+        const startY = originY > 0 ? originY - cellH : 0;
         const endX = piece.widthMm * pxPerMm;
         const endY = piece.heightMm * pxPerMm;
-        for (let y = startY; y < endY; y += tileH) {
-          for (let x = startX; x < endX; x += tileW) {
-            drawLayerImage(x, y, tileW, tileH);
+        for (let y = startY; y < endY; y += cellH) {
+          for (let x = startX; x < endX; x += cellW) {
+            drawCenteredImage(x + cellW / 2, y + cellH / 2, imgW, imgH);
           }
         }
       } else {
-        drawLayerImage(
-          localX * pxPerMm,
-          localY * pxPerMm,
-          layer.widthMm * pxPerMm,
-          layer.heightMm * pxPerMm,
-        );
+        const dw = layer.widthMm * pxPerMm;
+        const dh = layer.heightMm * pxPerMm;
+        drawCenteredImage(localX * pxPerMm + dw / 2, localY * pxPerMm + dh / 2, dw, dh);
       }
     }
     ctx.restore();

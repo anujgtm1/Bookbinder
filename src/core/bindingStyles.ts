@@ -1,12 +1,21 @@
 import { BINDING_STYLES } from '@/resources/paperSpecs';
-import type { BindingStyle, BindingStyleOption, BookParameters } from '@/types/bookParams';
 import type {
+  BindingStyle,
+  BindingStyleOption,
+  BookParameters,
+  PrintMediaId,
+  SoftcoverPocketMode,
+} from '@/types/bookParams';
+import type {
+  CaseGeometry,
   ChipboardCutList,
   LineSegment2D,
   OuterWrapGeometry,
   Polygon2D,
+  PrintMediaFitEvaluation,
 } from '@/types/geometry';
 import { roundTo } from '@/types/units';
+import { evaluatePrintMediaFit } from './geometry';
 
 const SOFTCOVER_GLUE_TAB_H_MM = 10.0;
 
@@ -302,7 +311,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       'Cut 2 cover boards + 1 rigid spine strip from chipboard; wrap with bookcloth or heavy cover paper.',
     buildExportNote(outerWrap) {
-      return `Outer Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm • 45° Miter Clearance ${roundTo(outerWrap.miterGapMm, 2)} mm • Scale 1:1 mm`;
+      return `Outer Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm • 45° Miter Clearance ${roundTo(outerWrap.miterGapMm, 2)} mm`;
     },
     calculateCutList(params) {
       const boardWidthMm = params.pbWidthMm + params.overhangForeEdgeMm;
@@ -350,7 +359,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       'Cut 2 cover boards (no spine board); bridge the center gap with flexible bookcloth or heavy paper.',
     buildExportNote(outerWrap, cutList) {
-      return `Flexible-Spine Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Cloth Spine Gap ${roundTo(cutList.spineStrip.widthMm, 2)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm • Scale 1:1 mm`;
+      return `Flexible-Spine Wrap ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Cloth Spine Gap ${roundTo(cutList.spineStrip.widthMm, 2)} mm • Turn-In ${roundTo(outerWrap.turnInMm, 2)} mm`;
     },
     calculateCutList(params) {
       const boardWidthMm = params.pbWidthMm + params.overhangForeEdgeMm;
@@ -588,7 +597,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       '0 chipboard — print on 130–200 gsm coated or matte paper, score 4 vertical folds, and wrap over an existing cover (no glue).',
     buildExportNote(outerWrap) {
-      return `Dust Jacket ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • ${roundTo(outerWrap.jacketFlapWidthMm, 2)} mm fold-in flaps • Score 4 vertical folds (no glue) • Scale 1:1 mm`;
+      return `Dust Jacket ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • ${roundTo(outerWrap.jacketFlapWidthMm, 2)} mm fold-in flaps • Score 4 vertical folds (no glue)`;
     },
     calculateCutList(params) {
       // Real publisher dust jacket wrap ease over an existing cover:
@@ -697,7 +706,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
     materialNote:
       '0 chipboard — print on 220–300 gsm cover cardstock, score 2 spine folds, and glue directly onto the paperback textblock spine.',
     buildExportNote(outerWrap) {
-      return `Paperback Cover ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Score 2 spine folds & glue spine to textblock • Scale 1:1 mm`;
+      return `Paperback Cover ${fmtDim(outerWrap.widthMm, outerWrap.heightMm)} • Score 2 spine folds & glue spine to textblock`;
     },
     calculateCutList(params) {
       const coverWidthMm = roundTo(params.pbWidthMm, 2);
@@ -768,6 +777,145 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
   },
 };
 
+export const SOFTCOVER_SEPARATE_POCKETS_STRATEGY: BindingStyleStrategy = {
+  ...getStyleMeta('softcover-jacket'),
+  summary:
+    '0-board 2-sheet slip cover — seamless outer shell with 4 wrap-over glue tabs + detached fore-edge inner pockets on Sheet 2.',
+  capabilities: {
+    usesChipboard: false,
+    hasRigidSpine: false,
+    hasHingeSpacers: false,
+    supportsThreePieceSplit: false,
+    usesInnerPockets: true,
+    hasFlaps: false,
+    hasGlueTabs: true,
+    hasTurnIns: false,
+  },
+  panelLabels: {
+    back: 'BACK COVER',
+    spine: 'SPINE',
+    front: 'FRONT COVER',
+  },
+  materialNote:
+    '0 Chipboard (2-Sheet Slip Cover — seamless outer shell + separate inner pockets on Sheet 2; 200–250 gsm cardstock).',
+  buildExportNote() {
+    return '2-SHEET SLIP COVER: 1. Glue detached fore-edge pockets inside Front & Back covers  2. Fold & glue 4 tabs over pockets';
+  },
+  calculateCutList(params) {
+    return BINDING_STYLE_STRATEGIES['softcover-jacket'].calculateCutList(params);
+  },
+  calculateOuterWrap(params, cutList) {
+    const coverW = cutList.coverBoards.widthMm;
+    const coverH = cutList.coverBoards.heightMm;
+    const spineW = cutList.spineStrip.widthMm;
+    const tabH = SOFTCOVER_GLUE_TAB_H_MM;
+
+    const innerWidthMm = roundTo(coverW + spineW + coverW, 3);
+    const widthMm = innerWidthMm;
+    const heightMm = roundTo(coverH + tabH * 2, 3);
+
+    const x0 = 0;
+    const x1 = coverW;
+    const x2 = roundTo(coverW + spineW, 3);
+    const x3 = widthMm;
+    const y0 = 0;
+    const y1 = tabH;
+    const y2 = roundTo(tabH + coverH, 3);
+    const y3 = heightMm;
+    const m = roundTo(Math.min(tabH, coverW * 0.35), 2);
+
+    // 12-vertex clockwise polygon: flush fore-edges (x0, x3), 4 mitered wrap-over glue tabs
+    // spanning Back Cover (0..coverW) and Front Cover (coverW+spineW..widthMm), stepping inward at spine.
+    const outerCutPolygon: Polygon2D = [
+      { x: x0, y: y0 },
+      { x: x1 - m, y: y0 },
+      { x: x1, y: y1 },
+      { x: x2, y: y1 },
+      { x: x2 + m, y: y0 },
+      { x: x3, y: y0 },
+      { x: x3, y: y3 },
+      { x: x2 + m, y: y3 },
+      { x: x2, y: y2 },
+      { x: x1, y: y2 },
+      { x: x1 - m, y: y3 },
+      { x: x0, y: y3 },
+    ];
+
+    const jacketGlueTabPolygons: readonly Polygon2D[] = [
+      // Back Cover Top Wrap-Over Glue Tab
+      [
+        { x: x0, y: y1 },
+        { x: x0, y: y0 },
+        { x: x1 - m, y: y0 },
+        { x: x1, y: y1 },
+      ],
+      // Front Cover Top Wrap-Over Glue Tab
+      [
+        { x: x2, y: y1 },
+        { x: x2 + m, y: y0 },
+        { x: x3, y: y0 },
+        { x: x3, y: y1 },
+      ],
+      // Front Cover Bottom Wrap-Over Glue Tab
+      [
+        { x: x2, y: y2 },
+        { x: x3, y: y2 },
+        { x: x3, y: y3 },
+        { x: x2 + m, y: y3 },
+      ],
+      // Back Cover Bottom Wrap-Over Glue Tab
+      [
+        { x: x0, y: y2 },
+        { x: x1, y: y2 },
+        { x: x1 - m, y: y3 },
+        { x: x0, y: y3 },
+      ],
+    ];
+
+    const foldLines: LineSegment2D[] = [
+      // 2 vertical spine fold lines
+      { x1: x1, y1: y1, x2: x1, y2: y2, label: 'Back Spine Fold' },
+      { x1: x2, y1: y1, x2: x2, y2: y2, label: 'Front Spine Fold' },
+      // 4 horizontal glue-tab fold lines
+      { x1: x0, y1: y1, x2: x1, y2: y1, label: 'Back Top Glue Tab Fold' },
+      { x1: x2, y1: y1, x2: x3, y2: y1, label: 'Front Top Glue Tab Fold' },
+      { x1: x2, y1: y2, x2: x3, y2: y2, label: 'Front Bottom Glue Tab Fold' },
+      { x1: x0, y1: y2, x2: x1, y2: y2, label: 'Back Bottom Glue Tab Fold' },
+    ];
+
+    return {
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+      widthMm,
+      heightMm,
+      innerWidthMm,
+      turnInMm: 0,
+      jacketFlapWidthMm: 0,
+      jacketGlueTabHeightMm: tabH,
+      jacketGlueTabPolygons,
+      bleedMm: params.bleedMm,
+      includeBleed: params.includeBleed,
+      miterGapMm: 0,
+      miterCutLegMm: 0,
+      outerCutPolygon,
+      foldLines,
+      bleedRect: buildBleedRect(widthMm, heightMm, params.bleedMm, params.includeBleed),
+      backBoardRect: { x: x0, y: y1, width: coverW, height: coverH },
+      leftHingeRect: { x: x1, y: y1, width: 0, height: coverH },
+      spineRect: { x: x1, y: y1, width: spineW, height: coverH },
+      rightHingeRect: { x: x2, y: y1, width: 0, height: coverH },
+      frontBoardRect: { x: x2, y: y1, width: coverW, height: coverH },
+    };
+  },
+};
+
+export type BindingStrategySource =
+  | BindingStyle
+  | {
+      readonly bindingStyle?: BindingStyle;
+      readonly softcoverPocketMode?: SoftcoverPocketMode;
+    };
+
 export function getBindingStrategy(style?: BindingStyle): BindingStyleStrategy {
   if (style && style in BINDING_STYLE_STRATEGIES) {
     return BINDING_STYLE_STRATEGIES[style];
@@ -775,16 +923,29 @@ export function getBindingStrategy(style?: BindingStyle): BindingStyleStrategy {
   return BINDING_STYLE_STRATEGIES['rigid-case'];
 }
 
+export function resolveBindingStrategy(source?: BindingStrategySource): BindingStyleStrategy {
+  if (typeof source === 'object' && source !== null) {
+    if (
+      source.bindingStyle === 'softcover-jacket' &&
+      source.softcoverPocketMode === 'separate'
+    ) {
+      return SOFTCOVER_SEPARATE_POCKETS_STRATEGY;
+    }
+    return getBindingStrategy(source.bindingStyle);
+  }
+  return getBindingStrategy(source);
+}
+
 export function listBindingStrategies(): readonly BindingStyleStrategy[] {
   return BINDING_STYLES.map((opt) => BINDING_STYLE_STRATEGIES[opt.id]);
 }
 
 export function evaluateFlapDepth(
-  style: BindingStyle,
+  source: BindingStrategySource,
   pbWidthMm: number,
   currentFlapMm: number,
 ): FlapDepthEvaluation | null {
-  const strategy = getBindingStrategy(style);
+  const strategy = resolveBindingStrategy(source);
   if (!strategy.capabilities.hasFlaps || !strategy.flapConfig) {
     return null;
   }
@@ -800,5 +961,59 @@ export function evaluateFlapDepth(
     minRecommendedMm,
     coverWidthPct,
     isTooShallow,
+  };
+}
+
+export interface DetachedSlipCoverFitEvaluation {
+  readonly fitsSingleSheet: boolean;
+  readonly detachedWidthMm: number;
+  readonly detachedHeightMm: number;
+  readonly fit: PrintMediaFitEvaluation;
+}
+
+/**
+ * Evaluates whether detaching a 1-piece Fold-and-Glue Slip Cover's integrated flaps into
+ * Separate Glue-In Pockets (Sheet 2) allows the seamless outer shell to fit cleanly on 1× `mediaId`.
+ * Returns null when not on integrated `softcover-jacket`.
+ */
+export function evaluateDetachedSlipCoverFit(
+  source:
+    | Pick<
+        BookParameters,
+        'bindingStyle' | 'softcoverPocketMode' | 'pbWidthMm' | 'pbHeightMm' | 'pbThicknessMm'
+      >
+    | CaseGeometry,
+  mediaId: PrintMediaId,
+): DetachedSlipCoverFitEvaluation | null {
+  if (
+    source.bindingStyle !== 'softcover-jacket' ||
+    (source.softcoverPocketMode ?? 'integrated') !== 'integrated'
+  ) {
+    return null;
+  }
+
+  let detachedWidthMm: number;
+  let detachedHeightMm: number;
+
+  if ('outerWrap' in source) {
+    detachedWidthMm = roundTo(source.outerWrap.innerWidthMm, 3);
+    detachedHeightMm = roundTo(
+      source.cutList.coverBoards.heightMm + SOFTCOVER_GLUE_TAB_H_MM * 2,
+      3,
+    );
+  } else {
+    const coverW = roundTo(source.pbWidthMm + 1.0, 2);
+    const coverH = roundTo(source.pbHeightMm + 2.0, 2);
+    const spineW = roundTo(source.pbThicknessMm + 1.0, 2);
+    detachedWidthMm = roundTo(coverW * 2 + spineW, 3);
+    detachedHeightMm = roundTo(coverH + SOFTCOVER_GLUE_TAB_H_MM * 2, 3);
+  }
+
+  const fit = evaluatePrintMediaFit(mediaId, detachedWidthMm, detachedHeightMm);
+  return {
+    fitsSingleSheet: fit.status === 'fits-1-sheet',
+    detachedWidthMm,
+    detachedHeightMm,
+    fit,
   };
 }

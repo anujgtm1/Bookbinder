@@ -27,6 +27,8 @@ export type BindingStyle =
   | 'dust-jacket'
   | 'paperback-wrap';
 
+export type SoftcoverPocketMode = 'integrated' | 'separate';
+
 export function isBoardlessBinding(style: BindingStyle): boolean {
   return !getBindingStrategy(style).capabilities.usesChipboard;
 }
@@ -133,6 +135,8 @@ export interface BookParameters {
   printMedia: PrintMediaId;
   /** Optional custom flap width in mm for softcover-jacket or dust-jacket (undefined = auto default) */
   jacketFlapWidthMm?: number;
+  /** Optional pocket construction mode for softcover-jacket ('integrated' 1-piece flaps vs 'separate' 2-sheet glue-in pockets) */
+  softcoverPocketMode?: SoftcoverPocketMode;
   /** UI display unit (exports remain strictly 1:1 mm) */
   unit: UnitSystem;
 }
@@ -209,6 +213,13 @@ function parsePrintMedia(value: unknown): PrintMediaId {
   return DEFAULT_BOOK_PARAMETERS.printMedia;
 }
 
+function parseSoftcoverPocketMode(value: unknown): SoftcoverPocketMode | undefined {
+  if (value === 'separate' || value === 'integrated') {
+    return value;
+  }
+  return undefined;
+}
+
 export const BookParametersModel = {
   createDefault(): BookParameters {
     return { ...DEFAULT_BOOK_PARAMETERS };
@@ -242,6 +253,7 @@ export const BookParametersModel = {
             b.jacketFlapWidthMm.max,
           )
         : undefined;
+    const softcoverPocketMode = parseSoftcoverPocketMode(partial.softcoverPocketMode);
 
     return {
       bindingStyle: parseBindingStyle(partial.bindingStyle),
@@ -310,6 +322,7 @@ export const BookParametersModel = {
       pdfPageSize: parsePageSize(partial.pdfPageSize),
       printMedia: parsePrintMedia(partial.printMedia),
       ...(jacketFlapWidthMm !== undefined ? { jacketFlapWidthMm } : {}),
+      ...(softcoverPocketMode !== undefined ? { softcoverPocketMode } : {}),
       unit: UnitConverter.parseUnitSystem(partial.unit, d.unit),
     };
   },

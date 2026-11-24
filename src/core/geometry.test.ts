@@ -245,14 +245,12 @@ describe('calculateCaseGeometry', () => {
     expect(deepGeom.outerWrap.widthMm).toBeCloseTo(294.0, 2);
     expect(deepGeom.outerWrap.heightMm).toBeCloseTo(170.0, 2);
     expect(deepGeom.rollRecommendation.fits).toBe(true);
-    expect(deepGeom.rollRecommendation.summary).toBe(
-      'Fits on 1× US Legal (8.5 × 14") home sheet (100% actual size)',
-    );
+    expect(deepGeom.rollRecommendation.summary).toBe('Fits on 1× US Legal (8.5 × 14") home sheet');
 
     // Direct evaluateRollWidth checks: 294 × 170 => US Legal; default hardcover 366 × 259 => 13" roll
     const legalRec = evaluateRollWidth(294, 170);
     expect(legalRec.fits).toBe(true);
-    expect(legalRec.summary).toBe('Fits on 1× US Legal (8.5 × 14") home sheet (100% actual size)');
+    expect(legalRec.summary).toBe('Fits on 1× US Legal (8.5 × 14") home sheet');
 
     const hardcoverRec = evaluateRollWidth(366, 259);
     expect(hardcoverRec.fits).toBe(true);
@@ -455,5 +453,71 @@ describe('calculateCaseGeometry', () => {
     // computeMaxFlapWidthForSheet for dust-jacket (innerW = 223.5 mm)
     expect(computeMaxFlapWidthForSheet(a6DustJacket, 269.4)).toBeCloseTo(22.9, 1);
     expect(computeMaxFlapWidthForSheet(a6DustJacket, 345.6)).toBeCloseTo(61.0, 1);
+  });
+
+  it('computes 2-Sheet Separate Glue-In Pockets geometry for A6 softcover-jacket (223 × 170 mm 12-vertex outer shell + 6-vertex 150 mm detached pockets)', () => {
+    const a6Separate = {
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket' as const,
+      softcoverPocketMode: 'separate' as const,
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      pocketDepthPct: 72,
+      pocketFlapMm: 12,
+      printMedia: 'letter' as const,
+    };
+
+    const geom = calculateCaseGeometry(a6Separate);
+    expect(geom.bindingStyle).toBe('softcover-jacket');
+    expect(geom.softcoverPocketMode).toBe('separate');
+
+    // Panel sizes match slip cover ease (+1 W, +2 H, +1 spine)
+    expect(geom.cutList.coverBoards.quantity).toBe(0);
+    expect(geom.cutList.coverBoards.widthMm).toBe(106);
+    expect(geom.cutList.coverBoards.heightMm).toBe(150);
+    expect(geom.cutList.spineStrip.widthMm).toBe(11);
+
+    // Outer shell: 106 + 11 + 106 = 223 mm wide, 150 + 20 = 170 mm tall, 12-vertex polygon, fits 1x US Letter Landscape
+    const { outerWrap } = geom;
+    expect(outerWrap.softcoverPocketMode).toBe('separate');
+    expect(outerWrap.widthMm).toBe(223);
+    expect(outerWrap.heightMm).toBe(170);
+    expect(outerWrap.jacketFlapWidthMm).toBe(0);
+    expect(outerWrap.jacketGlueTabHeightMm).toBe(10);
+    expect(outerWrap.outerCutPolygon).toHaveLength(12);
+    expect(outerWrap.jacketGlueTabPolygons).toHaveLength(4);
+    expect(outerWrap.foldLines).toHaveLength(6);
+    expect(outerWrap.backBoardRect).toEqual({ x: 0, y: 10, width: 106, height: 150 });
+    expect(outerWrap.spineRect).toEqual({ x: 106, y: 10, width: 11, height: 150 });
+    expect(outerWrap.frontBoardRect).toEqual({ x: 117, y: 10, width: 106, height: 150 });
+
+    expect(geom.mediaFit.status).toBe('fits-1-sheet');
+    expect(geom.mediaFit.sheetPageWidthMm).toBeCloseTo(279.4, 2);
+    expect(geom.mediaFit.sheetPageHeightMm).toBeCloseTo(215.9, 2);
+
+    // Detached 1-flap fore-edge pockets: full 150 mm height (PB_H + 2 mm), 6 vertices, 1 score line, 1 glue flap
+    const { backPocket, frontPocket } = geom;
+    expect(backPocket.pocketHeightMm).toBe(150);
+    expect(backPocket.totalHeightMm).toBe(150);
+    expect(backPocket.pocketWidthMm).toBeCloseTo(76.32, 2);
+    expect(backPocket.totalWidthMm).toBeCloseTo(88.32, 2);
+    expect(backPocket.openEdge).toBe('right');
+    expect(backPocket.outerCutPolygon).toHaveLength(6);
+    expect(backPocket.faceRect).toEqual({ x: 12, y: 0, width: 76.32, height: 150 });
+    expect(backPocket.scoreLines).toHaveLength(1);
+    expect(backPocket.scoreLines[0]?.x1).toBe(12);
+    expect(backPocket.glueFlapPolygons).toHaveLength(1);
+
+    expect(frontPocket.pocketHeightMm).toBe(150);
+    expect(frontPocket.totalHeightMm).toBe(150);
+    expect(frontPocket.pocketWidthMm).toBeCloseTo(76.32, 2);
+    expect(frontPocket.totalWidthMm).toBeCloseTo(88.32, 2);
+    expect(frontPocket.openEdge).toBe('left');
+    expect(frontPocket.outerCutPolygon).toHaveLength(6);
+    expect(frontPocket.faceRect).toEqual({ x: 0, y: 0, width: 76.32, height: 150 });
+    expect(frontPocket.scoreLines).toHaveLength(1);
+    expect(frontPocket.scoreLines[0]?.x1).toBeCloseTo(76.32, 2);
+    expect(frontPocket.glueFlapPolygons).toHaveLength(1);
   });
 });

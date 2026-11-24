@@ -1,8 +1,12 @@
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState, type StudioFontId } from '@/types/studio';
-import type { LayerClipZone, QuickFitTarget } from '@/types/studioLayer';
+import {
+  normalizeQuarterTurn,
+  type LayerClipZone,
+  type QuickFitTarget,
+} from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 
 export interface StudioCanvasSpec {
@@ -46,7 +50,38 @@ export interface CoverTextLinePlacement {
   readonly fontId: StudioFontId;
 }
 
-/** Builds an SVG transform attribute flipping a rectangular layer around its center. */
+/**
+ * Builds an SVG transform attribute rotating (clockwise quarter-turns) and/or flipping
+ * an element around a point (cx, cy). Returns undefined when no flip and rotation === 0.
+ */
+export function buildPointFlipTransform(
+  cx: number,
+  cy: number,
+  flipX?: boolean,
+  flipY?: boolean,
+  rotationDeg?: number,
+): string | undefined {
+  const rot = normalizeQuarterTurn(rotationDeg);
+  if (!flipX && !flipY && rot === 0) return undefined;
+  const rx = roundTo(cx, 3);
+  const ry = roundTo(cy, 3);
+  const parts: string[] = [`translate(${rx} ${ry})`];
+  if (rot !== 0) {
+    parts.push(`rotate(${rot})`);
+  }
+  if (flipX || flipY) {
+    const sx = flipX ? -1 : 1;
+    const sy = flipY ? -1 : 1;
+    parts.push(`scale(${sx} ${sy})`);
+  }
+  parts.push(`translate(${-rx} ${-ry})`);
+  return parts.join(' ');
+}
+
+/**
+ * Builds an SVG transform attribute rotating (clockwise quarter-turns) and/or flipping
+ * a rectangular layer around its center. Returns undefined when no flip and rotation === 0.
+ */
 export function buildLayerFlipTransform(
   xMm: number,
   yMm: number,
@@ -54,28 +89,15 @@ export function buildLayerFlipTransform(
   heightMm: number,
   flipX?: boolean,
   flipY?: boolean,
+  rotationDeg?: number,
 ): string | undefined {
-  if (!flipX && !flipY) return undefined;
-  const cx = roundTo(xMm + widthMm / 2, 3);
-  const cy = roundTo(yMm + heightMm / 2, 3);
-  const sx = flipX ? -1 : 1;
-  const sy = flipY ? -1 : 1;
-  return `translate(${cx} ${cy}) scale(${sx} ${sy}) translate(${-cx} ${-cy})`;
-}
-
-/** Builds an SVG transform attribute flipping an element around a point (cx, cy). */
-export function buildPointFlipTransform(
-  cx: number,
-  cy: number,
-  flipX?: boolean,
-  flipY?: boolean,
-): string | undefined {
-  if (!flipX && !flipY) return undefined;
-  const rx = roundTo(cx, 3);
-  const ry = roundTo(cy, 3);
-  const sx = flipX ? -1 : 1;
-  const sy = flipY ? -1 : 1;
-  return `translate(${rx} ${ry}) scale(${sx} ${sy}) translate(${-rx} ${-ry})`;
+  return buildPointFlipTransform(
+    xMm + widthMm / 2,
+    yMm + heightMm / 2,
+    flipX,
+    flipY,
+    rotationDeg,
+  );
 }
 
 export function computeStudioCanvasSpec(
@@ -89,7 +111,7 @@ export function computeStudioCanvasSpec(
 
   const spineZoneStart = bleedMm + outerWrap.leftHingeRect.x;
   const frontZoneStart = bleedMm + outerWrap.frontBoardRect.x;
-  const strategy = getBindingStrategy(outerWrap.bindingStyle);
+  const strategy = resolveBindingStrategy(outerWrap);
 
   const backZoneRect: Rect2D = {
     x: 0,
@@ -110,17 +132,17 @@ export function computeStudioCanvasSpec(
     height: totalHeightMm,
   };
 
-  // On covers with fold-in flaps (slip covers & dust jackets), Fit Front/Back and front/back clip
-  // masks target the visible cover face instead of stretching across tucked-in flaps (and on
-  // fold-and-glue slip covers, stay cleanly inside the top/bottom glue-tab fold lines).
-  const backArtworkRect: Rect2D = strategy.capabilities.hasFlaps
-    ? {
-        x: bleedMm + outerWrap.backBoardRect.x,
-        y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.backBoardRect.y : 0,
-        width: outerWrap.backBoardRect.width,
-        height: strategy.capabilities.hasGlueTabs ? outerWrap.backBoardRect.height : totalHeightMm,
-      }
-    : backZoneRect;
+  // On covers with fold-in flaps or top/bottom glue tabs (slip covers & dust jackets), Fit Front/Back
+  // and front/back clip masks target the visible cover face instead of spilling onto tuck flaps or glue tabs.
+  const backArtworkRect: Rect2D =
+    strategy.capabilities.hasFlaps || strategy.capabilities.hasGlueTabs
+      ? {
+          x: strategy.capabilities.hasFlaps ? bleedMm + outerWrap.backBoardRect.x : 0,
+          y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.backBoardRect.y : 0,
+          width: strategy.capabilities.hasFlaps ? outerWrap.backBoardRect.width : spineZoneStart,
+          height: strategy.capabilities.hasGlueTabs ? outerWrap.backBoardRect.height : totalHeightMm,
+        }
+      : backZoneRect;
 
   const spineArtworkRect: Rect2D = strategy.capabilities.hasGlueTabs
     ? {
@@ -131,14 +153,17 @@ export function computeStudioCanvasSpec(
       }
     : spineZoneRect;
 
-  const frontArtworkRect: Rect2D = strategy.capabilities.hasFlaps
-    ? {
-        x: bleedMm + outerWrap.frontBoardRect.x,
-        y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.frontBoardRect.y : 0,
-        width: outerWrap.frontBoardRect.width,
-        height: strategy.capabilities.hasGlueTabs ? outerWrap.frontBoardRect.height : totalHeightMm,
-      }
-    : frontZoneRect;
+  const frontArtworkRect: Rect2D =
+    strategy.capabilities.hasFlaps || strategy.capabilities.hasGlueTabs
+      ? {
+          x: strategy.capabilities.hasFlaps ? bleedMm + outerWrap.frontBoardRect.x : frontZoneStart,
+          y: strategy.capabilities.hasGlueTabs ? bleedMm + outerWrap.frontBoardRect.y : 0,
+          width: strategy.capabilities.hasFlaps
+            ? outerWrap.frontBoardRect.width
+            : totalWidthMm - frontZoneStart,
+          height: strategy.capabilities.hasGlueTabs ? outerWrap.frontBoardRect.height : totalHeightMm,
+        }
+      : frontZoneRect;
 
   return {
     bleedMm,

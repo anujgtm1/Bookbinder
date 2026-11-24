@@ -10,7 +10,7 @@ import { SidebarControls } from '@/components/SidebarControls';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getBindingStrategy } from '@/core/bindingStyles';
+import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { generateInnerTemplatesPdf, generateOuterWrapPdf } from '@/core/pdfExport';
 import {
@@ -48,11 +48,11 @@ export function App() {
     }
   }, [project]);
 
-  const bindingStrategy = getBindingStrategy(project.parameters.bindingStyle);
+  const bindingStrategy = resolveBindingStrategy(project.parameters);
   const usesInnerPockets = bindingStrategy.capabilities.usesInnerPockets;
 
   const handleParamsChange = (parameters: BookParameters) => {
-    const nextStrategy = getBindingStrategy(parameters.bindingStyle);
+    const nextStrategy = resolveBindingStrategy(parameters);
     if (
       !nextStrategy.capabilities.usesInnerPockets &&
       bindingStrategy.capabilities.usesInnerPockets &&
@@ -100,13 +100,19 @@ export function App() {
         printMediaId: effectiveMediaId,
         tileOverlapMm: options?.tileOverlapMm,
         includeScaleBar: options?.includeScaleBar,
+        appendInnerPocketsPage: options?.appendInnerPocketsPage,
+        innerPageSizeId: options?.innerPageSizeId ?? project.parameters.pdfPageSize,
       });
       const filename =
         effectiveSplitMode === 'three-piece'
           ? 'outer_case_wrap_3piece.pdf'
           : 'outer_case_wrap.pdf';
       triggerBytesDownload(bytes, filename, 'application/pdf');
-      setStatusMessage(`Exported ${filename} (1:1 mm)`);
+      setStatusMessage(
+        options?.appendInnerPocketsPage
+          ? `Exported ${filename} + Detached Pockets`
+          : `Exported ${filename}`,
+      );
     } catch {
       setStatusMessage('Failed to generate outer wrap PDF.');
     } finally {
@@ -117,7 +123,7 @@ export function App() {
   const handleDownloadInnerSvg = () => {
     const svg = generateInnerTemplatesSvg(geometry);
     triggerTextDownload(svg, 'inner_pockets_and_liner.svg', 'image/svg+xml;charset=utf-8');
-    setStatusMessage('Exported inner_pockets_and_liner.svg (1:1 mm)');
+    setStatusMessage('Exported inner_pockets_and_liner.svg');
   };
 
   const handleDownloadInnerPdf = async (options?: InnerPdfExportOptions) => {
@@ -262,6 +268,7 @@ export function App() {
                 onChangePageSize={(pdfPageSize) => handlePatchParams({ pdfPageSize })}
                 onChangeSplitMode={(splitMode) => handlePatchParams({ splitMode })}
                 onReduceFlapWidth={(jacketFlapWidthMm) => handlePatchParams({ jacketFlapWidthMm })}
+                onDetachSlipFlaps={() => handlePatchParams({ softcoverPocketMode: 'separate' })}
                 onDownloadOuterSvg={handleDownloadOuterSvg}
                 onDownloadOuterPdf={handleDownloadOuterPdf}
               />
