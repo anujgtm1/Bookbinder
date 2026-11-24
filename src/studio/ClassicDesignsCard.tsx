@@ -370,15 +370,12 @@ export function ClassicDesignsCard({
                 return (
                   <Button
                     type="button"
-                    size="sm"
-                    variant={rotDeg ? 'secondary' : 'outline'}
-                    className="h-7 px-2 text-[11px]"
-                    aria-pressed={Boolean(rotDeg)}
-                    title={
-                      rotDeg
-                        ? `Rotated ${rotDeg}° — click to rotate 90° clockwise`
-                        : 'Rotate design 90° clockwise'
-                    }
+                    size="icon"
+                    variant="outline"
+                    className="h-7 w-7"
+                    aria-label="Rotate design 90° clockwise"
+                    title="Rotate 90° clockwise"
+                    data-rotation={rotDeg}
                     data-testid="ornament-rotate-90-btn"
                     onClick={() => {
                       const rotated = rotateOrnament90(selectedOrnament);
@@ -392,7 +389,6 @@ export function ClassicDesignsCard({
                     }}
                   >
                     <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
-                    {rotDeg ? `${rotDeg}°` : '90°'}
                   </Button>
                 );
               })()}

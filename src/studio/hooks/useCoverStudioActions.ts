@@ -1,6 +1,8 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
+import type { RollNestingExportOptions } from '@/core/pdfSheetLayout';
+import type { PrinterMargins } from '@/core/printerMargins';
 import {
   exportDesignPresetsJson,
   importDesignPresetsJson,
@@ -739,6 +741,9 @@ export function useCoverStudioActions({
     readonly exportLayerMode?: CoverPdfLayerMode;
     readonly appendInnerPocketsPage?: boolean;
     readonly innerPageSizeId?: PageSizeId;
+    readonly customRollWidthMm?: number;
+    readonly printerMargins?: PrinterMargins;
+    readonly rollNesting?: RollNestingExportOptions;
   }) => {
     setExportingKind('pdf');
     try {
@@ -753,6 +758,8 @@ export function useCoverStudioActions({
           updateStudio({ cutLineMode: nextCutLineMode });
         }
       }
+      const effectiveCustomRollWidthMm =
+        options?.customRollWidthMm ?? effectiveParams.customRollWidthMm;
       const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
         includeGuides: options?.includeGuides,
         exportLayerMode: effectiveLayerMode,
@@ -762,6 +769,9 @@ export function useCoverStudioActions({
         includeScaleBar: options?.includeScaleBar,
         appendInnerPocketsPage: options?.appendInnerPocketsPage,
         innerPageSizeId: options?.innerPageSizeId,
+        customRollWidthMm: effectiveCustomRollWidthMm,
+        printerMargins: options?.printerMargins,
+        rollNesting: options?.rollNesting,
       });
       triggerBytesDownload(bytes, fileName, 'application/pdf');
       const fit = evaluatePrintMediaFit(
@@ -769,6 +779,10 @@ export function useCoverStudioActions({
         geometry.outerWrap.widthMm,
         geometry.outerWrap.heightMm,
         options?.tileOverlapMm,
+        {
+          customRollWidthMm: effectiveCustomRollWidthMm,
+          margins: options?.printerMargins,
+        },
       );
       const layerTag = isBaseOnly ? ', Base Only for HTV' : '';
       const pocketsTag = options?.appendInnerPocketsPage ? ' + Pockets' : '';

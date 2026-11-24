@@ -29,6 +29,7 @@ export interface CanvasSelectionBarProps {
   readonly onFlipV: () => void;
   readonly onRotate90: () => void;
   readonly onQuickAlign: (slot: VerticalAlignSlot) => void;
+  readonly onFitMargin?: (marginMm: number) => void;
   readonly onChangeColor?: (hex: string) => void;
   readonly onDuplicate: () => void;
   readonly onDelete: () => void;
@@ -44,6 +45,24 @@ const ALIGN_SLOTS: readonly {
   { slot: 'center', label: 'Center', title: 'Center horizontally and vertically in zone' },
   { slot: 'lower', label: 'Bottom ⅓', title: 'Align horizontally centered in lower third of zone' },
 ];
+
+const FRAME_MARGIN_PRESETS: readonly {
+  readonly marginMm: number;
+  readonly label: string;
+  readonly title: string;
+}[] = [
+  { marginMm: 6, label: '6 mm', title: 'Fit frame inside board with tight 6 mm margin' },
+  { marginMm: 12, label: '12 mm', title: 'Fit frame inside board with classic 12 mm margin' },
+  { marginMm: 18, label: '18 mm', title: 'Fit frame inside board with wide 18 mm margin' },
+];
+
+function isFrameLikeSelection(selection: CanvasSelectionTarget): boolean {
+  if (selection.kind !== 'ornament' || selection.layer.presetId === 'custom-svg') {
+    return false;
+  }
+  const category = getClassicOrnamentSpec(selection.layer.presetId).category;
+  return category === 'frames' || category === 'corners';
+}
 
 const ACTION_BTN_CLASS =
   'inline-flex min-h-6.5 min-w-6.5 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] font-medium leading-none whitespace-nowrap text-[#f6efe2]/90 motion-safe:transition-colors hover:bg-[#f6efe2]/12 hover:text-white aria-pressed:border-brass-bright/70 aria-pressed:bg-brass-bright aria-pressed:font-semibold aria-pressed:text-[#19140a] aria-pressed:hover:bg-brass-bright aria-pressed:hover:text-[#19140a] [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10';
@@ -82,6 +101,7 @@ export function CanvasSelectionBar({
   onFlipV,
   onRotate90,
   onQuickAlign,
+  onFitMargin,
   onChangeColor,
   onDuplicate,
   onDelete,
@@ -201,25 +221,55 @@ export function CanvasSelectionBar({
 
       {/* Contextual Controls Row */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {/* Vertical Alignment Group */}
-        <div
-          role="group"
-          aria-label="Vertical alignment"
-          className="inline-flex items-center gap-0.5 rounded-md border border-[#f6efe2]/14 bg-white/[0.04] p-0.5"
-        >
-          {ALIGN_SLOTS.map(({ slot, label, title }) => (
+        {/* Contextual Placement Group: Board Margin Fit for Frames/Corners, Thirds for everything else */}
+        {isFrameLikeSelection(selection) && onFitMargin ? (
+          <div
+            role="group"
+            aria-label="Frame margin fit"
+            className="inline-flex items-center gap-0.5 rounded-md border border-[#f6efe2]/14 bg-white/[0.04] p-0.5"
+          >
+            {FRAME_MARGIN_PRESETS.map(({ marginMm, label, title }) => (
+              <button
+                key={marginMm}
+                type="button"
+                title={title}
+                data-testid={`selection-margin-${marginMm}`}
+                onClick={() => onFitMargin(marginMm)}
+                className={ACTION_BTN_CLASS}
+              >
+                {label}
+              </button>
+            ))}
             <button
-              key={slot}
               type="button"
-              title={title}
-              data-testid={`selection-align-${slot}`}
-              onClick={() => onQuickAlign(slot)}
+              title="Center horizontally and vertically in zone"
+              data-testid="selection-align-center"
+              onClick={() => onQuickAlign('center')}
               className={ACTION_BTN_CLASS}
             >
-              {label}
+              Center
             </button>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div
+            role="group"
+            aria-label="Vertical alignment"
+            className="inline-flex items-center gap-0.5 rounded-md border border-[#f6efe2]/14 bg-white/[0.04] p-0.5"
+          >
+            {ALIGN_SLOTS.map(({ slot, label, title }) => (
+              <button
+                key={slot}
+                type="button"
+                title={title}
+                data-testid={`selection-align-${slot}`}
+                onClick={() => onQuickAlign(slot)}
+                className={ACTION_BTN_CLASS}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <span role="separator" aria-orientation="vertical" className={SEPARATOR_CLASS} />
 
@@ -253,19 +303,14 @@ export function CanvasSelectionBar({
           </button>
           <button
             type="button"
-            title={
-              rotDeg
-                ? `Rotated ${rotDeg}° — click to rotate 90° clockwise`
-                : 'Rotate 90° clockwise'
-            }
+            aria-label="Rotate 90° clockwise"
+            title="Rotate 90° clockwise"
+            data-rotation={rotDeg}
             data-testid="selection-rotate-90"
             onClick={onRotate90}
-            className={`${ACTION_BTN_CLASS} ${
-              rotDeg ? 'border-brass-bright/45 bg-brass-bright/18 text-brass-bright' : ''
-            }`}
+            className={ACTION_BTN_CLASS}
           >
             <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
-            {rotDeg ? `${rotDeg}°` : '90°'}
           </button>
         </div>
 

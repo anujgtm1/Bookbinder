@@ -374,16 +374,12 @@ export function PocketStyleControls({
                   </Button>
                   <Button
                     type="button"
-                    variant={selectedRotationDeg ? 'secondary' : 'outline'}
-                    size="sm"
-                    className="h-8 px-2 text-xs"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
                     aria-label="Rotate selected pocket image 90° clockwise"
-                    aria-pressed={Boolean(selectedRotationDeg)}
-                    title={
-                      selectedRotationDeg
-                        ? `Rotated ${selectedRotationDeg}° — click to rotate 90° clockwise`
-                        : 'Rotate image 90° clockwise'
-                    }
+                    title="Rotate 90° clockwise"
+                    data-rotation={selectedRotationDeg}
                     data-testid="pocket-layer-rotate-90-btn"
                     onClick={() =>
                       onUpdateLayer(selectedLayer.id, (layer) => ({
@@ -393,7 +389,6 @@ export function PocketStyleControls({
                     }
                   >
                     <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
-                    {selectedRotationDeg ? `${selectedRotationDeg}°` : '90°'}
                   </Button>
                   <Button
                     variant="outline"

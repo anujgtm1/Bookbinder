@@ -700,6 +700,9 @@ export function CoverStyler({
           includeScaleBar: selection.includeScaleBar,
           appendInnerPocketsPage: selection.appendInnerPocketsPage,
           innerPageSizeId: selection.pageSizeId,
+          customRollWidthMm: selection.customRollWidthMm,
+          printerMargins: selection.printerMargins,
+          rollNesting: selection.rollNesting,
         });
         return;
       }
@@ -714,6 +717,9 @@ export function CoverStyler({
       exportLayerMode: selection.exportLayerMode,
       appendInnerPocketsPage: selection.appendInnerPocketsPage,
       innerPageSizeId: selection.pageSizeId,
+      customRollWidthMm: selection.customRollWidthMm,
+      printerMargins: selection.printerMargins,
+      rollNesting: selection.rollNesting,
     });
   };
 
@@ -797,6 +803,12 @@ export function CoverStyler({
               onFlipV={handleSelectionFlipV}
               onRotate90={handleSelectionRotate90}
               onQuickAlign={handleSelectionQuickAlign}
+              onFitMargin={
+                activeSelection?.kind === 'ornament'
+                  ? (marginMm) =>
+                      actions.handleFitOrnamentWithMargin(activeSelection.layer.id, marginMm)
+                  : undefined
+              }
               onChangeColor={handleSelectionChangeColor}
               onDuplicate={() => {
                 handleDuplicateSelected();
@@ -1333,6 +1345,12 @@ export function CoverStyler({
           setLocalPrintMedia(mediaId);
           onUpdateParams?.({ printMedia: mediaId });
         }}
+        customRollWidthMm={effectiveParams.customRollWidthMm}
+        onChangeCustomRollWidthMm={
+          onUpdateParams
+            ? (customRollWidthMm) => onUpdateParams({ customRollWidthMm })
+            : undefined
+        }
         pageSizeId={activePageSize}
         onChangePageSize={(sizeId) => {
           setLocalPageSize(sizeId);
