@@ -1,4 +1,4 @@
-import { BookOpen, Moon, PanelLeftClose, PanelLeftOpen, Sun } from 'lucide-react';
+import { BookOpen, Moon, PanelLeftClose, PanelLeftOpen, Sparkles, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,9 +17,15 @@ export interface HeaderProps {
   readonly statusMessage: string | null;
   readonly sidebarOpen?: boolean;
   readonly onToggleSidebar?: () => void;
+  readonly onLoadSampleBook?: () => void;
 }
 
-export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: HeaderProps) {
+export function Header({
+  statusMessage,
+  sidebarOpen = true,
+  onToggleSidebar,
+  onLoadSampleBook,
+}: HeaderProps) {
   const [override, setOverride] = useState<ColorSchemeOverride>(() => readStoredColorScheme());
   const [systemScheme, setSystemScheme] = useState<ResolvedColorScheme>(() =>
     getSystemColorScheme(),
@@ -102,6 +108,21 @@ export function Header({ statusMessage, sidebarOpen = true, onToggleSidebar }: H
         </div>
 
         <div className="flex items-center gap-2">
+          {onLoadSampleBook && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 px-2.5 text-xs"
+              onClick={onLoadSampleBook}
+              data-testid="load-sample-book-btn"
+              aria-label="Load sample book project"
+              title="Load sample classic hardcover with marbled endpapers"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+              <span className="hidden sm:inline">Sample Book</span>
+            </Button>
+          )}
           <div
             role="status"
             aria-live="polite"

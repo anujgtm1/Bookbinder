@@ -21,6 +21,7 @@ import {
   triggerTextDownload,
 } from '@/core/storage';
 import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExport';
+import { createSampleBookProject } from '@/resources/sampleProject';
 import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
@@ -183,12 +184,19 @@ export function App() {
     setStatusMessage('Reset to default dimensions');
   };
 
+  const handleLoadSampleBook = () => {
+    setProject(createSampleBookProject());
+    setActiveTab('outer');
+    setStatusMessage('Loaded sample book: Twenty Thousand Leagues Under the Seas');
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header
         statusMessage={statusMessage}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        onLoadSampleBook={handleLoadSampleBook}
       />
 
       <main
@@ -258,11 +266,13 @@ export function App() {
 
             <TabsContent value="measure" className="mt-0">
               <MeasureAndCutPanel
+                params={project.parameters}
                 geometry={geometry}
                 splitMode={project.parameters.splitMode}
                 printMediaId={project.parameters.printMedia}
                 pageSizeId={project.parameters.pdfPageSize}
                 unit={project.parameters.unit}
+                bookTitle={project.studio.spineText.title || undefined}
                 exportingOuterPdf={exportingTarget === 'outer-pdf'}
                 onChangePrintMedia={(printMedia) => handlePatchParams({ printMedia })}
                 onChangePageSize={(pdfPageSize) => handlePatchParams({ pdfPageSize })}
@@ -271,6 +281,7 @@ export function App() {
                 onDetachSlipFlaps={() => handlePatchParams({ softcoverPocketMode: 'separate' })}
                 onDownloadOuterSvg={handleDownloadOuterSvg}
                 onDownloadOuterPdf={handleDownloadOuterPdf}
+                onStatusMessage={setStatusMessage}
               />
             </TabsContent>
 
@@ -345,12 +356,14 @@ export function App() {
               ) : (
                 <InnerPocketsStudio
                   geometry={geometry}
+                  interiorStyle={project.parameters.interiorStyle}
                   pocketStyle={project.studio.pocketStyle}
                   coverMatchColor={project.studio.spineBgColor}
                   pdfPageSize={project.parameters.pdfPageSize}
                   printMediaId={project.parameters.printMedia}
                   unit={project.parameters.unit}
                   exportingInnerPdf={exportingTarget === 'inner-pdf'}
+                  onChangeInteriorStyle={(interiorStyle) => handlePatchParams({ interiorStyle })}
                   onChangePocketStyle={(pocketStyle) =>
                     handleStudioChange({ ...project.studio, pocketStyle })
                   }
