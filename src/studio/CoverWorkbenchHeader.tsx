@@ -1,4 +1,4 @@
-import { FileCode2, FileImage, FileText, Printer, Scissors } from 'lucide-react';
+import { Copy, FileCode2, FileImage, FileText, Printer, Redo2, Scissors, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, type UnitSystem } from '@/types/units';
@@ -10,6 +10,12 @@ export interface CoverWorkbenchHeaderProps {
   readonly unit: UnitSystem;
   readonly exportingKind: 'pdf' | 'png' | 'svg' | null;
   readonly exportingOuterPdf: boolean;
+  readonly canUndo?: boolean;
+  readonly canRedo?: boolean;
+  readonly canDuplicate?: boolean;
+  readonly onUndo?: () => void;
+  readonly onRedo?: () => void;
+  readonly onDuplicate?: () => void;
   readonly onOpenMeasureAndCut?: () => void;
   readonly onExportPrintPdf: () => void;
   readonly onExportAffinityPng: () => void;
@@ -25,6 +31,12 @@ export function CoverWorkbenchHeader({
   unit,
   exportingKind,
   exportingOuterPdf,
+  canUndo = false,
+  canRedo = false,
+  canDuplicate = false,
+  onUndo,
+  onRedo,
+  onDuplicate,
   onOpenMeasureAndCut,
   onExportPrintPdf,
   onExportAffinityPng,
@@ -83,6 +95,61 @@ export function CoverWorkbenchHeader({
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {/* Undo / Redo / Duplicate Edit Actions */}
+        {(onUndo || onRedo || onDuplicate) && (
+          <div
+            role="group"
+            aria-label="Edit history and duplicate actions"
+            className="flex items-center gap-0.5 rounded-md border border-border bg-secondary/45 px-1 py-0.5"
+          >
+            {onUndo && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={onUndo}
+                disabled={!canUndo}
+                aria-label="Undo (Ctrl/Cmd+Z)"
+                title="Undo (Ctrl/Cmd+Z)"
+                data-testid="studio-undo-btn"
+              >
+                <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Undo</span>
+              </Button>
+            )}
+            {onRedo && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={onRedo}
+                disabled={!canRedo}
+                aria-label="Redo (Ctrl/Cmd+Shift+Z)"
+                title="Redo (Ctrl/Cmd+Shift+Z)"
+                data-testid="studio-redo-btn"
+              >
+                <Redo2 className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Redo</span>
+              </Button>
+            )}
+            {onDuplicate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={onDuplicate}
+                disabled={!canDuplicate}
+                aria-label="Duplicate (Ctrl/Cmd+D)"
+                title="Duplicate (Ctrl/Cmd+D)"
+                data-testid="studio-duplicate-btn"
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Duplicate</span>
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Styled Artwork Exports */}
         <div className="flex flex-wrap items-center gap-1.5">
           <Button

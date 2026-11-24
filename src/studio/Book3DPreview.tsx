@@ -11,6 +11,12 @@ import {
 } from './book3d';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
+import {
+  getFoilSvgGradientDef,
+  getSurfaceOverlayStyle,
+  type FoilFinishId,
+  type SurfaceMaterialId,
+} from './materialPreview';
 import { computeInnerPocketsLayout } from './pocketRenderEngine';
 import {
   buildLayerFlipTransform,
@@ -28,6 +34,8 @@ export interface Book3DPreviewProps {
   readonly customFont: CustomFontAsset | null;
   readonly angle?: Book3DCameraAngle;
   readonly isCoverOpen?: boolean;
+  readonly surfaceMaterial?: SurfaceMaterialId;
+  readonly foilFinish?: FoilFinishId;
   readonly onAngleChange?: (next: Book3DCameraAngle) => void;
 }
 
@@ -41,6 +49,8 @@ interface CoverFaceSvgProps {
   readonly spinePlacements: readonly SpineTextPlacement[];
   readonly fontFamily: string;
   readonly showSpineText?: boolean;
+  readonly foilFinish?: FoilFinishId;
+  readonly shimmerAngleDeg?: number;
 }
 
 function CoverFaceSvg({
@@ -53,11 +63,16 @@ function CoverFaceSvg({
   spinePlacements,
   fontFamily,
   showSpineText = false,
+  foilFinish = 'ink',
+  shimmerAngleDeg = 0,
 }: CoverFaceSvgProps) {
   const clipNoneId = `${prefix}-${faceId}-clip-none`;
   const clipBackId = `${prefix}-${faceId}-clip-back`;
   const clipSpineId = `${prefix}-${faceId}-clip-spine`;
   const clipFrontId = `${prefix}-${faceId}-clip-front`;
+  const foilGradient = getFoilSvgGradientDef(foilFinish);
+  const foilGradientId = foilGradient ? `${prefix}-${faceId}-foil-${foilGradient.finishId}` : null;
+  const foilPaint = foilGradientId ? `url(#${foilGradientId})` : null;
 
   const clipIdForZone = (zone: string) => {
     if (zone === 'back') return clipBackId;
@@ -101,6 +116,24 @@ function CoverFaceSvg({
             height={spec.frontArtworkRect.height}
           />
         </clipPath>
+        {foilGradient && foilGradientId && (
+          <linearGradient
+            id={foilGradientId}
+            x1={foilGradient.x1}
+            y1={foilGradient.y1}
+            x2={foilGradient.x2}
+            y2={foilGradient.y2}
+            gradientTransform={
+              shimmerAngleDeg !== 0 ? `rotate(${shimmerAngleDeg} 0.5 0.5)` : undefined
+            }
+            data-testid={`book3d-foil-gradient-${faceId}`}
+            data-foil-finish={foilGradient.finishId}
+          >
+            {foilGradient.stops.map((stop, idx) => (
+              <stop key={idx} offset={stop.offset} stopColor={stop.color} />
+            ))}
+          </linearGradient>
+        )}
       </defs>
 
       <rect
@@ -152,12 +185,15 @@ function CoverFaceSvg({
         const d = buildOrnamentCompoundPath(orn);
         if (!d) return null;
         const style = getOrnamentSvgStyle(orn);
+        const ornamentFill =
+          foilPaint && style.fill && style.fill !== 'none' ? foilPaint : style.fill;
+        const ornamentStroke = style.stroke !== 'none' ? (foilPaint ?? style.stroke) : undefined;
         return (
           <path
             key={orn.id}
             d={d}
-            fill={style.fill}
-            stroke={style.stroke !== 'none' ? style.stroke : undefined}
+            fill={ornamentFill}
+            stroke={ornamentStroke}
             strokeWidth={style.strokeWidthMm > 0 ? style.strokeWidthMm : undefined}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -185,7 +221,7 @@ function CoverFaceSvg({
                 key={`${layer.id}-${idx}`}
                 x={item.anchorXMm}
                 y={item.anchorYMm}
-                fill={item.color}
+                fill={foilPaint ?? item.color}
                 fontFamily={layerFamily}
                 fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
                 letterSpacing={`${item.letterSpacingEm}em`}
@@ -206,7 +242,7 @@ function CoverFaceSvg({
               key={`${item.kind}-${idx}`}
               x={item.anchorXMm}
               y={item.anchorYMm}
-              fill={studio.spineText.textColor}
+              fill={foilPaint ?? studio.spineText.textColor}
               fontFamily={fontFamily}
               fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
               textAnchor="middle"
@@ -411,6 +447,8 @@ export function Book3DPreview({
   customFont,
   angle: controlledAngle,
   isCoverOpen = false,
+  surfaceMaterial = 'matte-paper',
+  foilFinish = 'ink',
   onAngleChange,
 }: Book3DPreviewProps) {
   const uniquePrefix = useId().replace(/:/g, '');
@@ -509,6 +547,11 @@ export function Book3DPreview({
   const hasRigidSpine = capabilities.hasRigidSpine;
   const isFlexibleBoardCover = usesChipboard && !hasRigidSpine;
   const coverOpenAngleDeg = isCoverOpen ? -122 : 0;
+  const surfaceOverlayStyle = useMemo(
+    () => getSurfaceOverlayStyle(surfaceMaterial),
+    [surfaceMaterial],
+  );
+  const shimmerAngleDeg = Math.round(angle.yawDeg * 0.35 + angle.pitchDeg * 0.2);
 
   return (
     <div
@@ -516,6 +559,8 @@ export function Book3DPreview({
       tabIndex={0}
       aria-label="Interactive 3D folded hardcover book preview. Drag or use arrow keys to rotate."
       data-testid="book3d-stage"
+      data-material={surfaceMaterial}
+      data-foil-finish={foilFinish}
       className={`book3d-stage relative flex h-full w-full flex-col items-center justify-center select-none outline-none ${
         isDragging ? 'cursor-grabbing' : 'cursor-grab'
       }`}
@@ -593,6 +638,16 @@ export function Book3DPreview({
               customFont={customFont}
               spinePlacements={spinePlacements}
               fontFamily={activeFontFamily}
+              foilFinish={foilFinish}
+              shimmerAngleDeg={shimmerAngleDeg}
+            />
+            {/* Non-printing surface material texture overlay */}
+            <div
+              aria-hidden="true"
+              data-testid="book3d-front-material-overlay"
+              data-material={surfaceMaterial}
+              className="pointer-events-none absolute inset-0"
+              style={surfaceOverlayStyle}
             />
             {/* Pressed bookbinding hinge groove along left spine edge (chipboard cases only) */}
             {usesChipboard && (
@@ -685,6 +740,16 @@ export function Book3DPreview({
             customFont={customFont}
             spinePlacements={spinePlacements}
             fontFamily={activeFontFamily}
+            foilFinish={foilFinish}
+            shimmerAngleDeg={shimmerAngleDeg}
+          />
+          {/* Non-printing surface material texture overlay */}
+          <div
+            aria-hidden="true"
+            data-testid="book3d-back-material-overlay"
+            data-material={surfaceMaterial}
+            className="pointer-events-none absolute inset-0"
+            style={surfaceOverlayStyle}
           />
           {/* Pressed hinge groove along right spine edge of back cover (chipboard cases only) */}
           {usesChipboard && (
@@ -741,6 +806,16 @@ export function Book3DPreview({
             spinePlacements={spinePlacements}
             fontFamily={activeFontFamily}
             showSpineText
+            foilFinish={foilFinish}
+            shimmerAngleDeg={shimmerAngleDeg}
+          />
+          {/* Non-printing surface material texture overlay */}
+          <div
+            aria-hidden="true"
+            data-testid="book3d-spine-material-overlay"
+            data-material={surfaceMaterial}
+            className="pointer-events-none absolute inset-0"
+            style={surfaceOverlayStyle}
           />
           {/* Subtle cylindrical bookcloth/cardstock spine lighting */}
           <div

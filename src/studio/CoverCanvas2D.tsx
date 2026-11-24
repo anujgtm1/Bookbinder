@@ -13,6 +13,7 @@ import type { EyedropperTarget } from './ArtworkControlsCard';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
+import { getSurfaceOverlayStyle, type SurfaceMaterialId } from './materialPreview';
 import type { PreflightReport } from './preflight';
 import {
   buildLayerFlipTransform,
@@ -37,6 +38,7 @@ export interface CoverCanvas2DProps {
   readonly eyedropperTarget: EyedropperTarget;
   readonly showGuides: boolean;
   readonly showPreflightOverlays: boolean;
+  readonly surfaceMaterial?: SurfaceMaterialId;
   readonly preflight: PreflightReport;
   readonly activeIssueId: string | null;
   readonly visibleSnapGuides: readonly ActiveSnapGuide[];
@@ -75,6 +77,7 @@ export function CoverCanvas2D({
   eyedropperTarget,
   showGuides,
   showPreflightOverlays,
+  surfaceMaterial = 'matte-paper',
   preflight,
   activeIssueId,
   visibleSnapGuides,
@@ -107,18 +110,36 @@ export function CoverCanvas2D({
     [geometry.outerWrap.outerCutPolygon, spec.bleedMm],
   );
   const handleCornerSize = Math.max(7.5, spec.totalWidthMm * 0.022);
+  const surfaceOverlayStyle = useMemo(
+    () => (surfaceMaterial !== 'matte-paper' ? getSurfaceOverlayStyle(surfaceMaterial) : null),
+    [surfaceMaterial],
+  );
+  const canvasAspectRatio = spec.totalWidthMm / Math.max(1, spec.totalHeightMm);
 
   return (
-    <div className="flex h-full w-full items-center justify-center p-6 pb-16">
-      <svg
-        ref={svgRef}
-        role="img"
-        aria-label="Interactive hardcover outer wrap canvas with draggable images and spine typography"
-        data-testid="studio-preview-svg"
-        viewBox={`0 0 ${spec.totalWidthMm} ${spec.totalHeightMm}`}
-        className={`max-h-full max-w-full select-none drop-shadow-[0_16px_28px_rgba(0,0,0,0.48)] ${
-          eyedropperTarget ? 'cursor-crosshair' : 'cursor-default'
-        }`}
+    <div className="h-full w-full p-6 pb-16">
+      <div
+        className="flex h-full w-full items-center justify-center"
+        style={{ containerType: 'size' }}
+      >
+        <div
+          className="relative"
+          style={{
+            aspectRatio: `${spec.totalWidthMm} / ${spec.totalHeightMm}`,
+            width: `min(100cqw, calc(100cqh * ${canvasAspectRatio}))`,
+            maxWidth: '100%',
+            maxHeight: '100%',
+          }}
+        >
+          <svg
+            ref={svgRef}
+            role="img"
+            aria-label="Interactive hardcover outer wrap canvas with draggable images and spine typography"
+            data-testid="studio-preview-svg"
+            viewBox={`0 0 ${spec.totalWidthMm} ${spec.totalHeightMm}`}
+            className={`block h-full w-full select-none drop-shadow-[0_16px_28px_rgba(0,0,0,0.48)] ${
+              eyedropperTarget ? 'cursor-crosshair' : 'cursor-default'
+            }`}
         style={{ touchAction: 'none' }}
         onClick={(e) => {
           if (suppressNextClickRef.current) {
@@ -667,7 +688,18 @@ export function CoverCanvas2D({
           handleCornerSizeMm={handleCornerSize}
           onStartResize={onStartLayerResize}
         />
-      </svg>
+          </svg>
+          {surfaceOverlayStyle && (
+            <div
+              aria-hidden="true"
+              data-testid="cover2d-material-overlay"
+              data-material={surfaceMaterial}
+              className="pointer-events-none absolute inset-0 overflow-hidden"
+              style={surfaceOverlayStyle}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
