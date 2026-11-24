@@ -32,6 +32,7 @@ For user docs see [`README.md`](./README.md); for module layout & scripts see [`
     - If everything makes sense and meets architectural guardrails, integrate the branch into `develop` (prefer linear rebase/fast-forward or clean cherry-pick/merge), delete the temporary `subagent/*` branch, run the integrated Verification Gate (`typecheck`, `lint`, `test`, `build`, and Playwright E2E), and push `develop`.
     - If a branch is off-spec, bloated, or introduces regressions, discard the branch cleanly (`git branch -D subagent/<topic>`) and relaunch a fresh subagent with sharper context instead of patching bad output onto `develop`.
   - **Size & Separation Threshold:** Handle tiny fixes (`≤ 30 lines`) directly; delegate anything larger than ~30 lines to a single-purpose subagent worktree (do not combine unrelated tasks into one subagent).
+  - **Bug Root-Cause Investigation:** Delegate non-trivial bug diagnosis and codebase root-cause tracing to a dedicated subagent (e.g. `research`) so investigation logs and file reads stay out of the main orchestrator's context window.
   - **Visual Sign-Off Gate for Major UI Changes:** For any large UI, theme, or layout overhaul, **never** merge the subagent worktree branch into `develop` until after visually verifying it and starting a live local preview server from that worktree so the user can inspect and approve it first.
 - **Verification Gate:** Before pushing feature or refactor work, run:
   ```bash
