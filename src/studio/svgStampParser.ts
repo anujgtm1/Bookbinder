@@ -1,4 +1,5 @@
 import { fmtMm } from '@/lib/svgFormat';
+import { normalizeQuarterTurn, type QuarterTurnDeg } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 
 export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
@@ -450,6 +451,7 @@ export function mapNormalizedPathsToMm(
     readonly mirrorX?: boolean;
     readonly flipX?: boolean;
     readonly flipY?: boolean;
+    readonly rotationDeg?: QuarterTurnDeg;
   },
 ): readonly string[] {
   const ox = transform?.originXMm ?? 0;
@@ -457,18 +459,40 @@ export function mapNormalizedPathsToMm(
   const mirrorX = transform?.mirrorX ?? false;
   const flipX = transform?.flipX ?? false;
   const flipY = transform?.flipY ?? false;
+  const rot = normalizeQuarterTurn(transform?.rotationDeg);
   const canvasW = transform?.canvasWidthMm ?? 0;
   const scaleX = targetRect.widthMm / Math.max(1e-4, viewBoxWidth);
   const scaleY = targetRect.heightMm / Math.max(1e-4, viewBoxHeight);
+  const cx = targetRect.xMm + targetRect.widthMm / 2;
+  const cy = targetRect.yMm + targetRect.heightMm / 2;
 
-  const mapX = (px: number): string => {
+  const mapPair = (px: number, py: number): string => {
     const fx = flipX ? viewBoxWidth - px : px;
-    const raw = targetRect.xMm + fx * scaleX - ox;
-    return fmtMm(mirrorX ? canvasW - raw : raw);
-  };
-  const mapY = (py: number): string => {
     const fy = flipY ? viewBoxHeight - py : py;
-    return fmtMm(targetRect.yMm + fy * scaleY - oy);
+    const localX = targetRect.xMm + fx * scaleX;
+    const localY = targetRect.yMm + fy * scaleY;
+
+    let worldX = localX;
+    let worldY = localY;
+    if (rot !== 0) {
+      const dx = localX - cx;
+      const dy = localY - cy;
+      if (rot === 90) {
+        worldX = cx - dy;
+        worldY = cy + dx;
+      } else if (rot === 180) {
+        worldX = cx - dx;
+        worldY = cy - dy;
+      } else {
+        worldX = cx + dy;
+        worldY = cy - dx;
+      }
+    }
+
+    const shiftedX = worldX - ox;
+    const finalX = mirrorX ? canvasW - shiftedX : shiftedX;
+    const finalY = worldY - oy;
+    return `${fmtMm(finalX)} ${fmtMm(finalY)}`;
   };
 
   return paths.map((d) => {
@@ -482,13 +506,13 @@ export function mapNormalizedPathsToMm(
       } else if (cmd === 'M' || cmd === 'L') {
         const x = Number.parseFloat(tokens[i++] ?? '0');
         const y = Number.parseFloat(tokens[i++] ?? '0');
-        out.push(`${cmd} ${mapX(x)} ${mapY(y)}`);
+        out.push(`${cmd} ${mapPair(x, y)}`);
       } else if (cmd === 'Q') {
         const x1 = Number.parseFloat(tokens[i++] ?? '0');
         const y1 = Number.parseFloat(tokens[i++] ?? '0');
         const x = Number.parseFloat(tokens[i++] ?? '0');
         const y = Number.parseFloat(tokens[i++] ?? '0');
-        out.push(`Q ${mapX(x1)} ${mapY(y1)} ${mapX(x)} ${mapY(y)}`);
+        out.push(`Q ${mapPair(x1, y1)} ${mapPair(x, y)}`);
       } else if (cmd === 'C') {
         const x1 = Number.parseFloat(tokens[i++] ?? '0');
         const y1 = Number.parseFloat(tokens[i++] ?? '0');
@@ -496,7 +520,7 @@ export function mapNormalizedPathsToMm(
         const y2 = Number.parseFloat(tokens[i++] ?? '0');
         const x = Number.parseFloat(tokens[i++] ?? '0');
         const y = Number.parseFloat(tokens[i++] ?? '0');
-        out.push(`C ${mapX(x1)} ${mapY(y1)} ${mapX(x2)} ${mapY(y2)} ${mapX(x)} ${mapY(y)}`);
+        out.push(`C ${mapPair(x1, y1)} ${mapPair(x2, y2)} ${mapPair(x, y)}`);
       }
     }
     return out.join(' ');

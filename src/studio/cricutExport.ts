@@ -3,7 +3,11 @@ import { fmtMm } from '@/lib/svgFormat';
 import type { CoverOrnamentLayer, CoverTextLayer } from '@/types/coverElements';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { CoverStudioState, CuratedFontId, StudioFontId } from '@/types/studio';
-import { normalizeQuarterTurn } from '@/types/studioLayer';
+import {
+  getLayerVisualRect,
+  normalizeQuarterTurn,
+  type CoverImageLayer,
+} from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { loadCuratedFontBytes, type CustomFontAsset } from './fonts';
@@ -12,8 +16,10 @@ import {
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   getCoverTextAxisAlignedBounds,
+  resolveZoneClipRect,
   type StudioCanvasSpec,
 } from './renderEngine';
+import { mapNormalizedPathsToMm, parseSvgStampText, type ParsedSvgStamp } from './svgStampParser';
 
 export type CricutCanvasScope = 'spine-only' | 'front-cover' | 'back-cover' | 'full-wrap';
 
@@ -24,6 +30,8 @@ export interface CricutExportOptions {
   readonly includeLettering: boolean;
   /** Include parametric classic bookbindery vector ornaments in the cut paths (default true) */
   readonly includeOrnaments?: boolean;
+  /** Parse uploaded .svg artwork layers (data:image/svg+xml) into flattened cut paths (default true) */
+  readonly includeSvgArtwork?: boolean;
   /** Add tight +4 mm cut box around lettering & ornaments for effortless HTV weeding */
   readonly includeWeedingBox: boolean;
   /** Add exact corner L-bracket registration ticks to align iron-on HTV onto wrapped bookcloth */
@@ -40,6 +48,7 @@ export const DEFAULT_CRICUT_EXPORT_OPTIONS: Readonly<CricutExportOptions> = {
   scope: 'spine-only',
   includeLettering: true,
   includeOrnaments: true,
+  includeSvgArtwork: true,
   includeWeedingBox: true,
   includeRegistrationMarks: true,
   includeOuterCutOutline: false,
@@ -143,6 +152,71 @@ export interface CricutScopePresence {
   readonly front: boolean;
   readonly back: boolean;
   readonly any: boolean;
+  readonly hasSvgArtwork: boolean;
+  readonly hasRasterArtwork: boolean;
+}
+
+const SVG_DATA_URL_RE = /^data:image\/svg\+xml([^,]*),(.*)$/is;
+
+/** Returns true when a CoverImageLayer holds inline SVG vector markup (`data:image/svg+xml`). */
+export function isSvgArtworkLayer(layer: Pick<CoverImageLayer, 'dataUrl'>): boolean {
+  return SVG_DATA_URL_RE.test(layer.dataUrl.trim());
+}
+
+/**
+ * Decodes a `data:image/svg+xml` data URL (supporting both `;base64,` and URL-encoded UTF-8 variants)
+ * into raw SVG XML text. Returns `null` for non-SVG or malformed data URLs.
+ */
+export function decodeSvgDataUrl(dataUrl: string): string | null {
+  const match = SVG_DATA_URL_RE.exec(dataUrl.trim());
+  if (!match) return null;
+  const meta = match[1] ?? '';
+  const payload = match[2] ?? '';
+  if (!payload) return null;
+
+  try {
+    if (/;base64/i.test(meta)) {
+      const cleaned = payload.replace(/\s+/g, '');
+      const binary = atob(cleaned);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const decoded = new TextDecoder('utf-8').decode(bytes).trim();
+      return decoded || null;
+    }
+
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(payload).trim();
+    } catch {
+      decoded = payload.trim();
+    }
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
+function extractPrimarySvgHex(svgText: string): string {
+  const attrMatch = svgText.match(/\b(?:fill|stroke)\s*=\s*["'](#(?:[0-9a-f]{3}|[0-9a-f]{6}))["']/i);
+  if (attrMatch?.[1]) {
+    return normalizeFoilHex(attrMatch[1], '#222222');
+  }
+  const styleMatch = svgText.match(/\b(?:fill|stroke)\s*:\s*(#(?:[0-9a-f]{3}|[0-9a-f]{6}))/i);
+  if (styleMatch?.[1]) {
+    return normalizeFoilHex(styleMatch[1], '#222222');
+  }
+  return '#222222';
+}
+
+function intersectRects(a: Rect2D, b: Rect2D): Rect2D | null {
+  const x1 = Math.max(a.x, b.x);
+  const y1 = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.width, b.x + b.width);
+  const y2 = Math.min(a.y + a.height, b.y + b.height);
+  if (x2 <= x1 || y2 <= y1) return null;
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
 function rectsIntersect(a: Rect2D, b: Rect2D): boolean {
@@ -206,10 +280,46 @@ function ornamentMatchesScope(
   return rectsIntersect(bounds, zoneRect) || pointInRect(cx, cy, zoneRect);
 }
 
+function getEffectiveImageLayerRect(layer: CoverImageLayer, spec: StudioCanvasSpec): Rect2D | null {
+  const vis = getLayerVisualRect(layer);
+  if (layer.clipZone === 'none') return vis;
+  return intersectRects(vis, resolveZoneClipRect(spec, layer.clipZone));
+}
+
+function parseSvgArtworkLayer(
+  layer: CoverImageLayer,
+): { readonly parsed: ParsedSvgStamp; readonly primaryHex: string } | null {
+  if (!isSvgArtworkLayer(layer)) return null;
+  const svgText = decodeSvgDataUrl(layer.dataUrl);
+  if (!svgText) return null;
+  const parsed = parseSvgStampText(svgText);
+  if (!parsed || parsed.paths.length === 0) return null;
+  return {
+    parsed,
+    primaryHex: extractPrimarySvgHex(svgText),
+  };
+}
+
+function svgArtworkMatchesScope(
+  layer: CoverImageLayer,
+  scope: CricutCanvasScope,
+  spec: StudioCanvasSpec,
+): boolean {
+  if (!isSvgArtworkLayer(layer)) return false;
+  const effectiveRect = getEffectiveImageLayerRect(layer, spec);
+  if (!effectiveRect) return false;
+  if (scope === 'full-wrap') return true;
+  const zoneRect = getScopeZoneRect(scope, spec);
+  const cx = effectiveRect.x + effectiveRect.width / 2;
+  const cy = effectiveRect.y + effectiveRect.height / 2;
+  return rectsIntersect(effectiveRect, zoneRect) || pointInRect(cx, cy, zoneRect);
+}
+
 /**
  * Geometrically detects which Cricut cut scopes contain cuttable vector designs
- * (dedicated spine text, draggable cover text layers, ornaments, or custom SVG stamps),
- * independent of stale `layer.zone` metadata.
+ * (dedicated spine text, draggable cover text layers, ornaments, custom SVG stamps,
+ * or uploaded `.svg` artwork layers), independent of stale `layer.zone` metadata,
+ * while accurately distinguishing true raster layers (`PNG`/`JPG`/`WEBP`) from vector `.svg` layers.
  */
 export function detectCricutScopePresence(
   geometry: CaseGeometry,
@@ -220,25 +330,33 @@ export function detectCricutScopePresence(
     studio.spineText.title.trim().length > 0 || studio.spineText.author.trim().length > 0;
   const textLayers = studio.textLayers ?? [];
   const ornaments = studio.ornaments ?? [];
+  const allLayers = studio.layers ?? [];
+  const svgArtworkLayers = allLayers.filter((l) => parseSvgArtworkLayer(l) !== null);
+  const hasSvgArtwork = svgArtworkLayers.length > 0;
+  const hasRasterArtwork = allLayers.some((l) => !isSvgArtworkLayer(l));
 
   const spine =
     hasDedicatedSpineText ||
     textLayers.some((t) => textLayerMatchesScope(t, 'spine-only', spec)) ||
-    ornaments.some((o) => ornamentMatchesScope(o, 'spine-only', spec));
+    ornaments.some((o) => ornamentMatchesScope(o, 'spine-only', spec)) ||
+    svgArtworkLayers.some((l) => svgArtworkMatchesScope(l, 'spine-only', spec));
   const front =
     textLayers.some((t) => textLayerMatchesScope(t, 'front-cover', spec)) ||
-    ornaments.some((o) => ornamentMatchesScope(o, 'front-cover', spec));
+    ornaments.some((o) => ornamentMatchesScope(o, 'front-cover', spec)) ||
+    svgArtworkLayers.some((l) => svgArtworkMatchesScope(l, 'front-cover', spec));
   const back =
     textLayers.some((t) => textLayerMatchesScope(t, 'back-cover', spec)) ||
-    ornaments.some((o) => ornamentMatchesScope(o, 'back-cover', spec));
+    ornaments.some((o) => ornamentMatchesScope(o, 'back-cover', spec)) ||
+    svgArtworkLayers.some((l) => svgArtworkMatchesScope(l, 'back-cover', spec));
   const any =
     spine ||
     front ||
     back ||
     textLayers.some((t) => t.text.trim().length > 0) ||
-    ornaments.length > 0;
+    ornaments.length > 0 ||
+    hasSvgArtwork;
 
-  return { spine, front, back, any };
+  return { spine, front, back, any, hasSvgArtwork, hasRasterArtwork };
 }
 
 /**
@@ -650,6 +768,25 @@ export async function generateCricutHtvSvg(
     ? (studio.ornaments ?? []).filter((orn) => ornamentMatchesScope(orn, options.scope, spec))
     : [];
 
+  const includeSvgArtwork = options.includeSvgArtwork ?? true;
+  const matchedSvgArtwork: {
+    readonly layer: CoverImageLayer;
+    readonly parsed: ParsedSvgStamp;
+    readonly primaryHex: string;
+  }[] = [];
+  if (includeSvgArtwork) {
+    for (const layer of studio.layers ?? []) {
+      if (!svgArtworkMatchesScope(layer, options.scope, spec)) continue;
+      const parsedEntry = parseSvgArtworkLayer(layer);
+      if (!parsedEntry) continue;
+      matchedSvgArtwork.push({
+        layer,
+        parsed: parsedEntry.parsed,
+        primaryHex: parsedEntry.primaryHex,
+      });
+    }
+  }
+
   let canvasDesignBounds: Rect2D | null = null;
   if (spineFont && matchedSpineRuns.length > 0) {
     const measured = bakeGlyphRunsWithFont(matchedSpineRuns, spineFont, 0, 0, 0, false, false);
@@ -670,6 +807,16 @@ export async function generateCricutHtvSvg(
       y: orn.yMm - halfStroke,
       width: orn.widthMm + halfStroke * 2,
       height: orn.heightMm + halfStroke * 2,
+    });
+  }
+  for (const item of matchedSvgArtwork) {
+    const vis = getLayerVisualRect(item.layer);
+    const halfStroke = item.parsed.suggestedMode === 'fill' ? 0 : 0.3;
+    canvasDesignBounds = mergeBounds(canvasDesignBounds, {
+      x: vis.x - halfStroke,
+      y: vis.y - halfStroke,
+      width: vis.width + halfStroke * 2,
+      height: vis.height + halfStroke * 2,
     });
   }
 
@@ -825,6 +972,72 @@ export async function generateCricutHtvSvg(
   }
   const ornamentsD = filledOrnamentParts.join(' ');
 
+  // 3b. Uploaded .svg Artwork Layers (parsed to 1:1 mm Bezier curves, zero <image> or transform=)
+  const filledSvgArtworkParts: string[] = [];
+  const strokedSvgArtwork: {
+    readonly id: string;
+    readonly d: string;
+    readonly strokeWidthMm: number;
+    readonly hex: string;
+  }[] = [];
+  for (const item of matchedSvgArtwork) {
+    const mapped = mapNormalizedPathsToMm(
+      item.parsed.paths,
+      item.parsed.viewBoxWidth,
+      item.parsed.viewBoxHeight,
+      {
+        xMm: item.layer.xMm,
+        yMm: item.layer.yMm,
+        widthMm: item.layer.widthMm,
+        heightMm: item.layer.heightMm,
+      },
+      {
+        originXMm,
+        originYMm,
+        canvasWidthMm: widthMm,
+        mirrorX: options.mirrorForHtv,
+        flipX: item.layer.flipX,
+        flipY: item.layer.flipY,
+        rotationDeg: normalizeQuarterTurn(item.layer.rotationDeg),
+      },
+    );
+    const d = mapped.filter(Boolean).join(' ');
+    if (!d) continue;
+
+    if (item.parsed.suggestedMode === 'stroke') {
+      foilColorSet.add(item.primaryHex);
+      strokedSvgArtwork.push({
+        id: item.layer.id,
+        d,
+        strokeWidthMm: 0.6,
+        hex: item.primaryHex,
+      });
+    } else if (item.parsed.suggestedMode === 'fill-and-stroke') {
+      filledSvgArtworkParts.push(d);
+      appendColorPath(item.primaryHex, d);
+      strokedSvgArtwork.push({
+        id: item.layer.id,
+        d,
+        strokeWidthMm: 0.6,
+        hex: item.primaryHex,
+      });
+    } else {
+      filledSvgArtworkParts.push(d);
+      appendColorPath(item.primaryHex, d);
+    }
+
+    const vis = getLayerVisualRect(item.layer);
+    const rawX = vis.x - originXMm;
+    const visX = options.mirrorForHtv ? widthMm - (rawX + vis.width) : rawX;
+    designBounds = mergeBounds(designBounds, {
+      x: visX,
+      y: vis.y - originYMm,
+      width: vis.width,
+      height: vis.height,
+    });
+  }
+  const svgArtworkD = filledSvgArtworkParts.join(' ');
+
   const pathElements: string[] = [];
 
   // 1. Optional Outer Case Wrap Cut Outline (separate vermilion cut layer for bookcloth/paper cutting)
@@ -885,7 +1098,7 @@ export async function generateCricutHtvSvg(
     }
   }
 
-  // 4 & 5. Ornaments and Outlined Lettering (grouped by foil color OR classic monochrome layers)
+  // 4 & 5. Ornaments, Parsed SVG Artwork, and Outlined Lettering (grouped by foil color OR classic monochrome layers)
   if (groupByColor) {
     for (const [hex, parts] of filledPathsByColor.entries()) {
       const compoundD = parts.join(' ');
@@ -900,7 +1113,24 @@ export async function generateCricutHtvSvg(
         `  <path id="custom-svg-stroke-${st.id}" d="${st.d}" fill="none" stroke="${st.hex}" stroke-width="${fmtMm(st.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
       );
     }
+    for (const st of strokedSvgArtwork) {
+      pathElements.push(
+        `  <path id="svg-artwork-stroke-${st.id}" d="${st.d}" fill="none" stroke="${st.hex}" stroke-width="${fmtMm(st.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
+      );
+    }
   } else {
+    // Uploaded .svg Artwork Layers parsed to cuttable vector paths
+    if (svgArtworkD) {
+      pathElements.push(
+        `  <path id="svg-artwork" d="${svgArtworkD}" fill="#222222" fill-rule="nonzero" />`,
+      );
+    }
+    for (const st of strokedSvgArtwork) {
+      pathElements.push(
+        `  <path id="svg-artwork-stroke-${st.id}" d="${st.d}" fill="none" stroke="#222222" stroke-width="${fmtMm(st.strokeWidthMm)}" stroke-linejoin="round" stroke-linecap="round" />`,
+      );
+    }
+
     // Classic Bookbindery Vector Ornaments & Custom SVG Stamps (separate foil/HTV cut paths)
     if (ornamentsD) {
       pathElements.push(
@@ -944,7 +1174,13 @@ ${pathElements.join('\n')}
     widthMm,
     heightMm,
     pathCount: pathElements.length,
-    hasLettering: Boolean(letteringD || ornamentsD || strokedOrnaments.length > 0),
+    hasLettering: Boolean(
+      letteringD ||
+        ornamentsD ||
+        strokedOrnaments.length > 0 ||
+        svgArtworkD ||
+        strokedSvgArtwork.length > 0,
+    ),
     foilColors: Array.from(foilColorSet),
     fitsCricutJoy,
     fitsStandard12x12,
