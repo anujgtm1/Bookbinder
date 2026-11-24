@@ -56,6 +56,7 @@ import {
   exportCoverPng300Dpi,
   generateAffinityCoverSvg,
   generatePrintReadyRollPdf,
+  getPanelBoardRect,
   renderCoverArtworkCanvas,
   resolveQuickFitRect,
   type CoverPdfLayerMode,
@@ -135,32 +136,9 @@ export function useCoverStudioActions({
     });
   };
 
-  const getBoardRectInCanvas = (zone: CoverElementZone): Rect2D => {
-    const base =
-      zone === 'back'
-        ? geometry.outerWrap.backBoardRect
-        : zone === 'spine'
-          ? geometry.outerWrap.spineRect
-          : geometry.outerWrap.frontBoardRect;
-    return {
-      x: base.x + spec.bleedMm,
-      y: base.y + spec.bleedMm,
-      width: base.width,
-      height: base.height,
-    };
-  };
+  const getBoardRectInCanvas = (zone: CoverElementZone): Rect2D => getPanelBoardRect(spec, zone);
 
-  const getArtworkRectForZone = (zone: CoverElementZone): Rect2D => {
-    switch (zone) {
-      case 'back':
-        return spec.backArtworkRect;
-      case 'spine':
-        return spec.spineArtworkRect;
-      case 'front':
-      default:
-        return spec.frontArtworkRect;
-    }
-  };
+  const getArtworkRectForZone = (zone: CoverElementZone): Rect2D => resolveQuickFitRect(spec, zone);
 
   const handleAddTextPreset = (preset: CoverTextPresetKind) => {
     const zone: CoverElementZone = preset === 'back-blurb' ? 'back' : 'front';

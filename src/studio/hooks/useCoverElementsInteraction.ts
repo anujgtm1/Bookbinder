@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import {
   CoverOrnamentLayerModel,
+  isBoxMappedOrnament,
   type CoverOrnamentLayer,
   type CoverTextLayer,
 } from '@/types/coverElements';
@@ -109,10 +110,7 @@ export function useCoverElementsInteraction({
       const allowSnap = snapEnabled && !e.altKey;
 
       if (drag.kind === 'ornament-resize') {
-        const lockAspect =
-          drag.origOrnament.presetId === 'custom-svg' ||
-          drag.origOrnament.presetId.startsWith('emblem-') ||
-          drag.origOrnament.presetId.startsWith('divider-');
+        const lockAspect = !isBoxMappedOrnament(drag.origOrnament);
 
         const snapped = allowSnap
           ? snapPointToTargets(pt.xMm, pt.yMm, snapTargets)

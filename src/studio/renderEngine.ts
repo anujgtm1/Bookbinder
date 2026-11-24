@@ -6,6 +6,7 @@ export {
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   getCoverTextAxisAlignedBounds,
+  getPanelBoardRect,
   inferZoneFromCenterX,
   resolveQuickFitRect,
   resolveZoneClipRect,

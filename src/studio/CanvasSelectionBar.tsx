@@ -11,7 +11,11 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { FOIL_SWATCHES } from '@/resources/palettes';
-import type { CoverOrnamentLayer, CoverTextLayer } from '@/types/coverElements';
+import {
+  isFrameLikeOrnament,
+  type CoverOrnamentLayer,
+  type CoverTextLayer,
+} from '@/types/coverElements';
 import { normalizeQuarterTurn, type CoverImageLayer } from '@/types/studioLayer';
 import { getClassicOrnamentSpec } from './classicOrnaments';
 
@@ -57,11 +61,7 @@ const FRAME_MARGIN_PRESETS: readonly {
 ];
 
 function isFrameLikeSelection(selection: CanvasSelectionTarget): boolean {
-  if (selection.kind !== 'ornament' || selection.layer.presetId === 'custom-svg') {
-    return false;
-  }
-  const category = getClassicOrnamentSpec(selection.layer.presetId).category;
-  return category === 'frames' || category === 'corners';
+  return selection.kind === 'ornament' && isFrameLikeOrnament(selection.layer);
 }
 
 const ACTION_BTN_CLASS =

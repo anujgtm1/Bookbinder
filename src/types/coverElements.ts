@@ -115,6 +115,28 @@ export interface CoverOrnamentLayer {
 }
 
 /**
+ * Returns true when an ornament is a board-framing motif (`frame-*` or `corners-*`)
+ * that benefits from contextual 6 / 12 / 18 mm board-margin presets.
+ */
+export function isFrameLikeOrnament(
+  ornament: ClassicOrnamentId | Pick<CoverOrnamentLayer, 'presetId'>,
+): boolean {
+  const presetId = typeof ornament === 'string' ? ornament : ornament.presetId;
+  return presetId.startsWith('frame-') || presetId.startsWith('corners-');
+}
+
+/**
+ * Returns true when an ornament stretches independently per axis to fill its target board box
+ * (`frame-*`, `corners-*`, and `spine-*`), as opposed to aspect-locked emblems, dividers, or custom SVGs.
+ */
+export function isBoxMappedOrnament(
+  ornament: ClassicOrnamentId | Pick<CoverOrnamentLayer, 'presetId'>,
+): boolean {
+  const presetId = typeof ornament === 'string' ? ornament : ornament.presetId;
+  return isFrameLikeOrnament(presetId) || presetId.startsWith('spine-');
+}
+
+/**
  * Rotates a classic ornament or custom SVG stamp 90° clockwise around its center,
  * swapping widthMm and heightMm so bounding box, resize handles, and snap guides stay tight.
  */
@@ -347,8 +369,7 @@ export const CoverOrnamentLayerModel = {
     zone: CoverElementZone,
     color = '#d9b566',
   ): CoverOrnamentLayer {
-    const isFrameOrCorner =
-      presetId.startsWith('frame-') || presetId.startsWith('corners-');
+    const isFrameOrCorner = isFrameLikeOrnament(presetId);
     const isDivider = presetId.startsWith('divider-');
     const isSpinePreset = presetId.startsWith('spine-');
 
@@ -535,12 +556,7 @@ export const CoverOrnamentLayerModel = {
       height: Math.max(COVER_ORNAMENT_BOUNDS.minSizeMm, targetBoardRectMm.height - m * 2),
     };
 
-    const fillsInsetBox =
-      layer.presetId.startsWith('frame-') ||
-      layer.presetId.startsWith('corners-') ||
-      layer.presetId.startsWith('spine-');
-
-    if (fillsInsetBox) {
+    if (isBoxMappedOrnament(layer)) {
       return {
         ...layer,
         xMm: roundTo(usable.x, 2),

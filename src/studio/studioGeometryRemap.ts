@@ -1,10 +1,10 @@
-import { getClassicOrnamentSpec } from '@/studio/classicOrnaments';
-import { computeStudioCanvasSpec } from '@/studio/canvasSpec';
+import { computeStudioCanvasSpec, getPanelBoardRect, type StudioCanvasSpec } from '@/studio/canvasSpec';
 import { computeInnerPocketsLayout } from '@/studio/pocketRenderEngine';
-import type {
-  CoverElementZone,
-  CoverOrnamentLayer,
-  CoverTextLayer,
+import {
+  isBoxMappedOrnament,
+  type CoverElementZone,
+  type CoverOrnamentLayer,
+  type CoverTextLayer,
 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
@@ -21,12 +21,6 @@ const MAX_IMAGE_REMAP_MM = 4000;
 
 type OuterImageAnchor = 'front' | 'back' | 'spine' | 'fullWrap';
 type InnerImageAnchor = 'front' | 'back' | 'spine' | 'all';
-
-interface ZoneBoardRects {
-  readonly back: Rect2D;
-  readonly spine: Rect2D;
-  readonly front: Rect2D;
-}
 
 interface InnerPieceRects {
   readonly back: Rect2D;
@@ -47,31 +41,6 @@ function rectsEqual(a: Rect2D, b: Rect2D): boolean {
 function clampSize(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
-}
-
-function getBoardRectsInCanvas(geometry: CaseGeometry): ZoneBoardRects {
-  const { outerWrap } = geometry;
-  const bleedMm = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
-  return {
-    back: {
-      x: bleedMm + outerWrap.backBoardRect.x,
-      y: bleedMm + outerWrap.backBoardRect.y,
-      width: outerWrap.backBoardRect.width,
-      height: outerWrap.backBoardRect.height,
-    },
-    spine: {
-      x: bleedMm + outerWrap.spineRect.x,
-      y: bleedMm + outerWrap.spineRect.y,
-      width: outerWrap.spineRect.width,
-      height: outerWrap.spineRect.height,
-    },
-    front: {
-      x: bleedMm + outerWrap.frontBoardRect.x,
-      y: bleedMm + outerWrap.frontBoardRect.y,
-      width: outerWrap.frontBoardRect.width,
-      height: outerWrap.frontBoardRect.height,
-    },
-  };
 }
 
 function getOuterWrapRectInCanvas(geometry: CaseGeometry): Rect2D {
@@ -118,12 +87,12 @@ function geometricMeanScale(prevRect: Rect2D, nextRect: Rect2D): number {
 
 function remapTextLayer(
   layer: CoverTextLayer,
-  prevBoards: ZoneBoardRects,
-  nextBoards: ZoneBoardRects,
+  prevSpec: StudioCanvasSpec,
+  nextSpec: StudioCanvasSpec,
 ): CoverTextLayer {
   const zone: CoverElementZone = layer.zone;
-  const prevRect = prevBoards[zone];
-  const nextRect = nextBoards[zone];
+  const prevRect = getPanelBoardRect(prevSpec, zone);
+  const nextRect = getPanelBoardRect(nextSpec, zone);
   if (rectsEqual(prevRect, nextRect)) {
     return layer;
   }
@@ -137,11 +106,11 @@ function remapTextLayer(
 
 function remapOrnamentLayer(
   orn: CoverOrnamentLayer,
-  prevBoards: ZoneBoardRects,
-  nextBoards: ZoneBoardRects,
+  prevSpec: StudioCanvasSpec,
+  nextSpec: StudioCanvasSpec,
 ): CoverOrnamentLayer {
-  const prevRect = prevBoards[orn.zone];
-  const nextRect = nextBoards[orn.zone];
+  const prevRect = getPanelBoardRect(prevSpec, orn.zone);
+  const nextRect = getPanelBoardRect(nextSpec, orn.zone);
   if (rectsEqual(prevRect, nextRect)) {
     return orn;
   }
@@ -153,13 +122,9 @@ function remapOrnamentLayer(
   const prevCy = orn.yMm + orn.heightMm / 2;
   const nextCenter = mapPointBetweenRects(prevCx, prevCy, prevRect, nextRect);
 
-  const { category } = getClassicOrnamentSpec(orn.presetId);
-  const isBoxMapped =
-    category === 'frames' || category === 'corners' || category === 'spine';
-
   let nextW: number;
   let nextH: number;
-  if (isBoxMapped) {
+  if (isBoxMappedOrnament(orn)) {
     nextW = clampSize(
       orn.widthMm * (nextRect.width / prevRect.width),
       MIN_ORNAMENT_REMAP_MM,
@@ -316,15 +281,13 @@ export function remapStudioForGeometryChange(
 
   const prevSpec = computeStudioCanvasSpec(prevGeometry);
   const nextSpec = computeStudioCanvasSpec(nextGeometry);
-  const prevBoards = getBoardRectsInCanvas(prevGeometry);
-  const nextBoards = getBoardRectsInCanvas(nextGeometry);
   const prevOuterWrapRect = getOuterWrapRectInCanvas(prevGeometry);
   const nextOuterWrapRect = getOuterWrapRectInCanvas(nextGeometry);
 
   const outerUnchanged =
-    rectsEqual(prevBoards.back, nextBoards.back) &&
-    rectsEqual(prevBoards.spine, nextBoards.spine) &&
-    rectsEqual(prevBoards.front, nextBoards.front) &&
+    rectsEqual(prevSpec.backBoardRect, nextSpec.backBoardRect) &&
+    rectsEqual(prevSpec.spineBoardRect, nextSpec.spineBoardRect) &&
+    rectsEqual(prevSpec.frontBoardRect, nextSpec.frontBoardRect) &&
     rectsEqual(prevSpec.backArtworkRect, nextSpec.backArtworkRect) &&
     rectsEqual(prevSpec.spineArtworkRect, nextSpec.spineArtworkRect) &&
     rectsEqual(prevSpec.frontArtworkRect, nextSpec.frontArtworkRect) &&
@@ -358,12 +321,12 @@ export function remapStudioForGeometryChange(
   const nextTextLayers =
     outerUnchanged || (studio.textLayers?.length ?? 0) === 0
       ? studio.textLayers
-      : studio.textLayers.map((layer) => remapTextLayer(layer, prevBoards, nextBoards));
+      : studio.textLayers.map((layer) => remapTextLayer(layer, prevSpec, nextSpec));
 
   const nextOrnaments =
     outerUnchanged || (studio.ornaments?.length ?? 0) === 0
       ? studio.ornaments
-      : studio.ornaments.map((orn) => remapOrnamentLayer(orn, prevBoards, nextBoards));
+      : studio.ornaments.map((orn) => remapOrnamentLayer(orn, prevSpec, nextSpec));
 
   const nextLayers =
     outerUnchanged || studio.layers.length === 0

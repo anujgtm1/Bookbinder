@@ -25,6 +25,12 @@ export interface StudioCanvasSpec {
   readonly spineZoneRect: Rect2D;
   /** Full background band for front side (including turn-in / front flap). */
   readonly frontZoneRect: Rect2D;
+  /** Visible back board/cover face rect in StudioCanvasSpec mm coordinates (includes bleed offset). */
+  readonly backBoardRect: Rect2D;
+  /** Visible spine rect in StudioCanvasSpec mm coordinates (includes bleed offset). */
+  readonly spineBoardRect: Rect2D;
+  /** Visible front board/cover face rect in StudioCanvasSpec mm coordinates (includes bleed offset). */
+  readonly frontBoardRect: Rect2D;
   /** Artwork fit & clip bounds for back cover (excludes tuck flaps and glue tabs on flap covers). */
   readonly backArtworkRect: Rect2D;
   /** Artwork fit & clip bounds for spine (excludes top/bottom cut-away waste on glue-tab covers). */
@@ -136,6 +142,25 @@ export function computeStudioCanvasSpec(
     height: totalHeightMm,
   };
 
+  const backBoardRect: Rect2D = {
+    x: bleedMm + outerWrap.backBoardRect.x,
+    y: bleedMm + outerWrap.backBoardRect.y,
+    width: outerWrap.backBoardRect.width,
+    height: outerWrap.backBoardRect.height,
+  };
+  const spineBoardRect: Rect2D = {
+    x: bleedMm + outerWrap.spineRect.x,
+    y: bleedMm + outerWrap.spineRect.y,
+    width: outerWrap.spineRect.width,
+    height: outerWrap.spineRect.height,
+  };
+  const frontBoardRect: Rect2D = {
+    x: bleedMm + outerWrap.frontBoardRect.x,
+    y: bleedMm + outerWrap.frontBoardRect.y,
+    width: outerWrap.frontBoardRect.width,
+    height: outerWrap.frontBoardRect.height,
+  };
+
   // On covers with fold-in flaps or top/bottom glue tabs (slip covers & dust jackets), Fit Front/Back
   // and front/back clip masks target the visible cover face instead of spilling onto tuck flaps or glue tabs.
   const backArtworkRect: Rect2D =
@@ -178,6 +203,9 @@ export function computeStudioCanvasSpec(
     backZoneRect,
     spineZoneRect,
     frontZoneRect,
+    backBoardRect,
+    spineBoardRect,
+    frontBoardRect,
     backArtworkRect,
     spineArtworkRect,
     frontArtworkRect,
@@ -188,6 +216,20 @@ export function computeStudioCanvasSpec(
       height: totalHeightMm,
     },
   };
+}
+
+export function getPanelBoardRect(
+  spec: StudioCanvasSpec,
+  zone: CoverElementZone,
+): Rect2D {
+  switch (zone) {
+    case 'back':
+      return spec.backBoardRect;
+    case 'spine':
+      return spec.spineBoardRect;
+    case 'front':
+      return spec.frontBoardRect;
+  }
 }
 
 export function resolveZoneClipRect(

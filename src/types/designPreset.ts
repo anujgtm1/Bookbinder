@@ -1,9 +1,11 @@
 import { parseHexColor } from '@/lib/color';
 import { BUILT_IN_DESIGN_PRESETS } from '@/resources/designPresets';
+import { computeStudioCanvasSpec, getPanelBoardRect } from '@/studio/canvasSpec';
 import {
   CLASSIC_ORNAMENT_IDS,
   COVER_ORNAMENT_BOUNDS,
   COVER_TEXT_BOUNDS,
+  isBoxMappedOrnament,
   type ClassicOrnamentId,
   type CoverElementZone,
   type CoverOrnamentLayer,
@@ -125,28 +127,13 @@ function parseOrnamentId(value: unknown): ClassicOrnamentId | null {
 }
 
 function getTargetBoardRect(geometry: CaseGeometry, zone: CoverElementZone): Rect2D {
-  const { outerWrap } = geometry;
-  const bleedMm = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
-  const base =
-    zone === 'back'
-      ? outerWrap.backBoardRect
-      : zone === 'spine'
-        ? outerWrap.spineRect
-        : outerWrap.frontBoardRect;
+  const rect = getPanelBoardRect(computeStudioCanvasSpec(geometry), zone);
   return {
-    x: base.x + bleedMm,
-    y: base.y + bleedMm,
-    width: Math.max(1, base.width),
-    height: Math.max(1, base.height),
+    x: rect.x,
+    y: rect.y,
+    width: Math.max(1, rect.width),
+    height: Math.max(1, rect.height),
   };
-}
-
-function isBoxMappedOrnament(presetId: ClassicOrnamentId): boolean {
-  return (
-    presetId.startsWith('frame-') ||
-    presetId.startsWith('corners-') ||
-    presetId.startsWith('spine-')
-  );
 }
 
 function resolveNaturalAspectRatio(template: NormalizedOrnamentTemplate): number {
