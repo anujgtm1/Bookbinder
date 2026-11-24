@@ -15,6 +15,13 @@ import {
 } from './coverElements';
 import type { CaseGeometry, Rect2D } from './geometry';
 import {
+  cloneLayerLayoutConstraint,
+  sanitizeCoverTextRole,
+  sanitizeLayerLayoutConstraint,
+  type CoverTextSemanticRole,
+  type LayerLayoutConstraint,
+} from './layoutConstraints';
+import {
   CURATED_FONT_IDS,
   STUDIO_BOUNDS,
   type AuthorOrientation,
@@ -55,6 +62,8 @@ export interface NormalizedTextTemplate {
   readonly flipX?: boolean;
   readonly flipY?: boolean;
   readonly rotationDeg?: QuarterTurnDeg;
+  readonly role?: CoverTextSemanticRole;
+  readonly layoutConstraint?: LayerLayoutConstraint;
 }
 
 export interface NormalizedOrnamentTemplate {
@@ -77,6 +86,7 @@ export interface NormalizedOrnamentTemplate {
   readonly customSvgPaths?: readonly string[];
   readonly customSvgViewBox?: { readonly width: number; readonly height: number };
   readonly customSvgRenderMode?: CustomSvgRenderMode;
+  readonly layoutConstraint?: LayerLayoutConstraint;
 }
 
 export interface CoverDesignPreset {
@@ -156,6 +166,8 @@ function deserializeTextTemplate(raw: unknown): NormalizedTextTemplate | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.text !== 'string') return null;
+  const role = sanitizeCoverTextRole(obj.role);
+  const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
 
   return {
     text: obj.text.slice(0, 600),
@@ -198,6 +210,8 @@ function deserializeTextTemplate(raw: unknown): NormalizedTextTemplate | null {
     ...(normalizeQuarterTurn(obj.rotationDeg)
       ? { rotationDeg: normalizeQuarterTurn(obj.rotationDeg) }
       : {}),
+    ...(role ? { role } : {}),
+    ...(layoutConstraint ? { layoutConstraint } : {}),
   };
 }
 
@@ -239,6 +253,8 @@ function deserializeOrnamentTemplate(raw: unknown): NormalizedOrnamentTemplate |
     return null;
   }
 
+  const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+
   return {
     presetId,
     zone: parseZone(obj.zone),
@@ -267,6 +283,7 @@ function deserializeOrnamentTemplate(raw: unknown): NormalizedOrnamentTemplate |
     ...(customSvgPaths ? { customSvgPaths } : {}),
     ...(customSvgViewBox ? { customSvgViewBox } : {}),
     ...(customSvgRenderMode ? { customSvgRenderMode } : {}),
+    ...(layoutConstraint ? { layoutConstraint } : {}),
   };
 }
 
@@ -353,6 +370,7 @@ export const CoverDesignPresetModel = {
 
     const textTemplates: NormalizedTextTemplate[] = (studio.textLayers ?? []).map((layer) => {
       const rect = getTargetBoardRect(geometry, layer.zone);
+      const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
       return {
         text: layer.text,
         zone: layer.zone,
@@ -370,11 +388,14 @@ export const CoverDesignPresetModel = {
         ...(normalizeQuarterTurn(layer.rotationDeg)
           ? { rotationDeg: normalizeQuarterTurn(layer.rotationDeg) }
           : {}),
+        ...(layer.role ? { role: layer.role } : {}),
+        ...(layoutConstraint ? { layoutConstraint } : {}),
       };
     });
 
     const ornamentTemplates: NormalizedOrnamentTemplate[] = (studio.ornaments ?? []).map((orn) => {
       const rect = getTargetBoardRect(geometry, orn.zone);
+      const layoutConstraint = cloneLayerLayoutConstraint(orn.layoutConstraint);
       return {
         presetId: orn.presetId,
         zone: orn.zone,
@@ -393,6 +414,7 @@ export const CoverDesignPresetModel = {
         ...(orn.customSvgPaths ? { customSvgPaths: [...orn.customSvgPaths] } : {}),
         ...(orn.customSvgViewBox ? { customSvgViewBox: { ...orn.customSvgViewBox } } : {}),
         ...(orn.customSvgRenderMode ? { customSvgRenderMode: orn.customSvgRenderMode } : {}),
+        ...(layoutConstraint ? { layoutConstraint } : {}),
       };
     });
 
@@ -570,12 +592,22 @@ export const CoverDesignPresetModel = {
     const clean = presets.map((preset) => ({
       ...preset,
       spineStyle: { ...preset.spineStyle },
-      textTemplates: preset.textTemplates.map((t) => ({ ...t })),
-      ornamentTemplates: preset.ornamentTemplates.map((o) => ({
-        ...o,
-        ...(o.customSvgPaths ? { customSvgPaths: [...o.customSvgPaths] } : {}),
-        ...(o.customSvgViewBox ? { customSvgViewBox: { ...o.customSvgViewBox } } : {}),
-      })),
+      textTemplates: preset.textTemplates.map((t) => {
+        const layoutConstraint = cloneLayerLayoutConstraint(t.layoutConstraint);
+        return {
+          ...t,
+          ...(layoutConstraint ? { layoutConstraint } : {}),
+        };
+      }),
+      ornamentTemplates: preset.ornamentTemplates.map((o) => {
+        const layoutConstraint = cloneLayerLayoutConstraint(o.layoutConstraint);
+        return {
+          ...o,
+          ...(o.customSvgPaths ? { customSvgPaths: [...o.customSvgPaths] } : {}),
+          ...(o.customSvgViewBox ? { customSvgViewBox: { ...o.customSvgViewBox } } : {}),
+          ...(layoutConstraint ? { layoutConstraint } : {}),
+        };
+      }),
     }));
     return JSON.stringify(clean);
   },

@@ -1,4 +1,9 @@
 import type { Rect2D } from './geometry';
+import {
+  cloneLayerLayoutConstraint,
+  sanitizeLayerLayoutConstraint,
+  type LayerLayoutConstraint,
+} from './layoutConstraints';
 import { clampFinite, roundTo } from './units';
 
 export type LayerClipZone = 'none' | 'front' | 'spine' | 'back';
@@ -45,6 +50,8 @@ export interface CoverImageLayer {
   readonly flipY?: boolean;
   /** Clockwise quarter-turn rotation around layer center (0, 90, 180, or 270 degrees) */
   readonly rotationDeg?: QuarterTurnDeg;
+  /** Optional declarative layout pin/fit condition */
+  readonly layoutConstraint?: LayerLayoutConstraint;
 }
 
 /**
@@ -140,6 +147,7 @@ export const CoverImageLayerModel = {
     layer: CoverImageLayer,
     targetRect: Rect2D,
     clipZone: LayerClipZone = layer.clipZone,
+    mode: 'cover' | 'contain' = 'cover',
   ): CoverImageLayer {
     const rot = normalizeQuarterTurn(layer.rotationDeg);
     const isQuarterTurn = rot === 90 || rot === 270;
@@ -149,7 +157,10 @@ export const CoverImageLayerModel = {
       const natW = Math.max(1, layer.naturalWidth);
       const natH = Math.max(1, layer.naturalHeight);
       // Visual aspect when rotated 90°/270° is natH / natW, so visual width = heightMm and visual height = widthMm
-      const scale = Math.max(targetRect.width / natH, targetRect.height / natW);
+      const scale =
+        mode === 'contain'
+          ? Math.min(targetRect.width / natH, targetRect.height / natW)
+          : Math.max(targetRect.width / natH, targetRect.height / natW);
       const widthMm = roundTo(
         Math.min(LAYER_MAX_SIZE_MM, Math.max(LAYER_MIN_SIZE_MM, natW * scale)),
         2,
@@ -181,7 +192,7 @@ export const CoverImageLayerModel = {
         naturalHeight: layer.naturalHeight,
         targetRect,
         clipZone,
-        mode: 'cover',
+        mode,
       });
     }
 
@@ -196,6 +207,7 @@ export const CoverImageLayerModel = {
       flipX: layer.flipX,
       flipY: layer.flipY,
       rotationDeg: rot !== 0 ? rot : undefined,
+      ...(layer.layoutConstraint ? { layoutConstraint: layer.layoutConstraint } : {}),
     };
   },
 
@@ -320,6 +332,16 @@ export const CoverImageLayerModel = {
     return next;
   },
 
+  serialize(layer: CoverImageLayer): CoverImageLayer {
+    const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
+    const { layoutConstraint: _c, ...rest } = layer;
+    void _c;
+    return {
+      ...rest,
+      ...(layoutConstraint ? { layoutConstraint } : {}),
+    };
+  },
+
   deserialize(raw: unknown): CoverImageLayer | null {
     if (!raw || typeof raw !== 'object') return null;
     const obj = raw as Record<string, unknown>;
@@ -335,6 +357,7 @@ export const CoverImageLayerModel = {
       typeof obj.originalDataUrl === 'string' && obj.originalDataUrl.startsWith('data:image/')
         ? obj.originalDataUrl
         : undefined;
+    const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
 
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateLayerId(),
@@ -365,6 +388,7 @@ export const CoverImageLayerModel = {
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
+      ...(layoutConstraint ? { layoutConstraint } : {}),
     };
   },
 } as const;
