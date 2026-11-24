@@ -53,9 +53,9 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ## Tier 3 — Home-Printer & Bench Ergonomics
 
-### 10. [Shipped] Tiled Poster Print Mode (Letter / A4 Desktop Printers)
-- **Implemented in:** `src/core/pdfSheetLayout.ts`, `src/components/PdfExportDialog.tsx`, `src/components/PdfSheetPreviewSvg.tsx`.
-- Unified Print & Export PDF Dialog compares `US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact 1:1`, and `13"–44"` rolls with live `1 sheet` vs. `2 sheets (tiled)` fit badges, configurable `10 / 15 / 20 mm` overlap + alignment crosshairs, and an optional `50 mm` Scale-Check Ruler bar.
+### 10. [Shipped] Tiled Poster Print Mode, Wide-Format Roll Nesting & Asymmetric Printer Margins
+- **Implemented in:** `src/core/pdfSheetLayout.ts`, `src/core/printerMargins.ts`, `src/core/marginTestSheetPdf.ts`, `src/core/rollNesting.ts`, `src/components/PdfExportDialog.tsx`, `src/components/PdfSheetPreviewSvg.tsx`.
+- Unified Print & Export PDF Dialog compares `US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact Wrap Size`, `13"–44"` rolls, and **Custom Roll Width (`200–1600 mm`)** with live `1 sheet` vs. `2 sheets (tiled)` fit badges, configurable `10 / 15 / 20 mm` overlap + alignment crosshairs, optional `50 mm` Scale-Check Ruler, per-edge **Asymmetric Printer Margins** + **1-Click Printer Margin Calibration Sheet PDF**, and **Wide-Format Roll Multi-Up / Gang-Sheet Nesting** (copies, optional inner pockets, and multi-book PDF uploads).
 
 ### 11. [Shipped] Printable "Bench Recipe Card" & Step-by-Step Cut Checklist
 - **Implemented in:** `src/core/benchRecipePdf.ts`, `src/components/MeasureAndCutPanel.tsx`.

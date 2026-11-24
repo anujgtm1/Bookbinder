@@ -39,21 +39,28 @@ Related docs: [SPEC.md](./SPEC.md) · [DEVELOPMENT.md](./DEVELOPMENT.md) · [DEP
   - Flattened glyph & ornament paths (zero `<text>` tags or `transform` attributes), 4 cut scopes, weeding box, registration marks, HTV Mirror, always-light high-contrast carrier mat preview, **Split Mats by Foil Color**, and **Base Only (For HTV)** Print PDF (`outer_cover_base_for_htv.pdf`) with `3 mm` outer alignment ticks + 1-click handoff from the Cricut dialog.
 - [x] **Modular Architecture Refactor:** Decomposed `CoverStyler`, `InnerPocketsStudio`, `CoverElementsCard`, and `renderEngine` into cohesive `src/lib/`, `src/resources/`, `src/studio/exporters/`, `src/studio/ornaments/`, `src/studio/pockets/`, and `src/studio/hooks/` modules.
 - [x] **GitHub Pages CI/CD & Live Deployment:** `.github/workflows/ci.yml` + `.github/workflows/deploy.yml` live at **[https://anujgtm.com/Bookbinder/](https://anujgtm.com/Bookbinder/)**.
-- [x] **Automated Test Suite:** **44 Vitest test files / 199 unit & component tests** + **31 Playwright Chromium E2E tests** covering every major user workflow and real PDF/SVG downloads.
+
+### Milestone 4 — Craft Expansion, Wide-Format Print Studio, Stability & Tokyo Bindery Desk UI
+- [x] **Folded Glue-In Endpapers Mode (`src/core/geometry.ts`, `src/studio/InnerPocketsStudio.tsx`):** Traditional paperback-to-hardcover rebind option alongside Removable Slip-In Pockets (`2 × PB_W × PB_H` folded sheets with center fold score line, mirrored `PASTEDOWN` / `FLYLEAF` annotations, drag-and-drop / Tile Pattern styling, and PDF/SVG exports).
+- [x] **Undo/Redo, Copy/Paste/Duplicate, Arrow-Key Nudge, OS Image Paste & Contextual Canvas Selection Bar (`src/studio/hooks/useStudioHistory.ts`, `src/studio/studioClipboard.ts`, `src/studio/CanvasSelectionBar.tsx`):** Full studio history stack (`Cmd/Ctrl+Z`, `Cmd/Ctrl+Shift+Z`, `Ctrl+Y`), element clipboard (`Cmd/Ctrl+C/V/D`), `1 mm / 5 mm` arrow-key nudging, direct OS clipboard image paste, and a zero-CLS contextual top bar showing `6 / 12 / 18 mm` board-margin presets for frames/corners or `Top ⅓ / Center / Bottom ⅓` for text/emblems/images, `Flip H/V`, static `90°` rotation, and foil swatches.
+- [x] **Invertible Geometry Remapping (`src/studio/studioGeometryRemap.ts`):** Atomically remaps cover text, ornaments, images, and inner pocket layers when switching paperback presets, dimensions, binding styles, or interior styles with `< 0.01 mm` round-trip drift (`A → B → A`).
+- [x] **Printable Bench Recipe Card & Scrap-Chipboard Cutting Jigs PDF (`src/core/benchRecipePdf.ts`):** One-click printable bench spec card, assembly check-off checklist, exact-width hinge spacer jig, exact-clearance 45° corner miter gauge jig, and `50 mm` scale check ruler.
+- [x] **Matching Slipcase Box Calculator (`src/core/slipcaseGeometry.ts`, `src/core/slipcaseExport.ts`, `src/components/SlipcaseCard.tsx`):** 5-panel DAS flush-stacking chipboard cut list, outer wrap strips, live slide-clearance & semi-circular thumb-notch arc controls, live SVG preview, and ready-to-cut SVG/PDF exports.
+- [x] **1-Click Sample Book & Non-Printing 2D/3D Material / Foil Previews (`src/resources/sampleProject.ts`, `src/studio/materialPreview.ts`, `src/studio/Book3DPreview.tsx`):** Offline *Twenty Thousand Leagues Under the Seas* showcase project with marbled endpapers, plus non-printing **Matte Paper**, **Bookcloth Linen**, and **Pebbled Leather** textures and **Gold / Silver / Copper Foil** sheen in 3D (preserving crisp CSS 3D backface culling and inner folds).
+- [x] **Custom Roll Width, Wide-Format Multi-Up / Gang-Sheet Nesting & Asymmetric Printer Margins (`src/core/printerMargins.ts`, `src/core/marginTestSheetPdf.ts`, `src/core/rollNesting.ts`, `src/core/pdfSheetLayout.ts`, `src/components/PdfExportDialog.tsx`):** Custom `200–1600 mm` roll widths, shelf-packed N-up copies + optional inner pockets + multi-book PDF gang-sheet upload with live roll strip efficiency preview, per-edge asymmetric printer margins with presets & shaded hardware dead-zone preview, and 1-click printable **Printer Margin Calibration Sheet PDF**.
+- [x] **Tokyo Bindery Desk 3-Column UI Overhaul (`src/assets/atelier/`, `src/components/BindingStyleIcon.tsx`, `src/index.css`):** Warm smoked-walnut workbench, handmade *washi* paper sheets (Light) & woven charcoal-linen panels (Dark), bespoke woodcut colophon emblem, 5-style architectural cross-section binding pickers, docked right Design Inspector on desktop (`xl:`), high-contrast folio index tabs, and `light-dark()` semantic status tokens across all warnings.
+- [x] **Automated Test Suite:** **57 Vitest test files / 312 unit & component tests** + **40 Playwright Chromium E2E tests** covering every major user workflow, round-trip geometry stability, roll nesting, printer margins, and real PDF/SVG downloads.
 
 ---
 
 ## Planned / Backlog
 
-### Milestone 4 — Affinity Connector (see [RESEARCH.md](./RESEARCH.md))
+### Milestone 5 — Affinity Connector (see [RESEARCH.md](./RESEARCH.md))
 - [ ] **Environment Spike:** Verify installed Affinity version (`Scripting Studio`, `affinity.d.ts`, MCP Server availability).
 - [ ] **Phase A — Native Affinity Script Export:** Add `src/core/affinityScriptExport.ts` to generate a ready-to-run Affinity JS script creating a native 300 DPI document with true Document Bleed, snapping Ruler Guides, locked Cut/Guide layers, artwork layers, and editable spine Artistic Text.
 - [ ] **Phase B — Local Companion Bridge:** Optional local bridge (`pnpm affinity-bridge`) enabling a one-click *"Send to Affinity"* button via Affinity MCP or macOS `open -a` fallback.
 
 ### Next Craft Enhancements (see [FEATURE_IDEAS.md](./FEATURE_IDEAS.md))
-- [ ] **Folded Glue-In Endpapers** mode alongside Removable Slip-In Pockets for traditional paperback-to-hardcover rebinds.
 - [ ] **Bradel Binding** & **Rounded / Backed Spine Arc** calculators.
-- [ ] **Matching Slipcase Box** `1:1 mm` cut list & wrap generator.
 - [ ] **Spine Thickness Estimator** (from page count & paper GSM/PPI) with measured-block confirmation reminder.
-- [ ] **Printable Bench Recipe Card & Reusable Cutting Jigs** (exact hinge spacer & 45° corner miter gauge in PDF whitespace).
-- [ ] **Layer Rotation & Opacity** controls on the outer cover canvas + 1-click **Load Sample Book** showcase mode.
+- [ ] **Parametric Flap & Pocket Profiles** (tapered/beveled flap tips and diagonal-cut inner pockets).
