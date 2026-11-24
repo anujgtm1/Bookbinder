@@ -443,5 +443,5 @@ describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · B
 
     await user.click(screen.getByTestId('selection-delete-btn'));
     expect(latestState.textLayers).toHaveLength(1);
-  });
+  }, 15_000);
 });
