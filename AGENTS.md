@@ -19,8 +19,8 @@ For user docs see [`README.md`](./README.md); for module layout & scripts see [`
     - Pure refactors (`refactor(...):`) — never mix behavior changes with structural refactors
     - Unit & E2E tests (`test(unit):`, `test(e2e):`)
     - Docs, specs & screenshots (`docs(readme):`, `docs(spec):`, `docs(screenshots):`)
-- **Periodic Big-Picture Refactor Cadence (Every ~5–10 Commits):**
-  - After every ~5–10 feature commits, pause and review the architecture holistically — not just file-by-file:
+- **Periodic Big-Picture Refactor Cadence (Every ~15–20 Commits):**
+  - After every ~15–20 commits, pause and review the architecture holistically — not just file-by-file:
     - If a recent feature was awkward or touched too many files to add, treat that as a design smell and refactor toward a cleaner pattern (e.g., Strategy/Registry, shared lib, or Geometry IR).
     - Check whether modules should be split or combined, extract shared utilities into `src/lib/`, and pull static data/assets/magic strings out into `src/resources/`.
     - Audit end-to-end user-flow test coverage (`e2e/` + Vitest) and close any gaps before starting the next feature wave.
