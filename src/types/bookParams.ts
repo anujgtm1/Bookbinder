@@ -1,4 +1,5 @@
 import { BINDING_STYLE_STRATEGIES, getBindingStrategy } from '@/core/bindingStyles';
+import { clampCustomRollWidthMm } from '@/core/printerMargins';
 import {
   BINDING_STYLES,
   PAGE_SIZES,
@@ -50,7 +51,8 @@ export type PrintMediaId =
   | 'roll-17'
   | 'roll-24'
   | 'roll-36'
-  | 'roll-44';
+  | 'roll-44'
+  | 'roll-custom';
 export type PaperbackPresetId =
   | 'mass-market'
   | 'us-trade-digest'
@@ -135,6 +137,8 @@ export interface BookParameters {
   pdfPageSize: PageSizeId;
   /** Target output paper sheet or roll width for outer cover Print PDF & paper-fit preflight */
   printMedia: PrintMediaId;
+  /** Optional custom wide-format roll width in mm when printMedia === 'roll-custom' (clamped to 200..1600 mm) */
+  customRollWidthMm?: number;
   /** Optional custom flap width in mm for softcover-jacket or dust-jacket (undefined = auto default) */
   jacketFlapWidthMm?: number;
   /** Optional pocket construction mode for softcover-jacket ('integrated' 1-piece flaps vs 'separate' 2-sheet glue-in pockets) */
@@ -266,6 +270,10 @@ export const BookParametersModel = {
         : undefined;
     const softcoverPocketMode = parseSoftcoverPocketMode(partial.softcoverPocketMode);
     const interiorStyle = parseInteriorStyle(partial.interiorStyle);
+    const customRollWidthMm =
+      typeof partial.customRollWidthMm === 'number' && Number.isFinite(partial.customRollWidthMm)
+        ? clampCustomRollWidthMm(partial.customRollWidthMm)
+        : undefined;
 
     return {
       bindingStyle: parseBindingStyle(partial.bindingStyle),
@@ -333,6 +341,7 @@ export const BookParametersModel = {
       ),
       pdfPageSize: parsePageSize(partial.pdfPageSize),
       printMedia: parsePrintMedia(partial.printMedia),
+      ...(customRollWidthMm !== undefined ? { customRollWidthMm } : {}),
       ...(jacketFlapWidthMm !== undefined ? { jacketFlapWidthMm } : {}),
       ...(softcoverPocketMode !== undefined ? { softcoverPocketMode } : {}),
       ...(interiorStyle !== undefined ? { interiorStyle } : {}),
