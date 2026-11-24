@@ -11,8 +11,10 @@ import {
 import { CoverStudioModel } from '@/types/studio';
 import {
   DEFAULT_CRICUT_EXPORT_OPTIONS,
+  decodeSvgDataUrl,
   detectCricutScopePresence,
   generateCricutHtvSvg,
+  isSvgArtworkLayer,
 } from './cricutExport';
 
 const REAL_WOFF_BYTES = new Uint8Array(
@@ -299,7 +301,14 @@ describe('cricutExport — Cricut / Silhouette / ScanNCut HTV Vector SVG', () =>
     };
 
     const presence = detectCricutScopePresence(geom, studio);
-    expect(presence).toEqual({ spine: false, front: false, back: true, any: true });
+    expect(presence).toEqual({
+      spine: false,
+      front: false,
+      back: true,
+      any: true,
+      hasSvgArtwork: false,
+      hasRasterArtwork: false,
+    });
 
     const backResult = await generateCricutHtvSvg(
       geom,
@@ -440,6 +449,192 @@ describe('cricutExport — Cricut / Silhouette / ScanNCut HTV Vector SVG', () =>
       expect(regMinX).toBeGreaterThan(10);
       expect(result.widthMm - regMaxX).toBeGreaterThan(30);
     }
+  });
+
+  it('decodes base64 and URL-encoded data:image/svg+xml artwork layers and distinguishes raster vs vector layers', () => {
+    const rawSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#d4af37"/></svg>';
+    const base64Url = `data:image/svg+xml;base64,${Buffer.from(rawSvg, 'utf-8').toString('base64')}`;
+    const utf8Url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(rawSvg)}`;
+    const pngUrl = 'data:image/png;base64,iVBORw0KGgo=';
+
+    expect(isSvgArtworkLayer({ dataUrl: base64Url })).toBe(true);
+    expect(isSvgArtworkLayer({ dataUrl: utf8Url })).toBe(true);
+    expect(isSvgArtworkLayer({ dataUrl: pngUrl })).toBe(false);
+
+    expect(decodeSvgDataUrl(base64Url)).toBe(rawSvg);
+    expect(decodeSvgDataUrl(utf8Url)).toBe(rawSvg);
+    expect(decodeSvgDataUrl(pngUrl)).toBeNull();
+  });
+
+  it('parses uploaded .svg artwork layers (base64 & URL-encoded) with rotation, flip, mirror, clipZone, and groupByColor', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const bleed = geom.outerWrap.bleedMm;
+    const frontBoard = {
+      x: geom.outerWrap.frontBoardRect.x + bleed,
+      y: geom.outerWrap.frontBoardRect.y + bleed,
+      width: geom.outerWrap.frontBoardRect.width,
+      height: geom.outerWrap.frontBoardRect.height,
+    };
+    const backBoard = {
+      x: geom.outerWrap.backBoardRect.x + bleed,
+      y: geom.outerWrap.backBoardRect.y + bleed,
+      width: geom.outerWrap.backBoardRect.width,
+      height: geom.outerWrap.backBoardRect.height,
+    };
+
+    const goldStarSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><polygon points="50,5 95,25 50,45 5,25" fill="#d4af37"/></svg>';
+    const tealFrameSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="80" fill="none" stroke="#1f6f78"/></svg>';
+
+    const frontSvgLayer = {
+      id: 'svg-front-1',
+      dataUrl: `data:image/svg+xml;base64,${Buffer.from(goldStarSvg, 'utf-8').toString('base64')}`,
+      fileName: 'gold-star.svg',
+      naturalWidth: 100,
+      naturalHeight: 50,
+      xMm: frontBoard.x + 20,
+      yMm: frontBoard.y + 40,
+      widthMm: 80,
+      heightMm: 40,
+      clipZone: 'front' as const,
+      flipX: true,
+      flipY: false,
+      rotationDeg: 90 as const,
+    };
+
+    const backSvgLayer = {
+      id: 'svg-back-1',
+      dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(tealFrameSvg)}`,
+      fileName: 'teal-frame.svg',
+      naturalWidth: 100,
+      naturalHeight: 100,
+      xMm: backBoard.x + 25,
+      yMm: backBoard.y + 40,
+      widthMm: 60,
+      heightMm: 60,
+      clipZone: 'back' as const,
+    };
+
+    const rasterLayer = {
+      id: 'png-front-1',
+      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      fileName: 'photo.png',
+      naturalWidth: 600,
+      naturalHeight: 900,
+      xMm: frontBoard.x,
+      yMm: frontBoard.y,
+      widthMm: frontBoard.width,
+      heightMm: frontBoard.height,
+      clipZone: 'front' as const,
+    };
+
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      layers: [frontSvgLayer, backSvgLayer, rasterLayer],
+    };
+
+    const presence = detectCricutScopePresence(geom, studio);
+    expect(presence).toEqual({
+      spine: false,
+      front: true,
+      back: true,
+      any: true,
+      hasSvgArtwork: true,
+      hasRasterArtwork: true,
+    });
+
+    // Monochrome Front Cover export: includes rotated goldStarSvg, excludes backSvgLayer and rasterLayer
+    const monoFront = await generateCricutHtvSvg(
+      geom,
+      studio,
+      null,
+      {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: 'front-cover',
+        includeSvgArtwork: true,
+        mirrorForHtv: false,
+      },
+      REAL_WOFF_BYTES,
+    );
+
+    expect(monoFront.hasLettering).toBe(true);
+    expect(monoFront.svg).toContain('id="svg-artwork"');
+    expect(monoFront.svg).not.toContain('id="svg-artwork-stroke-svg-back-1"');
+    expect(monoFront.svg).not.toContain('<image');
+    expect(monoFront.svg).not.toContain('<text');
+    expect(monoFront.svg).not.toContain('transform=');
+
+    // Rotated 90° (80x40 -> visual 40x80): verify svg-artwork path height > width!
+    const svgArtMatch = monoFront.svg.match(/id="svg-artwork"\s+d="([^"]+)"/);
+    expect(svgArtMatch).not.toBeNull();
+    const artPts = extractCoordsFromPathD(svgArtMatch![1]);
+    const artW = Math.max(...artPts.map((p) => p.x)) - Math.min(...artPts.map((p) => p.x));
+    const artH = Math.max(...artPts.map((p) => p.y)) - Math.min(...artPts.map((p) => p.y));
+    expect(artH).toBeGreaterThan(artW * 1.5);
+
+    for (const pt of extractAllPathCoordinates(monoFront.svg)) {
+      expect(pt.x).toBeGreaterThanOrEqual(0);
+      expect(pt.x).toBeLessThanOrEqual(monoFront.widthMm + 0.01);
+      expect(pt.y).toBeGreaterThanOrEqual(0);
+      expect(pt.y).toBeLessThanOrEqual(monoFront.heightMm + 0.01);
+    }
+
+    // Mirrored + groupByColor groups front SVG artwork under #D4AF37
+    const colorFrontMirrored = await generateCricutHtvSvg(
+      geom,
+      studio,
+      null,
+      {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: 'front-cover',
+        includeSvgArtwork: true,
+        groupByColor: true,
+        mirrorForHtv: true,
+      },
+      REAL_WOFF_BYTES,
+    );
+    expect(colorFrontMirrored.foilColors).toContain('#D4AF37');
+    expect(colorFrontMirrored.svg).toContain('id="foil-color-d4af37"');
+    expect(colorFrontMirrored.svg).toContain('fill="#D4AF37"');
+    expect(colorFrontMirrored.svg).not.toContain('<image');
+    expect(colorFrontMirrored.svg).not.toContain('transform=');
+    expect(colorFrontMirrored.svg).not.toBe(monoFront.svg);
+
+    // Back Cover stroke-only URL-encoded SVG artwork emits stroked path
+    const backRes = await generateCricutHtvSvg(
+      geom,
+      studio,
+      null,
+      {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: 'back-cover',
+        includeSvgArtwork: true,
+        groupByColor: true,
+      },
+      REAL_WOFF_BYTES,
+    );
+    expect(backRes.hasLettering).toBe(true);
+    expect(backRes.svg).toContain('id="svg-artwork-stroke-svg-back-1"');
+    expect(backRes.svg).toContain('stroke="#1F6F78"');
+    expect(backRes.svg).not.toContain('<image');
+    expect(backRes.svg).not.toContain('transform=');
+
+    // includeSvgArtwork: false excludes uploaded SVG artwork cleanly
+    const excludedFront = await generateCricutHtvSvg(
+      geom,
+      studio,
+      null,
+      {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: 'front-cover',
+        includeSvgArtwork: false,
+      },
+      REAL_WOFF_BYTES,
+    );
+    expect(excludedFront.hasLettering).toBe(false);
+    expect(excludedFront.svg).not.toContain('id="svg-artwork"');
   });
 });
 
