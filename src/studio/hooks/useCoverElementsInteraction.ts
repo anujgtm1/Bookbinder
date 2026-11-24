@@ -2,9 +2,15 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import {
   CoverOrnamentLayerModel,
   isBoxMappedOrnament,
+  type CoverElementZone,
   type CoverOrnamentLayer,
   type CoverTextLayer,
 } from '@/types/coverElements';
+import {
+  detachConstraintOnMove,
+  detachConstraintOnResize,
+  type LayerLayoutConstraint,
+} from '@/types/layoutConstraints';
 import type { CoverStudioState } from '@/types/studio';
 import type { ResizeCorner } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
@@ -29,6 +35,8 @@ type ElementDragState =
       readonly startYMm: number;
       readonly origXMm: number;
       readonly origYMm: number;
+      readonly origZone: CoverElementZone;
+      readonly origConstraint?: LayerLayoutConstraint;
     }
   | {
       readonly kind: 'ornament';
@@ -39,6 +47,8 @@ type ElementDragState =
       readonly origYMm: number;
       readonly widthMm: number;
       readonly heightMm: number;
+      readonly origZone: CoverElementZone;
+      readonly origConstraint?: LayerLayoutConstraint;
     }
   | {
       readonly kind: 'ornament-resize';
@@ -125,7 +135,24 @@ export function useCoverElementsInteraction({
           lockAspect,
         );
         const nextZone = inferZoneFromCenterX(resized.xMm + resized.widthMm / 2, spec);
-        const updatedOrnament = resized.zone === nextZone ? resized : { ...resized, zone: nextZone };
+        const origCx = drag.origOrnament.xMm + drag.origOrnament.widthMm / 2;
+        const origCy = drag.origOrnament.yMm + drag.origOrnament.heightMm / 2;
+        const nextCx = resized.xMm + resized.widthMm / 2;
+        const nextCy = resized.yMm + resized.heightMm / 2;
+        const afterResize = detachConstraintOnResize(drag.origOrnament.layoutConstraint);
+        let nextConstraint = detachConstraintOnMove(
+          afterResize,
+          Math.abs(nextCx - origCx) > 0.05,
+          Math.abs(nextCy - origCy) > 0.05,
+        );
+        if (nextConstraint && nextZone !== drag.origOrnament.zone) {
+          nextConstraint = { ...nextConstraint, anchorZone: nextZone };
+        }
+        const updatedOrnament: CoverOrnamentLayer = {
+          ...resized,
+          zone: nextZone,
+          layoutConstraint: nextConstraint,
+        };
         const cur = studioRef.current;
         onChangeRef.current({
           ...cur,
@@ -149,6 +176,8 @@ export function useCoverElementsInteraction({
         const cur = studioRef.current;
         const nextX = roundTo(snapped.xMm, 2);
         const nextY = roundTo(snapped.yMm, 2);
+        const movedX = Math.abs(nextX - drag.origXMm) > 0.05;
+        const movedY = Math.abs(nextY - drag.origYMm) > 0.05;
         onChangeRef.current({
           ...cur,
           textLayers: (cur.textLayers ?? []).map((t) => {
@@ -156,7 +185,15 @@ export function useCoverElementsInteraction({
             const moved = { ...t, xMm: nextX, yMm: nextY };
             const bounds = getCoverTextAxisAlignedBounds(moved);
             const nextZone = inferZoneFromCenterX(bounds.x + bounds.width / 2, spec);
-            return moved.zone === nextZone ? moved : { ...moved, zone: nextZone };
+            let nextConstraint = detachConstraintOnMove(drag.origConstraint, movedX, movedY);
+            if (nextConstraint && nextZone !== drag.origZone) {
+              nextConstraint = { ...nextConstraint, anchorZone: nextZone };
+            }
+            return {
+              ...moved,
+              zone: nextZone,
+              layoutConstraint: nextConstraint,
+            };
           }),
         });
       } else {
@@ -171,11 +208,17 @@ export function useCoverElementsInteraction({
         const nextX = roundTo(snapped.xMm, 2);
         const nextY = roundTo(snapped.yMm, 2);
         const nextZone = inferZoneFromCenterX(nextX + drag.widthMm / 2, spec);
+        const movedX = Math.abs(nextX - drag.origXMm) > 0.05;
+        const movedY = Math.abs(nextY - drag.origYMm) > 0.05;
+        let nextConstraint = detachConstraintOnMove(drag.origConstraint, movedX, movedY);
+        if (nextConstraint && nextZone !== drag.origZone) {
+          nextConstraint = { ...nextConstraint, anchorZone: nextZone };
+        }
         onChangeRef.current({
           ...cur,
           ornaments: (cur.ornaments ?? []).map((o) =>
             o.id === drag.id
-              ? { ...o, xMm: nextX, yMm: nextY, zone: nextZone }
+              ? { ...o, xMm: nextX, yMm: nextY, zone: nextZone, layoutConstraint: nextConstraint }
               : o,
           ),
         });
@@ -255,6 +298,8 @@ export function useCoverElementsInteraction({
         startYMm: pt.yMm,
         origXMm: layer.xMm,
         origYMm: layer.yMm,
+        origZone: layer.zone,
+        origConstraint: layer.layoutConstraint,
       };
     },
     [onSelectText, toSvgMm],
@@ -274,6 +319,8 @@ export function useCoverElementsInteraction({
         origYMm: ornament.yMm,
         widthMm: ornament.widthMm,
         heightMm: ornament.heightMm,
+        origZone: ornament.zone,
+        origConstraint: ornament.layoutConstraint,
       };
     },
     [onSelectOrnament, toSvgMm],

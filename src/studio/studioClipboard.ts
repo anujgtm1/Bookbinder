@@ -1,5 +1,6 @@
 import type { CoverOrnamentLayer, CoverTextLayer } from '@/types/coverElements';
 import type { Rect2D } from '@/types/geometry';
+import { detachConstraintOnMove } from '@/types/layoutConstraints';
 import type { CoverStudioState } from '@/types/studio';
 import { getLayerVisualRect, type CoverImageLayer } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
@@ -180,11 +181,14 @@ export function pasteClipboardItemToStudio(
     const existingIds = new Set(studio.layers.map((layer) => layer.id));
     const pastedId = generateUniqueId('layer', existingIds);
     const pos = clampImagePosition(cloned, offsetMm, offsetMm, canvasBounds);
+    const movedX = Math.abs(pos.xMm - cloned.xMm) > 0.05;
+    const movedY = Math.abs(pos.yMm - cloned.yMm) > 0.05;
     const pasted: CoverImageLayer = {
       ...cloned,
       id: pastedId,
       xMm: pos.xMm,
       yMm: pos.yMm,
+      layoutConstraint: detachConstraintOnMove(cloned.layoutConstraint, movedX, movedY),
     };
     return {
       studio: {
@@ -201,11 +205,14 @@ export function pasteClipboardItemToStudio(
     const existingIds = new Set(studio.textLayers.map((layer) => layer.id));
     const pastedId = generateUniqueId('txt', existingIds);
     const pos = clampTextPosition(cloned, offsetMm, offsetMm, canvasBounds);
+    const movedX = Math.abs(pos.xMm - cloned.xMm) > 0.05;
+    const movedY = Math.abs(pos.yMm - cloned.yMm) > 0.05;
     const movedText: CoverTextLayer = {
       ...cloned,
       id: pastedId,
       xMm: pos.xMm,
       yMm: pos.yMm,
+      layoutConstraint: detachConstraintOnMove(cloned.layoutConstraint, movedX, movedY),
     };
     const pasted: CoverTextLayer = spec
       ? {
@@ -235,12 +242,15 @@ export function pasteClipboardItemToStudio(
     const prefix = cloned.presetId === 'custom-svg' ? 'svg' : 'orn';
     const pastedId = generateUniqueId(prefix, existingIds);
     const pos = clampOrnamentPosition(cloned, offsetMm, offsetMm, canvasBounds);
+    const movedX = Math.abs(pos.xMm - cloned.xMm) > 0.05;
+    const movedY = Math.abs(pos.yMm - cloned.yMm) > 0.05;
     const pasted: CoverOrnamentLayer = {
       ...cloned,
       id: pastedId,
       xMm: pos.xMm,
       yMm: pos.yMm,
       zone: spec ? inferZoneFromCenterX(pos.xMm + cloned.widthMm / 2, spec) : cloned.zone,
+      layoutConstraint: detachConstraintOnMove(cloned.layoutConstraint, movedX, movedY),
     };
     return {
       studio: {
@@ -311,8 +321,17 @@ export function nudgeSelectedInStudio(
     if (idx !== -1) {
       const target = studio.layers[idx];
       const pos = clampImagePosition(target, dxMm, dyMm, canvasBounds);
+      const movedX = Math.abs(pos.xMm - target.xMm) > 0.05;
+      const movedY = Math.abs(pos.yMm - target.yMm) > 0.05;
       const nextLayers = studio.layers.map((layer, i) =>
-        i === idx ? { ...layer, xMm: pos.xMm, yMm: pos.yMm } : layer,
+        i === idx
+          ? {
+              ...layer,
+              xMm: pos.xMm,
+              yMm: pos.yMm,
+              layoutConstraint: detachConstraintOnMove(layer.layoutConstraint, movedX, movedY),
+            }
+          : layer,
       );
       return { ...studio, layers: nextLayers };
     }
@@ -323,12 +342,24 @@ export function nudgeSelectedInStudio(
     if (idx !== -1) {
       const target = studio.textLayers[idx];
       const pos = clampTextPosition(target, dxMm, dyMm, canvasBounds);
+      const movedX = Math.abs(pos.xMm - target.xMm) > 0.05;
+      const movedY = Math.abs(pos.yMm - target.yMm) > 0.05;
       const nextTextLayers = studio.textLayers.map((layer, i) => {
         if (i !== idx) return layer;
-        const moved = { ...layer, xMm: pos.xMm, yMm: pos.yMm };
+        const moved = {
+          ...layer,
+          xMm: pos.xMm,
+          yMm: pos.yMm,
+          layoutConstraint: detachConstraintOnMove(layer.layoutConstraint, movedX, movedY),
+        };
         if (!spec) return moved;
         const bounds = getCoverTextAxisAlignedBounds(moved);
-        return { ...moved, zone: inferZoneFromCenterX(bounds.x + bounds.width / 2, spec) };
+        const nextZone = inferZoneFromCenterX(bounds.x + bounds.width / 2, spec);
+        const nextConstraint =
+          moved.layoutConstraint && nextZone !== layer.zone
+            ? { ...moved.layoutConstraint, anchorZone: nextZone }
+            : moved.layoutConstraint;
+        return { ...moved, zone: nextZone, layoutConstraint: nextConstraint };
       });
       return { ...studio, textLayers: nextTextLayers };
     }
@@ -339,16 +370,23 @@ export function nudgeSelectedInStudio(
     if (idx !== -1) {
       const target = studio.ornaments[idx];
       const pos = clampOrnamentPosition(target, dxMm, dyMm, canvasBounds);
-      const nextOrnaments = studio.ornaments.map((layer, i) =>
-        i === idx
-          ? {
-              ...layer,
-              xMm: pos.xMm,
-              yMm: pos.yMm,
-              zone: spec ? inferZoneFromCenterX(pos.xMm + layer.widthMm / 2, spec) : layer.zone,
-            }
-          : layer,
-      );
+      const movedX = Math.abs(pos.xMm - target.xMm) > 0.05;
+      const movedY = Math.abs(pos.yMm - target.yMm) > 0.05;
+      const nextOrnaments = studio.ornaments.map((layer, i) => {
+        if (i !== idx) return layer;
+        const nextZone = spec ? inferZoneFromCenterX(pos.xMm + layer.widthMm / 2, spec) : layer.zone;
+        let nextConstraint = detachConstraintOnMove(layer.layoutConstraint, movedX, movedY);
+        if (nextConstraint && nextZone !== layer.zone) {
+          nextConstraint = { ...nextConstraint, anchorZone: nextZone };
+        }
+        return {
+          ...layer,
+          xMm: pos.xMm,
+          yMm: pos.yMm,
+          zone: nextZone,
+          layoutConstraint: nextConstraint,
+        };
+      });
       return { ...studio, ornaments: nextOrnaments };
     }
   }

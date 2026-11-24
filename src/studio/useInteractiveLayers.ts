@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import type { Rect2D } from '@/types/geometry';
+import { detachConstraintOnMove, detachConstraintOnResize } from '@/types/layoutConstraints';
 import {
   CoverImageLayerModel,
   type CoverImageLayer,
@@ -154,28 +155,51 @@ export function useInteractiveLayers({
             pt.xMm - drag.startXMm,
             pt.yMm - drag.startYMm,
           );
-          if (!useSnap) return moved;
-          const snapped = snapLayerMove(moved, snapTargetsRef.current);
-          latestGuides = snapped.guides;
-          return snapped.layer;
+          let nextLayer = moved;
+          if (useSnap) {
+            const snapped = snapLayerMove(moved, snapTargetsRef.current);
+            latestGuides = snapped.guides;
+            nextLayer = snapped.layer;
+          }
+          const movedX = Math.abs(nextLayer.xMm - drag.origLayer.xMm) > 0.05;
+          const movedY = Math.abs(nextLayer.yMm - drag.origLayer.yMm) > 0.05;
+          return {
+            ...nextLayer,
+            layoutConstraint: detachConstraintOnMove(drag.origLayer.layoutConstraint, movedX, movedY),
+          };
         }
+        let resizedLayer: CoverImageLayer;
         if (!useSnap) {
-          return CoverImageLayerModel.resizeFromCorner(
+          resizedLayer = CoverImageLayerModel.resizeFromCorner(
             drag.origLayer,
             drag.corner,
             pt.xMm,
             pt.yMm,
           );
+        } else {
+          const snapped = snapLayerResize(
+            drag.origLayer,
+            drag.corner,
+            pt.xMm,
+            pt.yMm,
+            snapTargetsRef.current,
+          );
+          latestGuides = snapped.guides;
+          resizedLayer = snapped.layer;
         }
-        const snapped = snapLayerResize(
-          drag.origLayer,
-          drag.corner,
-          pt.xMm,
-          pt.yMm,
-          snapTargetsRef.current,
-        );
-        latestGuides = snapped.guides;
-        return snapped.layer;
+        const origCx = drag.origLayer.xMm + drag.origLayer.widthMm / 2;
+        const origCy = drag.origLayer.yMm + drag.origLayer.heightMm / 2;
+        const nextCx = resizedLayer.xMm + resizedLayer.widthMm / 2;
+        const nextCy = resizedLayer.yMm + resizedLayer.heightMm / 2;
+        const afterResize = detachConstraintOnResize(drag.origLayer.layoutConstraint);
+        return {
+          ...resizedLayer,
+          layoutConstraint: detachConstraintOnMove(
+            afterResize,
+            Math.abs(nextCx - origCx) > 0.05,
+            Math.abs(nextCy - origCy) > 0.05,
+          ),
+        };
       });
 
       setActiveSnapGuides(latestGuides);
@@ -253,9 +277,14 @@ export function useInteractiveLayers({
 
   const handleLayerWheel = useCallback((layer: CoverImageLayer, deltaY: number) => {
     const factor = deltaY < 0 ? 1.06 : 0.94;
-    const nextLayers = layersRef.current.map((item) =>
-      item.id === layer.id ? CoverImageLayerModel.scaleAroundCenter(item, factor) : item,
-    );
+    const nextLayers = layersRef.current.map((item) => {
+      if (item.id !== layer.id) return item;
+      const scaled = CoverImageLayerModel.scaleAroundCenter(item, factor);
+      return {
+        ...scaled,
+        layoutConstraint: detachConstraintOnResize(item.layoutConstraint),
+      };
+    });
     onChangeLayersRef.current(nextLayers);
   }, []);
 

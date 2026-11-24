@@ -144,6 +144,7 @@ export function createSampleBookProject(): BookbinderProject {
       align: 'center',
       color: SAMPLE_GOLD_HEX,
       uppercase: true,
+      role: 'title',
     },
     {
       id: 'sample-txt-front-subtitle',
@@ -158,6 +159,7 @@ export function createSampleBookProject(): BookbinderProject {
       align: 'center',
       color: SAMPLE_LIGHT_GOLD_HEX,
       uppercase: true,
+      role: 'subtitle',
     },
     {
       id: 'sample-txt-front-author',
@@ -172,6 +174,7 @@ export function createSampleBookProject(): BookbinderProject {
       align: 'center',
       color: SAMPLE_GOLD_HEX,
       uppercase: true,
+      role: 'author',
     },
     {
       id: 'sample-txt-back-blurb',
@@ -185,6 +188,7 @@ export function createSampleBookProject(): BookbinderProject {
       lineHeight: 1.44,
       align: 'center',
       color: SAMPLE_LIGHT_GOLD_HEX,
+      role: 'blurb',
     },
   ];
 

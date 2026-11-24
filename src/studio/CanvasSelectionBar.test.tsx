@@ -395,9 +395,7 @@ describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · B
     await user.click(screen.getByTestId('selection-align-upper'));
     const ornUpperY = latestState.ornaments![0].yMm;
     expect(ornUpperY).toBeCloseTo(
-      spec.frontArtworkRect.y +
-        spec.frontArtworkRect.height * 0.24 -
-        latestState.ornaments![0].heightMm / 2,
+      frontBoard.y + frontBoard.height * 0.24 - latestState.ornaments![0].heightMm / 2,
       1,
     );
 

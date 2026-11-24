@@ -32,6 +32,12 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         align: 'center',
         color: '#d9b566',
         uppercase: true,
+        role: 'title',
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+          vertical: { kind: 'top-third' },
+        },
       },
       {
         text: 'AUTHOR NAME',
@@ -45,6 +51,12 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         align: 'center',
         color: '#f5efe2',
         uppercase: true,
+        role: 'author',
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+          vertical: { kind: 'bottom-third' },
+        },
       },
     ],
     ornamentTemplates: [
@@ -57,6 +69,11 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         relH: 0.88,
         color: '#d9b566',
         strokeWidthMm: 0.7,
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'inset-both', marginMm: 12 },
+          vertical: { kind: 'inset-both', marginMm: 12 },
+        },
       },
       {
         presetId: 'divider-fleuron-leaf',
@@ -67,6 +84,10 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         relH: 0.07,
         color: '#d9b566',
         strokeWidthMm: 0.7,
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+        },
       },
       {
         presetId: 'spine-classic-bands',
@@ -111,6 +132,11 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         align: 'center',
         color: '#e0b85c',
         uppercase: true,
+        role: 'title',
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+        },
       },
       {
         text: 'AUTHOR NAME',
@@ -124,6 +150,12 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         align: 'center',
         color: '#f5efe2',
         uppercase: true,
+        role: 'author',
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+          vertical: { kind: 'bottom-third' },
+        },
       },
     ],
     ornamentTemplates: [
@@ -136,6 +168,11 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         relH: 0.88,
         color: '#e0b85c',
         strokeWidthMm: 0.75,
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'inset-both', marginMm: 12 },
+          vertical: { kind: 'inset-both', marginMm: 12 },
+        },
       },
       {
         presetId: 'spine-diamond-lattice',
@@ -180,6 +217,11 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         align: 'center',
         color: '#f5efe2',
         uppercase: true,
+        role: 'title',
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+        },
       },
     ],
     ornamentTemplates: [
@@ -192,6 +234,11 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         relH: 0.88,
         color: '#f5efe2',
         strokeWidthMm: 0.7,
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'inset-both', marginMm: 12 },
+          vertical: { kind: 'inset-both', marginMm: 12 },
+        },
       },
       {
         presetId: 'emblem-botanical-sprig',
@@ -202,6 +249,10 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         relH: 0.28,
         color: '#f5efe2',
         strokeWidthMm: 0.7,
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+        },
       },
       {
         presetId: 'spine-botanical-vine',
@@ -246,6 +297,12 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         align: 'center',
         color: '#e6c97a',
         uppercase: true,
+        role: 'title',
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+          vertical: { kind: 'top-third' },
+        },
       },
       {
         text: 'AUTHOR NAME',
@@ -259,6 +316,12 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         align: 'center',
         color: '#f5efe2',
         uppercase: true,
+        role: 'author',
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+          vertical: { kind: 'bottom-third' },
+        },
       },
     ],
     ornamentTemplates: [
@@ -271,6 +334,11 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         relH: 0.88,
         color: '#e6c97a',
         strokeWidthMm: 0.7,
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'inset-both', marginMm: 12 },
+          vertical: { kind: 'inset-both', marginMm: 12 },
+        },
       },
       {
         presetId: 'divider-celestial-stars',
@@ -281,6 +349,10 @@ export const BUILT_IN_DESIGN_PRESETS: readonly CoverDesignPreset[] = [
         relH: 0.075,
         color: '#e6c97a',
         strokeWidthMm: 0.7,
+        layoutConstraint: {
+          anchorZone: 'front',
+          horizontal: { kind: 'center' },
+        },
       },
       {
         presetId: 'spine-celestial-column',

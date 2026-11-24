@@ -1,4 +1,9 @@
 import { computeStudioCanvasSpec, getPanelBoardRect, type StudioCanvasSpec } from '@/studio/canvasSpec';
+import {
+  resolveImageLayerConstraint,
+  resolveOrnamentLayerConstraint,
+  resolveTextLayerConstraint,
+} from '@/studio/layoutConstraints';
 import { computeInnerPocketsLayout } from '@/studio/pocketRenderEngine';
 import {
   isBoxMappedOrnament,
@@ -7,6 +12,7 @@ import {
   type CoverTextLayer,
 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
+import { hasActiveLayoutConstraint } from '@/types/layoutConstraints';
 import type { CoverStudioState } from '@/types/studio';
 import { getLayerVisualRect, type CoverImageLayer } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
@@ -93,15 +99,21 @@ function remapTextLayer(
   const zone: CoverElementZone = layer.zone;
   const prevRect = getPanelBoardRect(prevSpec, zone);
   const nextRect = getPanelBoardRect(nextSpec, zone);
-  if (rectsEqual(prevRect, nextRect)) {
-    return layer;
+  const mappedLayer = rectsEqual(prevRect, nextRect)
+    ? layer
+    : (() => {
+        const mapped = mapPointBetweenRects(layer.xMm, layer.yMm, prevRect, nextRect);
+        return {
+          ...layer,
+          xMm: roundTo(mapped.x, REMAP_PRECISION),
+          yMm: roundTo(mapped.y, REMAP_PRECISION),
+        };
+      })();
+
+  if (hasActiveLayoutConstraint(mappedLayer.layoutConstraint)) {
+    return resolveTextLayerConstraint(mappedLayer, nextSpec);
   }
-  const mapped = mapPointBetweenRects(layer.xMm, layer.yMm, prevRect, nextRect);
-  return {
-    ...layer,
-    xMm: roundTo(mapped.x, REMAP_PRECISION),
-    yMm: roundTo(mapped.y, REMAP_PRECISION),
-  };
+  return mappedLayer;
 }
 
 function remapOrnamentLayer(
@@ -111,43 +123,45 @@ function remapOrnamentLayer(
 ): CoverOrnamentLayer {
   const prevRect = getPanelBoardRect(prevSpec, orn.zone);
   const nextRect = getPanelBoardRect(nextSpec, orn.zone);
-  if (rectsEqual(prevRect, nextRect)) {
-    return orn;
-  }
-  if (prevRect.width <= MIN_DIM_MM || prevRect.height <= MIN_DIM_MM) {
-    return orn;
+  let mappedOrn = orn;
+
+  if (!rectsEqual(prevRect, nextRect) && prevRect.width > MIN_DIM_MM && prevRect.height > MIN_DIM_MM) {
+    const prevCx = orn.xMm + orn.widthMm / 2;
+    const prevCy = orn.yMm + orn.heightMm / 2;
+    const nextCenter = mapPointBetweenRects(prevCx, prevCy, prevRect, nextRect);
+
+    let nextW: number;
+    let nextH: number;
+    if (isBoxMappedOrnament(orn)) {
+      nextW = clampSize(
+        orn.widthMm * (nextRect.width / prevRect.width),
+        MIN_ORNAMENT_REMAP_MM,
+        MAX_ORNAMENT_REMAP_MM,
+      );
+      nextH = clampSize(
+        orn.heightMm * (nextRect.height / prevRect.height),
+        MIN_ORNAMENT_REMAP_MM,
+        MAX_ORNAMENT_REMAP_MM,
+      );
+    } else {
+      const scale = geometricMeanScale(prevRect, nextRect);
+      nextW = clampSize(orn.widthMm * scale, MIN_ORNAMENT_REMAP_MM, MAX_ORNAMENT_REMAP_MM);
+      nextH = clampSize(orn.heightMm * scale, MIN_ORNAMENT_REMAP_MM, MAX_ORNAMENT_REMAP_MM);
+    }
+
+    mappedOrn = {
+      ...orn,
+      xMm: roundTo(nextCenter.x - nextW / 2, REMAP_PRECISION),
+      yMm: roundTo(nextCenter.y - nextH / 2, REMAP_PRECISION),
+      widthMm: roundTo(nextW, REMAP_PRECISION),
+      heightMm: roundTo(nextH, REMAP_PRECISION),
+    };
   }
 
-  const prevCx = orn.xMm + orn.widthMm / 2;
-  const prevCy = orn.yMm + orn.heightMm / 2;
-  const nextCenter = mapPointBetweenRects(prevCx, prevCy, prevRect, nextRect);
-
-  let nextW: number;
-  let nextH: number;
-  if (isBoxMappedOrnament(orn)) {
-    nextW = clampSize(
-      orn.widthMm * (nextRect.width / prevRect.width),
-      MIN_ORNAMENT_REMAP_MM,
-      MAX_ORNAMENT_REMAP_MM,
-    );
-    nextH = clampSize(
-      orn.heightMm * (nextRect.height / prevRect.height),
-      MIN_ORNAMENT_REMAP_MM,
-      MAX_ORNAMENT_REMAP_MM,
-    );
-  } else {
-    const scale = geometricMeanScale(prevRect, nextRect);
-    nextW = clampSize(orn.widthMm * scale, MIN_ORNAMENT_REMAP_MM, MAX_ORNAMENT_REMAP_MM);
-    nextH = clampSize(orn.heightMm * scale, MIN_ORNAMENT_REMAP_MM, MAX_ORNAMENT_REMAP_MM);
+  if (hasActiveLayoutConstraint(mappedOrn.layoutConstraint)) {
+    return resolveOrnamentLayerConstraint(mappedOrn, nextSpec);
   }
-
-  return {
-    ...orn,
-    xMm: roundTo(nextCenter.x - nextW / 2, REMAP_PRECISION),
-    yMm: roundTo(nextCenter.y - nextH / 2, REMAP_PRECISION),
-    widthMm: roundTo(nextW, REMAP_PRECISION),
-    heightMm: roundTo(nextH, REMAP_PRECISION),
-  };
+  return mappedOrn;
 }
 
 function resolveOuterImageAnchor(
@@ -332,7 +346,12 @@ export function remapStudioForGeometryChange(
     outerUnchanged || studio.layers.length === 0
       ? studio.layers
       : studio.layers.map((layer) => {
-          const anchor = resolveOuterImageAnchor(layer, prevSpec);
+          const constraint = layer.layoutConstraint;
+          if (constraint?.imageFit === 'cover' || constraint?.imageFit === 'contain') {
+            return resolveImageLayerConstraint(layer, nextSpec);
+          }
+
+          const anchor = constraint?.anchorZone ?? resolveOuterImageAnchor(layer, prevSpec);
           const prevRect =
             anchor === 'fullWrap'
               ? prevOuterWrapRect
@@ -349,7 +368,11 @@ export function remapStudioForGeometryChange(
                 : anchor === 'back'
                   ? nextSpec.backArtworkRect
                   : nextSpec.spineArtworkRect;
-          return remapImageBetweenRects(layer, prevRect, nextRect);
+          const mapped = remapImageBetweenRects(layer, prevRect, nextRect);
+          if (hasActiveLayoutConstraint(mapped.layoutConstraint)) {
+            return resolveImageLayerConstraint(mapped, nextSpec);
+          }
+          return mapped;
         });
 
   const nextPocketStyle =
