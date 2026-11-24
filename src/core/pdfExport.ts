@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { PAGE_SIZES, type PageSizeId, type SplitMode } from '@/types/bookParams';
+import { getPrintMediaSpec } from '@/resources/paperSpecs';
+import { PAGE_SIZES, type PageSizeId, type PrintMediaId, type SplitMode } from '@/types/bookParams';
 import {
   GeometryPrimitives,
   type CaseGeometry,
@@ -11,7 +12,18 @@ import {
 } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
 import { resolveBindingStrategy } from './bindingStyles';
-import { layoutPdfToPrintMedia, type PdfSheetLayoutOptions } from './pdfSheetLayout';
+import {
+  layoutPdfToPrintMedia,
+  type PdfSheetLayoutOptions,
+  type RollNestingExportOptions,
+} from './pdfSheetLayout';
+import {
+  DEFAULT_PRINTER_MARGINS,
+  clampCustomRollWidthMm,
+  clampPrinterMargins,
+  type PrinterMargins,
+} from './printerMargins';
+import { composeNestedRollPdf, type RollPdfSource } from './rollNesting';
 
 const PAGE_MARGIN_MM = 7.5;
 const PIECE_GAP_MM = 5.0;
@@ -736,6 +748,155 @@ export interface OuterWrapPdfOptions extends PdfSheetLayoutOptions {
   readonly appendInnerPocketsPage?: boolean;
   /** Sheet size for appended inner pockets page(s). Defaults to 'letter'. */
   readonly innerPageSizeId?: PageSizeId;
+  /** Optional wide-format roll multi-up nesting / gang-sheet configuration. */
+  readonly rollNesting?: RollNestingExportOptions;
+}
+
+/**
+ * Generates exact 1:1 mm individual PDF sources for inner pockets / endpapers (and spine liner on chipboard covers)
+ * so they can be nested directly alongside the outer cover on a wide-format roll strip.
+ */
+export async function generateInnerPieceRollSources(
+  geometry: CaseGeometry,
+  copies = 1,
+): Promise<RollPdfSource[]> {
+  const { capabilities } = resolveBindingStrategy(geometry);
+  if (!capabilities.usesInnerPockets) {
+    return [];
+  }
+
+  const safeCopies = Math.max(1, Math.floor(copies));
+  const sources: RollPdfSource[] = [];
+
+  const buildSinglePocketPdf = async (
+    pocket: PocketEnvelopeGeometry,
+    id: string,
+  ): Promise<RollPdfSource> => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const wMm = Math.max(1, pocket.totalWidthMm);
+    const hMm = Math.max(1, pocket.totalHeightMm);
+    const page = doc.addPage([UnitConverter.mmToPoints(wMm), UnitConverter.mmToPoints(hMm)]);
+    const writer = new PdfMmWriter(page, hMm);
+    const placement: PlannedPlacement = {
+      kind: pocket.side === 'back' ? 'back-pocket' : 'front-pocket',
+      pageIndex: 0,
+      xMm: 0,
+      yMm: 0,
+      widthMm: wMm,
+      heightMm: hMm,
+      rotated90: false,
+      clipped: false,
+    };
+    renderPocket(writer, pocket, placement, font, boldFont, true);
+    return {
+      id,
+      label: pocket.label,
+      pdfBytes: await doc.save(),
+      copies: safeCopies,
+    };
+  };
+
+  sources.push(await buildSinglePocketPdf(geometry.backPocket, 'inner-back-pocket'));
+  sources.push(await buildSinglePocketPdf(geometry.frontPocket, 'inner-front-pocket'));
+
+  if (capabilities.usesChipboard) {
+    const liner = geometry.spineLiner;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const wMm = Math.max(1, liner.widthMm);
+    const hMm = Math.max(1, liner.heightMm);
+    const page = doc.addPage([UnitConverter.mmToPoints(wMm), UnitConverter.mmToPoints(hMm)]);
+    const writer = new PdfMmWriter(page, hMm);
+    const placement: PlannedPlacement = {
+      kind: 'spine-liner',
+      pageIndex: 0,
+      xMm: 0,
+      yMm: 0,
+      widthMm: wMm,
+      heightMm: hMm,
+      rotated90: false,
+      clipped: false,
+    };
+    renderSpineLiner(writer, liner, placement, font, boldFont, true);
+    sources.push({
+      id: 'inner-spine-liner',
+      label: 'Spine Liner',
+      pdfBytes: await doc.save(),
+      copies: safeCopies,
+    });
+  }
+
+  return sources;
+}
+
+/**
+ * Composes an outer cover PDF (+ optional inner pieces + optional extra gang-sheet PDFs)
+ * onto a single wide-format roll strip PDF sized to the selected or custom roll width.
+ */
+export async function composeRollNestedCoverPdf(
+  coverBytes: Uint8Array,
+  geometry: CaseGeometry,
+  printMediaId: PrintMediaId,
+  options: {
+    readonly rollNesting: RollNestingExportOptions;
+    readonly customRollWidthMm?: number;
+    readonly printerMargins?: PrinterMargins;
+    readonly includeScaleBar?: boolean;
+    readonly coverLabel?: string;
+  },
+): Promise<Uint8Array> {
+  const spec = getPrintMediaSpec(printMediaId);
+  const rollWidthMm =
+    spec.id === 'roll-custom'
+      ? clampCustomRollWidthMm(options.customRollWidthMm)
+      : (spec.rollWidthMm ?? clampCustomRollWidthMm(options.customRollWidthMm));
+  const effectiveMargins = options.printerMargins
+    ? clampPrinterMargins(options.printerMargins)
+    : DEFAULT_PRINTER_MARGINS;
+  const sideMarginMm = Math.max(effectiveMargins.leftMm, effectiveMargins.rightMm);
+  const leadingMarginMm = Math.max(effectiveMargins.topMm, effectiveMargins.bottomMm);
+  const copies = Math.max(1, Math.floor(options.rollNesting.copies));
+
+  const sources: RollPdfSource[] = [
+    {
+      id: 'current-cover',
+      label: options.coverLabel ?? 'Outer Cover',
+      pdfBytes: coverBytes,
+      copies,
+    },
+  ];
+
+  if (
+    options.rollNesting.packInnerPockets &&
+    resolveBindingStrategy(geometry).capabilities.usesInnerPockets
+  ) {
+    const innerSources = await generateInnerPieceRollSources(geometry, copies);
+    sources.push(...innerSources);
+  }
+
+  for (const extra of options.rollNesting.extraQueueItems ?? []) {
+    if (extra.pdfBytes.byteLength > 0 && extra.copies > 0) {
+      sources.push({
+        id: extra.id,
+        label: extra.label,
+        pdfBytes: extra.pdfBytes,
+        copies: Math.max(1, Math.floor(extra.copies)),
+      });
+    }
+  }
+
+  const { bytes } = await composeNestedRollPdf(sources, {
+    rollWidthMm,
+    sideMarginMm,
+    leadingMarginMm,
+    gutterMm: options.rollNesting.gutterMm,
+    includeScaleBar: options.includeScaleBar,
+    allowRotation: options.rollNesting.allowRotation,
+  });
+  return bytes;
 }
 
 /**
@@ -976,6 +1137,34 @@ export async function generateOuterWrapPdf(
   );
 
   const baseBytes = await pdfDoc.save();
+
+  const mediaSpec = options ? getPrintMediaSpec(options.printMediaId) : null;
+  if (options?.rollNesting?.enabled && mediaSpec?.kind === 'roll') {
+    const nestedBytes = await composeRollNestedCoverPdf(
+      baseBytes,
+      geometry,
+      options.printMediaId,
+      {
+        rollNesting: options.rollNesting,
+        customRollWidthMm: options.customRollWidthMm,
+        printerMargins: options.printerMargins,
+        includeScaleBar: options.includeScaleBar,
+      },
+    );
+    if (
+      options.appendInnerPocketsPage &&
+      !options.rollNesting.packInnerPockets &&
+      geometry.bindingStyle === 'softcover-jacket' &&
+      geometry.softcoverPocketMode === 'separate'
+    ) {
+      return appendDetachedInnerPocketsPdf(
+        nestedBytes,
+        geometry,
+        options.innerPageSizeId ?? 'letter',
+      );
+    }
+    return nestedBytes;
+  }
 
   const outerBytes =
     options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)

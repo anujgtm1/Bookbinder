@@ -11,10 +11,15 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
-import { appendDetachedInnerPocketsPdf } from '@/core/pdfExport';
-import { layoutPdfToPrintMedia } from '@/core/pdfSheetLayout';
+import { appendDetachedInnerPocketsPdf, composeRollNestedCoverPdf } from '@/core/pdfExport';
+import {
+  layoutPdfToPrintMedia,
+  type RollNestingExportOptions,
+} from '@/core/pdfSheetLayout';
+import type { PrinterMargins } from '@/core/printerMargins';
 import { canvasToPngBytes } from '@/lib/canvasImage';
 import { hexToRgb01 } from '@/lib/color';
+import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PageSizeId, PrintMediaId } from '@/types/bookParams';
 import {
   GeometryPrimitives,
@@ -571,6 +576,12 @@ export interface PrintReadyCoverPdfOptions {
   readonly appendInnerPocketsPage?: boolean;
   /** Sheet size for appended inner pockets page(s). Defaults to 'letter'. */
   readonly innerPageSizeId?: PageSizeId;
+  /** Optional custom wide-format roll width in mm when printMediaId === 'roll-custom'. */
+  readonly customRollWidthMm?: number;
+  /** Optional per-edge hardware unprintable printer margins. */
+  readonly printerMargins?: PrinterMargins;
+  /** Optional wide-format roll multi-up nesting / gang-sheet configuration. */
+  readonly rollNesting?: RollNestingExportOptions;
   /** Skip DOM canvas rasterization (useful in headless/unit tests without HTML canvas). */
   readonly skipCanvasRaster?: boolean;
 }
@@ -580,7 +591,7 @@ export interface PrintReadyCoverPdfOptions {
  * - Solid vector fills or 300/600 DPI embedded artwork raster
  * - True vector spine & cover typography via pdf-lib + fontkit (omitted when exportLayerMode === 'base-only')
  * - Cut-line toggle: Full Cut & Miter Guides vs. Bleed + Outer Corner Registration Marks Only
- * - Shared print-media sheet centering, 2-sheet tiling with overlap marks, and optional 50 mm scale check bar
+ * - Shared print-media sheet centering, 2-sheet tiling with overlap marks, wide-format roll nesting, and optional 50 mm scale check bar
  */
 export async function generatePrintReadyRollPdf(
   geometry: CaseGeometry,
@@ -604,11 +615,40 @@ export async function generatePrintReadyRollPdf(
   );
 
   const printMediaId = options?.printMediaId ?? options?.printMedia ?? 'exact-auto';
+  const mediaSpec = getPrintMediaSpec(printMediaId);
+
+  if (options?.rollNesting?.enabled && mediaSpec.kind === 'roll') {
+    const nestedBytes = await composeRollNestedCoverPdf(sourceBytes, geometry, printMediaId, {
+      rollNesting: options.rollNesting,
+      customRollWidthMm: options.customRollWidthMm,
+      printerMargins: options.printerMargins,
+      includeScaleBar: options.includeScaleBar,
+      coverLabel: studio.spineText.title.trim() || 'Outer Cover',
+    });
+
+    if (
+      options.appendInnerPocketsPage &&
+      !options.rollNesting.packInnerPockets &&
+      geometry.bindingStyle === 'softcover-jacket' &&
+      geometry.softcoverPocketMode === 'separate'
+    ) {
+      return appendDetachedInnerPocketsPdf(
+        nestedBytes,
+        geometry,
+        options.innerPageSizeId ?? 'letter',
+      );
+    }
+
+    return nestedBytes;
+  }
+
   const outerBytes = await layoutPdfToPrintMedia(sourceBytes, spec.totalWidthMm, spec.totalHeightMm, {
     printMediaId,
     tileOverlapMm: options?.tileOverlapMm,
     includeScaleBar: options?.includeScaleBar,
     bleedMm: spec.bleedMm,
+    printerMargins: options?.printerMargins,
+    customRollWidthMm: options?.customRollWidthMm,
   });
 
   if (

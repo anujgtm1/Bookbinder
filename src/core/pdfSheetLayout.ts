@@ -12,10 +12,32 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import { TILE_OVERLAP_MM, clampTileOverlapMm, evaluatePrintMediaFit } from '@/core/geometry';
+import {
+  DEFAULT_PRINTER_MARGINS,
+  clampPrinterMargins,
+  computePrintableSafeBox,
+  type PrinterMargins,
+} from '@/core/printerMargins';
 import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PrintMediaId } from '@/types/bookParams';
 import type { PrintMediaFitEvaluation } from '@/types/geometry';
 import { UnitConverter } from '@/types/units';
+
+export interface RollGangQueueItem {
+  readonly id: string;
+  readonly label: string;
+  readonly pdfBytes: Uint8Array;
+  readonly copies: number;
+}
+
+export interface RollNestingExportOptions {
+  readonly enabled: boolean;
+  readonly copies: number;
+  readonly gutterMm: number;
+  readonly packInnerPockets: boolean;
+  readonly allowRotation: boolean;
+  readonly extraQueueItems?: readonly RollGangQueueItem[];
+}
 
 export interface PdfSheetLayoutOptions {
   readonly printMediaId: PrintMediaId;
@@ -24,6 +46,36 @@ export interface PdfSheetLayoutOptions {
   readonly documentTitle?: string;
   /** Optional symmetric bleed margin on sourceBytes (mm per side) excluded from print-media fit bounds. */
   readonly bleedMm?: number;
+  /** Optional per-edge hardware unprintable printer margins (defaults to 5 mm all sides). */
+  readonly printerMargins?: PrinterMargins;
+  /** Optional custom wide-format roll width in mm when printMediaId === 'roll-custom'. */
+  readonly customRollWidthMm?: number;
+}
+
+interface PdfSafeBox {
+  readonly leftMm: number;
+  readonly bottomMm: number;
+  readonly widthMm: number;
+  readonly heightMm: number;
+  readonly topMm: number;
+}
+
+function computePdfSafeBox(
+  sheetWMm: number,
+  sheetHMm: number,
+  margins?: PrinterMargins,
+): PdfSafeBox {
+  const effective = margins ? clampPrinterMargins(margins) : DEFAULT_PRINTER_MARGINS;
+  const topDown = computePrintableSafeBox(sheetWMm, sheetHMm, effective);
+  const bottomMm = Math.max(0, sheetHMm - topDown.yMm - topDown.heightMm);
+  const topMm = Math.min(sheetHMm, bottomMm + topDown.heightMm);
+  return {
+    leftMm: topDown.xMm,
+    bottomMm,
+    widthMm: topDown.widthMm,
+    heightMm: topDown.heightMm,
+    topMm,
+  };
 }
 
 const SCALE_BAR_LENGTH_MM = 50;
@@ -111,14 +163,16 @@ function drawScaleCheckBar(
 function drawCenteredSheetFooter(
   targetPage: PDFPage,
   footerFont: PDFFont,
-  sheetWPt: number,
+  safeBox: PdfSafeBox,
   text: string,
 ): void {
   const fontSizePt = 6.5;
   const textW = footerFont.widthOfTextAtSize(text, fontSizePt);
+  const centerXPt = UnitConverter.mmToPoints(safeBox.leftMm + safeBox.widthMm / 2);
+  const footerYMm = Math.max(2.0, safeBox.bottomMm + 1.5);
   targetPage.drawText(text, {
-    x: (sheetWPt - textW) / 2,
-    y: UnitConverter.mmToPoints(2.0),
+    x: centerXPt - textW / 2,
+    y: UnitConverter.mmToPoints(footerYMm),
     size: fontSizePt,
     font: footerFont,
     color: rgb(0.32, 0.32, 0.32),
@@ -128,15 +182,17 @@ function drawCenteredSheetFooter(
 function drawCenteredSheetHeader(
   targetPage: PDFPage,
   boldFont: PDFFont,
-  sheetWPt: number,
+  safeBox: PdfSafeBox,
   sheetHMm: number,
   text: string,
 ): void {
   const fontSizePt = 7.0;
   const textW = boldFont.widthOfTextAtSize(text, fontSizePt);
+  const centerXPt = UnitConverter.mmToPoints(safeBox.leftMm + safeBox.widthMm / 2);
+  const headerYMm = Math.min(sheetHMm - 4.2, safeBox.topMm - 3.2);
   targetPage.drawText(text, {
-    x: (sheetWPt - textW) / 2,
-    y: UnitConverter.mmToPoints(sheetHMm - 4.2),
+    x: centerXPt - textW / 2,
+    y: UnitConverter.mmToPoints(headerYMm),
     size: fontSizePt,
     font: boldFont,
     color: rgb(0.18, 0.18, 0.18),
@@ -146,6 +202,7 @@ function drawCenteredSheetHeader(
 function drawTileOverlapOverlay(
   tilePage: PDFPage,
   boldFont: PDFFont,
+  safeBox: PdfSafeBox,
   sheetHMm: number,
   seamXMm: number,
   overlapMm: number,
@@ -157,8 +214,8 @@ function drawTileOverlapOverlay(
   const seamXPt = UnitConverter.mmToPoints(seamXMm);
   const zoneLeftPt = UnitConverter.mmToPoints(zoneLeftMm);
   const zoneRightPt = UnitConverter.mmToPoints(zoneRightMm);
-  const lineBottomMm = 5.5;
-  const lineTopMm = sheetHMm - 6.0;
+  const lineBottomMm = Math.max(5.5, safeBox.bottomMm + 1.5);
+  const lineTopMm = Math.min(sheetHMm - 6.0, safeBox.topMm - 1.5);
   const lineBottomPt = UnitConverter.mmToPoints(lineBottomMm);
   const lineTopPt = UnitConverter.mmToPoints(lineTopMm);
 
@@ -192,10 +249,13 @@ function drawTileOverlapOverlay(
     dashArray: [3.5, 2],
   });
 
-  // Top & bottom alignment crosshair targets along the seam centerline
+  // Top & bottom alignment crosshair targets along the seam centerline (strictly inside safe box)
   const crossRadiusPt = UnitConverter.mmToPoints(2.0);
   const crossArmPt = UnitConverter.mmToPoints(3.2);
-  const crossYPositionsMm = [6.5, sheetHMm - 4.5];
+  const crossYPositionsMm = [
+    Math.min(lineTopMm - 4.0, lineBottomMm + 3.5),
+    Math.max(lineBottomMm + 4.0, lineTopMm - 3.5),
+  ];
   const crossColor = rgb(0.12, 0.42, 0.88);
   for (const cyMm of crossYPositionsMm) {
     const cyPt = UnitConverter.mmToPoints(cyMm);
@@ -226,7 +286,7 @@ function drawTileOverlapOverlay(
   const labelWidthPt = boldFont.widthOfTextAtSize(zoneLabel, labelSizePt);
   const labelCenterXMm = seamXMm + (side === 'left' ? -halfOverlapMm / 2 : halfOverlapMm / 2);
   const labelXPt = UnitConverter.mmToPoints(labelCenterXMm) + labelSizePt * 0.34;
-  const labelYPt = UnitConverter.mmToPoints(sheetHMm / 2) - labelWidthPt / 2;
+  const labelYPt = UnitConverter.mmToPoints((lineBottomMm + lineTopMm) / 2) - labelWidthPt / 2;
   tilePage.drawText(zoneLabel, {
     x: labelXPt,
     y: labelYPt,
@@ -261,10 +321,13 @@ async function layoutSingleSheetCenteredPdf(
   const sheetHPt = UnitConverter.mmToPoints(sheetHMm);
   const sourceWPt = UnitConverter.mmToPoints(sourceWidthMm);
   const sourceHPt = UnitConverter.mmToPoints(sourceHeightMm);
+  const safeBox = computePdfSafeBox(sheetWMm, sheetHMm, options.printerMargins);
 
   const sheetPage = outDoc.addPage([sheetWPt, sheetHPt]);
-  const offsetXPt = UnitConverter.mmToPoints((sheetWMm - sourceWidthMm) / 2);
-  const offsetYPt = UnitConverter.mmToPoints((sheetHMm - sourceHeightMm) / 2);
+  const offsetXMm = safeBox.leftMm + (safeBox.widthMm - sourceWidthMm) / 2;
+  const offsetYMm = safeBox.bottomMm + (safeBox.heightMm - sourceHeightMm) / 2;
+  const offsetXPt = UnitConverter.mmToPoints(offsetXMm);
+  const offsetYPt = UnitConverter.mmToPoints(offsetYMm);
 
   sheetPage.pushOperators(
     pushGraphicsState(),
@@ -283,12 +346,14 @@ async function layoutSingleSheetCenteredPdf(
   drawCenteredSheetFooter(
     sheetPage,
     font,
-    sheetWPt,
+    safeBox,
     `Centered on ${mediaLabel}`,
   );
 
   if (options.includeScaleBar) {
-    drawScaleCheckBar(sheetPage, font, boldFont, 6.0, sheetHMm - 10.5);
+    const scaleXMm = Math.max(2.0, safeBox.leftMm + 1.0);
+    const scaleYMm = Math.max(safeBox.bottomMm + 1.0, safeBox.topMm - SCALE_BAR_BOX_H_MM - 1.5);
+    drawScaleCheckBar(sheetPage, font, boldFont, scaleXMm, scaleYMm);
   }
 
   return outDoc.save();
@@ -319,13 +384,14 @@ async function layoutTwoSheetTiledPdf(
   const sheetHPt = UnitConverter.mmToPoints(sheetHMm);
   const sourceWPt = UnitConverter.mmToPoints(sourceWidthMm);
   const sourceHPt = UnitConverter.mmToPoints(sourceHeightMm);
+  const safeBox = computePdfSafeBox(sheetWMm, sheetHMm, options.printerMargins);
 
   const overlapMm = fit.tileOverlapMm;
   const halfOverlapMm = overlapMm / 2;
   const contentWMm = Math.max(1, sourceWidthMm - bleedMm * 2);
   const wrapHalfWithOverlapMm = contentWMm / 2 + halfOverlapMm;
-  const leftMarginMm = (sheetWMm - wrapHalfWithOverlapMm) / 2;
-  const drawOriginYMm = (sheetHMm - sourceHeightMm) / 2;
+  const leftMarginMm = safeBox.leftMm + (safeBox.widthMm - wrapHalfWithOverlapMm) / 2;
+  const drawOriginYMm = safeBox.bottomMm + (safeBox.heightMm - sourceHeightMm) / 2;
   const drawOriginYPt = UnitConverter.mmToPoints(drawOriginYMm);
   const midXMm = sourceWidthMm / 2;
 
@@ -355,17 +421,19 @@ async function layoutTwoSheetTiledPdf(
   page1.pushOperators(popGraphicsState());
 
   const p1SeamXMm = leftMarginMm + contentWMm / 2;
-  drawTileOverlapOverlay(page1, boldFont, sheetHMm, p1SeamXMm, overlapMm, 'left');
-  drawCenteredSheetHeader(page1, boldFont, sheetWPt, sheetHMm, 'SHEET 1 OF 2 (LEFT)');
+  drawTileOverlapOverlay(page1, boldFont, safeBox, sheetHMm, p1SeamXMm, overlapMm, 'left');
+  drawCenteredSheetHeader(page1, boldFont, safeBox, sheetHMm, 'SHEET 1 OF 2 (LEFT)');
   drawCenteredSheetFooter(
     page1,
     font,
-    sheetWPt,
+    safeBox,
     `SHEET 1 OF 2 (LEFT) — ALIGN & TAPE ${overlapMm} mm OVERLAP (${mediaLabel})`,
   );
 
   if (options.includeScaleBar) {
-    drawScaleCheckBar(page1, font, boldFont, 6.0, sheetHMm - 10.5);
+    const scaleXMm = Math.max(2.0, safeBox.leftMm + 1.0);
+    const scaleYMm = Math.max(safeBox.bottomMm + 1.0, safeBox.topMm - SCALE_BAR_BOX_H_MM - 1.5);
+    drawScaleCheckBar(page1, font, boldFont, scaleXMm, scaleYMm);
   }
 
   // Sheet 2: Right half [midX - halfOverlap .. sourceWidthMm]
@@ -394,12 +462,12 @@ async function layoutTwoSheetTiledPdf(
   page2.pushOperators(popGraphicsState());
 
   const p2SeamXMm = leftMarginMm + halfOverlapMm;
-  drawTileOverlapOverlay(page2, boldFont, sheetHMm, p2SeamXMm, overlapMm, 'right');
-  drawCenteredSheetHeader(page2, boldFont, sheetWPt, sheetHMm, 'SHEET 2 OF 2 (RIGHT)');
+  drawTileOverlapOverlay(page2, boldFont, safeBox, sheetHMm, p2SeamXMm, overlapMm, 'right');
+  drawCenteredSheetHeader(page2, boldFont, safeBox, sheetHMm, 'SHEET 2 OF 2 (RIGHT)');
   drawCenteredSheetFooter(
     page2,
     font,
-    sheetWPt,
+    safeBox,
     `SHEET 2 OF 2 (RIGHT) — ALIGN & TAPE ${overlapMm} mm OVERLAP (${mediaLabel})`,
   );
 
@@ -409,8 +477,8 @@ async function layoutTwoSheetTiledPdf(
 /**
  * Lays out a 1:1 physical mm single-page PDF onto a target print media:
  * - exact-auto / roll-* / does-not-fit: keeps exact 1:1 dimensions (optionally stamping a 50 mm calibration scale bar).
- * - fits-1-sheet: centers onto 1 exact desktop paper sheet with 1:1 mm footer and optional 50 mm scale bar.
- * - fits-2-sheet-tile: horizontally tiles across 2 sheets with shaded overlap zone, alignment crosshairs, sheet headers/footers, and optional 50 mm scale bar on Sheet 1.
+ * - fits-1-sheet: centers onto 1 exact desktop paper sheet inside the printable safe box with footer and optional 50 mm scale bar.
+ * - fits-2-sheet-tile: horizontally tiles across 2 sheets inside the printable safe box with shaded overlap zone, alignment crosshairs, sheet headers/footers, and optional 50 mm scale bar on Sheet 1.
  */
 export async function layoutPdfToPrintMedia(
   sourceBytes: Uint8Array,
@@ -423,7 +491,10 @@ export async function layoutPdfToPrintMedia(
   const fitWidthMm = Math.max(1, sourceWidthMm - bleedMm * 2);
   const fitHeightMm = Math.max(1, sourceHeightMm - bleedMm * 2);
 
-  const fit = evaluatePrintMediaFit(options.printMediaId, fitWidthMm, fitHeightMm, overlapMm);
+  const fit = evaluatePrintMediaFit(options.printMediaId, fitWidthMm, fitHeightMm, overlapMm, {
+    customRollWidthMm: options.customRollWidthMm,
+    margins: options.printerMargins,
+  });
 
   // Case A: exact-auto, wide-format roll, or does-not-fit -> keep exact 1-page 1:1 mm dimensions
   if (
