@@ -1,6 +1,6 @@
 import fontkit from '@pdf-lib/fontkit';
 import { fmtMm } from '@/lib/svgFormat';
-import type { CoverTextLayer } from '@/types/coverElements';
+import type { CoverOrnamentLayer, CoverTextLayer } from '@/types/coverElements';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { CoverStudioState, CuratedFontId, StudioFontId } from '@/types/studio';
 import { normalizeQuarterTurn } from '@/types/studioLayer';
@@ -11,6 +11,8 @@ import {
   computeCoverTextLinePlacements,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
+  getCoverTextAxisAlignedBounds,
+  type StudioCanvasSpec,
 } from './renderEngine';
 
 export type CricutCanvasScope = 'spine-only' | 'front-cover' | 'back-cover' | 'full-wrap';
@@ -117,8 +119,12 @@ function buildCricutFileName(
   studio: CoverStudioState,
   options: CricutExportOptions,
 ): string {
-  const firstFrontText = (studio.textLayers ?? []).find((t) => t.zone === 'front')?.text ?? '';
-  const baseSlug = slugifyTitle(studio.spineText.title || firstFrontText);
+  const textLayers = studio.textLayers ?? [];
+  const firstCoverText =
+    textLayers.find((t) => t.zone === 'front' && t.text.trim().length > 0)?.text ??
+    textLayers.find((t) => t.text.trim().length > 0)?.text ??
+    '';
+  const baseSlug = slugifyTitle(studio.spineText.title || firstCoverText);
   const scopeSlug =
     options.scope === 'spine-only'
       ? 'spine'
@@ -130,6 +136,109 @@ function buildCricutFileName(
   const mirrorSlug = options.mirrorForHtv ? '_mirrored' : '';
   const colorSlug = options.groupByColor ? '_multicolor' : '';
   return `${baseSlug}_cricut_htv_${scopeSlug}${mirrorSlug}${colorSlug}.svg`;
+}
+
+export interface CricutScopePresence {
+  readonly spine: boolean;
+  readonly front: boolean;
+  readonly back: boolean;
+  readonly any: boolean;
+}
+
+function rectsIntersect(a: Rect2D, b: Rect2D): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+function pointInRect(x: number, y: number, rect: Rect2D): boolean {
+  return (
+    x >= rect.x &&
+    x <= rect.x + rect.width &&
+    y >= rect.y &&
+    y <= rect.y + rect.height
+  );
+}
+
+function getScopeZoneRect(scope: CricutCanvasScope, spec: StudioCanvasSpec): Rect2D {
+  switch (scope) {
+    case 'spine-only':
+      return spec.spineZoneRect;
+    case 'front-cover':
+      return spec.frontZoneRect;
+    case 'back-cover':
+      return spec.backZoneRect;
+    case 'full-wrap':
+      return spec.fullWrapRect;
+  }
+}
+
+function textLayerMatchesScope(
+  layer: CoverTextLayer,
+  scope: CricutCanvasScope,
+  spec: StudioCanvasSpec,
+): boolean {
+  if (!layer.text.trim()) return false;
+  if (scope === 'full-wrap') return true;
+  const zoneRect = getScopeZoneRect(scope, spec);
+  const bounds = getCoverTextAxisAlignedBounds(layer);
+  return rectsIntersect(bounds, zoneRect) || pointInRect(layer.xMm, layer.yMm, zoneRect);
+}
+
+function ornamentMatchesScope(
+  orn: CoverOrnamentLayer,
+  scope: CricutCanvasScope,
+  spec: StudioCanvasSpec,
+): boolean {
+  if (scope === 'full-wrap') return true;
+  const zoneRect = getScopeZoneRect(scope, spec);
+  const bounds: Rect2D = {
+    x: orn.xMm,
+    y: orn.yMm,
+    width: orn.widthMm,
+    height: orn.heightMm,
+  };
+  const cx = orn.xMm + orn.widthMm / 2;
+  const cy = orn.yMm + orn.heightMm / 2;
+  return rectsIntersect(bounds, zoneRect) || pointInRect(cx, cy, zoneRect);
+}
+
+/**
+ * Geometrically detects which Cricut cut scopes contain cuttable vector designs
+ * (dedicated spine text, draggable cover text layers, ornaments, or custom SVG stamps),
+ * independent of stale `layer.zone` metadata.
+ */
+export function detectCricutScopePresence(
+  geometry: CaseGeometry,
+  studio: CoverStudioState,
+): CricutScopePresence {
+  const spec = computeStudioCanvasSpec(geometry, PRINT_DPI);
+  const hasDedicatedSpineText =
+    studio.spineText.title.trim().length > 0 || studio.spineText.author.trim().length > 0;
+  const textLayers = studio.textLayers ?? [];
+  const ornaments = studio.ornaments ?? [];
+
+  const spine =
+    hasDedicatedSpineText ||
+    textLayers.some((t) => textLayerMatchesScope(t, 'spine-only', spec)) ||
+    ornaments.some((o) => ornamentMatchesScope(o, 'spine-only', spec));
+  const front =
+    textLayers.some((t) => textLayerMatchesScope(t, 'front-cover', spec)) ||
+    ornaments.some((o) => ornamentMatchesScope(o, 'front-cover', spec));
+  const back =
+    textLayers.some((t) => textLayerMatchesScope(t, 'back-cover', spec)) ||
+    ornaments.some((o) => ornamentMatchesScope(o, 'back-cover', spec));
+  const any =
+    spine ||
+    front ||
+    back ||
+    textLayers.some((t) => t.text.trim().length > 0) ||
+    ornaments.length > 0;
+
+  return { spine, front, back, any };
 }
 
 /**
@@ -178,20 +287,19 @@ interface GlyphRunPlacement {
   readonly flipY?: boolean;
 }
 
-function bakeGlyphRunsToPaths(
+function bakeGlyphRunsWithFont(
   runs: readonly GlyphRunPlacement[],
-  fontBytes: Uint8Array,
+  font: FontkitFont,
   originXMm: number,
   originYMm: number,
   canvasWidthMm: number,
   mirrorX: boolean,
+  emitSegments = true,
 ): BakedLetteringPaths {
   if (runs.length === 0) {
     return { compoundD: '', bounds: null };
   }
 
-  const fk = fontkit as unknown as FontkitModule;
-  const font = fk.create(fontBytes);
   const upem = Math.max(1, font.unitsPerEm || 1000);
   const capHeight =
     typeof font.capHeight === 'number' && font.capHeight > 0
@@ -258,31 +366,35 @@ function bakeGlyphRunsToPaths(
         switch (cmd.command) {
           case 'moveTo': {
             const p = mapPt(cmd.args[0], cmd.args[1]);
-            segments.push(`M ${fmtMm(p.x)} ${fmtMm(p.y)}`);
+            if (emitSegments) segments.push(`M ${fmtMm(p.x)} ${fmtMm(p.y)}`);
             break;
           }
           case 'lineTo': {
             const p = mapPt(cmd.args[0], cmd.args[1]);
-            segments.push(`L ${fmtMm(p.x)} ${fmtMm(p.y)}`);
+            if (emitSegments) segments.push(`L ${fmtMm(p.x)} ${fmtMm(p.y)}`);
             break;
           }
           case 'quadraticCurveTo': {
             const c = mapPt(cmd.args[0], cmd.args[1]);
             const p = mapPt(cmd.args[2], cmd.args[3]);
-            segments.push(`Q ${fmtMm(c.x)} ${fmtMm(c.y)} ${fmtMm(p.x)} ${fmtMm(p.y)}`);
+            if (emitSegments) {
+              segments.push(`Q ${fmtMm(c.x)} ${fmtMm(c.y)} ${fmtMm(p.x)} ${fmtMm(p.y)}`);
+            }
             break;
           }
           case 'bezierCurveTo': {
             const c1 = mapPt(cmd.args[0], cmd.args[1]);
             const c2 = mapPt(cmd.args[2], cmd.args[3]);
             const p = mapPt(cmd.args[4], cmd.args[5]);
-            segments.push(
-              `C ${fmtMm(c1.x)} ${fmtMm(c1.y)} ${fmtMm(c2.x)} ${fmtMm(c2.y)} ${fmtMm(p.x)} ${fmtMm(p.y)}`,
-            );
+            if (emitSegments) {
+              segments.push(
+                `C ${fmtMm(c1.x)} ${fmtMm(c1.y)} ${fmtMm(c2.x)} ${fmtMm(c2.y)} ${fmtMm(p.x)} ${fmtMm(p.y)}`,
+              );
+            }
             break;
           }
           case 'closePath': {
-            segments.push('Z');
+            if (emitSegments) segments.push('Z');
             break;
           }
         }
@@ -292,12 +404,12 @@ function bakeGlyphRunsToPaths(
     }
   }
 
-  if (segments.length === 0 || !Number.isFinite(minX)) {
+  if (!Number.isFinite(minX) || (emitSegments && segments.length === 0)) {
     return { compoundD: '', bounds: null };
   }
 
   return {
-    compoundD: segments.join(' '),
+    compoundD: emitSegments ? segments.join(' ') : '',
     bounds: {
       x: minX,
       y: minY,
@@ -305,6 +417,62 @@ function bakeGlyphRunsToPaths(
       height: Math.max(0.5, maxY - minY),
     },
   };
+}
+
+function bakeGlyphRunsToPaths(
+  runs: readonly GlyphRunPlacement[],
+  fontBytes: Uint8Array,
+  originXMm: number,
+  originYMm: number,
+  canvasWidthMm: number,
+  mirrorX: boolean,
+): BakedLetteringPaths {
+  if (runs.length === 0) {
+    return { compoundD: '', bounds: null };
+  }
+  const fk = fontkit as unknown as FontkitModule;
+  const font = fk.create(fontBytes);
+  return bakeGlyphRunsWithFont(runs, font, originXMm, originYMm, canvasWidthMm, mirrorX, true);
+}
+
+function buildSpineGlyphRuns(
+  geometry: CaseGeometry,
+  studio: CoverStudioState,
+): readonly GlyphRunPlacement[] {
+  return computeSpineTextPlacements(geometry, studio).map((p) => ({
+    text: p.text,
+    anchorXMm: p.anchorXMm,
+    anchorYMm: p.anchorYMm,
+    fontSizePt: p.fontSizePt,
+    rotationDegCss: p.rotationDegCss,
+    align: 'center' as const,
+    letterSpacingEm: 0,
+  }));
+}
+
+function buildCoverTextGlyphRuns(layer: CoverTextLayer): readonly GlyphRunPlacement[] {
+  const lineItems = computeCoverTextLinePlacements(layer);
+  const rot = normalizeQuarterTurn(layer.rotationDeg);
+  const rad = (rot * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  return lineItems.map((item) => {
+    const dyLine = (layer.flipY ? -1 : 1) * (item.anchorYMm - layer.yMm);
+    const anchorXMm = roundTo(layer.xMm - dyLine * sin, 3);
+    const anchorYMm = roundTo(layer.yMm + dyLine * cos, 3);
+    return {
+      text: item.text,
+      anchorXMm,
+      anchorYMm,
+      fontSizePt: item.fontSizePt,
+      rotationDegCss: rot,
+      align: item.align,
+      letterSpacingEm: item.letterSpacingEm,
+      flipX: layer.flipX,
+      flipY: layer.flipY,
+    };
+  });
 }
 
 /**
@@ -320,17 +488,8 @@ export function bakeSpineLetteringToPaths(
   canvasWidthMm: number,
   mirrorX: boolean,
 ): BakedLetteringPaths {
-  const placements = computeSpineTextPlacements(geometry, studio);
   return bakeGlyphRunsToPaths(
-    placements.map((p) => ({
-      text: p.text,
-      anchorXMm: p.anchorXMm,
-      anchorYMm: p.anchorYMm,
-      fontSizePt: p.fontSizePt,
-      rotationDegCss: p.rotationDegCss,
-      align: 'center' as const,
-      letterSpacingEm: 0,
-    })),
+    buildSpineGlyphRuns(geometry, studio),
     fontBytes,
     originXMm,
     originYMm,
@@ -348,29 +507,8 @@ export function bakeCoverTextLayerToPaths(
   canvasWidthMm: number,
   mirrorX: boolean,
 ): BakedLetteringPaths {
-  const lineItems = computeCoverTextLinePlacements(layer);
-  const rot = normalizeQuarterTurn(layer.rotationDeg);
-  const rad = (rot * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-
   return bakeGlyphRunsToPaths(
-    lineItems.map((item) => {
-      const dyLine = (layer.flipY ? -1 : 1) * (item.anchorYMm - layer.yMm);
-      const anchorXMm = roundTo(layer.xMm - dyLine * sin, 3);
-      const anchorYMm = roundTo(layer.yMm + dyLine * cos, 3);
-      return {
-        text: item.text,
-        anchorXMm,
-        anchorYMm,
-        fontSizePt: item.fontSizePt,
-        rotationDegCss: rot,
-        align: item.align,
-        letterSpacingEm: item.letterSpacingEm,
-        flipX: layer.flipX,
-        flipY: layer.flipY,
-      };
-    }),
+    buildCoverTextGlyphRuns(layer),
     fontBytes,
     originXMm,
     originYMm,
@@ -459,20 +597,138 @@ export async function generateCricutHtvSvg(
           ? outerWrap.backBoardRect
           : { x: 0, y: 0, width: outerWrap.widthMm, height: outerWrap.heightMm };
 
-  // Origin in studio canvas coordinates (which include bleed offset)
-  const originXMm = isFullWrap ? bleed : scopeRect.x + bleed - matPad;
-  const originYMm = isFullWrap ? bleed : scopeRect.y + bleed - matPad;
-
-  const widthMm = roundTo(isFullWrap ? outerWrap.widthMm : scopeRect.width + matPad * 2, 2);
-  const heightMm = roundTo(isFullWrap ? outerWrap.heightMm : scopeRect.height + matPad * 2, 2);
-
-  const matchesScopeZone = (zone: 'front' | 'back' | 'spine'): boolean => {
-    if (isFullWrap) return true;
-    if (options.scope === 'spine-only') return zone === 'spine';
-    if (options.scope === 'front-cover') return zone === 'front';
-    return zone === 'back';
+  const scopeBoardCanvasRect: Rect2D = {
+    x: scopeRect.x + bleed,
+    y: scopeRect.y + bleed,
+    width: scopeRect.width,
+    height: scopeRect.height,
   };
 
+  const fk = fontkit as unknown as FontkitModule;
+  const fontCache = new Map<StudioFontId, FontkitFont | null>();
+
+  const loadFontCached = async (fontId: StudioFontId): Promise<FontkitFont | null> => {
+    if (fontCache.has(fontId)) {
+      return fontCache.get(fontId) ?? null;
+    }
+    const bytes = await resolveFontBytesById(fontId, customFont, overrideFontBytes);
+    const parsed = bytes ? fk.create(bytes) : null;
+    fontCache.set(fontId, parsed);
+    return parsed;
+  };
+
+  // Pass 1: Collect geometrically matched designs and compute exact canvas-space bounding box
+  // so overhanging artwork (e.g. turn-ins, hinges, or dust-jacket/slip-cover flaps) expands viewBox cleanly.
+  const matchedSpineRuns: readonly GlyphRunPlacement[] =
+    options.includeLettering && (options.scope === 'spine-only' || isFullWrap)
+      ? buildSpineGlyphRuns(geometry, studio)
+      : [];
+  const spineFont =
+    matchedSpineRuns.length > 0 ? await loadFontCached(studio.spineText.fontId) : null;
+
+  const matchedTextItems: {
+    readonly layer: CoverTextLayer;
+    readonly runs: readonly GlyphRunPlacement[];
+    readonly font: FontkitFont;
+  }[] = [];
+
+  if (options.includeLettering) {
+    for (const layer of studio.textLayers ?? []) {
+      if (!textLayerMatchesScope(layer, options.scope, spec)) continue;
+      const font = await loadFontCached(layer.fontId);
+      if (!font) continue;
+      matchedTextItems.push({
+        layer,
+        runs: buildCoverTextGlyphRuns(layer),
+        font,
+      });
+    }
+  }
+
+  const includeOrnaments = options.includeOrnaments ?? true;
+  const matchedOrnaments: CoverOrnamentLayer[] = includeOrnaments
+    ? (studio.ornaments ?? []).filter((orn) => ornamentMatchesScope(orn, options.scope, spec))
+    : [];
+
+  let canvasDesignBounds: Rect2D | null = null;
+  if (spineFont && matchedSpineRuns.length > 0) {
+    const measured = bakeGlyphRunsWithFont(matchedSpineRuns, spineFont, 0, 0, 0, false, false);
+    canvasDesignBounds = mergeBounds(canvasDesignBounds, measured.bounds);
+  }
+  for (const item of matchedTextItems) {
+    const measured = bakeGlyphRunsWithFont(item.runs, item.font, 0, 0, 0, false, false);
+    canvasDesignBounds = mergeBounds(canvasDesignBounds, measured.bounds);
+  }
+  for (const orn of matchedOrnaments) {
+    if (orn.presetId === 'custom-svg' && (!orn.customSvgPaths || orn.customSvgPaths.length === 0)) {
+      continue;
+    }
+    const style = getOrnamentSvgStyle(orn);
+    const halfStroke = style.stroke !== 'none' && style.strokeWidthMm > 0 ? style.strokeWidthMm / 2 : 0;
+    canvasDesignBounds = mergeBounds(canvasDesignBounds, {
+      x: orn.xMm - halfStroke,
+      y: orn.yMm - halfStroke,
+      width: orn.widthMm + halfStroke * 2,
+      height: orn.heightMm + halfStroke * 2,
+    });
+  }
+
+  // Compute final viewBox as the union of the physical scope board box (+ matPad)
+  // and the matched design bounds (+ matPad, which comfortably fits the +4 mm weeding box).
+  let minXMm: number;
+  let minYMm: number;
+  let maxXMm: number;
+  let maxYMm: number;
+
+  if (isFullWrap) {
+    const baseMinX = bleed;
+    const baseMinY = bleed;
+    const baseMaxX = bleed + outerWrap.widthMm;
+    const baseMaxY = bleed + outerWrap.heightMm;
+
+    minXMm =
+      canvasDesignBounds && canvasDesignBounds.x < baseMinX
+        ? Math.min(baseMinX, canvasDesignBounds.x - matPad)
+        : baseMinX;
+    minYMm =
+      canvasDesignBounds && canvasDesignBounds.y < baseMinY
+        ? Math.min(baseMinY, canvasDesignBounds.y - matPad)
+        : baseMinY;
+    maxXMm =
+      canvasDesignBounds && canvasDesignBounds.x + canvasDesignBounds.width > baseMaxX
+        ? Math.max(baseMaxX, canvasDesignBounds.x + canvasDesignBounds.width + matPad)
+        : baseMaxX;
+    maxYMm =
+      canvasDesignBounds && canvasDesignBounds.y + canvasDesignBounds.height > baseMaxY
+        ? Math.max(baseMaxY, canvasDesignBounds.y + canvasDesignBounds.height + matPad)
+        : baseMaxY;
+  } else {
+    const baseMinX = scopeBoardCanvasRect.x - matPad;
+    const baseMinY = scopeBoardCanvasRect.y - matPad;
+    const baseMaxX = scopeBoardCanvasRect.x + scopeBoardCanvasRect.width + matPad;
+    const baseMaxY = scopeBoardCanvasRect.y + scopeBoardCanvasRect.height + matPad;
+
+    minXMm = canvasDesignBounds
+      ? Math.min(baseMinX, canvasDesignBounds.x - matPad)
+      : baseMinX;
+    minYMm = canvasDesignBounds
+      ? Math.min(baseMinY, canvasDesignBounds.y - matPad)
+      : baseMinY;
+    maxXMm = canvasDesignBounds
+      ? Math.max(baseMaxX, canvasDesignBounds.x + canvasDesignBounds.width + matPad)
+      : baseMaxX;
+    maxYMm = canvasDesignBounds
+      ? Math.max(baseMaxY, canvasDesignBounds.y + canvasDesignBounds.height + matPad)
+      : baseMaxY;
+  }
+
+  // Origin in studio canvas coordinates (which include bleed offset)
+  const originXMm = roundTo(minXMm, 2);
+  const originYMm = roundTo(minYMm, 2);
+  const widthMm = roundTo(maxXMm - originXMm, 2);
+  const heightMm = roundTo(maxYMm - originYMm, 2);
+
+  // Pass 2: Bake all matched designs into exact 1:1 mm SVG paths in final viewBox coordinates
   const letteringParts: string[] = [];
   const foilColorSet = new Set<string>();
   const filledPathsByColor = new Map<string, string[]>();
@@ -487,66 +743,46 @@ export async function generateCricutHtvSvg(
   };
 
   let designBounds: Rect2D | null = null;
-  const fontBytesCache = new Map<StudioFontId, Uint8Array | null>();
 
-  const loadFontCached = async (fontId: StudioFontId): Promise<Uint8Array | null> => {
-    if (fontBytesCache.has(fontId)) {
-      return fontBytesCache.get(fontId) ?? null;
+  if (spineFont && matchedSpineRuns.length > 0) {
+    const baked = bakeGlyphRunsWithFont(
+      matchedSpineRuns,
+      spineFont,
+      originXMm,
+      originYMm,
+      widthMm,
+      options.mirrorForHtv,
+      true,
+    );
+    if (baked.compoundD) {
+      const spineHex = normalizeFoilHex(studio.spineText.textColor, '#111111');
+      letteringParts.push(baked.compoundD);
+      appendColorPath(spineHex, baked.compoundD);
+      designBounds = mergeBounds(designBounds, baked.bounds);
     }
-    const bytes = await resolveFontBytesById(fontId, customFont, overrideFontBytes);
-    fontBytesCache.set(fontId, bytes);
-    return bytes;
-  };
+  }
 
-  if (options.includeLettering) {
-    // 1. Dedicated Spine Typography (included in spine-only & full-wrap)
-    if (options.scope === 'spine-only' || isFullWrap) {
-      const spineFontBytes = await loadFontCached(studio.spineText.fontId);
-      if (spineFontBytes) {
-        const baked = bakeSpineLetteringToPaths(
-          geometry,
-          studio,
-          spineFontBytes,
-          originXMm,
-          originYMm,
-          widthMm,
-          options.mirrorForHtv,
-        );
-        if (baked.compoundD) {
-          const spineHex = normalizeFoilHex(studio.spineText.textColor, '#111111');
-          letteringParts.push(baked.compoundD);
-          appendColorPath(spineHex, baked.compoundD);
-          designBounds = mergeBounds(designBounds, baked.bounds);
-        }
-      }
-    }
-
-    // 2. Draggable Front / Back / Spine Cover Text Layers
-    for (const layer of studio.textLayers ?? []) {
-      if (!matchesScopeZone(layer.zone)) continue;
-      const layerFontBytes = await loadFontCached(layer.fontId);
-      if (!layerFontBytes) continue;
-      const baked = bakeCoverTextLayerToPaths(
-        layer,
-        layerFontBytes,
-        originXMm,
-        originYMm,
-        widthMm,
-        options.mirrorForHtv,
-      );
-      if (baked.compoundD) {
-        const textHex = normalizeFoilHex(layer.color, '#111111');
-        letteringParts.push(baked.compoundD);
-        appendColorPath(textHex, baked.compoundD);
-        designBounds = mergeBounds(designBounds, baked.bounds);
-      }
+  for (const item of matchedTextItems) {
+    const baked = bakeGlyphRunsWithFont(
+      item.runs,
+      item.font,
+      originXMm,
+      originYMm,
+      widthMm,
+      options.mirrorForHtv,
+      true,
+    );
+    if (baked.compoundD) {
+      const textHex = normalizeFoilHex(item.layer.color, '#111111');
+      letteringParts.push(baked.compoundD);
+      appendColorPath(textHex, baked.compoundD);
+      designBounds = mergeBounds(designBounds, baked.bounds);
     }
   }
 
   const letteringD = letteringParts.join(' ');
 
   // 3. Classic Bookbindery Vector Ornaments & Custom SVG Stamps
-  const includeOrnaments = options.includeOrnaments ?? true;
   const groupByColor = Boolean(options.groupByColor);
   const filledOrnamentParts: string[] = [];
   const strokedOrnaments: {
@@ -555,40 +791,37 @@ export async function generateCricutHtvSvg(
     readonly strokeWidthMm: number;
     readonly hex: string;
   }[] = [];
-  if (includeOrnaments) {
-    for (const orn of studio.ornaments ?? []) {
-      if (!matchesScopeZone(orn.zone)) continue;
-      const d = buildOrnamentCompoundPath(orn, {
-        originXMm,
-        originYMm,
-        canvasWidthMm: widthMm,
-        mirrorX: options.mirrorForHtv,
-      });
-      if (!d) continue;
-      const style = getOrnamentSvgStyle(orn);
-      const ornHex = normalizeFoilHex(orn.color, '#222222');
-      if (style.fill !== 'none') {
-        filledOrnamentParts.push(d);
-        appendColorPath(ornHex, d);
-      }
-      if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
-        foilColorSet.add(ornHex);
-        strokedOrnaments.push({
-          id: orn.id,
-          d,
-          strokeWidthMm: style.strokeWidthMm,
-          hex: ornHex,
-        });
-      }
-      const rawX = orn.xMm - originXMm;
-      const ornX = options.mirrorForHtv ? widthMm - (rawX + orn.widthMm) : rawX;
-      designBounds = mergeBounds(designBounds, {
-        x: ornX,
-        y: orn.yMm - originYMm,
-        width: orn.widthMm,
-        height: orn.heightMm,
+  for (const orn of matchedOrnaments) {
+    const d = buildOrnamentCompoundPath(orn, {
+      originXMm,
+      originYMm,
+      canvasWidthMm: widthMm,
+      mirrorX: options.mirrorForHtv,
+    });
+    if (!d) continue;
+    const style = getOrnamentSvgStyle(orn);
+    const ornHex = normalizeFoilHex(orn.color, '#222222');
+    if (style.fill !== 'none') {
+      filledOrnamentParts.push(d);
+      appendColorPath(ornHex, d);
+    }
+    if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
+      foilColorSet.add(ornHex);
+      strokedOrnaments.push({
+        id: orn.id,
+        d,
+        strokeWidthMm: style.strokeWidthMm,
+        hex: ornHex,
       });
     }
+    const rawX = orn.xMm - originXMm;
+    const ornX = options.mirrorForHtv ? widthMm - (rawX + orn.widthMm) : rawX;
+    designBounds = mergeBounds(designBounds, {
+      x: ornX,
+      y: orn.yMm - originYMm,
+      width: orn.widthMm,
+      height: orn.heightMm,
+    });
   }
   const ornamentsD = filledOrnamentParts.join(' ');
 
@@ -596,25 +829,34 @@ export async function generateCricutHtvSvg(
 
   // 1. Optional Outer Case Wrap Cut Outline (separate vermilion cut layer for bookcloth/paper cutting)
   if (isFullWrap && options.includeOuterCutOutline) {
-    const poly = options.mirrorForHtv
-      ? outerWrap.outerCutPolygon.map((pt) => ({ x: widthMm - pt.x, y: pt.y }))
-      : outerWrap.outerCutPolygon;
+    const poly = outerWrap.outerCutPolygon.map((pt) => {
+      const shiftedX = pt.x + bleed - originXMm;
+      return {
+        x: options.mirrorForHtv ? widthMm - shiftedX : shiftedX,
+        y: pt.y + bleed - originYMm,
+      };
+    });
     const cutD = GeometryPrimitives.polygonToSvgPath(poly, 3);
     pathElements.push(
       `  <path id="outer-wrap-cut" d="${cutD}" fill="none" stroke="#D93829" stroke-width="0.35" />`,
     );
   }
 
-  // 2. Optional Alignment Corner Registration L-Brackets (separate brass/amber layer)
+  // 2. Optional Alignment Corner Registration L-Brackets (anchored strictly to true physical board corners)
   if (options.includeRegistrationMarks) {
     const targetRects: Rect2D[] = isFullWrap
-      ? [outerWrap.backBoardRect, outerWrap.spineRect, outerWrap.frontBoardRect]
+      ? [outerWrap.backBoardRect, outerWrap.spineRect, outerWrap.frontBoardRect].map((r) => ({
+          x: r.x + bleed - originXMm,
+          y: r.y + bleed - originYMm,
+          width: r.width,
+          height: r.height,
+        }))
       : [
           {
-            x: matPad,
-            y: matPad,
-            width: scopeRect.width,
-            height: scopeRect.height,
+            x: scopeBoardCanvasRect.x - originXMm,
+            y: scopeBoardCanvasRect.y - originYMm,
+            width: scopeBoardCanvasRect.width,
+            height: scopeBoardCanvasRect.height,
           },
         ];
     const regD = buildCornerBracketsPath(targetRects, widthMm, options.mirrorForHtv);

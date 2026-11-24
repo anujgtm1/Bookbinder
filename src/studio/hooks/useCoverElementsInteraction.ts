@@ -8,6 +8,11 @@ import type { CoverStudioState } from '@/types/studio';
 import type { ResizeCorner } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 import {
+  getCoverTextAxisAlignedBounds,
+  inferZoneFromCenterX,
+  type StudioCanvasSpec,
+} from '../canvasSpec';
+import {
   snapBoxToTargets,
   snapPointToTargets,
   type ActiveSnapGuide,
@@ -42,6 +47,7 @@ type ElementDragState =
     };
 
 export interface UseCoverElementsInteractionOptions {
+  readonly spec: StudioCanvasSpec;
   readonly studioRef: RefObject<CoverStudioState>;
   readonly onChangeRef: RefObject<(next: CoverStudioState) => void>;
   readonly toSvgMm: (
@@ -76,6 +82,7 @@ export interface CoverElementsInteractionApi {
  * and Classic Bookbindery Ornament layers on the 2D Cover Studio canvas.
  */
 export function useCoverElementsInteraction({
+  spec,
   studioRef,
   onChangeRef,
   toSvgMm,
@@ -119,10 +126,12 @@ export function useCoverElementsInteraction({
           snapped.yMm,
           lockAspect,
         );
+        const nextZone = inferZoneFromCenterX(resized.xMm + resized.widthMm / 2, spec);
+        const updatedOrnament = resized.zone === nextZone ? resized : { ...resized, zone: nextZone };
         const cur = studioRef.current;
         onChangeRef.current({
           ...cur,
-          ornaments: (cur.ornaments ?? []).map((o) => (o.id === drag.id ? resized : o)),
+          ornaments: (cur.ornaments ?? []).map((o) => (o.id === drag.id ? updatedOrnament : o)),
         });
         suppressNextClickRef.current = true;
         return;
@@ -140,13 +149,17 @@ export function useCoverElementsInteraction({
 
         setElementSnapGuides(snapped.guides);
         const cur = studioRef.current;
+        const nextX = roundTo(snapped.xMm, 2);
+        const nextY = roundTo(snapped.yMm, 2);
         onChangeRef.current({
           ...cur,
-          textLayers: (cur.textLayers ?? []).map((t) =>
-            t.id === drag.id
-              ? { ...t, xMm: roundTo(snapped.xMm, 2), yMm: roundTo(snapped.yMm, 2) }
-              : t,
-          ),
+          textLayers: (cur.textLayers ?? []).map((t) => {
+            if (t.id !== drag.id) return t;
+            const moved = { ...t, xMm: nextX, yMm: nextY };
+            const bounds = getCoverTextAxisAlignedBounds(moved);
+            const nextZone = inferZoneFromCenterX(bounds.x + bounds.width / 2, spec);
+            return moved.zone === nextZone ? moved : { ...moved, zone: nextZone };
+          }),
         });
       } else {
         const rawX = drag.origXMm + dx;
@@ -157,11 +170,14 @@ export function useCoverElementsInteraction({
 
         setElementSnapGuides(snapped.guides);
         const cur = studioRef.current;
+        const nextX = roundTo(snapped.xMm, 2);
+        const nextY = roundTo(snapped.yMm, 2);
+        const nextZone = inferZoneFromCenterX(nextX + drag.widthMm / 2, spec);
         onChangeRef.current({
           ...cur,
           ornaments: (cur.ornaments ?? []).map((o) =>
             o.id === drag.id
-              ? { ...o, xMm: roundTo(snapped.xMm, 2), yMm: roundTo(snapped.yMm, 2) }
+              ? { ...o, xMm: nextX, yMm: nextY, zone: nextZone }
               : o,
           ),
         });
@@ -184,7 +200,7 @@ export function useCoverElementsInteraction({
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
     };
-  }, [snapEnabled, snapTargets, toSvgMm, studioRef, onChangeRef, suppressNextClickRef]);
+  }, [spec, snapEnabled, snapTargets, toSvgMm, studioRef, onChangeRef, suppressNextClickRef]);
 
   // Keyboard Backspace/Delete removal for selected CoverTextLayer or CoverOrnamentLayer
   useEffect(() => {

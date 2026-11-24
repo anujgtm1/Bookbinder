@@ -300,7 +300,7 @@ export function CoverStyler({
       textId: selectedTextId,
       ornamentId: selectedOrnamentId,
     };
-    const result = duplicateSelectedInStudio(studioRef.current, selection, canvasBounds);
+    const result = duplicateSelectedInStudio(studioRef.current, selection, canvasBounds, spec);
     if (!result) return false;
     applyStudioChange(result.studio);
     selectPastedResult(result);
@@ -311,6 +311,7 @@ export function CoverStyler({
     selectedTextId,
     selectedOrnamentId,
     canvasBounds,
+    spec,
     applyStudioChange,
     selectPastedResult,
   ]);
@@ -343,6 +344,7 @@ export function CoverStyler({
 
   const { elementSnapGuides, startTextDrag, startOrnamentDrag, startOrnamentResize } =
     useCoverElementsInteraction({
+      spec,
       studioRef,
       onChangeRef: elementOnChangeRef,
       toSvgMm,
@@ -437,6 +439,7 @@ export function CoverStyler({
               item,
               canvasBounds,
               pasteCountRef.current,
+              spec,
             );
             if (pasted) {
               applyStudioChange(pasted.studio);
@@ -472,7 +475,14 @@ export function CoverStyler({
         const step = e.shiftKey ? NUDGE_SHIFT_STEP_MM : NUDGE_STEP_MM;
         const dxMm = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dyMm = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-        const nudged = nudgeSelectedInStudio(studioRef.current, selection, dxMm, dyMm, canvasBounds);
+        const nudged = nudgeSelectedInStudio(
+          studioRef.current,
+          selection,
+          dxMm,
+          dyMm,
+          canvasBounds,
+          spec,
+        );
         if (nudged) {
           e.preventDefault();
           applyStudioChange(nudged, { coalesceKey: 'arrow-nudge' });
@@ -488,6 +498,7 @@ export function CoverStyler({
     selectedTextId,
     selectedOrnamentId,
     canvasBounds,
+    spec,
     handleUndo,
     handleRedo,
     handleDuplicateSelected,

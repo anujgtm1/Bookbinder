@@ -3,6 +3,11 @@ import type { Rect2D } from '@/types/geometry';
 import type { CoverStudioState } from '@/types/studio';
 import { getLayerVisualRect, type CoverImageLayer } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
+import {
+  getCoverTextAxisAlignedBounds,
+  inferZoneFromCenterX,
+  type StudioCanvasSpec,
+} from './canvasSpec';
 import { cloneSnapshot } from './hooks/useStudioHistory';
 
 export const DEFAULT_PASTE_OFFSET_MM = 6;
@@ -166,6 +171,7 @@ export function pasteClipboardItemToStudio(
   item: StudioClipboardItem,
   canvasBounds: Rect2D,
   pasteIndex?: number,
+  spec?: StudioCanvasSpec,
 ): StudioPasteResult | null {
   const offsetMm = resolvePasteOffsetMm(pasteIndex);
 
@@ -195,12 +201,24 @@ export function pasteClipboardItemToStudio(
     const existingIds = new Set(studio.textLayers.map((layer) => layer.id));
     const pastedId = generateUniqueId('txt', existingIds);
     const pos = clampTextPosition(cloned, offsetMm, offsetMm, canvasBounds);
-    const pasted: CoverTextLayer = {
+    const movedText: CoverTextLayer = {
       ...cloned,
       id: pastedId,
       xMm: pos.xMm,
       yMm: pos.yMm,
     };
+    const pasted: CoverTextLayer = spec
+      ? {
+          ...movedText,
+          zone: inferZoneFromCenterX(
+            (() => {
+              const b = getCoverTextAxisAlignedBounds(movedText);
+              return b.x + b.width / 2;
+            })(),
+            spec,
+          ),
+        }
+      : movedText;
     return {
       studio: {
         ...studio,
@@ -222,6 +240,7 @@ export function pasteClipboardItemToStudio(
       id: pastedId,
       xMm: pos.xMm,
       yMm: pos.yMm,
+      zone: spec ? inferZoneFromCenterX(pos.xMm + cloned.widthMm / 2, spec) : cloned.zone,
     };
     return {
       studio: {
@@ -240,10 +259,11 @@ export function duplicateSelectedInStudio(
   studio: CoverStudioState,
   selection: StudioElementSelection,
   canvasBounds: Rect2D,
+  spec?: StudioCanvasSpec,
 ): StudioPasteResult | null {
   const item = createClipboardItemFromSelection(studio, selection);
   if (!item) return null;
-  return pasteClipboardItemToStudio(studio, item, canvasBounds, 1);
+  return pasteClipboardItemToStudio(studio, item, canvasBounds, 1, spec);
 }
 
 export function pasteClipboardItemToPockets(
@@ -280,6 +300,7 @@ export function nudgeSelectedInStudio(
   dxMm: number,
   dyMm: number,
   canvasBounds: Rect2D,
+  spec?: StudioCanvasSpec,
 ): CoverStudioState | null {
   if (!Number.isFinite(dxMm) || !Number.isFinite(dyMm)) {
     return null;
@@ -302,9 +323,13 @@ export function nudgeSelectedInStudio(
     if (idx !== -1) {
       const target = studio.textLayers[idx];
       const pos = clampTextPosition(target, dxMm, dyMm, canvasBounds);
-      const nextTextLayers = studio.textLayers.map((layer, i) =>
-        i === idx ? { ...layer, xMm: pos.xMm, yMm: pos.yMm } : layer,
-      );
+      const nextTextLayers = studio.textLayers.map((layer, i) => {
+        if (i !== idx) return layer;
+        const moved = { ...layer, xMm: pos.xMm, yMm: pos.yMm };
+        if (!spec) return moved;
+        const bounds = getCoverTextAxisAlignedBounds(moved);
+        return { ...moved, zone: inferZoneFromCenterX(bounds.x + bounds.width / 2, spec) };
+      });
       return { ...studio, textLayers: nextTextLayers };
     }
   }
@@ -315,7 +340,14 @@ export function nudgeSelectedInStudio(
       const target = studio.ornaments[idx];
       const pos = clampOrnamentPosition(target, dxMm, dyMm, canvasBounds);
       const nextOrnaments = studio.ornaments.map((layer, i) =>
-        i === idx ? { ...layer, xMm: pos.xMm, yMm: pos.yMm } : layer,
+        i === idx
+          ? {
+              ...layer,
+              xMm: pos.xMm,
+              yMm: pos.yMm,
+              zone: spec ? inferZoneFromCenterX(pos.xMm + layer.widthMm / 2, spec) : layer.zone,
+            }
+          : layer,
       );
       return { ...studio, ornaments: nextOrnaments };
     }

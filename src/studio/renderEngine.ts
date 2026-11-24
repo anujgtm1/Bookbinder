@@ -5,6 +5,8 @@ export {
   computeCoverTextLinePlacements,
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
+  getCoverTextAxisAlignedBounds,
+  inferZoneFromCenterX,
   resolveQuickFitRect,
   resolveZoneClipRect,
   type CoverTextLinePlacement,

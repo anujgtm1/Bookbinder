@@ -10,6 +10,7 @@ import type { CoverStudioState } from '@/types/studio';
 import { UnitConverter, type UnitSystem } from '@/types/units';
 import {
   DEFAULT_CRICUT_EXPORT_OPTIONS,
+  detectCricutScopePresence,
   generateCricutHtvSvg,
   type CricutCanvasScope,
   type CricutExportOptions,
@@ -45,15 +46,13 @@ export function CricutExportDialog({
   const titleId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const hasSpineText =
+  const hasDedicatedSpineText =
     studio.spineText.title.trim().length > 0 || studio.spineText.author.trim().length > 0;
-  const hasFrontDesign =
-    (studio.textLayers ?? []).some((t) => t.zone === 'front' && t.text.trim().length > 0) ||
-    (studio.ornaments ?? []).some((o) => o.zone === 'front');
-  const hasAnyDesign =
-    hasSpineText ||
-    (studio.textLayers ?? []).some((t) => t.text.trim().length > 0) ||
-    (studio.ornaments ?? []).length > 0;
+  const scopePresence = useMemo(
+    () => detectCricutScopePresence(geometry, studio),
+    [geometry, studio],
+  );
+  const hasRasterArtwork = (studio.layers ?? []).length > 0;
 
   const [options, setOptions] = useState<CricutExportOptions>(DEFAULT_CRICUT_EXPORT_OPTIONS);
   const [preview, setPreview] = useState<CricutExportResult | null>(null);
@@ -65,11 +64,15 @@ export function CricutExportDialog({
     if (!dialog) return;
 
     if (open) {
-      const smartScope: CricutCanvasScope = hasSpineText
+      const smartScope: CricutCanvasScope = hasDedicatedSpineText
         ? 'spine-only'
-        : hasFrontDesign
+        : scopePresence.front
           ? 'front-cover'
-          : 'full-wrap';
+          : scopePresence.back
+            ? 'back-cover'
+            : scopePresence.spine
+              ? 'spine-only'
+              : 'full-wrap';
       setOptions((prev) => ({
         ...prev,
         scope: smartScope,
@@ -89,7 +92,7 @@ export function CricutExportDialog({
         dialog.removeAttribute('open');
       }
     }
-  }, [open, hasSpineText, hasFrontDesign]);
+  }, [open, hasDedicatedSpineText, scopePresence.spine, scopePresence.front, scopePresence.back]);
 
   // Safari fallback for closedby="any" light dismiss (requires both press & release outside dialog rect)
   useEffect(() => {
@@ -180,6 +183,41 @@ export function CricutExportDialog({
       onOpenChange(false);
     }
   };
+
+  const emptyScopeHint = useMemo(() => {
+    if (!scopePresence.any) {
+      if (hasRasterArtwork) {
+        return 'HTV SVG cuts vector text, ornaments, and SVG stamps only. Print uploaded images via Export Printed Base PDF below, or add vector text/ornaments to cut HTV.';
+      }
+      return 'Add Spine Typography, Front/Back Cover Text, or a Classic Design ornament to export outlined HTV cut paths — or export the alignment & outer cut outline for bookcloth.';
+    }
+    if (!generating && preview && !preview.hasLettering) {
+      if (!options.includeLettering && !(options.includeOrnaments ?? true)) {
+        return 'Enable Cover & Spine Lettering or Classic Ornaments & Frames to include vector cut paths.';
+      }
+      const populatedPanels: string[] = [];
+      if (scopePresence.front) populatedPanels.push('Front Cover');
+      if (scopePresence.back) populatedPanels.push('Back Cover');
+      if (scopePresence.spine) populatedPanels.push('Spine');
+      if (populatedPanels.length > 0) {
+        const rasterNote = hasRasterArtwork
+          ? ' Uploaded images print via Export Printed Base PDF.'
+          : '';
+        return `No vector cut paths in this scope. Cuttable designs are on ${populatedPanels.join(', ')}.${rasterNote}`;
+      }
+      if (hasRasterArtwork) {
+        return 'No vector cut paths in this scope. Uploaded images print via Export Printed Base PDF below.';
+      }
+    }
+    return null;
+  }, [
+    scopePresence,
+    hasRasterArtwork,
+    generating,
+    preview,
+    options.includeLettering,
+    options.includeOrnaments,
+  ]);
 
   const handleOpenBasePdfForHtv = () => {
     const dialog = dialogRef.current;
@@ -402,10 +440,12 @@ export function CricutExportDialog({
               </p>
             </div>
 
-            {!hasAnyDesign && (
-              <p className="status-warning-surface rounded-md border px-2.5 py-2 text-[11px] font-medium">
-                Add Spine Typography, Front/Back Cover Text, or a Classic Design ornament to export
-                outlined HTV cut paths — or export the alignment &amp; outer cut outline for bookcloth.
+            {emptyScopeHint && (
+              <p
+                data-testid="cricut-empty-scope-hint"
+                className="status-warning-surface rounded-md border px-2.5 py-2 text-[11px] font-medium"
+              >
+                {emptyScopeHint}
               </p>
             )}
 
