@@ -71,11 +71,10 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ---
 
-### 14. Cricut Print Then Cut Printable HTV (Transparent 300 DPI PNG) + `.svg` Artwork-Layer HTV Support
-- **Why binders ask for it:** Makers using printable heat-transfer vinyl (Siser EasyColor DTV, Cricut Printable Iron-On) want to print full-color cover art/emblems on their inkjet and have Cricut kiss-cut around the graphic—while users who drop a `.svg` silhouette into **Artwork & Fill** expect it to cut in Basic Cut HTV just like `Designs → Import SVG`.
-- **What it would do:**
-  - **Basic Cut HTV (`.SVG`) Upgrade:** Automatically parse `.svg` files placed via **Artwork & Fill** (`data:image/svg+xml` in `CoverImageLayer`) through `svgStampParser.ts` into flattened cuttable Bezier `<path>` curves in `cricutExport.ts`.
-  - **Print Then Cut HTV Mode (Transparent 300 DPI `.PNG`):** Add a second export mode inside `CricutExportDialog.tsx` exporting the selected **Front Cover**, **Back Cover**, **Spine**, or **Full Cover Wrap** panel with **full alpha transparency** containing all **uploaded raster images (`PNG`/`JPG`/`WEBP`) + cover/spine text + vector ornaments** (omitting the solid base cloth fill color so Cricut Print Then Cut kiss-cuts cleanly around the transparent artwork), displaying exact physical `W × H` (`in` / `mm`) dimensions for Cricut Design Space, optional HTV mirror, and a live check against Cricut’s Print-Then-Cut Letter/Legal bounds (`6.75 × 9.25"` Letter).
+### 14. [Shipped] Cricut Print Then Cut Printable HTV (Transparent 300 DPI PNG) + `.svg` Artwork-Layer HTV Support
+- **Implemented in:** `src/studio/cricutExport.ts`, `src/studio/cricutPrintThenCut.ts`, `src/studio/exporters/coverRasterExporter.ts`, `src/studio/CricutExportDialog.tsx`.
+- **Basic Cut HTV (`.SVG`) Upgrade:** Automatically decodes and parses `.svg` artwork layers (`data:image/svg+xml` in `CoverImageLayer`, base64 & UTF-8) through `svgStampParser.ts` into flattened cuttable Bezier `<path>` curves with zero `<image>`, `<text>`, or `transform=` attributes, honoring rotation, flips, clip zones, HTV mirror, and `Split Mats by Foil Color`.
+- **Print Then Cut HTV Mode (Transparent 300 DPI `.PNG`):** Adds a dual-mode segmented switcher inside `CricutExportDialog.tsx` exporting isolated **Front Cover**, **Back Cover**, **Spine Strip**, or **Full Cover Wrap** transparent 300 DPI PNGs with an embedded CRC32 `pHYs` DPI chunk, optional **Trim to Design Bounds** (`+2 mm` margin), optional HTV mirror, optional solid base fill (off by default), always-light alpha checkerboard preview, exact physical `W × H` (`in` / `mm` + `px`) readout, and live Cricut Print-Then-Cut bounds badges (**US Letter `6.75 × 9.25"`**, **A4**, **US Legal**, **Tabloid**).
 
 ---
 
