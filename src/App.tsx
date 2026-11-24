@@ -201,77 +201,85 @@ export function App() {
   };
 
   return (
-    <div className="bindery-walnut-desk min-h-screen text-foreground">
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
-        className="flex min-h-screen flex-col"
+    <div className="bindery-walnut-desk flex min-h-screen flex-col text-foreground">
+      <Header
+        statusMessage={statusMessage}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        onLoadSampleBook={handleLoadSampleBook}
+      />
+
+      <main
+        id="main-workspace"
+        tabIndex={-1}
+        className={`mx-auto grid w-full max-w-[1760px] flex-1 grid-cols-1 items-start gap-4 px-3 py-3.5 sm:px-5 ${
+          sidebarOpen ? 'lg:grid-cols-[276px_minmax(0,1fr)]' : 'lg:grid-cols-1'
+        }`}
       >
-        <Header
-          statusMessage={statusMessage}
-          sidebarOpen={sidebarOpen}
-          onToggleSidebar={() => setSidebarOpen((open) => !open)}
-          onLoadSampleBook={handleLoadSampleBook}
-          navSlot={
-            <TabsList className="h-auto gap-1 rounded-none bg-transparent p-0 sm:gap-2">
-              <TabsTrigger
-                value="measure"
-                data-testid="nav-measure"
-                className="editorial-nav-tab px-3 py-2.5 text-xs tracking-tight data-[state=active]:bg-transparent data-[state=active]:shadow-none sm:px-4 sm:py-3.5 sm:text-sm"
-              >
-                <Ruler className="h-3.5 w-3.5 text-vermilion/85" aria-hidden="true" />
-                Measure &amp; Cut
-              </TabsTrigger>
-              <TabsTrigger
-                value="outer"
-                data-testid="nav-outer"
-                className="editorial-nav-tab px-3 py-2.5 text-xs tracking-tight data-[state=active]:bg-transparent data-[state=active]:shadow-none sm:px-4 sm:py-3.5 sm:text-sm"
-              >
-                <BookMarked className="h-3.5 w-3.5 text-vermilion/85" aria-hidden="true" />
-                Cover Studio
-              </TabsTrigger>
-              <TabsTrigger
-                value="pockets"
-                data-testid="nav-pockets"
-                className="editorial-nav-tab px-3 py-2.5 text-xs tracking-tight data-[state=active]:bg-transparent data-[state=active]:shadow-none sm:px-4 sm:py-3.5 sm:text-sm"
-              >
-                <FolderOpen
-                  className={`h-3.5 w-3.5 text-vermilion/85 ${!usesInnerPockets ? 'opacity-55' : ''}`}
-                  aria-hidden="true"
-                />
-                <span className={!usesInnerPockets ? 'opacity-65' : undefined}>Inner Pockets</span>
-                {!usesInnerPockets && bindingStrategy.innerPocketsNotice && (
-                  <Badge
-                    variant="outline"
-                    data-testid="pockets-builtin-badge"
-                    className="ml-0.5 h-4 px-1.5 font-mono text-[10px]"
-                  >
-                    {bindingStrategy.innerPocketsNotice.tabBadge}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            </TabsList>
-          }
-        />
+        {sidebarOpen && (
+          <SidebarControls
+            params={project.parameters}
+            onChange={handleParamsChange}
+            onExportJson={handleExportJson}
+            onImportJson={handleImportJson}
+            onResetDefaults={handleResetDefaults}
+          />
+        )}
 
-        <main
-          id="main-workspace"
-          tabIndex={-1}
-          className={`mx-auto grid w-full max-w-[1760px] flex-1 grid-cols-1 items-start gap-4 px-3 py-3.5 sm:px-5 ${
-            sidebarOpen ? 'lg:grid-cols-[276px_minmax(0,1fr)]' : 'lg:grid-cols-1'
-          }`}
-        >
-          {sidebarOpen && (
-            <SidebarControls
-              params={project.parameters}
-              onChange={handleParamsChange}
-              onExportJson={handleExportJson}
-              onImportJson={handleImportJson}
-              onResetDefaults={handleResetDefaults}
-            />
-          )}
+        <div className="flex min-w-0 flex-col">
+          {/* 3-Tab Folio Workbench Navigation sitting cleanly above the active workspace */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
+            className="flex flex-col gap-3"
+          >
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <TabsList
+                aria-label="Workbench modes"
+                className="h-auto flex-wrap justify-start gap-1.5 rounded-none bg-transparent p-0"
+              >
+                <TabsTrigger
+                  value="measure"
+                  data-testid="nav-measure"
+                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
+                >
+                  <Ruler className="folio-index-tab-icon h-4 w-4 shrink-0" aria-hidden="true" />
+                  Measure &amp; Cut
+                </TabsTrigger>
+                <TabsTrigger
+                  value="outer"
+                  data-testid="nav-outer"
+                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
+                >
+                  <BookMarked
+                    className="folio-index-tab-icon h-4 w-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                  Cover Studio
+                </TabsTrigger>
+                <TabsTrigger
+                  value="pockets"
+                  data-testid="nav-pockets"
+                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
+                >
+                  <FolderOpen
+                    className={`folio-index-tab-icon h-4 w-4 shrink-0 ${!usesInnerPockets ? 'opacity-65' : ''}`}
+                    aria-hidden="true"
+                  />
+                  <span className={!usesInnerPockets ? 'opacity-75' : undefined}>Inner Pockets</span>
+                  {!usesInnerPockets && bindingStrategy.innerPocketsNotice && (
+                    <Badge
+                      variant="outline"
+                      data-testid="pockets-builtin-badge"
+                      className="ml-0.5 h-4 px-1.5 font-mono text-[10px]"
+                    >
+                      {bindingStrategy.innerPocketsNotice.tabBadge}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-          <div className="flex min-w-0 flex-col gap-4">
             <TabsContent value="measure" className="mt-0">
               <MeasureAndCutPanel
                 params={project.parameters}
@@ -382,9 +390,9 @@ export function App() {
                 />
               )}
             </TabsContent>
-          </div>
-        </main>
-      </Tabs>
+          </Tabs>
+        </div>
+      </main>
     </div>
   );
 }

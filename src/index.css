@@ -112,6 +112,16 @@
   --washi-shadow-light: rgba(14, 8, 3, 0.42);
   --washi-shadow-dark: rgba(0, 0, 0, 0.68);
 
+  /* High-contrast folio index tabs resting directly on the smoked-walnut desk */
+  --folio-tab-bg-light: #e7dcc8;
+  --folio-tab-bg-dark: #25201a;
+  --folio-tab-bg-hover-light: #f2eadb;
+  --folio-tab-bg-hover-dark: #302922;
+  --folio-tab-fg-light: #2b241d;
+  --folio-tab-fg-dark: #ddd3c3;
+  --folio-tab-border-light: #baa98f;
+  --folio-tab-border-dark: #4f4438;
+
   /* Self-healing spruce cutting mat workbench surface */
   --mat-bg-light: #16332d;
   --mat-bg-dark: #0f231f;
@@ -178,6 +188,10 @@
   --washi-veil-bottom: var(--washi-veil-bottom-light);
   --washi-edge: var(--washi-edge-light);
   --washi-shadow: var(--washi-shadow-light);
+  --folio-tab-bg: var(--folio-tab-bg-light);
+  --folio-tab-bg-hover: var(--folio-tab-bg-hover-light);
+  --folio-tab-fg: var(--folio-tab-fg-light);
+  --folio-tab-border: var(--folio-tab-border-light);
   --mat-bg: var(--mat-bg-light);
   --mat-grid-minor: var(--mat-grid-minor-light);
   --mat-grid-major: var(--mat-grid-major-light);
@@ -230,6 +244,10 @@
     --washi-veil-bottom: var(--washi-veil-bottom-dark);
     --washi-edge: var(--washi-edge-dark);
     --washi-shadow: var(--washi-shadow-dark);
+    --folio-tab-bg: var(--folio-tab-bg-dark);
+    --folio-tab-bg-hover: var(--folio-tab-bg-hover-dark);
+    --folio-tab-fg: var(--folio-tab-fg-dark);
+    --folio-tab-border: var(--folio-tab-border-dark);
     --mat-bg: var(--mat-bg-dark);
     --mat-grid-minor: var(--mat-grid-minor-dark);
     --mat-grid-major: var(--mat-grid-major-dark);
@@ -280,6 +298,10 @@
     --washi-veil-bottom: light-dark(var(--washi-veil-bottom-light), var(--washi-veil-bottom-dark));
     --washi-edge: light-dark(var(--washi-edge-light), var(--washi-edge-dark));
     --washi-shadow: light-dark(var(--washi-shadow-light), var(--washi-shadow-dark));
+    --folio-tab-bg: light-dark(var(--folio-tab-bg-light), var(--folio-tab-bg-dark));
+    --folio-tab-bg-hover: light-dark(var(--folio-tab-bg-hover-light), var(--folio-tab-bg-hover-dark));
+    --folio-tab-fg: light-dark(var(--folio-tab-fg-light), var(--folio-tab-fg-dark));
+    --folio-tab-border: light-dark(var(--folio-tab-border-light), var(--folio-tab-border-dark));
     --mat-bg: light-dark(var(--mat-bg-light), var(--mat-bg-dark));
     --mat-grid-minor: light-dark(var(--mat-grid-minor-light), var(--mat-grid-minor-dark));
     --mat-grid-major: light-dark(var(--mat-grid-major-light), var(--mat-grid-major-dark));
@@ -419,49 +441,58 @@
   }
 }
 
-/* Traditional Japanese Vermilion Hanko Square Seal */
-.hanko-seal {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--vermilion);
-  color: var(--vermilion);
-  border-radius: 2px;
-  font-family: var(--font-serif);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.02em;
-  user-select: none;
-}
-
-/* Editorial Masthead Navigation Tab with Vermilion Press Active Rule */
-.editorial-nav-tab {
+/* High-contrast Washi / Dark-Slate Folio Index Tabs sitting on the walnut desk */
+.folio-index-tab {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  border-radius: 0;
-  border: 0;
-  background-color: transparent;
-  color: var(--muted-foreground);
+  gap: 0.45rem;
+  border-radius: 3px;
+  border: 1px solid var(--folio-tab-border);
+  border-top-width: 2px;
+  border-top-color: var(--folio-tab-border);
+  background-color: var(--folio-tab-bg);
+  color: var(--folio-tab-fg);
+  box-shadow:
+    0 6px 14px -6px rgba(8, 4, 1, 0.55),
+    inset 0 1px 0 var(--washi-edge);
   cursor: pointer;
 
   @media (prefers-reduced-motion: no-preference) {
-    transition: color 140ms ease, box-shadow 140ms ease;
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  & .folio-index-tab-icon {
+    color: var(--brass);
   }
 
   &[data-state='active'] {
+    background-color: var(--card);
+    background-image:
+      linear-gradient(180deg, var(--washi-veil-top), var(--washi-veil-bottom)),
+      url('./assets/atelier/washi-paper.jpg');
+    background-size: 100% 100%, 380px 380px;
+    background-repeat: no-repeat, repeat;
     color: var(--foreground);
     font-weight: 600;
-    box-shadow: inset 0 -2.5px 0 var(--vermilion);
-    background-color: transparent;
+    border-color: var(--border);
+    border-top: 3px solid var(--vermilion);
+    box-shadow:
+      0 10px 22px -8px var(--washi-shadow),
+      0 2px 6px -1px rgba(8, 4, 1, 0.35),
+      inset 0 1px 0 var(--washi-edge);
+
+    & .folio-index-tab-icon {
+      color: var(--vermilion);
+    }
   }
 
   @media (hover: hover) {
     &:hover:not([data-state='active']) {
+      background-color: var(--folio-tab-bg-hover);
       color: var(--foreground);
-      box-shadow: inset 0 -1.5px 0 var(--border);
+      border-color: var(--brass);
     }
   }
 }
@@ -600,10 +631,21 @@
     box-shadow: none;
   }
 
-  .editorial-nav-tab[data-state='active'] {
+  .folio-index-tab {
+    background-image: none;
+    background-color: ButtonFace;
+    color: ButtonText;
+    border-color: ButtonText;
     box-shadow: none;
-    border-bottom: 2.5px solid Highlight;
+  }
+
+  .folio-index-tab[data-state='active'] {
+    background-image: none;
+    background-color: Canvas;
+    border: 2px solid Highlight;
+    border-top-width: 3px;
     color: Highlight;
+    box-shadow: none;
   }
 
   .hud-toolbar {

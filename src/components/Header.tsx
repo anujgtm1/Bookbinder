@@ -1,5 +1,5 @@
 import { Moon, PanelLeftClose, PanelLeftOpen, Sparkles, Sun } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import atelierColophonImg from '@/assets/atelier/atelier-colophon.jpg';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,7 +19,6 @@ export interface HeaderProps {
   readonly sidebarOpen?: boolean;
   readonly onToggleSidebar?: () => void;
   readonly onLoadSampleBook?: () => void;
-  readonly navSlot?: ReactNode;
 }
 
 export function Header({
@@ -27,7 +26,6 @@ export function Header({
   sidebarOpen = true,
   onToggleSidebar,
   onLoadSampleBook,
-  navSlot,
 }: HeaderProps) {
   const [override, setOverride] = useState<ColorSchemeOverride>(() => readStoredColorScheme());
   const [systemScheme, setSystemScheme] = useState<ResolvedColorScheme>(() =>
@@ -75,14 +73,14 @@ export function Header({
         Skip to workspace
       </a>
 
-      <div className="mx-auto flex max-w-[1760px] flex-wrap items-center justify-between gap-x-4 px-3 sm:px-5">
+      <div className="mx-auto flex max-w-[1760px] items-center justify-between gap-3 px-3 py-2 sm:px-5">
         {/* Editorial Press Masthead Mark */}
-        <div className="order-1 flex items-center gap-2.5 py-2">
+        <div className="flex min-w-0 items-center gap-2.5">
           {onToggleSidebar && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
               onClick={onToggleSidebar}
               aria-expanded={sidebarOpen}
               aria-controls="book-spec-rail"
@@ -110,39 +108,18 @@ export function Header({
             />
           </span>
 
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5">
-                <h1 className="font-serif text-lg font-semibold leading-none tracking-tight text-foreground sm:text-xl">
-                  Bookbinder Studio
-                </h1>
-                <span
-                  aria-hidden="true"
-                  title="Tokyo Bindery Press Mark"
-                  className="hanko-seal h-[18px] w-[18px] text-[10px]"
-                >
-                  印
-                </span>
-              </div>
-              <span className="mt-0.5 hidden font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground 2xl:inline">
-                Folio Case &amp; Cover Workbench
-              </span>
-            </div>
+          <div className="flex min-w-0 flex-col">
+            <h1 className="truncate font-serif text-lg font-semibold leading-none tracking-tight text-foreground sm:text-xl">
+              Bookbinder Studio
+            </h1>
+            <span className="mt-0.5 hidden font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground sm:inline">
+              Book Cover &amp; Case Workbench
+            </span>
           </div>
         </div>
 
-        {/* Centered Integrated 3-Mode Editorial Navigation */}
-        {navSlot && (
-          <nav
-            aria-label="Workbench modes"
-            className="order-3 flex w-full items-stretch justify-center border-t border-border/70 md:order-2 md:w-auto md:self-stretch md:border-t-0"
-          >
-            {navSlot}
-          </nav>
-        )}
-
         {/* Right Editorial Press Controls */}
-        <div className="order-2 flex items-center gap-2 py-2 md:order-3">
+        <div className="flex shrink-0 items-center gap-2">
           {onLoadSampleBook && (
             <Button
               type="button"
