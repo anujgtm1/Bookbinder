@@ -464,7 +464,7 @@ export function InnerPocketsStudio({
             ? 'Folded Glue-In Endpapers and Spine Liner Workbench'
             : 'Inner Pockets and Spine Liner Workbench'
         }
-        className="overflow-hidden rounded-b-lg rounded-tr-lg border border-border bg-card shadow-xs"
+        className="washi-sheet overflow-hidden rounded-md border border-border border-t-2 border-t-vermilion"
       >
         {/* Header + Export Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -485,16 +485,16 @@ export function InnerPocketsStudio({
               <div
                 role="group"
                 aria-label="Interior attachment style"
-                className="mt-2 inline-flex flex-wrap items-center rounded-md border border-border bg-secondary/45 p-0.5"
+                className="mt-2 inline-flex flex-wrap items-center rounded-[3px] border border-border bg-secondary/50 p-0.5"
               >
                 <button
                   type="button"
                   aria-pressed={activeInteriorStyle === 'slip-pockets'}
                   data-testid="interior-style-slip-pockets"
                   onClick={() => handleSelectInteriorStyle('slip-pockets')}
-                  className={`cursor-pointer rounded-sm px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                  className={`cursor-pointer rounded-[2px] px-2.5 py-1 text-xs font-medium motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                     activeInteriorStyle === 'slip-pockets'
-                      ? 'bg-background text-foreground shadow-xs'
+                      ? 'bg-primary text-primary-foreground shadow-2xs'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -505,9 +505,9 @@ export function InnerPocketsStudio({
                   aria-pressed={activeInteriorStyle === 'folded-endpapers'}
                   data-testid="interior-style-folded-endpapers"
                   onClick={() => handleSelectInteriorStyle('folded-endpapers')}
-                  className={`cursor-pointer rounded-sm px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                  className={`cursor-pointer rounded-[2px] px-2.5 py-1 text-xs font-medium motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                     activeInteriorStyle === 'folded-endpapers'
-                      ? 'bg-background text-foreground shadow-xs'
+                      ? 'bg-primary text-primary-foreground shadow-2xs'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >

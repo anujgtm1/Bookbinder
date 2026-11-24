@@ -174,32 +174,45 @@ export function CoverStudioToolDock({
       value={activeTab}
       onValueChange={(value) => onTabChange(value as StudioToolTab)}
       data-testid="studio-tool-dock"
-      className="flex flex-col gap-3"
+      className="washi-sheet flex flex-col overflow-hidden rounded-md border border-border border-t-2 border-t-vermilion xl:sticky xl:top-[64px] xl:max-h-[calc(100vh-80px)]"
     >
-      <div className="rounded-lg border border-border bg-secondary/45 p-1.5 shadow-xs">
+      {/* Docked Washi Inspector Header & 6-Tool Grid Tab Bar */}
+      <div className="shrink-0 border-b border-border/90 bg-secondary/35 p-2">
+        <div className="mb-1.5 flex items-center justify-between px-1">
+          <span className="font-serif text-sm font-semibold tracking-tight text-foreground">
+            Design Inspector
+          </span>
+          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground">
+            FOLIO TOOLS
+          </span>
+        </div>
         <TabsList
           aria-label="Cover studio tools"
-          className="h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0"
+          className="grid h-auto w-full grid-cols-3 gap-1 rounded-none bg-transparent p-0 sm:grid-cols-6 xl:grid-cols-3"
         >
           <TabsTrigger
             value="artwork"
             data-testid="studio-tool-artwork"
-            className="px-3 py-1.5 text-xs"
+            className="h-auto justify-center gap-1 rounded-[2px] border border-border/70 bg-card/70 px-2 py-1.5 text-[11px] data-[state=active]:border-vermilion data-[state=active]:bg-card data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-2xs"
           >
-            <ImagePlus className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-            Artwork &amp; Fill
+            <ImagePlus className="h-3.5 w-3.5 shrink-0 text-vermilion" aria-hidden="true" />
+            <span className="truncate">Artwork</span>
             {studio.layers.length > 0 && (
-              <Badge variant="outline" className="ml-0.5 h-4 px-1 font-mono text-[10px]">
+              <Badge variant="outline" className="h-4 px-1 font-mono text-[9.5px]">
                 {studio.layers.length}
               </Badge>
             )}
           </TabsTrigger>
 
-          <TabsTrigger value="text" data-testid="studio-tool-text" className="px-3 py-1.5 text-xs">
-            <Type className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-            Cover Text
+          <TabsTrigger
+            value="text"
+            data-testid="studio-tool-text"
+            className="h-auto justify-center gap-1 rounded-[2px] border border-border/70 bg-card/70 px-2 py-1.5 text-[11px] data-[state=active]:border-vermilion data-[state=active]:bg-card data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-2xs"
+          >
+            <Type className="h-3.5 w-3.5 shrink-0 text-vermilion" aria-hidden="true" />
+            <span className="truncate">Text</span>
             {(studio.textLayers ?? []).length > 0 && (
-              <Badge variant="outline" className="ml-0.5 h-4 px-1 font-mono text-[10px]">
+              <Badge variant="outline" className="h-4 px-1 font-mono text-[9.5px]">
                 {(studio.textLayers ?? []).length}
               </Badge>
             )}
@@ -208,25 +221,29 @@ export function CoverStudioToolDock({
           <TabsTrigger
             value="designs"
             data-testid="studio-tool-designs"
-            className="px-3 py-1.5 text-xs"
+            className="h-auto justify-center gap-1 rounded-[2px] border border-border/70 bg-card/70 px-2 py-1.5 text-[11px] data-[state=active]:border-vermilion data-[state=active]:bg-card data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-2xs"
           >
-            <Sparkles className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-            Classic Designs
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-vermilion" aria-hidden="true" />
+            <span className="truncate">Designs</span>
             {(studio.ornaments ?? []).length > 0 && (
-              <Badge variant="outline" className="ml-0.5 h-4 px-1 font-mono text-[10px]">
+              <Badge variant="outline" className="h-4 px-1 font-mono text-[9.5px]">
                 {(studio.ornaments ?? []).length}
               </Badge>
             )}
           </TabsTrigger>
 
-          <TabsTrigger value="spine" data-testid="studio-tool-spine" className="px-3 py-1.5 text-xs">
-            <BookOpen className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-            Spine
+          <TabsTrigger
+            value="spine"
+            data-testid="studio-tool-spine"
+            className="h-auto justify-center gap-1 rounded-[2px] border border-border/70 bg-card/70 px-2 py-1.5 text-[11px] data-[state=active]:border-vermilion data-[state=active]:bg-card data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-2xs"
+          >
+            <BookOpen className="h-3.5 w-3.5 shrink-0 text-vermilion" aria-hidden="true" />
+            <span className="truncate">Spine</span>
             {(studio.spineText.title.trim().length > 0 ||
               studio.spineText.author.trim().length > 0) && (
               <span
                 aria-label="Spine text configured"
-                className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-brass"
+                className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-vermilion"
               />
             )}
           </TabsTrigger>
@@ -234,15 +251,15 @@ export function CoverStudioToolDock({
           <TabsTrigger
             value="presets"
             data-testid="studio-tool-presets"
-            className="px-3 py-1.5 text-xs"
+            className="h-auto justify-center gap-1 rounded-[2px] border border-border/70 bg-card/70 px-2 py-1.5 text-[11px] data-[state=active]:border-vermilion data-[state=active]:bg-card data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-2xs"
           >
-            <Bookmark className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-            Presets
+            <Bookmark className="h-3.5 w-3.5 shrink-0 text-vermilion" aria-hidden="true" />
+            <span className="truncate">Presets</span>
             {savedPresets.length > 0 && (
               <Badge
                 variant="outline"
                 data-testid="studio-tool-presets-badge"
-                className="ml-0.5 h-4 px-1 font-mono text-[10px]"
+                className="h-4 px-1 font-mono text-[9.5px]"
               >
                 {savedPresets.length}
               </Badge>
@@ -252,29 +269,29 @@ export function CoverStudioToolDock({
           <TabsTrigger
             value="preflight"
             data-testid="studio-tool-preflight"
-            className="px-3 py-1.5 text-xs"
+            className="h-auto justify-center gap-1 rounded-[2px] border border-border/70 bg-card/70 px-2 py-1.5 text-[11px] data-[state=active]:border-vermilion data-[state=active]:bg-card data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-2xs"
           >
             {preflight.status === 'pass' ? (
               <ShieldCheck
-                className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400"
+                className="h-3.5 w-3.5 shrink-0 text-[color:var(--status-success-fg)]"
                 aria-hidden="true"
               />
             ) : (
               <ShieldAlert
-                className={`h-3.5 w-3.5 ${
+                className={`h-3.5 w-3.5 shrink-0 ${
                   preflight.errorCount > 0
                     ? 'text-destructive'
-                    : 'text-amber-600 dark:text-amber-400'
+                    : 'text-[color:var(--status-warning-fg)]'
                 }`}
                 aria-hidden="true"
               />
             )}
-            Preflight
+            <span className="truncate">Preflight</span>
             {preflight.status === 'pass' ? (
               <Badge
                 variant="success"
                 data-testid="studio-tool-preflight-badge"
-                className="ml-0.5 h-4 rounded-full px-1.5 font-mono text-[10px]"
+                className="h-4 px-1 font-mono text-[9.5px]"
               >
                 OK
               </Badge>
@@ -282,7 +299,7 @@ export function CoverStudioToolDock({
               <Badge
                 variant={preflight.errorCount > 0 ? 'destructive' : 'warning'}
                 data-testid="studio-tool-preflight-badge"
-                className="ml-0.5 h-4 rounded-full px-1.5 font-mono text-[10px]"
+                className="h-4 px-1 font-mono text-[9.5px]"
               >
                 {preflight.errorCount + preflight.warningCount}
               </Badge>
@@ -291,97 +308,100 @@ export function CoverStudioToolDock({
         </TabsList>
       </div>
 
-      <TabsContent value="artwork" className="mt-0">
-        <ArtworkControlsCard
-          studio={studio}
-          selectedLayerId={selectedLayerId}
-          eyedropperTarget={eyedropperTarget}
-          extendingStub={extendingStub}
-          sampledEdgeHex={sampledEdgeHex}
-          onSelectLayer={onSelectImageLayer}
-          onAddImageFiles={onAddImageFiles}
-          onQuickFitLayer={onQuickFitLayer}
-          onExtendLayerStub={onExtendLayerStub}
-          onMatchSpineBackToEdge={onMatchSpineBackToEdge}
-          onSetLayerClip={onSetLayerClip}
-          onScaleLayer={onScaleLayer}
-          onToggleLayerFlip={onToggleLayerFlip}
-          onUpdateLayer={onUpdateLayer}
-          onReorderLayer={onReorderLayer}
-          onDeleteLayer={onDeleteLayer}
-          onUpdateStudio={onUpdateStudio}
-          onToggleEyedropper={onToggleEyedropper}
-        />
-      </TabsContent>
+      {/* Scrollable Inspector Body */}
+      <div className="p-2.5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+        <TabsContent value="artwork" className="mt-0">
+          <ArtworkControlsCard
+            studio={studio}
+            selectedLayerId={selectedLayerId}
+            eyedropperTarget={eyedropperTarget}
+            extendingStub={extendingStub}
+            sampledEdgeHex={sampledEdgeHex}
+            onSelectLayer={onSelectImageLayer}
+            onAddImageFiles={onAddImageFiles}
+            onQuickFitLayer={onQuickFitLayer}
+            onExtendLayerStub={onExtendLayerStub}
+            onMatchSpineBackToEdge={onMatchSpineBackToEdge}
+            onSetLayerClip={onSetLayerClip}
+            onScaleLayer={onScaleLayer}
+            onToggleLayerFlip={onToggleLayerFlip}
+            onUpdateLayer={onUpdateLayer}
+            onReorderLayer={onReorderLayer}
+            onDeleteLayer={onDeleteLayer}
+            onUpdateStudio={onUpdateStudio}
+            onToggleEyedropper={onToggleEyedropper}
+          />
+        </TabsContent>
 
-      <TabsContent value="text" className="mt-0">
-        <CoverTextCard
-          textLayers={studio.textLayers ?? []}
-          customFont={customFont}
-          selectedTextId={selectedTextId}
-          onSelectText={onSelectText}
-          onAddTextPreset={onAddTextPreset}
-          onUpdateTextLayer={onUpdateTextLayer}
-          onQuickAlignText={onQuickAlignText}
-          onDeleteTextLayer={onDeleteTextLayer}
-          onCustomFontSelected={onCustomFontSelected}
-        />
-      </TabsContent>
+        <TabsContent value="text" className="mt-0">
+          <CoverTextCard
+            textLayers={studio.textLayers ?? []}
+            customFont={customFont}
+            selectedTextId={selectedTextId}
+            onSelectText={onSelectText}
+            onAddTextPreset={onAddTextPreset}
+            onUpdateTextLayer={onUpdateTextLayer}
+            onQuickAlignText={onQuickAlignText}
+            onDeleteTextLayer={onDeleteTextLayer}
+            onCustomFontSelected={onCustomFontSelected}
+          />
+        </TabsContent>
 
-      <TabsContent value="designs" className="mt-0">
-        <ClassicDesignsCard
-          ornaments={studio.ornaments ?? []}
-          selectedOrnamentId={selectedOrnamentId}
-          onSelectOrnament={onSelectOrnament}
-          onAddOrnament={onAddOrnament}
-          onImportSvgStamp={onImportSvgStamp}
-          onUpdateOrnament={onUpdateOrnament}
-          onScaleOrnament={onScaleOrnament}
-          onFitOrnamentToBoard={onFitOrnamentToBoard}
-          onFitOrnamentWithMargin={onFitOrnamentWithMargin}
-          onCenterOrnament={onCenterOrnament}
-          onQuickAlignOrnament={onQuickAlignOrnament}
-          onDeleteOrnament={onDeleteOrnament}
-        />
-      </TabsContent>
+        <TabsContent value="designs" className="mt-0">
+          <ClassicDesignsCard
+            ornaments={studio.ornaments ?? []}
+            selectedOrnamentId={selectedOrnamentId}
+            onSelectOrnament={onSelectOrnament}
+            onAddOrnament={onAddOrnament}
+            onImportSvgStamp={onImportSvgStamp}
+            onUpdateOrnament={onUpdateOrnament}
+            onScaleOrnament={onScaleOrnament}
+            onFitOrnamentToBoard={onFitOrnamentToBoard}
+            onFitOrnamentWithMargin={onFitOrnamentWithMargin}
+            onCenterOrnament={onCenterOrnament}
+            onQuickAlignOrnament={onQuickAlignOrnament}
+            onDeleteOrnament={onDeleteOrnament}
+          />
+        </TabsContent>
 
-      <TabsContent value="spine" className="mt-0">
-        <SpineTypographyCard
-          spineText={studio.spineText}
-          maxFontSizePt={maxFontSizePt}
-          effectiveFontSizePt={effectiveFontSizePt}
-          customFont={customFont}
-          onUpdateSpineText={onUpdateSpineText}
-          onCustomFontSelected={(file) => onCustomFontSelected(file)}
-        />
-      </TabsContent>
+        <TabsContent value="spine" className="mt-0">
+          <SpineTypographyCard
+            spineText={studio.spineText}
+            maxFontSizePt={maxFontSizePt}
+            effectiveFontSizePt={effectiveFontSizePt}
+            customFont={customFont}
+            onUpdateSpineText={onUpdateSpineText}
+            onCustomFontSelected={(file) => onCustomFontSelected(file)}
+          />
+        </TabsContent>
 
-      <TabsContent value="presets" className="mt-0">
-        <DesignPresetsCard
-          savedPresets={savedPresets}
-          builtInPresets={BUILT_IN_DESIGN_PRESETS}
-          onSaveCurrent={onSavePreset}
-          onApplyPreset={onApplyPreset}
-          onDeletePreset={onDeletePreset}
-          onExportPresets={onExportPresets}
-          onImportPresets={onImportPresets}
-        />
-      </TabsContent>
+        <TabsContent value="presets" className="mt-0">
+          <DesignPresetsCard
+            savedPresets={savedPresets}
+            builtInPresets={BUILT_IN_DESIGN_PRESETS}
+            onSaveCurrent={onSavePreset}
+            onApplyPreset={onApplyPreset}
+            onDeletePreset={onDeletePreset}
+            onExportPresets={onExportPresets}
+            onImportPresets={onImportPresets}
+          />
+        </TabsContent>
 
-      <TabsContent value="preflight" className="mt-0">
-        <PreflightCard
-          report={preflight}
-          showOverlays={showPreflightOverlays}
-          checkDpi={checkDpi}
-          activeIssueId={activeIssueId}
-          onToggleOverlays={onTogglePreflightOverlays}
-          onToggleCheckDpi={onToggleCheckDpi}
-          onHighlightIssue={onHighlightIssue}
-          onApplyQuickFix={onApplyQuickFix}
-          onIgnoreIssue={onIgnoreIssue}
-          onRestoreIgnored={onRestoreIgnored}
-        />
-      </TabsContent>
+        <TabsContent value="preflight" className="mt-0">
+          <PreflightCard
+            report={preflight}
+            showOverlays={showPreflightOverlays}
+            checkDpi={checkDpi}
+            activeIssueId={activeIssueId}
+            onToggleOverlays={onTogglePreflightOverlays}
+            onToggleCheckDpi={onToggleCheckDpi}
+            onHighlightIssue={onHighlightIssue}
+            onApplyQuickFix={onApplyQuickFix}
+            onIgnoreIssue={onIgnoreIssue}
+            onRestoreIgnored={onRestoreIgnored}
+          />
+        </TabsContent>
+      </div>
     </Tabs>
   );
 }

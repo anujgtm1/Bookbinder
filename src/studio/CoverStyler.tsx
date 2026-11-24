@@ -724,12 +724,12 @@ export function CoverStyler({
   };
 
   return (
-    <div className="flex flex-col gap-4" data-testid="cover-styler">
-      {/* Edge-to-Edge Unified Outer Case Wrap Workbench connected flush under the Folio Index Tabs */}
-      <section
-        aria-label="Interactive Cover and Spine Workbench"
-        className="overflow-hidden rounded-b-lg rounded-tr-lg border border-border bg-card shadow-xs"
-      >
+    <div
+      className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_350px] xl:items-start"
+      data-testid="cover-styler"
+    >
+      {/* Center Column: Calm Washi Export Bar + Walnut-Framed Self-Healing Cutting Mat */}
+      <div className="flex min-w-0 flex-col gap-3">
         <CoverWorkbenchHeader
           geometry={geometry}
           spec={spec}
@@ -767,37 +767,63 @@ export function CoverStyler({
           }
         />
 
-        {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage */}
-        <div
-          id="studio-mat-viewport"
-          data-testid="studio-canvas-stage"
-          data-expanded={isExpanded ? 'true' : 'false'}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDraggingOver(true);
-          }}
-          onDragLeave={() => setIsDraggingOver(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDraggingOver(false);
-            const files = Array.from(e.dataTransfer.files ?? []);
-            if (files.length === 0) return;
-            const dropPt =
-              viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
-            void actions.handleAddImageFiles(files, dropPt);
-          }}
-          className={`cutting-mat-surface flex flex-col overflow-hidden transition-colors ${getFullPageStageClass(isExpanded)} ${
-            isDraggingOver
-              ? 'border-brass-bright ring-2 ring-inset ring-brass-bright/70'
-              : eyedropperTarget
-                ? 'border-amber-400 cursor-crosshair'
-                : 'border-border/80'
-          }`}
+        <section
+          aria-label="Interactive Cover and Spine Workbench"
+          className="cutting-mat-on-desk overflow-hidden rounded-[3px]"
         >
-          {/* Docked Contextual Canvas Selection Bar (normal & Full Screen 2D modes) */}
-          {viewMode === '2d' && (
-            <CanvasSelectionBar
-              selection={activeSelection}
+          {/* Full-Bleed Self-Healing Bindery Cutting Mat Stage resting on the Walnut Desk */}
+          <div
+            id="studio-mat-viewport"
+            data-testid="studio-canvas-stage"
+            data-expanded={isExpanded ? 'true' : 'false'}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(true);
+            }}
+            onDragLeave={() => setIsDraggingOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(false);
+              const files = Array.from(e.dataTransfer.files ?? []);
+              if (files.length === 0) return;
+              const dropPt =
+                viewMode === '2d' ? (toSvgMm(e.clientX, e.clientY) ?? undefined) : undefined;
+              void actions.handleAddImageFiles(files, dropPt);
+            }}
+            className={`cutting-mat-surface flex flex-col overflow-hidden motion-safe:transition-colors ${getFullPageStageClass(isExpanded)} ${
+              !isExpanded
+                ? 'border-y-0 xl:h-[calc(100vh-248px)] xl:min-h-[480px] xl:max-h-[650px]'
+                : ''
+            } ${
+              isDraggingOver
+                ? 'ring-2 ring-inset ring-brass-bright/80'
+                : eyedropperTarget
+                  ? 'cursor-crosshair ring-2 ring-inset ring-amber-400'
+                  : ''
+            }`}
+          >
+            {/* Subtle Printed Brass Corner Registration Ticks */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-2 left-2 z-10 h-3 w-3 border-t border-l border-brass-bright/45"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-2 right-2 z-10 h-3 w-3 border-t border-r border-brass-bright/45"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-2 left-2 z-10 h-3 w-3 border-b border-l border-brass-bright/45"
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute right-2 bottom-2 z-10 h-3 w-3 border-r border-b border-brass-bright/45"
+            />
+
+            {/* Docked Contextual Canvas Selection Bar (normal & Full Screen 2D modes) */}
+            {viewMode === '2d' && (
+              <CanvasSelectionBar
+                selection={activeSelection}
               controlsId="studio-mat-viewport"
               onFlipH={handleSelectionFlipH}
               onFlipV={handleSelectionFlipV}
@@ -1110,14 +1136,14 @@ export function CoverStyler({
         {(viewMode === '2d' || viewMode === '3d') && (
           <div
             data-testid="studio-preview-finish-bar"
-            className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-secondary/35 px-4 py-1.5 text-xs"
+            className="washi-sheet flex flex-wrap items-center justify-between gap-2 border-t border-border px-3.5 py-1.5 text-xs shadow-none"
           >
             <div className="flex flex-wrap items-center gap-3">
               <span
                 className="inline-flex items-center gap-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
                 title="Visual-only material & foil preview — never changes printed PDF, PNG, or SVG exports"
               >
-                <Sparkles className="h-3 w-3 text-brass" aria-hidden="true" />
+                <Sparkles className="h-3 w-3 text-vermilion" aria-hidden="true" />
                 Preview
               </span>
 
@@ -1137,10 +1163,10 @@ export function CoverStyler({
                       title={`${mat.label} — ${mat.description} (visual preview only)`}
                       data-testid={`material-${mat.id}`}
                       onClick={() => setSurfaceMaterial(mat.id)}
-                      className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                      className={`inline-flex cursor-pointer items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium motion-safe:transition-colors ${
                         active
-                          ? 'border-brass/70 bg-brass/18 text-foreground shadow-2xs'
-                          : 'border-border/70 bg-background/60 text-muted-foreground hover:bg-accent hover:text-foreground'
+                          ? 'border-vermilion/70 bg-vermilion/12 text-foreground shadow-2xs'
+                          : 'border-border/80 bg-card/75 text-muted-foreground hover:bg-accent hover:text-foreground'
                       }`}
                     >
                       {mat.shortLabel}
@@ -1166,10 +1192,10 @@ export function CoverStyler({
                         title={`${foil.label} (visual 3D preview only)`}
                         data-testid={`foil-${foil.id}`}
                         onClick={() => setFoilFinish(foil.id)}
-                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium motion-safe:transition-colors ${
                           active
-                            ? 'border-brass/70 bg-brass/18 text-foreground shadow-2xs'
-                            : 'border-border/70 bg-background/60 text-muted-foreground hover:bg-accent hover:text-foreground'
+                            ? 'border-vermilion/70 bg-vermilion/12 text-foreground shadow-2xs'
+                            : 'border-border/80 bg-card/75 text-muted-foreground hover:bg-accent hover:text-foreground'
                         }`}
                       >
                         <span
@@ -1184,29 +1210,31 @@ export function CoverStyler({
                 </div>
               )}
             </div>
-            <span className="text-[11px] text-muted-foreground/80">
-              Visual preview only (never printed)
+            <span className="font-mono text-[10.5px] text-muted-foreground/85">
+              Visual preview only
             </span>
           </div>
         )}
 
         {/* Subtle Contextual Hint Footer Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-muted-foreground">
-          <span>
+        <div className="washi-sheet flex flex-wrap items-center justify-between gap-2 border-t border-border/80 px-3.5 py-1.5 text-[11.5px] text-muted-foreground shadow-none">
+          <span className="min-w-0 flex-1 truncate">
             {viewMode === '3d'
               ? 'Drag directly on the hardcover volume (or use Arrow keys) to inspect Front, Spine, and Back proportions.'
               : viewMode === 'blueprint'
                 ? 'Solid Red: 45° Miter Cut Line • Dashed Blue: Board Guides • Brass: Hinge Spacers • Green: Bleed.'
                 : selectedLayer
-                  ? `Selected "${selectedLayer.fileName}" — drag or Arrow keys to nudge, pull corners or scroll wheel to resize, Cmd/Ctrl+D to duplicate, Backspace to remove.`
-                  : 'Drop or paste (Cmd/Ctrl+V) PNG, JPG, WEBP, or SVG artwork onto the cutting mat, or add Cover Text & Classic Designs below.'}
+                  ? `Selected "${selectedLayer.fileName}" — drag or Arrow keys to nudge, pull corners or scroll wheel to resize, Cmd/Ctrl+D to duplicate.`
+                  : 'Drop or paste (Cmd/Ctrl+V) PNG, JPG, WEBP, or SVG artwork onto the cutting mat, or style in the right inspector.'}
           </span>
-          <span className="font-mono text-[11px] text-brass">
+          <span className="shrink-0 font-mono text-[11px] font-medium text-vermilion">
             {spec.totalWidthMm.toFixed(1)} × {spec.totalHeightMm.toFixed(1)} mm @ 300 DPI
           </span>
         </div>
-      </section>
+        </section>
+      </div>
 
+      {/* Right Docked Washi Studio Inspector (directly beside cutting mat on desktop xl:) */}
       <CoverStudioToolDock
         activeTab={activeToolTab}
         onTabChange={setActiveToolTab}

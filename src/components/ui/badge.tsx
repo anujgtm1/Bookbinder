@@ -15,9 +15,9 @@ const badgeVariants = cva(
         vermilion:
           'border-vermilion/55 bg-vermilion/10 text-vermilion',
         success:
-          'border-emerald-700/35 bg-emerald-600/12 text-emerald-900 dark:text-emerald-300',
+          'border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success-fg)]',
         warning:
-          'border-amber-700/40 bg-amber-500/14 text-amber-900 dark:text-amber-300',
+          'border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-fg)]',
         destructive:
           'border-destructive/35 bg-destructive/12 text-destructive',
       },

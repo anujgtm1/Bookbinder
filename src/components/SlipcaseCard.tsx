@@ -154,7 +154,7 @@ export function SlipcaseCard({
     <section
       aria-label="Matching Slipcase Box Calculator"
       data-testid="slipcase-card"
-      className="overflow-hidden rounded-lg border border-border bg-card shadow-xs"
+      className="washi-sheet overflow-hidden rounded-md border border-border"
     >
       <Collapsible open={open} onOpenChange={setOpen}>
         {/* Crisp Summary Header */}

@@ -1,4 +1,13 @@
-import { Copy, FileCode2, FileImage, FileText, Printer, Redo2, Scissors, Undo2 } from 'lucide-react';
+import {
+  Copy,
+  FileCode2,
+  FileImage,
+  FileText,
+  Printer,
+  Redo2,
+  Scissors,
+  Undo2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, type UnitSystem } from '@/types/units';
@@ -46,67 +55,68 @@ export function CoverWorkbenchHeader({
   onDownloadOuterPdf,
 }: CoverWorkbenchHeaderProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
-            Outer Case Wrap &amp; Cover Styler
-          </h2>
-          <button
-            type="button"
-            data-testid="studio-roll-badge"
-            data-fit-status={geometry.mediaFit.status}
-            onClick={onOpenMeasureAndCut}
-            disabled={!onOpenMeasureAndCut}
-            title="Open Measure & Cut tab for full chipboard cut list and cutting blueprint"
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-              geometry.mediaFit.mediaId === 'exact-auto'
-                ? geometry.rollRecommendation.fits
-                  ? 'border-emerald-700/30 bg-emerald-600/12 text-emerald-900 hover:bg-emerald-600/20 dark:text-emerald-300'
-                  : 'border-amber-700/35 bg-amber-500/14 text-amber-900 hover:bg-amber-500/24 dark:text-amber-300'
-                : geometry.mediaFit.status === 'does-not-fit'
-                  ? 'border-destructive/40 bg-destructive/12 text-destructive hover:bg-destructive/20'
-                  : geometry.mediaFit.status === 'fits-2-sheet-tile'
-                    ? 'border-amber-700/35 bg-amber-500/14 text-amber-900 hover:bg-amber-500/24 dark:text-amber-300'
-                    : 'border-emerald-700/30 bg-emerald-600/12 text-emerald-900 hover:bg-emerald-600/20 dark:text-emerald-300'
-            } ${onOpenMeasureAndCut ? 'cursor-pointer' : 'cursor-default'}`}
-          >
-            <Printer className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span>
-              {geometry.mediaFit.mediaId === 'exact-auto'
-                ? geometry.rollRecommendation.summary
-                : geometry.mediaFit.summary}
-            </span>
-            <span aria-hidden="true" className="opacity-55">
-              ·
-            </span>
-            <span className="font-mono">
-              {UnitConverter.formatDimensions(
-                geometry.outerWrap.widthMm,
-                geometry.outerWrap.heightMm,
-                unit,
-              )}
-            </span>
-          </button>
+    <div className="washi-sheet flex flex-wrap items-center justify-between gap-2.5 rounded-md border border-border border-t-2 border-t-brass/80 px-3.5 py-2.5">
+      {/* Left Zone: Cover Title, Roll-Fit Stamp & Compact History Controls */}
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-serif text-base font-semibold leading-tight tracking-tight text-foreground">
+              Cover Studio
+            </h2>
+            <button
+              type="button"
+              data-testid="studio-roll-badge"
+              data-fit-status={geometry.mediaFit.status}
+              onClick={onOpenMeasureAndCut}
+              disabled={!onOpenMeasureAndCut}
+              title="Open Measure & Cut tab for full chipboard cut list and cutting blueprint"
+              className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium motion-safe:transition-colors ${
+                geometry.mediaFit.mediaId === 'exact-auto'
+                  ? geometry.rollRecommendation.fits
+                    ? 'border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success-fg)] hover:brightness-105'
+                    : 'border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-fg)] hover:brightness-105'
+                  : geometry.mediaFit.status === 'does-not-fit'
+                    ? 'border-destructive/45 bg-destructive/12 text-destructive hover:bg-destructive/20'
+                    : geometry.mediaFit.status === 'fits-2-sheet-tile'
+                      ? 'border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-fg)] hover:brightness-105'
+                      : 'border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success-fg)] hover:brightness-105'
+              } ${onOpenMeasureAndCut ? 'cursor-pointer' : 'cursor-default'}`}
+            >
+              <Printer className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span>
+                {geometry.mediaFit.mediaId === 'exact-auto'
+                  ? geometry.rollRecommendation.summary
+                  : geometry.mediaFit.summary}
+              </span>
+              <span aria-hidden="true" className="opacity-50">
+                ·
+              </span>
+              <span className="font-mono">
+                {UnitConverter.formatDimensions(
+                  geometry.outerWrap.widthMm,
+                  geometry.outerWrap.heightMm,
+                  unit,
+                )}
+              </span>
+            </button>
+          </div>
+          <p className="mt-0.5 hidden font-mono text-[10.5px] text-muted-foreground sm:block">
+            {spec.pixelWidth} × {spec.pixelHeight} px @ 300 DPI · Drop artwork or style in the right
+            inspector
+          </p>
         </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Style artwork &amp; spine lettering, inspect the cutting blueprint, or orbit in 3D (
-          {spec.pixelWidth} × {spec.pixelHeight} px @ 300 DPI).
-        </p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Undo / Redo / Duplicate Edit Actions */}
+
         {(onUndo || onRedo || onDuplicate) && (
           <div
             role="group"
             aria-label="Edit history and duplicate actions"
-            className="flex items-center gap-0.5 rounded-md border border-border bg-secondary/45 px-1 py-0.5"
+            className="inline-flex items-center divide-x divide-border/70 rounded-[3px] border border-border bg-secondary/50"
           >
             {onUndo && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs"
+                className="h-7 rounded-none px-2 text-xs"
                 onClick={onUndo}
                 disabled={!canUndo}
                 aria-label="Undo (Ctrl/Cmd+Z)"
@@ -114,14 +124,14 @@ export function CoverWorkbenchHeader({
                 data-testid="studio-undo-btn"
               >
                 <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="hidden sm:inline">Undo</span>
+                <span className="sr-only">Undo</span>
               </Button>
             )}
             {onRedo && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs"
+                className="h-7 rounded-none px-2 text-xs"
                 onClick={onRedo}
                 disabled={!canRedo}
                 aria-label="Redo (Ctrl/Cmd+Shift+Z)"
@@ -129,14 +139,14 @@ export function CoverWorkbenchHeader({
                 data-testid="studio-redo-btn"
               >
                 <Redo2 className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="hidden sm:inline">Redo</span>
+                <span className="sr-only">Redo</span>
               </Button>
             )}
             {onDuplicate && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs"
+                className="h-7 rounded-none px-2 text-xs"
                 onClick={onDuplicate}
                 disabled={!canDuplicate}
                 aria-label="Duplicate (Ctrl/Cmd+D)"
@@ -144,92 +154,92 @@ export function CoverWorkbenchHeader({
                 data-testid="studio-duplicate-btn"
               >
                 <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="hidden sm:inline">Duplicate</span>
+                <span className="sr-only">Duplicate</span>
               </Button>
             )}
           </div>
         )}
+      </div>
 
-        {/* Styled Artwork Exports */}
-        <div className="flex flex-wrap items-center gap-1.5">
+      {/* Right Zone: Calm Primary Print CTA + Craft Cricut CTA + Utility Strip */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          variant="default"
+          size="sm"
+          className="h-8 px-3 font-medium"
+          onClick={onExportPrintPdf}
+          disabled={exportingKind !== null}
+          data-testid="studio-export-pdf-btn"
+        >
+          <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+          {exportingKind === 'pdf' ? 'Rendering…' : 'Print PDF…'}
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 border-brass/70 bg-brass/10 px-2.5 text-foreground hover:border-brass hover:bg-brass/20"
+          onClick={onOpenCricutDialog}
+          data-testid="studio-open-cricut-btn"
+          title="Export outlined vector SVG for Cricut Design Space, Silhouette Studio, or Brother ScanNCut"
+        >
+          <Scissors className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+          Cricut / HTV SVG
+        </Button>
+
+        {/* Bordered Utility Strip: PNG, Affinity SVG, and Structural Cut-Only */}
+        <div
+          className="inline-flex flex-wrap items-center divide-x divide-border/80 rounded-[3px] border border-border bg-secondary/45"
+          aria-label="Additional artwork and cut exports"
+        >
           <Button
-            variant="default"
+            variant="ghost"
             size="sm"
-            onClick={onExportPrintPdf}
-            disabled={exportingKind !== null}
-            data-testid="studio-export-pdf-btn"
-          >
-            <FileText className="h-4 w-4" aria-hidden="true" />
-            {exportingKind === 'pdf' ? 'Rendering…' : 'Print PDF…'}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+            className="h-7 rounded-none px-2 text-[11px]"
             onClick={onExportAffinityPng}
             disabled={exportingKind !== null}
             data-testid="studio-export-png-btn"
           >
-            <FileImage className="h-4 w-4" aria-hidden="true" />
-            {exportingKind === 'png' ? 'Rendering…' : 'PNG'}
+            <FileImage className="h-3.5 w-3.5" aria-hidden="true" />
+            {exportingKind === 'png' ? '…' : 'PNG'}
           </Button>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
+            className="h-7 rounded-none px-2 text-[11px]"
             onClick={onExportAffinitySvg}
             disabled={exportingKind !== null}
             data-testid="studio-export-svg-btn"
           >
-            <FileCode2 className="h-4 w-4" aria-hidden="true" />
+            <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
             Affinity SVG
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onOpenCricutDialog}
-            data-testid="studio-open-cricut-btn"
-            title="Export outlined vector SVG for Cricut Design Space, Silhouette Studio, or Brother ScanNCut"
-          >
-            <Scissors className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-            Cricut / HTV SVG
-          </Button>
+          {onDownloadOuterSvg && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-none px-2 text-[11px]"
+              onClick={onDownloadOuterSvg}
+              aria-label="Download Outer Case Wrap as SVG"
+              data-testid="download-outer-svg-btn"
+            >
+              Cut SVG
+            </Button>
+          )}
+          {onDownloadOuterPdf && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-none px-2 text-[11px]"
+              onClick={onDownloadOuterPdf}
+              disabled={exportingOuterPdf}
+              aria-label="Open Outer Case Wrap Cut PDF export dialog"
+              data-testid="download-outer-pdf-btn"
+            >
+              {exportingOuterPdf ? '…' : 'Cut PDF…'}
+            </Button>
+          )}
         </div>
-
-        {/* Unstyled Structural Cut Templates */}
-        {(onDownloadOuterSvg || onDownloadOuterPdf) && (
-          <div
-            className="flex items-center gap-1 rounded-md border border-border bg-secondary/45 px-2 py-1"
-            aria-label="Structural cut-only outer wrap downloads"
-          >
-            <span className="pr-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              Cut-Only
-            </span>
-            {onDownloadOuterSvg && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs"
-                onClick={onDownloadOuterSvg}
-                aria-label="Download Outer Case Wrap as SVG"
-                data-testid="download-outer-svg-btn"
-              >
-                SVG
-              </Button>
-            )}
-            {onDownloadOuterPdf && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs"
-                onClick={onDownloadOuterPdf}
-                disabled={exportingOuterPdf}
-                aria-label="Open Outer Case Wrap Cut PDF export dialog"
-                data-testid="download-outer-pdf-btn"
-              >
-                {exportingOuterPdf ? '…' : 'PDF…'}
-              </Button>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

@@ -145,13 +145,13 @@ export function MeasureAndCutPanel({
 
   return (
     <div className="flex flex-col gap-4" data-testid="measure-and-cut-panel">
-      {/* Full Chipboard Cut List & Roll Sizing (flush with the Measure & Cut folder tab) */}
-      <CutListCard geometry={geometry} unit={unit} className="rounded-tl-none" />
+      {/* Full Chipboard Cut List & Roll Sizing Specimen Docket */}
+      <CutListCard geometry={geometry} unit={unit} />
 
       {/* Structural Cutting Blueprint & Material Layout Card */}
       <section
         aria-label="Cutting Blueprint & Material Layout"
-        className="overflow-hidden rounded-lg border border-border bg-card shadow-xs"
+        className="washi-sheet overflow-hidden rounded-md border border-border border-t-2 border-t-brass/80"
       >
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>

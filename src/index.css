@@ -22,8 +22,10 @@
   }
 
   /* Tier 1: Smoked Walnut Desk, Unbleached Washi Paper, Sumi Ink & Vermilion Hanko tokens */
-  --bg-light: #2b1e14;
-  --bg-dark: #100c09;
+  --bg-light: #f4efe4;
+  --bg-dark: #14110f;
+  --desk-bg-light: #2b1e14;
+  --desk-bg-dark: #100c09;
   --fg-light: #1a1715;
   --fg-dark: #f5efe4;
 
@@ -82,6 +84,20 @@
   --sage-light: #235046;
   --sage-dark: #7db09c;
 
+  /* Reactive status badge tokens (adapt to both OS dark mode and manual <meta color-scheme> toggle) */
+  --status-success-fg-light: #14532d;
+  --status-success-fg-dark: #6ee7b7;
+  --status-success-bg-light: rgba(5, 150, 105, 0.12);
+  --status-success-bg-dark: rgba(16, 185, 129, 0.16);
+  --status-success-border-light: rgba(4, 120, 87, 0.35);
+  --status-success-border-dark: rgba(52, 211, 153, 0.42);
+  --status-warning-fg-light: #78350f;
+  --status-warning-fg-dark: #fcd34d;
+  --status-warning-bg-light: rgba(245, 158, 11, 0.14);
+  --status-warning-bg-dark: rgba(245, 158, 11, 0.18);
+  --status-warning-border-light: rgba(180, 83, 9, 0.40);
+  --status-warning-border-dark: rgba(251, 191, 36, 0.42);
+
   /* Physical desk & washi paper overlay veils (reactive to light-dark() & OS theme) */
   --desk-veil-top-light: rgba(28, 19, 13, 0.16);
   --desk-veil-top-dark: rgba(11, 8, 6, 0.72);
@@ -127,6 +143,7 @@
 
   /* Semantic defaults (light fallback) */
   --background: var(--bg-light);
+  --desk-bg: var(--desk-bg-light);
   --foreground: var(--fg-light);
   --card: var(--card-light);
   --card-foreground: var(--card-fg-light);
@@ -149,6 +166,12 @@
   --brass-bright: var(--brass-bright-light);
   --vermilion: var(--vermilion-light);
   --sage: var(--sage-light);
+  --status-success-fg: var(--status-success-fg-light);
+  --status-success-bg: var(--status-success-bg-light);
+  --status-success-border: var(--status-success-border-light);
+  --status-warning-fg: var(--status-warning-fg-light);
+  --status-warning-bg: var(--status-warning-bg-light);
+  --status-warning-border: var(--status-warning-border-light);
   --desk-veil-top: var(--desk-veil-top-light);
   --desk-veil-bottom: var(--desk-veil-bottom-light);
   --washi-veil-top: var(--washi-veil-top-light);
@@ -172,6 +195,7 @@
 
   @media (prefers-color-scheme: dark) {
     --background: var(--bg-dark);
+    --desk-bg: var(--desk-bg-dark);
     --foreground: var(--fg-dark);
     --card: var(--card-dark);
     --card-foreground: var(--card-fg-dark);
@@ -194,6 +218,12 @@
     --brass-bright: var(--brass-bright-dark);
     --vermilion: var(--vermilion-dark);
     --sage: var(--sage-dark);
+    --status-success-fg: var(--status-success-fg-dark);
+    --status-success-bg: var(--status-success-bg-dark);
+    --status-success-border: var(--status-success-border-dark);
+    --status-warning-fg: var(--status-warning-fg-dark);
+    --status-warning-bg: var(--status-warning-bg-dark);
+    --status-warning-border: var(--status-warning-border-dark);
     --desk-veil-top: var(--desk-veil-top-dark);
     --desk-veil-bottom: var(--desk-veil-bottom-dark);
     --washi-veil-top: var(--washi-veil-top-dark);
@@ -215,6 +245,7 @@
 
   @supports (color: light-dark(white, black)) {
     --background: light-dark(var(--bg-light), var(--bg-dark));
+    --desk-bg: light-dark(var(--desk-bg-light), var(--desk-bg-dark));
     --foreground: light-dark(var(--fg-light), var(--fg-dark));
     --card: light-dark(var(--card-light), var(--card-dark));
     --card-foreground: light-dark(var(--card-fg-light), var(--card-fg-dark));
@@ -237,6 +268,12 @@
     --brass-bright: light-dark(var(--brass-bright-light), var(--brass-bright-dark));
     --vermilion: light-dark(var(--vermilion-light), var(--vermilion-dark));
     --sage: light-dark(var(--sage-light), var(--sage-dark));
+    --status-success-fg: light-dark(var(--status-success-fg-light), var(--status-success-fg-dark));
+    --status-success-bg: light-dark(var(--status-success-bg-light), var(--status-success-bg-dark));
+    --status-success-border: light-dark(var(--status-success-border-light), var(--status-success-border-dark));
+    --status-warning-fg: light-dark(var(--status-warning-fg-light), var(--status-warning-fg-dark));
+    --status-warning-bg: light-dark(var(--status-warning-bg-light), var(--status-warning-bg-dark));
+    --status-warning-border: light-dark(var(--status-warning-border-light), var(--status-warning-border-dark));
     --desk-veil-top: light-dark(var(--desk-veil-top-light), var(--desk-veil-top-dark));
     --desk-veil-bottom: light-dark(var(--desk-veil-bottom-light), var(--desk-veil-bottom-dark));
     --washi-veil-top: light-dark(var(--washi-veil-top-light), var(--washi-veil-top-dark));
@@ -316,7 +353,7 @@
 
 /* Physical Smoked-Walnut Bindery Workbench Surface */
 .bindery-walnut-desk {
-  background-color: var(--background);
+  background-color: var(--desk-bg);
   background-image:
     linear-gradient(180deg, var(--desk-veil-top), var(--desk-veil-bottom)),
     url('./assets/atelier/desk-walnut.jpg');

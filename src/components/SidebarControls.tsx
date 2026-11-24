@@ -465,9 +465,9 @@ export function SidebarControls({
 
       {/* Primary Paperback Dimensions — Compact Ruled Ledger */}
       <fieldset className="space-y-1.5">
-        <legend className="mb-1 flex w-full items-center justify-between font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          <span>Paperback Dimensions</span>
-          <span>H · W · SPINE</span>
+        <legend className="mb-1 flex w-full items-center justify-between gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+          <span className="truncate">Paperback Dimensions</span>
+          <span className="shrink-0 whitespace-nowrap">H · W · SPINE</span>
         </legend>
         <div className="divide-y divide-border/80 rounded-md border border-border/90 bg-card/70">
           <MeasurementField
