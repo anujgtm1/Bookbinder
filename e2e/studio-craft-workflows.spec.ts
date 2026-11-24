@@ -266,4 +266,118 @@ test.describe('Studio Craft Workflows — Sample Book, Undo/Duplicate, Endpapers
     const slipcasePdfDoc = await PDFDocument.load(slipcasePdfBuffer);
     expect(slipcasePdfDoc.getPageCount()).toBeGreaterThanOrEqual(1);
   });
+
+  test('exports dragged Front Cover text and ornament cleanly inside Back Cover Cricut HTV SVG viewBox', async ({
+    page,
+  }) => {
+    // 1. Add a Front Title text layer and a Front Compass Rose emblem ornament
+    await page.getByTestId('studio-tool-text').click();
+    await page.getByTestId('add-front-title-btn').click();
+    const coverText = page.getByTestId('studio-cover-text-0');
+    await expect(coverText).toBeVisible();
+
+    await page.getByTestId('studio-tool-designs').click();
+    await page.getByTestId('ornament-cat-all').click();
+    await page.getByTestId('add-ornament-emblem-compass-rose').click();
+    const ornament = page.getByTestId('studio-ornament-0');
+    await expect(ornament).toBeVisible();
+
+    // 2. Drag both the Front Title and Front Ornament across the spine onto the Back Cover
+    const backFillBox = await page.getByTestId('studio-back-fill').boundingBox();
+    expect(backFillBox).not.toBeNull();
+    const backCenterX = backFillBox!.x + backFillBox!.width * 0.5;
+
+    const textBox = await coverText.boundingBox();
+    expect(textBox).not.toBeNull();
+    const textStartX = textBox!.x + textBox!.width / 2;
+    const textStartY = textBox!.y + textBox!.height / 2;
+    await page.mouse.move(textStartX, textStartY);
+    await page.mouse.down();
+    await page.mouse.move(backCenterX, textStartY, { steps: 12 });
+    await page.mouse.up();
+
+    const ornBox = await ornament.boundingBox();
+    expect(ornBox).not.toBeNull();
+    const ornStartX = ornBox!.x + ornBox!.width / 2;
+    const ornStartY = ornBox!.y + ornBox!.height / 2;
+    await page.mouse.move(ornStartX, ornStartY);
+    await page.mouse.down();
+    await page.mouse.move(backCenterX, ornStartY, { steps: 12 });
+    await page.mouse.up();
+
+    // Confirm both elements now sit visually on the Back Cover
+    const movedTextBox = await coverText.boundingBox();
+    const movedOrnBox = await ornament.boundingBox();
+    expect(movedTextBox!.x + movedTextBox!.width / 2).toBeLessThan(
+      backFillBox!.x + backFillBox!.width,
+    );
+    expect(movedOrnBox!.x + movedOrnBox!.width / 2).toBeLessThan(
+      backFillBox!.x + backFillBox!.width,
+    );
+
+    // 3. Open Cricut HTV dialog -> smart default selects Back Cover automatically
+    await page.getByTestId('studio-open-cricut-btn').click();
+    const cricutDialog = page.getByTestId('cricut-export-dialog');
+    await expect(cricutDialog).toBeVisible();
+    await expect(page.getByTestId('cricut-scope-back')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('cricut-svg-preview-img')).toBeVisible();
+
+    // Switching to now-empty Front Cover shows helpful empty-scope hint referencing Back Cover
+    await page.getByTestId('cricut-scope-front').click();
+    await expect(page.getByTestId('cricut-empty-scope-hint')).toContainText(/Back Cover/i);
+
+    // 4. Switch back to Back Cover and download the HTV SVG
+    await page.getByTestId('cricut-scope-back').click();
+    await expect(page.getByTestId('cricut-scope-back')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('cricut-empty-scope-hint')).toHaveCount(0);
+    await expect(page.getByTestId('cricut-download-btn')).toBeEnabled();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('cricut-download-btn').click();
+    const download = await downloadPromise;
+    await expect(cricutDialog).toBeHidden();
+    expect(download.suggestedFilename()).toContain('_cricut_htv_back.svg');
+
+    const svgPath = await download.path();
+    expect(svgPath).toBeTruthy();
+    const svgText = await readFile(svgPath!, 'utf-8');
+
+    // Verify Cricut SVG hygiene and both moved elements are present inside the Back Cover viewBox
+    expect(svgText).toContain('id="spine-lettering"');
+    expect(svgText).toContain('id="classic-ornaments"');
+    expect(svgText).toContain('id="htv-weeding-box"');
+    expect(svgText).toContain('id="alignment-registration-marks"');
+    expect(svgText).not.toContain('<text');
+    expect(svgText).not.toContain('<image');
+    expect(svgText).not.toContain('transform=');
+
+    const vbMatch = svgText.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+    expect(vbMatch).not.toBeNull();
+    const vbWidth = Number(vbMatch![1]);
+    const vbHeight = Number(vbMatch![2]);
+    expect(vbWidth).toBeGreaterThan(100);
+    expect(vbHeight).toBeGreaterThan(150);
+
+    let coordCount = 0;
+    for (const pathMatch of svgText.matchAll(/\sd="([^"]+)"/g)) {
+      const tokens =
+        pathMatch[1].match(/[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g) ?? [];
+      let i = 0;
+      while (i < tokens.length) {
+        const cmd = tokens[i++];
+        if (cmd === 'Z') continue;
+        const pairCount = cmd === 'M' || cmd === 'L' ? 1 : cmd === 'Q' ? 2 : cmd === 'C' ? 3 : 0;
+        for (let p = 0; p < pairCount; p++) {
+          const x = Number.parseFloat(tokens[i++] ?? 'NaN');
+          const y = Number.parseFloat(tokens[i++] ?? 'NaN');
+          expect(x).toBeGreaterThanOrEqual(0);
+          expect(x).toBeLessThanOrEqual(vbWidth + 0.01);
+          expect(y).toBeGreaterThanOrEqual(0);
+          expect(y).toBeLessThanOrEqual(vbHeight + 0.01);
+          coordCount += 1;
+        }
+      }
+    }
+    expect(coordCount).toBeGreaterThan(30);
+  });
 });
