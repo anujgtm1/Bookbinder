@@ -22,6 +22,22 @@ export interface PocketImagePlacement {
   readonly height: number;
 }
 
+export interface FoldedEndpaperHalfLabels {
+  readonly left: 'PASTEDOWN' | 'FLYLEAF';
+  readonly right: 'PASTEDOWN' | 'FLYLEAF';
+}
+
+/**
+ * Printed inside spread orientation when folded inward along the center crease:
+ * - Front endpaper: left glues to front board (PASTEDOWN), right tips onto first page (FLYLEAF).
+ * - Back endpaper: left tips onto last page (FLYLEAF), right glues to back board (PASTEDOWN).
+ */
+export function getFoldedEndpaperHalfLabels(side: 'front' | 'back'): FoldedEndpaperHalfLabels {
+  return side === 'front'
+    ? { left: 'PASTEDOWN', right: 'FLYLEAF' }
+    : { left: 'FLYLEAF', right: 'PASTEDOWN' };
+}
+
 export interface InnerPocketsLayout {
   readonly backX: number;
   readonly linerX: number;

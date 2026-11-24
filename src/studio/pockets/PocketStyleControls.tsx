@@ -45,6 +45,7 @@ export type PocketQuickFitTarget = 'front' | 'back' | 'liner' | 'all';
 export interface PocketStyleControlsProps {
   readonly pocketStyle: PocketStyleConfig;
   readonly coverMatchColor: string;
+  readonly isFoldedEndpapers?: boolean;
   readonly layers: readonly CoverImageLayer[];
   readonly selectedLayerId: string | null;
   readonly selectedLayer: CoverImageLayer | null;
@@ -61,9 +62,16 @@ export interface PocketStyleControlsProps {
   readonly onStatusMessage: (message: string) => void;
 }
 
-const QUICK_FIT_OPTIONS = [
+const SLIP_POCKET_QUICK_FIT_OPTIONS = [
   { id: 'front' as const, label: 'Fit Front Pocket' },
   { id: 'back' as const, label: 'Fit Back Pocket' },
+  { id: 'liner' as const, label: 'Fit Spine Liner' },
+  { id: 'all' as const, label: 'Fit All' },
+] as const;
+
+const FOLDED_ENDPAPER_QUICK_FIT_OPTIONS = [
+  { id: 'front' as const, label: 'Fit Front Endpaper' },
+  { id: 'back' as const, label: 'Fit Back Endpaper' },
   { id: 'liner' as const, label: 'Fit Spine Liner' },
   { id: 'all' as const, label: 'Fit All' },
 ] as const;
@@ -72,6 +80,7 @@ const QUICK_FIT_OPTIONS = [
 export function PocketStyleControls({
   pocketStyle,
   coverMatchColor,
+  isFoldedEndpapers = false,
   layers,
   selectedLayerId,
   selectedLayer,
@@ -85,6 +94,9 @@ export function PocketStyleControls({
   onStatusMessage,
 }: PocketStyleControlsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const quickFitOptions = isFoldedEndpapers
+    ? FOLDED_ENDPAPER_QUICK_FIT_OPTIONS
+    : SLIP_POCKET_QUICK_FIT_OPTIONS;
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -104,7 +116,9 @@ export function PocketStyleControls({
               onClick={() => {
                 onUpdateStyle({ backgroundColor: coverMatchColor });
                 onStatusMessage(
-                  `Matched inner pocket color to cover (${coverMatchColor.toUpperCase()})`,
+                  isFoldedEndpapers
+                    ? `Matched folded endpaper color to cover (${coverMatchColor.toUpperCase()})`
+                    : `Matched inner pocket color to cover (${coverMatchColor.toUpperCase()})`,
                 );
               }}
             >
@@ -162,25 +176,32 @@ export function PocketStyleControls({
           </div>
 
           <div className="kettle-stitch-divider pt-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="pocket-style-scope">Print Color &amp; Image Clipping Area</Label>
-              <Select
-                value={pocketStyle.styleScope}
-                onValueChange={(val) => onUpdateStyle({ styleScope: val as PocketStyleScope })}
-              >
-                <SelectTrigger id="pocket-style-scope" data-testid="pocket-scope-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="faces-only">
-                    Pocket Faces Only (keeps glue flaps white for clean gluing)
-                  </SelectItem>
-                  <SelectItem value="full-envelope">
-                    Full Cut Envelope (extends color &amp; artwork across glue flaps)
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {isFoldedEndpapers ? (
+              <p className="text-xs text-muted-foreground">
+                Folded endpaper sheets print edge-to-edge across both <strong>Pastedown</strong>{' '}
+                and <strong>Flyleaf</strong> — no glue flaps to mask.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="pocket-style-scope">Print Color &amp; Image Clipping Area</Label>
+                <Select
+                  value={pocketStyle.styleScope}
+                  onValueChange={(val) => onUpdateStyle({ styleScope: val as PocketStyleScope })}
+                >
+                  <SelectTrigger id="pocket-style-scope" data-testid="pocket-scope-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="faces-only">
+                      Pocket Faces Only (keeps glue flaps white for clean gluing)
+                    </SelectItem>
+                    <SelectItem value="full-envelope">
+                      Full Cut Envelope (extends color &amp; artwork across glue flaps)
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -191,7 +212,7 @@ export function PocketStyleControls({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2 font-serif text-base">
               <ImagePlus className="h-4 w-4 text-brass" aria-hidden="true" />
-              Pocket Artwork Layers
+              {isFoldedEndpapers ? 'Endpaper Artwork Layers' : 'Pocket Artwork Layers'}
             </CardTitle>
             <div className="flex items-center gap-2">
               {layers.length > 0 && (
@@ -248,7 +269,7 @@ export function PocketStyleControls({
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                {QUICK_FIT_OPTIONS.map((opt) => (
+                {quickFitOptions.map((opt) => (
                   <Button
                     key={opt.id}
                     variant="outline"
@@ -266,7 +287,11 @@ export function PocketStyleControls({
                   className="h-7 px-2 text-xs"
                   aria-pressed={Boolean(selectedLayer.tiled)}
                   data-testid="pocket-tile-toggle-btn"
-                  title="Repeat this image seamlessly across all inner pockets (drag corners to adjust tile size)"
+                  title={
+                    isFoldedEndpapers
+                      ? 'Repeat this image seamlessly across both endpapers (drag corners to adjust tile size)'
+                      : 'Repeat this image seamlessly across all inner pockets (drag corners to adjust tile size)'
+                  }
                   onClick={() => onToggleLayerTile(selectedLayer)}
                 >
                   <Grid2x2 className="h-3 w-3" aria-hidden="true" />
@@ -277,11 +302,15 @@ export function PocketStyleControls({
                   size="sm"
                   className="h-7 px-2 text-xs"
                   data-testid="pocket-copy-other-btn"
-                  title="Duplicate this image onto the opposite pocket"
+                  title={
+                    isFoldedEndpapers
+                      ? 'Duplicate this image onto the opposite endpaper'
+                      : 'Duplicate this image onto the opposite pocket'
+                  }
                   onClick={() => onCopyToOtherPocket(selectedLayer)}
                 >
                   <Copy className="h-3 w-3" aria-hidden="true" />
-                  Copy to Other Pocket
+                  {isFoldedEndpapers ? 'Copy to Other Endpaper' : 'Copy to Other Pocket'}
                 </Button>
               </div>
 
@@ -491,8 +520,9 @@ export function PocketStyleControls({
             </ul>
           ) : (
             <p className="rounded-md border border-dashed border-border bg-secondary/35 px-3.5 py-5 text-center text-xs text-muted-foreground">
-              Drag &amp; drop PNG, JPG, or WEBP images directly onto the pockets cutting mat above
-              (or click <strong>Add Images</strong>) — then drag to move and pull corners to resize.
+              Drag &amp; drop PNG, JPG, or WEBP images directly onto the{' '}
+              {isFoldedEndpapers ? 'endpapers' : 'pockets'} cutting mat above (or click{' '}
+              <strong>Add Images</strong>) — then drag to move and pull corners to resize.
             </p>
           )}
         </CardContent>

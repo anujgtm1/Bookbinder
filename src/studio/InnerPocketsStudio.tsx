@@ -35,7 +35,12 @@ import {
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
-import { PAGE_SIZES, type PageSizeId, type PrintMediaId } from '@/types/bookParams';
+import {
+  PAGE_SIZES,
+  type InteriorStyle,
+  type PageSizeId,
+  type PrintMediaId,
+} from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
 import type { PocketStyleConfig } from '@/types/studio';
 import {
@@ -74,10 +79,12 @@ export interface InnerPocketsStudioProps {
   readonly coverMatchColor: string;
   readonly pdfPageSize: PageSizeId;
   readonly printMediaId?: PrintMediaId;
+  readonly interiorStyle?: InteriorStyle;
   readonly unit: UnitSystem;
   readonly exportingInnerPdf?: boolean;
   readonly onChangePocketStyle: (next: PocketStyleConfig) => void;
   readonly onChangePageSize?: (sizeId: PageSizeId) => void;
+  readonly onChangeInteriorStyle?: (style: InteriorStyle) => void;
   readonly onDownloadInnerSvg: () => void;
   readonly onDownloadInnerPdf: (options?: InnerPdfExportOptions) => void | Promise<void>;
   readonly onStatusMessage: (message: string) => void;
@@ -93,10 +100,12 @@ export function InnerPocketsStudio({
   coverMatchColor,
   pdfPageSize,
   printMediaId = 'exact-auto',
+  interiorStyle,
   unit,
   exportingInnerPdf = false,
   onChangePocketStyle,
   onChangePageSize,
+  onChangeInteriorStyle,
   onDownloadInnerSvg,
   onDownloadInnerPdf,
   onStatusMessage,
@@ -113,6 +122,7 @@ export function InnerPocketsStudio({
     null,
   );
   const [localPageSize, setLocalPageSize] = useState<PageSizeId>(pdfPageSize);
+  const [localInteriorStyle, setLocalInteriorStyle] = useState<InteriorStyle | null>(null);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(
     () => layers[layers.length - 1]?.id ?? null,
@@ -124,6 +134,26 @@ export function InnerPocketsStudio({
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const activePageSize = onChangePageSize ? pdfPageSize : localPageSize;
+  const bindingStrategy = resolveBindingStrategy(geometry);
+  const activeInteriorStyle: InteriorStyle =
+    interiorStyle ??
+    localInteriorStyle ??
+    geometry.interiorStyle ??
+    (geometry.frontPocket.kind === 'folded-endpaper' ? 'folded-endpapers' : 'slip-pockets');
+  const isFoldedEndpapers =
+    bindingStrategy.capabilities.usesChipboard && activeInteriorStyle === 'folded-endpapers';
+
+  const handleSelectInteriorStyle = (next: InteriorStyle) => {
+    if (interiorStyle === undefined) {
+      setLocalInteriorStyle(next);
+    }
+    onChangeInteriorStyle?.(next);
+    onStatusMessage(
+      next === 'folded-endpapers'
+        ? 'Switched to Folded Glue-In Endpapers (traditional paperback-to-hardcover rebind)'
+        : 'Switched to Removable Slip-In Pockets',
+    );
+  };
 
   const svgRef = useRef<SVGSVGElement>(null);
   const panDragRef = useRef<{
@@ -331,7 +361,15 @@ export function InnerPocketsStudio({
     updateStyle({ layers: [...layers, copy] });
     setSelectedLayerId(copy.id);
     onStatusMessage(
-      `Copied "${layer.fileName}" to ${isOnBackSide ? 'Front Pocket' : 'Back Pocket'}`,
+      `Copied "${layer.fileName}" to ${
+        isFoldedEndpapers
+          ? isOnBackSide
+            ? 'Front Endpaper'
+            : 'Back Endpaper'
+          : isOnBackSide
+            ? 'Front Pocket'
+            : 'Back Pocket'
+      }`,
     );
   };
 
@@ -354,12 +392,19 @@ export function InnerPocketsStudio({
         undefined,
         { includeLegend: effectiveLegend, includeGuides: effectiveGuides },
       );
-      triggerBytesDownload(bytes, 'inner_pockets_styled.pdf', 'application/pdf');
+      const fileName = isFoldedEndpapers
+        ? 'folded_endpapers_styled.pdf'
+        : 'inner_pockets_styled.pdf';
+      triggerBytesDownload(bytes, fileName, 'application/pdf');
       onStatusMessage(
-        `Exported inner_pockets_styled.pdf (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'}, 300 DPI${effectiveLegend ? ' with legend' : ''})`,
+        `Exported ${fileName} (${plan.pageCount} ${plan.pageCount === 1 ? 'page' : 'pages'}, 300 DPI${effectiveLegend ? ' with legend' : ''})`,
       );
     } catch {
-      onStatusMessage('Failed to generate Styled Pockets PDF.');
+      onStatusMessage(
+        isFoldedEndpapers
+          ? 'Failed to generate Styled Endpapers PDF.'
+          : 'Failed to generate Styled Pockets PDF.',
+      );
     } finally {
       setExportingStyledPdf(false);
     }
@@ -410,26 +455,66 @@ export function InnerPocketsStudio({
     [frontPocket.outerCutPolygon, innerLayout.frontX],
   );
 
-  const bindingStrategy = resolveBindingStrategy(geometry);
-
   return (
     <div className="flex flex-col gap-4" data-testid="inner-pockets-studio">
-      {/* Unified Inner Pockets & Liner Cutting Mat Workbench */}
+      {/* Unified Inner Pockets / Folded Endpapers & Liner Cutting Mat Workbench */}
       <section
-        aria-label="Inner Pockets and Spine Liner Workbench"
+        aria-label={
+          isFoldedEndpapers
+            ? 'Folded Glue-In Endpapers and Spine Liner Workbench'
+            : 'Inner Pockets and Spine Liner Workbench'
+        }
         className="overflow-hidden rounded-b-lg rounded-tr-lg border border-border bg-card shadow-xs"
       >
         {/* Header + Export Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
             <h2 className="font-serif text-base font-semibold tracking-tight text-foreground">
-              Inner Slip-In Pockets &amp; Spine Liner
+              {isFoldedEndpapers
+                ? 'Folded Glue-In Endpapers & Spine Liner'
+                : 'Inner Slip-In Pockets & Spine Liner'}
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {!bindingStrategy.capabilities.usesInnerPockets
                 ? `Note: ${bindingStrategy.shortLabel} does not require separate inner pocket sheets — these templates are optional.`
-                : 'Drop images directly onto any pocket, drag and resize with magnetic guides, or inspect fold flaps and auto-paginated print sheets.'}
+                : isFoldedEndpapers
+                  ? 'Traditional paperback-to-hardcover rebind endpapers — fold down the center crease into Pastedown + Flyleaf, drop artwork onto either sheet, and export print sheets.'
+                  : 'Drop images directly onto any pocket, drag and resize with magnetic guides, or inspect fold flaps and auto-paginated print sheets.'}
             </p>
+            {bindingStrategy.capabilities.usesChipboard && (
+              <div
+                role="group"
+                aria-label="Interior attachment style"
+                className="mt-2 inline-flex flex-wrap items-center rounded-md border border-border bg-secondary/45 p-0.5"
+              >
+                <button
+                  type="button"
+                  aria-pressed={activeInteriorStyle === 'slip-pockets'}
+                  data-testid="interior-style-slip-pockets"
+                  onClick={() => handleSelectInteriorStyle('slip-pockets')}
+                  className={`cursor-pointer rounded-sm px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                    activeInteriorStyle === 'slip-pockets'
+                      ? 'bg-background text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Removable Slip-In Pockets
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={activeInteriorStyle === 'folded-endpapers'}
+                  data-testid="interior-style-folded-endpapers"
+                  onClick={() => handleSelectInteriorStyle('folded-endpapers')}
+                  className={`cursor-pointer rounded-sm px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                    activeInteriorStyle === 'folded-endpapers'
+                      ? 'bg-background text-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Folded Glue-In Endpapers
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -441,7 +526,11 @@ export function InnerPocketsStudio({
               data-testid="download-styled-inner-pdf-btn"
             >
               <Sparkles className="h-4 w-4" aria-hidden="true" />
-              {exportingStyledPdf ? 'Rendering PDF…' : 'Styled Pockets PDF…'}
+              {exportingStyledPdf
+                ? 'Rendering PDF…'
+                : isFoldedEndpapers
+                  ? 'Styled Endpapers PDF…'
+                  : 'Styled Pockets PDF…'}
             </Button>
             <Button
               variant="outline"
@@ -532,7 +621,7 @@ export function InnerPocketsStudio({
             aria-hidden="true"
             className="pointer-events-none absolute top-3 left-3 z-10 rounded-full border border-white/15 bg-black/25 px-2.5 py-0.5 font-mono text-[10px] tracking-wide text-[#efe8d8]/85"
           >
-            POCKETS &amp; LINER
+            {isFoldedEndpapers ? 'ENDPAPERS & LINER' : 'POCKETS & LINER'}
           </div>
 
           {/* Top-right pagination badge & full-page exit button */}
@@ -568,7 +657,9 @@ export function InnerPocketsStudio({
           {isDraggingOver && (
             <div className="pointer-events-none absolute inset-4 z-30 flex items-center justify-center rounded-lg border-2 border-dashed border-brass-bright bg-black/45 backdrop-blur-[1px]">
               <span className="rounded-full border border-brass-bright/60 bg-black/75 px-4 py-1.5 font-serif text-sm font-semibold text-[#faf6ee] shadow-lg">
-                Drop image onto Back Pocket, Spine Liner, or Front Pocket
+                {isFoldedEndpapers
+                  ? 'Drop image onto Back Endpaper, Spine Liner, or Front Endpaper'
+                  : 'Drop image onto Back Pocket, Spine Liner, or Front Pocket'}
               </span>
             </div>
           )}
@@ -583,7 +674,11 @@ export function InnerPocketsStudio({
             <svg
               ref={svgRef}
               role="img"
-              aria-label="Inner Spine Liner and Front/Back Slip-In Pocket Envelopes"
+              aria-label={
+                isFoldedEndpapers
+                  ? 'Inner Spine Liner and Front/Back Folded Glue-In Endpapers'
+                  : 'Inner Spine Liner and Front/Back Slip-In Pocket Envelopes'
+              }
               data-testid="inner-blueprint-svg"
               viewBox={
                 viewMode === 'blueprint' && showBlueprintDimensions
@@ -601,7 +696,11 @@ export function InnerPocketsStudio({
                 }
               }}
             >
-              <title>Inner Spine Liner and Front &amp; Back Slip-In Pocket Envelopes</title>
+              <title>
+                {isFoldedEndpapers
+                  ? 'Inner Spine Liner and Front & Back Folded Glue-In Endpapers'
+                  : 'Inner Spine Liner and Front & Back Slip-In Pocket Envelopes'}
+              </title>
               <defs>
                 <pattern
                   id="inner-glue-hatch"
@@ -893,7 +992,7 @@ export function InnerPocketsStudio({
                   data-testid="pockets-view-styled-btn"
                 >
                   <Palette className="h-3.5 w-3.5" aria-hidden="true" />
-                  Styled Pockets
+                  {isFoldedEndpapers ? 'Styled Endpapers' : 'Styled Pockets'}
                 </HudButton>
                 <HudButton
                   pressed={viewMode === 'blueprint'}
@@ -1014,12 +1113,16 @@ export function InnerPocketsStudio({
                 className="inline-block h-0.5 w-4 border-t-2 border-dashed border-[#1D5BD6]"
                 aria-hidden="true"
               />
-              Dashed Blue: Score &amp; Fold
+              {isFoldedEndpapers
+                ? 'Dashed Blue: Center Fold & Score'
+                : 'Dashed Blue: Score & Fold'}
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-0.5 w-4 bg-[#0F8A47]" aria-hidden="true" />
-              Green: Open Slip-In Edge
-            </span>
+            {!isFoldedEndpapers && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-0.5 w-4 bg-[#0F8A47]" aria-hidden="true" />
+                Green: Open Slip-In Edge
+              </span>
+            )}
           </div>
           <span className="font-mono text-[11px] text-brass">
             {selectedLayer
@@ -1033,6 +1136,7 @@ export function InnerPocketsStudio({
       <PocketStyleControls
         pocketStyle={pocketStyle}
         coverMatchColor={coverMatchColor}
+        isFoldedEndpapers={isFoldedEndpapers}
         layers={layers}
         selectedLayerId={selectedLayerId}
         selectedLayer={selectedLayer}
