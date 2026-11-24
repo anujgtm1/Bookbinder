@@ -375,8 +375,8 @@ export function PocketStyleControls({
                   <Button
                     type="button"
                     variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
                     aria-label="Rotate selected pocket image 90° clockwise"
                     title="Rotate 90° clockwise"
                     data-rotation={selectedRotationDeg}
@@ -389,6 +389,7 @@ export function PocketStyleControls({
                     }
                   >
                     <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    90°
                   </Button>
                   <Button
                     variant="outline"

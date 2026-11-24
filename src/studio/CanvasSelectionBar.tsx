@@ -311,6 +311,7 @@ export function CanvasSelectionBar({
             className={ACTION_BTN_CLASS}
           >
             <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+            90°
           </button>
         </div>
 

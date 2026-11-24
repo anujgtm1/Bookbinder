@@ -440,9 +440,9 @@ export function CoverTextCard({
                 return (
                   <Button
                     type="button"
-                    size="icon"
+                    size="sm"
                     variant="outline"
-                    className="h-7 w-7"
+                    className="h-7 px-2 text-[11px]"
                     aria-label="Rotate text 90° clockwise"
                     title="Rotate 90° clockwise"
                     data-rotation={rotDeg}
@@ -454,6 +454,7 @@ export function CoverTextCard({
                     }
                   >
                     <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    90°
                   </Button>
                 );
               })()}

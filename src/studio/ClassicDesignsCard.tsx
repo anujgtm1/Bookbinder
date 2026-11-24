@@ -370,9 +370,9 @@ export function ClassicDesignsCard({
                 return (
                   <Button
                     type="button"
-                    size="icon"
+                    size="sm"
                     variant="outline"
-                    className="h-7 w-7"
+                    className="h-7 px-2 text-[11px]"
                     aria-label="Rotate design 90° clockwise"
                     title="Rotate 90° clockwise"
                     data-rotation={rotDeg}
@@ -389,6 +389,7 @@ export function ClassicDesignsCard({
                     }}
                   >
                     <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+                    90°
                   </Button>
                 );
               })()}
