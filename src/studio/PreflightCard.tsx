@@ -52,21 +52,21 @@ export function PreflightCard({
       data-testid="preflight-card"
       className={`rounded-lg border bg-card px-4 py-3 shadow-xs transition-colors ${
         report.status === 'error'
-          ? 'border-destructive/55'
+          ? 'border-[color:var(--status-danger-border)]'
           : report.status === 'warning'
-            ? 'border-amber-600/45'
-            : 'border-emerald-700/35'
+            ? 'border-[color:var(--status-warning-border)]'
+            : 'border-[color:var(--status-success-border)]'
       }`}
     >
       <Collapsible open={hasIssues ? expanded : false} onOpenChange={setExpanded}>
         <div className="flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex flex-wrap items-center gap-2.5">
             {report.status === 'error' ? (
-              <ShieldAlert className="h-4 w-4 text-destructive" aria-hidden="true" />
+              <ShieldAlert className="status-danger-text h-4 w-4" aria-hidden="true" />
             ) : report.status === 'warning' ? (
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              <AlertTriangle className="status-warning-text h-4 w-4" aria-hidden="true" />
             ) : (
-              <ShieldCheck className="h-4 w-4 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+              <ShieldCheck className="status-success-text h-4 w-4" aria-hidden="true" />
             )}
 
             <h3 className="font-serif text-sm font-semibold tracking-tight text-foreground">
@@ -101,12 +101,12 @@ export function PreflightCard({
                   key={check.id}
                   className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                     check.status === 'error'
-                      ? 'border-destructive/35 bg-destructive/10 text-destructive'
+                      ? 'status-danger-surface'
                       : check.status === 'warning'
-                        ? 'border-amber-600/35 bg-amber-500/12 text-amber-800 dark:text-amber-300'
+                        ? 'status-warning-surface'
                         : check.status === 'skipped'
                           ? 'border-border/70 bg-muted/40 text-muted-foreground'
-                          : 'border-emerald-700/25 bg-emerald-600/8 text-emerald-800 dark:text-emerald-300'
+                          : 'status-success-surface'
                   }`}
                 >
                   {check.status === 'pass' ? (
@@ -203,11 +203,11 @@ export function PreflightCard({
                     className={`flex flex-wrap items-center justify-between gap-2.5 rounded-md border px-3 py-2 text-xs transition-colors ${
                       isError
                         ? isActive
-                          ? 'border-destructive bg-destructive/14'
-                          : 'border-destructive/35 bg-destructive/7'
+                          ? 'status-danger-surface ring-1 ring-[color:var(--status-danger-border)]'
+                          : 'status-danger-surface'
                         : isActive
-                          ? 'border-amber-600/70 bg-amber-500/18'
-                          : 'border-amber-600/30 bg-amber-500/8'
+                          ? 'status-warning-surface ring-1 ring-[color:var(--status-warning-border)]'
+                          : 'status-warning-surface'
                     }`}
                   >
                     <div className="min-w-0 flex-1">
@@ -220,7 +220,7 @@ export function PreflightCard({
                         </Badge>
                         <span className="font-semibold text-foreground">{issue.title}</span>
                       </div>
-                      <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                      <p className="mt-0.5 text-[11px] leading-relaxed opacity-90">
                         {issue.detail}
                       </p>
                     </div>

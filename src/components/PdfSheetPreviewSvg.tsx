@@ -463,7 +463,7 @@ export function PdfSheetPreviewSvg({
           data-testid="pdf-roll-strip-preview"
           className="flex flex-wrap items-center justify-between gap-2 text-xs"
         >
-          <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+          <span className="status-success-text flex items-center gap-1.5 font-medium">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             Roll Strip Preview — {rollTitle}
           </span>
@@ -806,7 +806,7 @@ export function PdfSheetPreviewSvg({
       >
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-medium text-foreground">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+            <CheckCircle2 className="status-success-text h-3.5 w-3.5" aria-hidden="true" />
             {printMediaId === 'exact-auto'
               ? `${exactAutoSpec.shortLabel} (${exactAutoSpec.dimensionsLabel})`
               : activeFit.summary}
@@ -874,7 +874,7 @@ export function PdfSheetPreviewSvg({
         className="drafting-surface flex flex-col gap-2 rounded-lg border border-border p-3.5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+          <span className="status-success-text flex items-center gap-1.5 font-medium">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
             1× {activeMediaSpec.label} {orientationLabel} — Centered
           </span>
@@ -937,7 +937,7 @@ export function PdfSheetPreviewSvg({
       className="drafting-surface flex flex-col gap-2.5 rounded-lg border border-border p-3.5"
     >
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-medium text-amber-900 dark:text-amber-300">
+        <span className="status-warning-text font-medium">
           2× {activeMediaSpec.label} {orientationLabel} Tiled ({tileOverlapMm} mm overlap &amp; tape
           zone)
         </span>

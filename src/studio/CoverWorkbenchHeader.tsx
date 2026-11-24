@@ -73,13 +73,13 @@ export function CoverWorkbenchHeader({
               className={`inline-flex items-center gap-1.5 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium motion-safe:transition-colors ${
                 geometry.mediaFit.mediaId === 'exact-auto'
                   ? geometry.rollRecommendation.fits
-                    ? 'border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success-fg)] hover:brightness-105'
-                    : 'border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-fg)] hover:brightness-105'
+                    ? 'status-success-surface hover:brightness-95'
+                    : 'status-warning-surface hover:brightness-95'
                   : geometry.mediaFit.status === 'does-not-fit'
-                    ? 'border-destructive/45 bg-destructive/12 text-destructive hover:bg-destructive/20'
+                    ? 'status-danger-surface hover:brightness-95'
                     : geometry.mediaFit.status === 'fits-2-sheet-tile'
-                      ? 'border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-fg)] hover:brightness-105'
-                      : 'border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success-fg)] hover:brightness-105'
+                      ? 'status-warning-surface hover:brightness-95'
+                      : 'status-success-surface hover:brightness-95'
               } ${onOpenMeasureAndCut ? 'cursor-pointer' : 'cursor-default'}`}
             >
               <Printer className="h-3 w-3 shrink-0" aria-hidden="true" />

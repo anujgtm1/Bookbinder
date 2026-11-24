@@ -14,12 +14,9 @@ const badgeVariants = cva(
           'border-brass/45 bg-brass/12 text-foreground',
         vermilion:
           'border-vermilion/55 bg-vermilion/10 text-vermilion',
-        success:
-          'border-[color:var(--status-success-border)] bg-[color:var(--status-success-bg)] text-[color:var(--status-success-fg)]',
-        warning:
-          'border-[color:var(--status-warning-border)] bg-[color:var(--status-warning-bg)] text-[color:var(--status-warning-fg)]',
-        destructive:
-          'border-destructive/35 bg-destructive/12 text-destructive',
+        success: 'status-success-surface',
+        warning: 'status-warning-surface',
+        destructive: 'status-danger-surface',
       },
     },
     defaultVariants: {

@@ -25,17 +25,17 @@
   --bg-light: #f4efe4;
   --bg-dark: #14110f;
   --desk-bg-light: #2b1e14;
-  --desk-bg-dark: #100c09;
+  --desk-bg-dark: #18110c;
   --fg-light: #1a1715;
   --fg-dark: #f5efe4;
 
   --card-light: #faf7f0;
-  --card-dark: #1c1916;
+  --card-dark: #1f1b17;
   --card-fg-light: #1a1715;
   --card-fg-dark: #f5efe4;
 
   --popover-light: #fcfaf4;
-  --popover-dark: #221e1a;
+  --popover-dark: #24201b;
   --popover-fg-light: #1a1715;
   --popover-fg-dark: #f5efe4;
 
@@ -47,17 +47,17 @@
 
   /* Tactile unbleached rag & kuro-washi secondary surfaces */
   --secondary-light: #f1eadc;
-  --secondary-dark: #25211c;
+  --secondary-dark: #28231d;
   --secondary-fg-light: #231e19;
   --secondary-fg-dark: #efe8dc;
 
   --muted-light: #eae1d0;
-  --muted-dark: #221e19;
+  --muted-dark: #25201a;
   --muted-fg-light: #574e43;
-  --muted-fg-dark: #b3a797;
+  --muted-fg-dark: #c0b4a3;
 
   --accent-light: #e7dcc8;
-  --accent-dark: #2e2923;
+  --accent-dark: #302a23;
   --accent-fg-light: #1a1715;
   --accent-fg-dark: #f5efe4;
 
@@ -66,15 +66,15 @@
   --destructive-fg-light: #fffdf8;
   --destructive-fg-dark: #1f0a06;
 
-  /* Crisp press-hairline borders (meets 3:1 non-text boundary contrast on washi) */
+  /* Crisp press-hairline borders (meets 3:1 non-text boundary contrast on washi & dark linen) */
   --border-light: #cbbda6;
-  --border-dark: #3b332b;
+  --border-dark: #453a2f;
   --input-light: #b7a78e;
-  --input-dark: #4a4137;
+  --input-dark: #54473b;
   --ring-light: #c63d27;
   --ring-dark: #ef6f54;
 
-  /* Craft accent tokens: Vermilion Hanko Red, Burnished Brass, Bindery Spruce */
+  /* Craft accent tokens: Vermilion Red, Burnished Brass, Bindery Spruce */
   --brass-light: #9e7324;
   --brass-dark: #deb765;
   --brass-bright-light: #b88b35;
@@ -84,33 +84,51 @@
   --sage-light: #235046;
   --sage-dark: #7db09c;
 
-  /* Reactive status badge tokens (adapt to both OS dark mode and manual <meta color-scheme> toggle) */
+  /* Reactive semantic status tokens (light-dark() driven — immune to OS-vs-manual theme mismatch) */
   --status-success-fg-light: #14532d;
-  --status-success-fg-dark: #6ee7b7;
-  --status-success-bg-light: rgba(5, 150, 105, 0.12);
-  --status-success-bg-dark: rgba(16, 185, 129, 0.16);
-  --status-success-border-light: rgba(4, 120, 87, 0.35);
-  --status-success-border-dark: rgba(52, 211, 153, 0.42);
-  --status-warning-fg-light: #78350f;
-  --status-warning-fg-dark: #fcd34d;
-  --status-warning-bg-light: rgba(245, 158, 11, 0.14);
-  --status-warning-bg-dark: rgba(245, 158, 11, 0.18);
-  --status-warning-border-light: rgba(180, 83, 9, 0.40);
-  --status-warning-border-dark: rgba(251, 191, 36, 0.42);
+  --status-success-fg-dark: #86efac;
+  --status-success-bg-light: #dcfce7;
+  --status-success-bg-dark: #102a1d;
+  --status-success-border-light: #15803d;
+  --status-success-border-dark: #15803d;
 
-  /* Physical desk & washi paper overlay veils (reactive to light-dark() & OS theme) */
+  --status-warning-fg-light: #7c3a04;
+  --status-warning-fg-dark: #fde68a;
+  --status-warning-bg-light: #fef3c7;
+  --status-warning-bg-dark: #382307;
+  --status-warning-border-light: #c27803;
+  --status-warning-border-dark: #b4690e;
+  --status-warning-btn-bg-light: #fde68a;
+  --status-warning-btn-bg-dark: #4f3109;
+  --status-warning-btn-bg-hover-light: #fcd34d;
+  --status-warning-btn-bg-hover-dark: #68410d;
+
+  --status-danger-fg-light: #991b1b;
+  --status-danger-fg-dark: #fca5a5;
+  --status-danger-bg-light: #fee2e2;
+  --status-danger-bg-dark: #3a1212;
+  --status-danger-border-light: #dc2626;
+  --status-danger-border-dark: #b91c1c;
+
+  /* Physical desk, handmade washi (light) & tactile woven charcoal linen (dark) overlays */
   --desk-veil-top-light: rgba(28, 19, 13, 0.16);
-  --desk-veil-top-dark: rgba(11, 8, 6, 0.72);
+  --desk-veil-top-dark: rgba(18, 12, 8, 0.44);
   --desk-veil-bottom-light: rgba(20, 14, 9, 0.28);
-  --desk-veil-bottom-dark: rgba(8, 6, 4, 0.82);
+  --desk-veil-bottom-dark: rgba(12, 8, 5, 0.56);
   --washi-veil-top-light: rgba(251, 248, 241, 0.78);
-  --washi-veil-top-dark: rgba(27, 24, 21, 0.93);
+  --washi-veil-top-dark: rgba(29, 25, 21, 0.87);
   --washi-veil-bottom-light: rgba(247, 242, 231, 0.83);
-  --washi-veil-bottom-dark: rgba(22, 19, 16, 0.95);
+  --washi-veil-bottom-dark: rgba(21, 18, 15, 0.91);
   --washi-edge-light: rgba(255, 253, 248, 0.72);
-  --washi-edge-dark: rgba(245, 239, 228, 0.06);
+  --washi-edge-dark: rgba(222, 183, 101, 0.24);
   --washi-shadow-light: rgba(14, 8, 3, 0.42);
-  --washi-shadow-dark: rgba(0, 0, 0, 0.68);
+  --washi-shadow-dark: rgba(0, 0, 0, 0.78);
+  --linen-sheen-light: transparent;
+  --linen-sheen-dark: rgba(222, 183, 101, 0.06);
+  --linen-weft-light: transparent;
+  --linen-weft-dark: rgba(222, 183, 101, 0.048);
+  --linen-warp-light: transparent;
+  --linen-warp-dark: rgba(245, 239, 228, 0.036);
 
   /* High-contrast folio index tabs resting directly on the smoked-walnut desk */
   --folio-tab-bg-light: #e7dcc8;
@@ -182,12 +200,20 @@
   --status-warning-fg: var(--status-warning-fg-light);
   --status-warning-bg: var(--status-warning-bg-light);
   --status-warning-border: var(--status-warning-border-light);
+  --status-warning-btn-bg: var(--status-warning-btn-bg-light);
+  --status-warning-btn-bg-hover: var(--status-warning-btn-bg-hover-light);
+  --status-danger-fg: var(--status-danger-fg-light);
+  --status-danger-bg: var(--status-danger-bg-light);
+  --status-danger-border: var(--status-danger-border-light);
   --desk-veil-top: var(--desk-veil-top-light);
   --desk-veil-bottom: var(--desk-veil-bottom-light);
   --washi-veil-top: var(--washi-veil-top-light);
   --washi-veil-bottom: var(--washi-veil-bottom-light);
   --washi-edge: var(--washi-edge-light);
   --washi-shadow: var(--washi-shadow-light);
+  --linen-sheen: var(--linen-sheen-light);
+  --linen-weft: var(--linen-weft-light);
+  --linen-warp: var(--linen-warp-light);
   --folio-tab-bg: var(--folio-tab-bg-light);
   --folio-tab-bg-hover: var(--folio-tab-bg-hover-light);
   --folio-tab-fg: var(--folio-tab-fg-light);
@@ -238,12 +264,20 @@
     --status-warning-fg: var(--status-warning-fg-dark);
     --status-warning-bg: var(--status-warning-bg-dark);
     --status-warning-border: var(--status-warning-border-dark);
+    --status-warning-btn-bg: var(--status-warning-btn-bg-dark);
+    --status-warning-btn-bg-hover: var(--status-warning-btn-bg-hover-dark);
+    --status-danger-fg: var(--status-danger-fg-dark);
+    --status-danger-bg: var(--status-danger-bg-dark);
+    --status-danger-border: var(--status-danger-border-dark);
     --desk-veil-top: var(--desk-veil-top-dark);
     --desk-veil-bottom: var(--desk-veil-bottom-dark);
     --washi-veil-top: var(--washi-veil-top-dark);
     --washi-veil-bottom: var(--washi-veil-bottom-dark);
     --washi-edge: var(--washi-edge-dark);
     --washi-shadow: var(--washi-shadow-dark);
+    --linen-sheen: var(--linen-sheen-dark);
+    --linen-weft: var(--linen-weft-dark);
+    --linen-warp: var(--linen-warp-dark);
     --folio-tab-bg: var(--folio-tab-bg-dark);
     --folio-tab-bg-hover: var(--folio-tab-bg-hover-dark);
     --folio-tab-fg: var(--folio-tab-fg-dark);
@@ -292,12 +326,20 @@
     --status-warning-fg: light-dark(var(--status-warning-fg-light), var(--status-warning-fg-dark));
     --status-warning-bg: light-dark(var(--status-warning-bg-light), var(--status-warning-bg-dark));
     --status-warning-border: light-dark(var(--status-warning-border-light), var(--status-warning-border-dark));
+    --status-warning-btn-bg: light-dark(var(--status-warning-btn-bg-light), var(--status-warning-btn-bg-dark));
+    --status-warning-btn-bg-hover: light-dark(var(--status-warning-btn-bg-hover-light), var(--status-warning-btn-bg-hover-dark));
+    --status-danger-fg: light-dark(var(--status-danger-fg-light), var(--status-danger-fg-dark));
+    --status-danger-bg: light-dark(var(--status-danger-bg-light), var(--status-danger-bg-dark));
+    --status-danger-border: light-dark(var(--status-danger-border-light), var(--status-danger-border-dark));
     --desk-veil-top: light-dark(var(--desk-veil-top-light), var(--desk-veil-top-dark));
     --desk-veil-bottom: light-dark(var(--desk-veil-bottom-light), var(--desk-veil-bottom-dark));
     --washi-veil-top: light-dark(var(--washi-veil-top-light), var(--washi-veil-top-dark));
     --washi-veil-bottom: light-dark(var(--washi-veil-bottom-light), var(--washi-veil-bottom-dark));
     --washi-edge: light-dark(var(--washi-edge-light), var(--washi-edge-dark));
     --washi-shadow: light-dark(var(--washi-shadow-light), var(--washi-shadow-dark));
+    --linen-sheen: light-dark(var(--linen-sheen-light), var(--linen-sheen-dark));
+    --linen-weft: light-dark(var(--linen-weft-light), var(--linen-weft-dark));
+    --linen-warp: light-dark(var(--linen-warp-light), var(--linen-warp-dark));
     --folio-tab-bg: light-dark(var(--folio-tab-bg-light), var(--folio-tab-bg-dark));
     --folio-tab-bg-hover: light-dark(var(--folio-tab-bg-hover-light), var(--folio-tab-bg-hover-dark));
     --folio-tab-fg: light-dark(var(--folio-tab-fg-light), var(--folio-tab-fg-dark));
@@ -384,33 +426,107 @@
   background-attachment: fixed;
 }
 
-/* Tactile Handmade Japanese Washi Paper Sheet resting on the walnut desk */
+/* Tactile Handmade Japanese Washi Paper Sheet (light) / Woven Charcoal Linen Rag (dark) */
 .washi-sheet {
   background-color: var(--card);
   background-image:
+    linear-gradient(180deg, var(--linen-sheen) 0%, transparent 28%),
+    repeating-linear-gradient(
+      0deg,
+      var(--linen-weft) 0px,
+      var(--linen-weft) 1px,
+      transparent 1px,
+      transparent 5px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--linen-warp) 0px,
+      var(--linen-warp) 1px,
+      transparent 1px,
+      transparent 6px
+    ),
     linear-gradient(180deg, var(--washi-veil-top), var(--washi-veil-bottom)),
     url('./assets/atelier/washi-paper.jpg');
-  background-size: 100% 100%, 380px 380px;
-  background-repeat: no-repeat, repeat;
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 380px 380px;
+  background-repeat: no-repeat, repeat, repeat, no-repeat, repeat;
   color: var(--card-foreground);
   box-shadow:
-    0 14px 30px -10px var(--washi-shadow),
-    0 2px 6px -1px rgba(15, 9, 4, 0.22),
+    0 16px 34px -10px var(--washi-shadow),
+    0 3px 8px -1px rgba(10, 6, 2, 0.32),
     inset 0 1px 0 var(--washi-edge);
 }
 
-/* Sticky Editorial Masthead Washi Header */
+/* Sticky Editorial Masthead Washi / Dark-Linen Header */
 .washi-header {
   background-color: var(--card);
   background-image:
+    linear-gradient(180deg, var(--linen-sheen) 0%, transparent 65%),
+    repeating-linear-gradient(
+      0deg,
+      var(--linen-weft) 0px,
+      var(--linen-weft) 1px,
+      transparent 1px,
+      transparent 5px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      var(--linen-warp) 0px,
+      var(--linen-warp) 1px,
+      transparent 1px,
+      transparent 6px
+    ),
     linear-gradient(180deg, var(--washi-veil-top), var(--washi-veil-bottom)),
     url('./assets/atelier/washi-paper.jpg');
-  background-size: 100% 100%, 380px 380px;
-  background-repeat: no-repeat, repeat;
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 380px 380px;
+  background-repeat: no-repeat, repeat, repeat, no-repeat, repeat;
   color: var(--card-foreground);
   box-shadow:
-    0 10px 24px -10px var(--washi-shadow),
+    0 10px 26px -10px var(--washi-shadow),
+    inset 0 1px 0 var(--washi-edge),
     inset 0 -1px 0 var(--border);
+}
+
+/* Semantic light-dark() status surfaces & text (immune to OS-vs-manual dark: mismatches) */
+.status-warning-surface {
+  background-color: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+  border-color: var(--status-warning-border);
+}
+
+.status-warning-btn {
+  background-color: var(--status-warning-btn-bg);
+  color: var(--status-warning-fg);
+  border-color: var(--status-warning-border);
+
+  @media (hover: hover) {
+    &:hover {
+      background-color: var(--status-warning-btn-bg-hover);
+    }
+  }
+}
+
+.status-danger-surface {
+  background-color: var(--status-danger-bg);
+  color: var(--status-danger-fg);
+  border-color: var(--status-danger-border);
+}
+
+.status-success-surface {
+  background-color: var(--status-success-bg);
+  color: var(--status-success-fg);
+  border-color: var(--status-success-border);
+}
+
+.status-warning-text {
+  color: var(--status-warning-fg);
+}
+
+.status-danger-text {
+  color: var(--status-danger-fg);
+}
+
+.status-success-text {
+  color: var(--status-success-fg);
 }
 
 /* Woodcut Colophon Emblem — prints directly into washi paper in light mode, framed plaque in dark mode */
@@ -470,10 +586,25 @@
   &[data-state='active'] {
     background-color: var(--card);
     background-image:
+      linear-gradient(180deg, var(--linen-sheen) 0%, transparent 65%),
+      repeating-linear-gradient(
+        0deg,
+        var(--linen-weft) 0px,
+        var(--linen-weft) 1px,
+        transparent 1px,
+        transparent 5px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        var(--linen-warp) 0px,
+        var(--linen-warp) 1px,
+        transparent 1px,
+        transparent 6px
+      ),
       linear-gradient(180deg, var(--washi-veil-top), var(--washi-veil-bottom)),
       url('./assets/atelier/washi-paper.jpg');
-    background-size: 100% 100%, 380px 380px;
-    background-repeat: no-repeat, repeat;
+    background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 380px 380px;
+    background-repeat: no-repeat, repeat, repeat, no-repeat, repeat;
     color: var(--foreground);
     font-weight: 600;
     border-color: var(--border);
@@ -646,6 +777,15 @@
     border-top-width: 3px;
     color: Highlight;
     box-shadow: none;
+  }
+
+  .status-warning-surface,
+  .status-danger-surface,
+  .status-success-surface,
+  .status-warning-btn {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
   }
 
   .hud-toolbar {

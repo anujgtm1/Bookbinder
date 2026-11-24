@@ -324,7 +324,7 @@ export function App() {
                   className="washi-sheet rounded-md border border-border border-t-2 border-t-vermilion p-6 sm:p-8"
                 >
                   <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-                    <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-md border border-emerald-700/35 bg-emerald-600/12 text-emerald-800 dark:text-emerald-300">
+                    <div className="status-success-surface mb-3 inline-flex h-11 w-11 items-center justify-center rounded-md border">
                       <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <Badge variant="outline" className="mb-2 font-mono text-[10px] uppercase">

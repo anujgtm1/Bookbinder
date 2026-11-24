@@ -343,7 +343,11 @@ export function SidebarControls({
                 <span className="text-muted-foreground">({flapDepthEval.coverWidthPct}%)</span>
               </span>
               <span
-                className="text-[10px] text-muted-foreground"
+                className={`text-[10px] ${
+                  flapDepthEval.isTooShallow
+                    ? 'status-warning-text font-semibold'
+                    : 'text-muted-foreground'
+                }`}
                 data-testid="flap-recommended-min"
               >
                 Rec. ≥ {UnitConverter.format(flapDepthEval.minRecommendedMm, params.unit)}
@@ -371,9 +375,9 @@ export function SidebarControls({
             <div
               role="status"
               data-testid="flap-shallow-warning"
-              className="space-y-1.5 rounded-md border border-amber-600/35 bg-amber-500/10 p-2 text-[11px] leading-snug text-amber-900 dark:text-amber-200"
+              className="status-warning-surface space-y-1.5 rounded-md border p-2 text-[11px] leading-snug"
             >
-              <p className="flex items-start gap-1.5">
+              <p className="flex items-start gap-1.5 font-medium">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 <span>
                   Flap is narrower than recommended ({flapDepthEval.coverWidthPct}% of page width;
@@ -385,7 +389,7 @@ export function SidebarControls({
                 type="button"
                 data-testid="flap-set-recommended-btn"
                 onClick={() => update({ jacketFlapWidthMm: flapDepthEval.minRecommendedMm })}
-                className="inline-flex cursor-pointer items-center rounded border border-amber-700/40 bg-amber-500/15 px-2 py-0.5 font-mono text-[11px] font-medium text-amber-950 transition-colors hover:bg-amber-500/25 dark:border-amber-400/40 dark:text-amber-100 dark:hover:bg-amber-500/30"
+                className="status-warning-btn inline-flex cursor-pointer items-center rounded border px-2 py-0.5 font-mono text-[11px] font-semibold motion-safe:transition-colors"
               >
                 Use {UnitConverter.format(flapDepthEval.minRecommendedMm, params.unit)}
               </button>
@@ -805,7 +809,7 @@ export function SidebarControls({
       {(validation.errors.length > 0 || validation.warnings.length > 0) && (
         <div
           role="status"
-          className="space-y-1 rounded-md border border-amber-600/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200"
+          className="status-warning-surface space-y-1 rounded-md border p-2.5 text-xs font-medium"
         >
           {[...validation.errors, ...validation.warnings].map((msg) => (
             <p key={msg} className="flex items-start gap-1.5">

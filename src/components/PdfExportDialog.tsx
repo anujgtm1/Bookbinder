@@ -1070,14 +1070,14 @@ export function PdfExportDialog({
               {showDetachFlapsCallout && detachedSlipFit && onDetachSlipFlaps && (
                 <div
                   data-testid="pdf-detach-flaps-callout"
-                  className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-emerald-700/35 bg-emerald-600/10 px-3.5 py-2.5 text-xs"
+                  className="status-success-surface flex flex-wrap items-center justify-between gap-2.5 rounded-lg border px-3.5 py-2.5 text-xs"
                 >
                   <div className="min-w-0 flex-1 space-y-0.5">
-                    <p className="flex items-center gap-1.5 font-semibold text-emerald-950 dark:text-emerald-200">
-                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+                    <p className="flex items-center gap-1.5 font-semibold">
+                      <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                       Zero-seam home print available on 1× {activeMediaSpec.shortLabel}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[11px] opacity-90">
                       Detach side flaps into Sheet 2 inner pockets so the seamless{' '}
                       <span className="font-mono">
                         {UnitConverter.formatDimensions(
@@ -1483,12 +1483,12 @@ export function PdfExportDialog({
 
               {/* Include Detached Pockets (Page 2) for 2-Sheet Slip Cover */}
               {isOuterTarget && effectiveSplitMode === 'single' && isSeparateSlipCover && (
-                <div className="flex items-center justify-between gap-3 rounded-md border border-emerald-700/30 bg-emerald-600/8 px-3 py-2">
+                <div className="status-success-surface flex items-center justify-between gap-3 rounded-md border px-3 py-2">
                   <div className="space-y-0.5">
-                    <Label htmlFor={appendPocketsSwitchId} className="text-xs">
+                    <Label htmlFor={appendPocketsSwitchId} className="text-xs text-current">
                       Include Detached Pockets (Page 2)
                     </Label>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-[11px] opacity-90">
                       Appends {detachedInnerPlan.pageCount}{' '}
                       {detachedInnerPlan.pageCount === 1 ? 'page' : 'pages'} of detached
                       fore-edge pockets ({PAGE_SIZES[resolvedInnerPageSizeId].shortLabel}).

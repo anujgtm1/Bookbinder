@@ -403,7 +403,7 @@ export function CricutExportDialog({
             </div>
 
             {!hasAnyDesign && (
-              <p className="rounded-md border border-amber-600/35 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-800 dark:text-amber-300">
+              <p className="status-warning-surface rounded-md border px-2.5 py-2 text-[11px] font-medium">
                 Add Spine Typography, Front/Back Cover Text, or a Classic Design ornament to export
                 outlined HTV cut paths — or export the alignment &amp; outer cut outline for bookcloth.
               </p>
