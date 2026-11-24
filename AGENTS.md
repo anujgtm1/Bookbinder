@@ -9,7 +9,21 @@ For user docs see [`README.md`](./README.md); for module layout & scripts see [`
 
 - **Branching:** Work on `develop` only. Direct pushes to `main` are blocked by repository rules — changes ship to `main` via PR (`develop` → `main`).
 - **Live Production URL:** `https://anujgtm.com/Bookbinder/` (deployed via `.github/workflows/deploy.yml` with `VITE_BASE_PATH=/Bookbinder/`).
-- **Small Atomic Commits:** Always split multi-file changes into focused, standalone green commits using Conventional Commit prefixes (`feat(core):`, `feat(ui):`, `refactor(studio):`, `fix(studio):`, `test(e2e):`, `docs(readme):`). Keep docs/spec commits independent from code commits when practical.
+- **Tiny, Separated Commits (Law of Small Atomic Commits):**
+  - Keep commits tiny, focused, and independently green — never bundle mixed concerns into one commit.
+  - Separate different types of changes into distinct commits using Conventional Commit prefixes:
+    - Types & domain models (`feat(types):`)
+    - Core geometry / business logic (`feat(core):`)
+    - Exporters & renderers (`feat(exporters):`)
+    - UI components (`feat(ui):` / `feat(studio):`)
+    - Pure refactors (`refactor(...):`) — never mix behavior changes with structural refactors
+    - Unit & E2E tests (`test(unit):`, `test(e2e):`)
+    - Docs, specs & screenshots (`docs(readme):`, `docs(spec):`, `docs(screenshots):`)
+- **Periodic Big-Picture Refactor Cadence (Every ~5–10 Commits):**
+  - After every ~5–10 feature commits, pause and review the architecture holistically — not just file-by-file:
+    - If a recent feature was awkward or touched too many files to add, treat that as a design smell and refactor toward a cleaner pattern (e.g., Strategy/Registry, shared lib, or Geometry IR).
+    - Check whether modules should be split or combined, extract shared utilities into `src/lib/`, and pull static data/assets/magic strings out into `src/resources/`.
+    - Audit end-to-end user-flow test coverage (`e2e/` + Vitest) and close any gaps before starting the next feature wave.
 - **Verification Gate:** Before pushing feature or refactor work, run:
   ```bash
   pnpm typecheck && pnpm lint && pnpm test && pnpm build
