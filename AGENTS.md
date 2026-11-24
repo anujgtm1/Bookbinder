@@ -24,16 +24,17 @@ For user docs see [`README.md`](./README.md); for module layout & scripts see [`
     - If a recent feature was awkward or touched too many files to add, treat that as a design smell and refactor toward a cleaner pattern (e.g., Strategy/Registry, shared lib, or Geometry IR).
     - Check whether modules should be split or combined, extract shared utilities into `src/lib/`, and pull static data/assets/magic strings out into `src/resources/`.
     - Audit end-to-end user-flow test coverage (`e2e/` + Vitest) and close any gaps before starting the next feature wave.
-- **Subagent Delegation Workflow (Git Worktrees + Branch Review):**
-  - Keep the main conversation lean by acting as an orchestrator: delegate multi-file features, architecture refactors, broad codebase audits, and test-hardening passes to focused subagents with tight, explicit file scopes.
-  - Launch each subagent in its own isolated git worktree (`Workspace: 'share'`) on a dedicated short-lived branch created off `develop` (e.g., `subagent/<topic>`). Parallel subagents should still target disjoint file scopes so merges stay conflict-free.
-  - Inside its worktree branch, each subagent runs verification (`pnpm typecheck && pnpm lint && pnpm test`) and splits its own work into tiny, separated Conventional Commits (`feat(...)`, `refactor(...)`, `test(unit):`, etc.) before reporting back.
-  - When control returns to the main agent, review the subagent's commits and diff (`git log --stat develop..subagent/<topic>` and `git diff develop..subagent/<topic>`):
-    - If everything makes sense and meets architectural guardrails, integrate the branch into `develop` (prefer linear rebase/fast-forward or clean cherry-pick/merge), delete the temporary `subagent/*` branch, run the integrated Verification Gate (`typecheck`, `lint`, `test`, `build`, and Playwright E2E), and push `develop`.
-    - If a branch is off-spec, bloated, or introduces regressions, discard the branch cleanly (`git branch -D subagent/<topic>`) and relaunch a fresh subagent with sharper context instead of patching bad output onto `develop`.
-  - **Size & Separation Threshold:** Handle tiny fixes (`≤ 30 lines`) directly; delegate anything larger than ~30 lines to a single-purpose subagent worktree (do not combine unrelated tasks into one subagent).
-  - **Bug Root-Cause Investigation:** Delegate non-trivial bug diagnosis and codebase root-cause tracing to a dedicated subagent (e.g. `research`) so investigation logs and file reads stay out of the main orchestrator's context window.
-  - **Visual Sign-Off Gate for Major UI Changes:** For any large UI, theme, or layout overhaul, **never** merge the subagent worktree branch into `develop` until after visually verifying it and starting a live local preview server from that worktree so the user can inspect and approve it first.
+- **Subagent Delegation Workflow (Second-in-Command Orchestrator + Git Worktrees):**
+  - Treat the main conversation as a lean **Second-in-Command Orchestrator** holding the big picture and user alignment — preserve main context window aggressively by delegating almost all file-heavy work to small, single-purpose subagents:
+    - **Investigate / Diagnose:** Delegate bug root-cause tracing and broad codebase exploration to a `research` subagent returning a concise brief.
+    - **Implement:** Launch each feature/refactor/fix (`> 30 lines`) in its own isolated git worktree (`.worktrees/<topic>`, branch `subagent/<topic>` off `develop`). Never combine unrelated tasks into one subagent.
+    - **Independent Checker / Verifier:** Before the main orchestrator reads large diffs or raw test logs, delegate branch review (diff audit against `AGENTS.md` guardrails, `typecheck`/`lint`/`test`/`build`/Playwright E2E, and visual screenshot verification) to a fresh checker subagent that returns a concise pass/fail verdict.
+  - Inside its worktree branch, each implementation subagent runs verification (`pnpm typecheck && pnpm lint && pnpm test`) and splits its work into tiny, separated Conventional Commits (`feat(...)`, `refactor(...)`, `test(unit):`, etc.).
+  - When the checker clears a branch:
+    - **Non-UI / Bugfix / Test branches:** Merge/cherry-pick cleanly into `develop`, delete the temporary worktree & `subagent/*` branch, and push `develop`.
+    - **Major UI / Theme / Layout Overhauls (Visual Sign-Off Gate):** **Never** merge into `develop` until after visually verifying and starting a live local preview server from that worktree so the user can inspect and approve it first.
+  - If a branch is off-spec, bloated, or fails checker review, discard it cleanly (`git worktree remove --force .worktrees/<topic> && git branch -D subagent/<topic>`) and relaunch a fresh subagent with sharper context.
+  - **Tiny Fixes (`≤ 30 lines`):** Small, localized edits (`≤ 30 lines`) may be handled directly without delegation overhead.
 - **Verification Gate:** Before pushing feature or refactor work, run:
   ```bash
   pnpm typecheck && pnpm lint && pnpm test && pnpm build
