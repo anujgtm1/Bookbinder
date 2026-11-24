@@ -298,6 +298,73 @@ describe('CanvasSelectionBar', () => {
     fireEvent.keyDown(lastBtn, { key: 'Home' });
     expect(document.activeElement).toBe(firstBtn);
   });
+
+  it('displays aria-pressed on active pin buttons, shows Unpin button, and detaches on re-click or Unpin click', async () => {
+    const user = userEvent.setup();
+    const callbacks = createCallbacks();
+    const onFitMargin = vi.fn();
+    const onDetachConstraint = vi.fn();
+
+    const pinnedFrame = makeOrnamentLayer({
+      presetId: 'frame-double-rule',
+      layoutConstraint: {
+        anchorZone: 'front',
+        horizontal: { kind: 'inset-both', marginMm: 12 },
+        vertical: { kind: 'inset-both', marginMm: 12 },
+      },
+    });
+
+    const { rerender } = render(
+      <CanvasSelectionBar
+        selection={{ kind: 'ornament', layer: pinnedFrame }}
+        onFitMargin={onFitMargin}
+        onDetachConstraint={onDetachConstraint}
+        {...callbacks}
+      />,
+    );
+
+    expect(screen.getByTestId('selection-margin-6')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-margin-12')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('selection-margin-18')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-align-center')).toHaveAttribute('aria-pressed', 'false');
+
+    const unpinBtn = screen.getByTestId('selection-bar-unpin-btn');
+    expect(unpinBtn).toBeInTheDocument();
+    expect(unpinBtn).not.toHaveAttribute('aria-pressed');
+
+    // Clicking already-pinned 12 mm toggles/detaches via onDetachConstraint
+    await user.click(screen.getByTestId('selection-margin-12'));
+    expect(onDetachConstraint).toHaveBeenCalledTimes(1);
+    expect(onFitMargin).not.toHaveBeenCalled();
+
+    // Clicking Unpin also detaches
+    await user.click(unpinBtn);
+    expect(onDetachConstraint).toHaveBeenCalledTimes(2);
+
+    // Pinned text layer shows active Center toggle & Unpin button
+    const pinnedText = makeTextLayer({
+      layoutConstraint: {
+        anchorZone: 'front',
+        horizontal: { kind: 'center' },
+        vertical: { kind: 'center' },
+      },
+    });
+    rerender(
+      <CanvasSelectionBar
+        selection={{ kind: 'text', layer: pinnedText }}
+        onDetachConstraint={onDetachConstraint}
+        {...callbacks}
+      />,
+    );
+    expect(screen.getByTestId('selection-align-upper')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-align-center')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('selection-align-lower')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-bar-unpin-btn')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('selection-align-center'));
+    expect(onDetachConstraint).toHaveBeenCalledTimes(3);
+    expect(callbacks.onQuickAlign).not.toHaveBeenCalled();
+  });
 });
 
 describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · Bottom ⅓ alignment', () => {
