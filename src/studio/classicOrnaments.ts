@@ -1,9 +1,11 @@
 import { fmtMm } from '@/lib/svgFormat';
 import {
   CLASSIC_ORNAMENTS,
+  ORNAMENT_STYLE_FILTERS,
   getStaticOrnamentStamp,
   isStaticOrnamentId,
   type ClassicOrnamentSpec,
+  type OrnamentStyleFilterSpec,
 } from '@/resources/ornaments';
 import type { ClassicOrnamentId, CoverOrnamentLayer } from '@/types/coverElements';
 import { normalizeQuarterTurn, type QuarterTurnDeg } from '@/types/studioLayer';
@@ -13,7 +15,12 @@ import {
 } from './ornaments/parametricGenerators';
 import { mapNormalizedPathsToMm } from './svgStampParser';
 
-export { CLASSIC_ORNAMENTS, type ClassicOrnamentSpec };
+export {
+  CLASSIC_ORNAMENTS,
+  ORNAMENT_STYLE_FILTERS,
+  type ClassicOrnamentSpec,
+  type OrnamentStyleFilterSpec,
+};
 
 export function getClassicOrnamentSpec(id: ClassicOrnamentId): ClassicOrnamentSpec {
   if (id === 'custom-svg') {
@@ -21,6 +28,7 @@ export function getClassicOrnamentSpec(id: ClassicOrnamentId): ClassicOrnamentSp
       id: 'custom-svg',
       label: 'Custom SVG Stamp',
       category: 'emblems',
+      styleTag: 'classic',
       defaultZone: 'front',
       description: 'User-imported vector SVG stamp',
     };
