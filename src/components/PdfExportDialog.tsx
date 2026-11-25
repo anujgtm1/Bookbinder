@@ -1,4 +1,6 @@
 import {
+  BookOpen,
+  Check,
   ChevronDown,
   ChevronRight,
   Download,
@@ -23,7 +25,10 @@ import { evaluateDetachedSlipCoverFit, resolveBindingStrategy } from '@/core/bin
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import { generateMarginTestSheetPdf } from '@/core/marginTestSheetPdf';
 import { planInnerTemplateLayout } from '@/core/pdfExport';
-import type { RollNestingExportOptions } from '@/core/pdfSheetLayout';
+import type {
+  RollNestingExportOptions,
+  SheetNestingExportOptions,
+} from '@/core/pdfSheetLayout';
 import {
   CUSTOM_ROLL_WIDTH_BOUNDS,
   DEFAULT_PRINTER_MARGINS,
@@ -45,6 +50,12 @@ import {
   type RollNestItem,
   type RollNestPlan,
 } from '@/core/rollNesting';
+import {
+  evaluateSingleItemSheetCapacity,
+  packItemsOntoSheets,
+  type SheetNestItem,
+  type SheetNestPlan,
+} from '@/core/sheetNesting';
 import { triggerBytesDownload } from '@/core/storage';
 import type { CoverPdfLayerMode } from '@/studio/renderEngine';
 import {
@@ -57,7 +68,13 @@ import {
   type SplitMode,
 } from '@/types/bookParams';
 import type { CaseGeometry, PrintMediaFitEvaluation } from '@/types/geometry';
+import {
+  isSavedProjectQueueEntry,
+  isUploadedPdfQueueEntry,
+  type MultiBookQueueEntry,
+} from '@/types/multiBookExport';
 import { PdfGuideOptionsModel, type PdfGuideTargetKind } from '@/types/pdfGuides';
+import type { ProjectId, SavedProjectSummary } from '@/types/projectLibrary';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export type PdfExportTarget =
@@ -85,6 +102,8 @@ export interface PdfExportSelection {
   readonly customRollWidthMm?: number;
   readonly printerMargins?: PrinterMargins;
   readonly rollNesting?: RollNestingExportOptions;
+  readonly sheetNesting?: SheetNestingExportOptions;
+  readonly multiBookQueueEntries?: readonly MultiBookQueueEntry[];
 }
 
 export interface OuterPdfExportOptions {
@@ -100,6 +119,8 @@ export interface OuterPdfExportOptions {
   readonly customRollWidthMm?: number;
   readonly printerMargins?: PrinterMargins;
   readonly rollNesting?: RollNestingExportOptions;
+  readonly sheetNesting?: SheetNestingExportOptions;
+  readonly multiBookQueueEntries?: readonly MultiBookQueueEntry[];
 }
 
 export interface InnerPdfExportOptions {
@@ -132,18 +153,13 @@ export interface PdfExportDialogProps {
   readonly defaultIncludeGuides?: boolean;
   readonly defaultIncludeLegend?: boolean;
   readonly defaultExportLayerMode?: CoverPdfLayerMode;
+  readonly savedBookSummaries?: readonly SavedProjectSummary[];
+  readonly activeProjectId?: ProjectId | null;
+  readonly activeBookName?: string;
+  readonly exportProgressLabel?: string | null;
   readonly exporting?: boolean;
   readonly onConfirmExport: (selection: PdfExportSelection) => void | Promise<void>;
   readonly onClose: () => void;
-}
-
-interface GangQueueEntry {
-  readonly id: string;
-  readonly label: string;
-  readonly pdfBytes: Uint8Array;
-  readonly widthMm: number;
-  readonly heightMm: number;
-  readonly copies: number;
 }
 
 const PRIMARY_OUTER_MEDIA_IDS: readonly PrintMediaId[] = [
@@ -224,6 +240,10 @@ export function PdfExportDialog({
   defaultIncludeGuides,
   defaultIncludeLegend = false,
   defaultExportLayerMode = 'full',
+  savedBookSummaries,
+  activeProjectId = null,
+  activeBookName,
+  exportProgressLabel = null,
   exporting = false,
   onConfirmExport,
   onClose,
@@ -302,14 +322,20 @@ export function PdfExportDialog({
   );
   const [customRollFocused, setCustomRollFocused] = useState(false);
 
-  // Wide-format roll nesting & multi-book gang-sheet queue state
-  const [rollNestingEnabled, setRollNestingEnabled] = useState(false);
-  const [rollCopies, setRollCopies] = useState(2);
-  const [rollGutterMm, setRollGutterMm] = useState<number>(10);
-  const [rollAllowRotation, setRollAllowRotation] = useState(true);
-  const [rollPackInnerPockets, setRollPackInnerPockets] = useState(false);
-  const [gangQueue, setGangQueue] = useState<readonly GangQueueEntry[]>([]);
+  // Multi-book cut-sheet & wide-format roll nesting queue state
+  const [multiCoverEnabled, setMultiCoverEnabled] = useState(false);
+  const [coverCopies, setCoverCopies] = useState(2);
+  const [nestGutterMm, setNestGutterMm] = useState<number>(10);
+  const [allowNestRotation, setAllowNestRotation] = useState(true);
+  const [packInnerPockets, setPackInnerPockets] = useState(false);
+  const [multiBookQueue, setMultiBookQueue] = useState<readonly MultiBookQueueEntry[]>([]);
   const [gangUploadError, setGangUploadError] = useState<string | null>(null);
+  const userEditedCopiesRef = useRef(false);
+
+  const setUserCoverCopies = useCallback((nextCopies: number) => {
+    userEditedCopiesRef.current = true;
+    setCoverCopies(nextCopies);
+  }, []);
 
   useEffect(() => {
     if (!customRollFocused) {
@@ -334,21 +360,29 @@ export function PdfExportDialog({
   }, []);
 
   const isOuterTarget = target === 'cover-styled' || target === 'outer-blueprint';
-  const isRollSelected = ROLL_MEDIA_OPTIONS.some((opt) => opt.id === printMediaId);
+  const activeMediaSpec = getPrintMediaSpec(printMediaId);
+  const isRollSelected = activeMediaSpec.kind === 'roll';
+  const isSheetSelected = activeMediaSpec.kind === 'sheet';
   const bindingStrategy = resolveBindingStrategy(geometry);
   const isSeparateSlipCover =
-    geometry.bindingStyle === 'softcover-jacket' && geometry.softcoverPocketMode === 'separate';
+    !bindingStrategy.capabilities.usesChipboard && bindingStrategy.capabilities.usesInnerPockets;
   const effectiveSplitMode: SplitMode = bindingStrategy.capabilities.supportsThreePieceSplit
     ? splitMode
     : 'single';
-  const isRollNestingActive =
-    isOuterTarget && effectiveSplitMode === 'single' && isRollSelected && rollNestingEnabled;
+  const supportsMultiCover =
+    isOuterTarget &&
+    effectiveSplitMode === 'single' &&
+    printMediaId !== 'exact-auto' &&
+    (isSheetSelected || isRollSelected);
+  const isRollNestingActive = supportsMultiCover && isRollSelected && multiCoverEnabled;
+  const isSheetNestingActive = supportsMultiCover && isSheetSelected && multiCoverEnabled;
+  const isMultiCoverActive = isRollNestingActive || isSheetNestingActive;
   const effectiveAppendPockets =
     isOuterTarget &&
     effectiveSplitMode === 'single' &&
     isSeparateSlipCover &&
     appendInnerPocketsPage &&
-    !(isRollNestingActive && rollPackInnerPockets);
+    !(isMultiCoverActive && packInnerPockets);
 
   const requestClose = useCallback(() => {
     const dialog = dialogRef.current;
@@ -374,6 +408,7 @@ export function PdfExportDialog({
 
     if (open) {
       if (didOpenOrSwitchTarget) {
+        userEditedCopiesRef.current = false;
         setIncludeCutLines(resolvedDefaultGuides.includeCutLines);
         setIncludeFoldLines(resolvedDefaultGuides.includeFoldLines);
         setIncludeFoldGuideTicks(resolvedDefaultGuides.includeFoldGuideTicks);
@@ -385,6 +420,17 @@ export function PdfExportDialog({
             ? clampCustomRollWidthMm(propCustomRollWidthMm)
             : loadSavedCustomRollWidthMm(),
         );
+        setMultiBookQueue((prev) => {
+          const validIds = savedBookSummaries
+            ? new Set(savedBookSummaries.map((s) => s.id))
+            : null;
+          return prev.filter((entry) => {
+            if (!isSavedProjectQueueEntry(entry)) return true;
+            if (entry.projectId === activeProjectId) return false;
+            if (validIds && !validIds.has(entry.projectId)) return false;
+            return true;
+          });
+        });
       }
       setExportLayerMode(defaultExportLayerMode);
       if (!dialog.open) {
@@ -408,6 +454,8 @@ export function PdfExportDialog({
     defaultIncludeLegend,
     defaultExportLayerMode,
     propCustomRollWidthMm,
+    activeProjectId,
+    savedBookSummaries,
   ]);
 
   // Light-dismiss fallback for browsers without native HTMLDialogElement closedby support
@@ -476,7 +524,6 @@ export function PdfExportDialog({
     [outerFitsByMedia, printMediaId, wrapW, wrapH, tileOverlapMm, fitOptions],
   );
 
-  const activeMediaSpec = getPrintMediaSpec(printMediaId);
   const activeRollWidthMm = useMemo(() => {
     if (printMediaId === 'roll-custom') return effectiveCustomRollWidthMm;
     return activeMediaSpec.rollWidthMm ?? effectiveCustomRollWidthMm;
@@ -484,6 +531,7 @@ export function PdfExportDialog({
 
   const rollSideMarginMm = Math.max(printerMargins.leftMm, printerMargins.rightMm);
   const rollLeadingMarginMm = Math.max(printerMargins.topMm, printerMargins.bottomMm);
+  const currentCoverLabel = activeBookName?.trim() || 'Current Cover';
 
   const rollCapacity = useMemo(
     () =>
@@ -492,29 +540,56 @@ export function PdfExportDialog({
         coverPdfH,
         activeRollWidthMm,
         rollSideMarginMm,
-        rollGutterMm,
+        nestGutterMm,
       ),
-    [coverPdfW, coverPdfH, activeRollWidthMm, rollSideMarginMm, rollGutterMm],
+    [coverPdfW, coverPdfH, activeRollWidthMm, rollSideMarginMm, nestGutterMm],
   );
 
-  const effectiveMaxAcross = rollAllowRotation
+  const effectiveMaxAcross = allowNestRotation
     ? rollCapacity.recommendedMaxAcross
     : rollCapacity.maxAcrossUnrotated;
 
-  const rollNestPlan: RollNestPlan | null = useMemo(() => {
-    if (!isRollNestingActive) return null;
-    const items: RollNestItem[] = [
+  const sheetCapacity = useMemo(
+    () =>
+      evaluateSingleItemSheetCapacity(
+        coverPdfW,
+        coverPdfH,
+        printMediaId,
+        printerMargins,
+        nestGutterMm,
+        allowNestRotation,
+      ),
+    [coverPdfW, coverPdfH, printMediaId, printerMargins, nestGutterMm, allowNestRotation],
+  );
+
+  const otherSavedBooks = useMemo(
+    () => (savedBookSummaries ?? []).filter((summary) => summary.id !== activeProjectId),
+    [savedBookSummaries, activeProjectId],
+  );
+
+  const queuedProjectIds = useMemo(() => {
+    const ids = new Set<ProjectId>();
+    for (const entry of multiBookQueue) {
+      if (isSavedProjectQueueEntry(entry)) {
+        ids.add(entry.projectId);
+      }
+    }
+    return ids;
+  }, [multiBookQueue]);
+
+  const nestedItemsList = useMemo<readonly SheetNestItem[]>(() => {
+    const safeCopies = Math.max(1, Math.floor(coverCopies));
+    const items: SheetNestItem[] = [
       {
         id: 'current-cover',
-        label: 'Cover',
+        label: currentCoverLabel,
         widthMm: coverPdfW,
         heightMm: coverPdfH,
-        copies: Math.max(1, Math.floor(rollCopies)),
+        copies: safeCopies,
       },
     ];
 
-    if (rollPackInnerPockets && bindingStrategy.capabilities.usesInnerPockets) {
-      const safeCopies = Math.max(1, Math.floor(rollCopies));
+    if (packInnerPockets && bindingStrategy.capabilities.usesInnerPockets) {
       items.push(
         {
           id: 'inner-back-pocket',
@@ -542,7 +617,7 @@ export function PdfExportDialog({
       }
     }
 
-    for (const entry of gangQueue) {
+    for (const entry of multiBookQueue) {
       if (entry.copies > 0) {
         items.push({
           id: entry.id,
@@ -554,30 +629,64 @@ export function PdfExportDialog({
       }
     }
 
-    return packItemsOntoRoll(items, {
-      rollWidthMm: activeRollWidthMm,
-      sideMarginMm: rollSideMarginMm,
-      leadingMarginMm: rollLeadingMarginMm,
-      gutterMm: rollGutterMm,
-      allowRotation: rollAllowRotation,
-    });
+    return items;
   }, [
-    isRollNestingActive,
+    coverCopies,
+    currentCoverLabel,
     coverPdfW,
     coverPdfH,
-    rollCopies,
-    rollPackInnerPockets,
+    packInnerPockets,
     bindingStrategy.capabilities.usesInnerPockets,
     bindingStrategy.capabilities.usesChipboard,
     geometry.backPocket,
     geometry.frontPocket,
     geometry.spineLiner,
-    gangQueue,
+    multiBookQueue,
+  ]);
+
+  const sheetNestItemLabels = useMemo<ReadonlyMap<string, string>>(() => {
+    const map = new Map<string, string>();
+    for (const item of nestedItemsList) {
+      map.set(item.id, item.label);
+    }
+    return map;
+  }, [nestedItemsList]);
+
+  const rollNestPlan: RollNestPlan | null = useMemo(() => {
+    if (!isRollNestingActive) return null;
+    const rollItems: readonly RollNestItem[] = nestedItemsList;
+    return packItemsOntoRoll(rollItems, {
+      rollWidthMm: activeRollWidthMm,
+      sideMarginMm: rollSideMarginMm,
+      leadingMarginMm: rollLeadingMarginMm,
+      gutterMm: nestGutterMm,
+      allowRotation: allowNestRotation,
+    });
+  }, [
+    isRollNestingActive,
+    nestedItemsList,
     activeRollWidthMm,
     rollSideMarginMm,
     rollLeadingMarginMm,
-    rollGutterMm,
-    rollAllowRotation,
+    nestGutterMm,
+    allowNestRotation,
+  ]);
+
+  const sheetNestPlan: SheetNestPlan | null = useMemo(() => {
+    if (!isSheetNestingActive) return null;
+    return packItemsOntoSheets(nestedItemsList, {
+      mediaId: printMediaId,
+      printerMargins,
+      gutterMm: nestGutterMm,
+      allowRotation: allowNestRotation,
+    });
+  }, [
+    isSheetNestingActive,
+    nestedItemsList,
+    printMediaId,
+    printerMargins,
+    nestGutterMm,
+    allowNestRotation,
   ]);
 
   const rollDisplayName = useMemo(() => {
@@ -629,6 +738,7 @@ export function PdfExportDialog({
   const showDetachFlapsCallout =
     isOuterTarget &&
     effectiveSplitMode === 'single' &&
+    !isSheetNestingActive &&
     Boolean(onDetachSlipFlaps) &&
     (activeFit.status === 'fits-2-sheet-tile' || activeFit.status === 'does-not-fit') &&
     Boolean(detachedSlipFit?.fitsSingleSheet);
@@ -637,8 +747,11 @@ export function PdfExportDialog({
     isOuterTarget &&
     effectiveSplitMode === 'single' &&
     printMediaId !== 'exact-auto' &&
-    activeFit.status === 'does-not-fit' &&
-    !(isRollNestingActive && (rollNestPlan?.placements.length ?? 0) > 0);
+    (isSheetNestingActive
+      ? (sheetNestPlan?.totalPlacedCount ?? 0) === 0
+      : isRollNestingActive
+        ? (rollNestPlan?.placements.length ?? 0) === 0
+        : activeFit.status === 'does-not-fit');
   const isBusy = Boolean(exporting || isSubmitting);
   const isConfirmDisabled = isBusy || isBlockedUnfitted;
 
@@ -660,11 +773,29 @@ export function PdfExportDialog({
       return `3 pages • 3-Piece Split (Back, Spine, Front)${dpiSuffix}`;
     }
     if (isRollNestingActive && rollNestPlan) {
+      if (rollNestPlan.placements.length === 0) {
+        return `Selected covers exceed ${rollDisplayName} — choose a wider roll`;
+      }
       const rollLabel =
         printMediaId === 'roll-custom'
           ? `Custom Roll (${roundTo(effectiveCustomRollWidthMm, 0)} mm)`
           : activeMediaSpec.shortLabel;
       return `1 roll strip • ${rollLabel} • ${rollNestPlan.placements.length} pcs • ${Math.round(rollNestPlan.usedLengthMm)} mm (${rollNestPlan.efficiencyPct}%)${dpiSuffix}`;
+    }
+    if (isSheetNestingActive && sheetNestPlan) {
+      if (sheetNestPlan.totalPlacedCount === 0) {
+        return `Selected covers exceed ${activeMediaSpec.label} — choose Tabloid or a wide roll`;
+      }
+      const sheetCount = sheetNestPlan.pages.length;
+      const sheetWord = sheetCount === 1 ? 'sheet' : 'sheets';
+      const coverWord = sheetNestPlan.totalPlacedCount === 1 ? 'cover' : 'covers';
+      const orient = sheetNestPlan.orientation === 'landscape' ? 'Landscape' : 'Portrait';
+      const unplacedNote =
+        sheetNestPlan.unplacedIds.length > 0
+          ? ` • ${sheetNestPlan.unplacedIds.length} too large`
+          : '';
+      const pocketsSuffix = effectiveAppendPockets ? ' + Pockets' : '';
+      return `${sheetCount} ${sheetWord} • ${activeMediaSpec.shortLabel} ${orient} • ${sheetNestPlan.totalPlacedCount} ${coverWord} • ${sheetNestPlan.overallEfficiencyPct}% used${unplacedNote}${pocketsSuffix}${dpiSuffix}`;
     }
     if (isBlockedUnfitted) {
       const label =
@@ -710,6 +841,9 @@ export function PdfExportDialog({
     effectiveSplitMode,
     isRollNestingActive,
     rollNestPlan,
+    rollDisplayName,
+    isSheetNestingActive,
+    sheetNestPlan,
     effectiveCustomRollWidthMm,
     isBlockedUnfitted,
     activeMediaSpec,
@@ -782,10 +916,33 @@ export function PdfExportDialog({
     });
   };
 
+  const handleAddSavedBook = useCallback((summary: SavedProjectSummary) => {
+    setMultiBookQueue((prev) => {
+      if (prev.some((entry) => isSavedProjectQueueEntry(entry) && entry.projectId === summary.id)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          kind: 'saved-project',
+          id: `saved-${summary.id}`,
+          projectId: summary.id,
+          label: summary.name,
+          widthMm: summary.wrapPdfWidthMm,
+          heightMm: summary.wrapPdfHeightMm,
+          copies: 1,
+        },
+      ];
+    });
+    if (!userEditedCopiesRef.current) {
+      setCoverCopies(1);
+    }
+  }, []);
+
   const handleGangUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setGangUploadError(null);
-    const added: GangQueueEntry[] = [];
+    const added: MultiBookQueueEntry[] = [];
     let failedCount = 0;
 
     for (const file of Array.from(fileList)) {
@@ -801,6 +958,7 @@ export function PdfExportDialog({
         const heightMm = roundTo(UnitConverter.pointsToMm(sz.height), 1);
         const cleanLabel = file.name.replace(/\.pdf$/i, '') || 'Book PDF';
         added.push({
+          kind: 'uploaded-pdf',
           id: `gang-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           label: cleanLabel,
           pdfBytes: bytes,
@@ -814,7 +972,10 @@ export function PdfExportDialog({
     }
 
     if (added.length > 0) {
-      setGangQueue((prev) => [...prev, ...added]);
+      setMultiBookQueue((prev) => [...prev, ...added]);
+      if (!userEditedCopiesRef.current) {
+        setCoverCopies(1);
+      }
     }
     if (failedCount > 0) {
       setGangUploadError(
@@ -825,6 +986,20 @@ export function PdfExportDialog({
 
   const handleConfirm = async () => {
     if (isConfirmDisabled) return;
+    const uploadedExtraItems = multiBookQueue.filter(isUploadedPdfQueueEntry).map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      pdfBytes: entry.pdfBytes,
+      copies: entry.copies,
+    }));
+    const sharedNestConfig = {
+      enabled: true,
+      copies: Math.max(1, Math.floor(coverCopies)),
+      gutterMm: nestGutterMm,
+      packInnerPockets: bindingStrategy.capabilities.usesInnerPockets && packInnerPockets,
+      allowRotation: allowNestRotation,
+      ...(uploadedExtraItems.length > 0 ? { extraQueueItems: uploadedExtraItems } : {}),
+    };
     const selection: PdfExportSelection = {
       target,
       printMediaId,
@@ -844,27 +1019,10 @@ export function PdfExportDialog({
         ? { customRollWidthMm: effectiveCustomRollWidthMm }
         : {}),
       ...(!isDefaultMargins ? { printerMargins } : {}),
-      ...(isRollNestingActive
-        ? {
-            rollNesting: {
-              enabled: true,
-              copies: Math.max(1, Math.floor(rollCopies)),
-              gutterMm: rollGutterMm,
-              packInnerPockets:
-                bindingStrategy.capabilities.usesInnerPockets && rollPackInnerPockets,
-              allowRotation: rollAllowRotation,
-              ...(gangQueue.length > 0
-                ? {
-                    extraQueueItems: gangQueue.map((entry) => ({
-                      id: entry.id,
-                      label: entry.label,
-                      pdfBytes: entry.pdfBytes,
-                      copies: entry.copies,
-                    })),
-                  }
-                : {}),
-            },
-          }
+      ...(isRollNestingActive ? { rollNesting: sharedNestConfig } : {}),
+      ...(isSheetNestingActive ? { sheetNesting: sharedNestConfig } : {}),
+      ...(isMultiCoverActive && multiBookQueue.length > 0
+        ? { multiBookQueueEntries: multiBookQueue }
         : {}),
     };
     setIsSubmitting(true);
@@ -881,7 +1039,10 @@ export function PdfExportDialog({
     bindingStrategy.capabilities.supportsThreePieceSplit &&
     Boolean(onChangeSplitMode);
   const showTileOverlapControl =
-    isOuterTarget && effectiveSplitMode === 'single' && activeFit.status === 'fits-2-sheet-tile';
+    isOuterTarget &&
+    effectiveSplitMode === 'single' &&
+    !isSheetNestingActive &&
+    activeFit.status === 'fits-2-sheet-tile';
 
   return (
     <dialog
@@ -1182,87 +1343,127 @@ export function PdfExportDialog({
               printerMargins={printerMargins}
               customRollWidthMm={effectiveCustomRollWidthMm}
               rollNestPlan={rollNestPlan}
+              sheetNestPlan={sheetNestPlan}
+              sheetNestItemLabels={sheetNestItemLabels}
               onChangePrintMedia={onChangePrintMedia}
               onChangeSplitMode={onChangeSplitMode}
               onReduceFlapWidth={onReduceFlapWidth}
             />
 
-            {/* Section 2b: Wide-Format Roll Nesting & Gang-Run Panel */}
-            {isOuterTarget && effectiveSplitMode === 'single' && isRollSelected && (
+            {/* Section 2b: Multi-Cover Layout (Desktop Cut Sheets & Wide-Format Rolls) */}
+            {supportsMultiCover && (
               <div
-                data-testid="pdf-roll-nesting-section"
+                data-testid={isRollSelected ? 'pdf-roll-nesting-section' : 'pdf-sheet-nesting-section'}
+                data-multi-cover-mode={isRollSelected ? 'roll' : 'sheet'}
                 className="flex flex-col gap-3 rounded-lg border border-border bg-secondary/25 p-3.5"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="space-y-0.5">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Label htmlFor={rollNestingSwitchId} className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                        <Layers className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
-                        Enable Multi-Up / Roll Strip
-                      </Label>
-                      <Badge
-                        variant={rollCapacity.recommendedMaxAcross > 0 ? 'success' : 'destructive'}
-                        data-testid="pdf-roll-capacity-badge"
-                        className="rounded-full font-mono text-[10px]"
+                      <Label
+                        htmlFor={rollNestingSwitchId}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-foreground"
                       >
-                        {rollCapacity.recommendedMaxAcross > 0
-                          ? `Fits ${rollCapacity.recommendedMaxAcross} across on ${rollDisplayName} — ${Math.round(rollCapacity.widthUtilizationPct)}% width`
-                          : `Exceeds ${rollDisplayName} width (${roundTo(rollCapacity.printableWidthMm, 0)} mm printable)`}
-                      </Badge>
+                        <Layers className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                        Combine Multiple Covers / Multi-Up
+                      </Label>
+                      {isRollSelected ? (
+                        <Badge
+                          variant={rollCapacity.recommendedMaxAcross > 0 ? 'success' : 'destructive'}
+                          data-testid="pdf-roll-capacity-badge"
+                          className="rounded-full font-mono text-[10px]"
+                        >
+                          {rollCapacity.recommendedMaxAcross > 0
+                            ? `Fits ${rollCapacity.recommendedMaxAcross} across on ${rollDisplayName} — ${Math.round(rollCapacity.widthUtilizationPct)}% width`
+                            : `Exceeds ${rollDisplayName} width (${roundTo(rollCapacity.printableWidthMm, 0)} mm printable)`}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant={sheetCapacity.maxPerSheet > 0 ? 'success' : 'destructive'}
+                          data-testid="pdf-roll-capacity-badge"
+                          className="rounded-full font-mono text-[10px]"
+                        >
+                          {sheetCapacity.maxPerSheet > 0
+                            ? `Fits ${sheetCapacity.maxPerSheet} per ${activeMediaSpec.shortLabel} sheet — ${Math.round(sheetCapacity.utilizationPct)}% area`
+                            : `Exceeds ${activeMediaSpec.shortLabel} printable area (${roundTo(sheetCapacity.printableSafeBox.widthMm, 0)} × ${roundTo(sheetCapacity.printableSafeBox.heightMm, 0)} mm)`}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-[11px] text-muted-foreground">
-                      Nest multiple copies side-by-side or combine other book PDFs into a single roll-width gang strip.
+                      {isRollSelected
+                        ? 'Nest multiple copies side-by-side or combine other books from My Books onto one roll strip.'
+                        : `Print multiple copies or combine different books from My Books on ${activeMediaSpec.shortLabel} sheets.`}
                     </p>
                   </div>
                   <Switch
                     id={rollNestingSwitchId}
                     data-testid="pdf-roll-nesting-toggle"
-                    checked={rollNestingEnabled}
+                    checked={multiCoverEnabled}
                     onCheckedChange={(checked) => {
-                      setRollNestingEnabled(checked);
-                      if (checked && rollCopies < 2 && effectiveMaxAcross >= 2) {
-                        setRollCopies(Math.min(2, effectiveMaxAcross));
+                      setMultiCoverEnabled(checked);
+                      if (checked && !userEditedCopiesRef.current) {
+                        if (multiBookQueue.length > 0) {
+                          setCoverCopies(1);
+                        } else {
+                          const maxFit = isRollSelected
+                            ? effectiveMaxAcross
+                            : sheetCapacity.maxPerSheet;
+                          setCoverCopies(maxFit >= 2 ? 2 : 1);
+                        }
                       }
                     }}
                   />
                 </div>
 
-                {rollNestingEnabled && (
+                {multiCoverEnabled && (
                   <div className="grid gap-2.5 border-t border-border/70 pt-3 sm:grid-cols-2">
                     {/* Copies Selector */}
                     <div className="flex flex-col justify-between gap-1.5 rounded-md border border-border bg-card/80 px-3 py-2">
-                      <span className="text-xs font-medium text-foreground">Copies of Current Cover</span>
+                      <span className="text-xs font-medium text-foreground">
+                        Copies of Current Cover
+                      </span>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Button
                           type="button"
                           size="sm"
-                          variant={rollCopies === 1 ? 'default' : 'outline'}
+                          variant={coverCopies === 1 ? 'default' : 'outline'}
                           data-testid="pdf-roll-copies-1"
                           className="h-7 px-2.5 font-mono text-[11px]"
-                          onClick={() => setRollCopies(1)}
+                          onClick={() => setUserCoverCopies(1)}
                         >
                           1
                         </Button>
                         <Button
                           type="button"
                           size="sm"
-                          variant={rollCopies === 2 ? 'default' : 'outline'}
+                          variant={coverCopies === 2 ? 'default' : 'outline'}
                           data-testid="pdf-roll-copies-2"
                           className="h-7 px-2.5 font-mono text-[11px]"
-                          onClick={() => setRollCopies(2)}
+                          onClick={() => setUserCoverCopies(2)}
                         >
                           2
                         </Button>
-                        {effectiveMaxAcross >= 2 && (
+                        {(isRollSelected ? effectiveMaxAcross : sheetCapacity.maxPerSheet) >= 2 && (
                           <Button
                             type="button"
                             size="sm"
-                            variant={rollCopies === effectiveMaxAcross ? 'default' : 'outline'}
+                            variant={
+                              coverCopies ===
+                              (isRollSelected ? effectiveMaxAcross : sheetCapacity.maxPerSheet)
+                                ? 'default'
+                                : 'outline'
+                            }
                             data-testid="pdf-roll-copies-fill"
                             className="h-7 px-2.5 font-mono text-[11px]"
-                            onClick={() => setRollCopies(effectiveMaxAcross)}
+                            onClick={() =>
+                              setUserCoverCopies(
+                                isRollSelected ? effectiveMaxAcross : sheetCapacity.maxPerSheet,
+                              )
+                            }
                           >
-                            Fill Row ({effectiveMaxAcross})
+                            {isRollSelected
+                              ? `Fill Row (${effectiveMaxAcross})`
+                              : `Fill Sheet (${sheetCapacity.maxPerSheet})`}
                           </Button>
                         )}
                         <Input
@@ -1271,11 +1472,11 @@ export function PdfExportDialog({
                           max={50}
                           aria-label="Custom cover copies"
                           data-testid="pdf-roll-copies-input"
-                          value={rollCopies}
+                          value={coverCopies}
                           onChange={(e) => {
                             const val = Number.parseInt(e.target.value, 10);
                             if (Number.isFinite(val)) {
-                              setRollCopies(Math.max(1, Math.min(50, val)));
+                              setUserCoverCopies(Math.max(1, Math.min(50, val)));
                             }
                           }}
                           className="h-7 w-16 font-mono text-xs"
@@ -1292,11 +1493,11 @@ export function PdfExportDialog({
                             key={mm}
                             type="button"
                             size="sm"
-                            variant={rollGutterMm === mm ? 'default' : 'outline'}
-                            aria-pressed={rollGutterMm === mm}
+                            variant={nestGutterMm === mm ? 'default' : 'outline'}
+                            aria-pressed={nestGutterMm === mm}
                             data-testid={`pdf-roll-gutter-${mm}`}
                             className="h-7 px-2.5 font-mono text-[11px]"
-                            onClick={() => setRollGutterMm(mm)}
+                            onClick={() => setNestGutterMm(mm)}
                           >
                             {mm} mm
                           </Button>
@@ -1311,14 +1512,16 @@ export function PdfExportDialog({
                           Allow 90° Rotation
                         </Label>
                         <p className="text-[11px] text-muted-foreground">
-                          Auto-rotate covers when more copies fit across the roll.
+                          {isRollSelected
+                            ? 'Auto-rotate covers when more copies fit across the roll.'
+                            : 'Auto-rotate covers when more fit onto each sheet.'}
                         </p>
                       </div>
                       <Switch
                         id={rollRotationSwitchId}
                         data-testid="pdf-roll-allow-rotation"
-                        checked={rollAllowRotation}
-                        onCheckedChange={setRollAllowRotation}
+                        checked={allowNestRotation}
+                        onCheckedChange={setAllowNestRotation}
                       />
                     </div>
 
@@ -1330,27 +1533,29 @@ export function PdfExportDialog({
                             Pack Inner Pockets / Endpapers
                           </Label>
                           <p className="text-[11px] text-muted-foreground">
-                            Nest inner pockets &amp; liner right beside the cover on the roll.
+                            {isRollSelected
+                              ? 'Nest inner pockets & liner right beside the cover on the roll.'
+                              : 'Pack inner pockets & liner alongside the cover on the sheet.'}
                           </p>
                         </div>
                         <Switch
                           id={rollPackPocketsSwitchId}
                           data-testid="pdf-roll-pack-pockets"
-                          checked={rollPackInnerPockets}
-                          onCheckedChange={setRollPackInnerPockets}
+                          checked={packInnerPockets}
+                          onCheckedChange={setPackInnerPockets}
                         />
                       </div>
                     )}
 
-                    {/* Gang-Sheet Queue: Add Other Book PDFs */}
-                    <div className="flex flex-col gap-2 rounded-md border border-border bg-card/80 px-3 py-2 sm:col-span-2">
+                    {/* Add from My Books + Add PDF File + Unified Queue */}
+                    <div className="flex flex-col gap-2.5 rounded-md border border-border bg-card/80 px-3 py-2.5 sm:col-span-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="space-y-0.5">
                           <span className="text-xs font-medium text-foreground">
-                            Gang-Sheet Queue (Other Book PDFs)
+                            Add from My Books
                           </span>
                           <p className="text-[11px] text-muted-foreground">
-                            Drop in exported Bookbinder PDFs to print multiple different books on the same roll strip.
+                            Combine saved books from your library or add an Exact Wrap Size PDF.
                           </p>
                         </div>
                         <div>
@@ -1362,14 +1567,14 @@ export function PdfExportDialog({
                             onClick={() => gangUploadInputRef.current?.click()}
                           >
                             <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                            Add Other Book PDFs
+                            Add PDF File
                           </Button>
                           <input
                             ref={gangUploadInputRef}
                             type="file"
                             accept=".pdf,application/pdf"
                             multiple
-                            aria-label="Add other book PDFs to gang sheet"
+                            aria-label="Add external PDF files to multi-cover layout"
                             data-testid="pdf-roll-gang-upload"
                             className="sr-only"
                             onChange={(e) => {
@@ -1380,79 +1585,179 @@ export function PdfExportDialog({
                         </div>
                       </div>
 
+                      {/* Saved Books Picker */}
+                      <div data-testid="pdf-my-books-picker" className="space-y-1.5">
+                        {otherSavedBooks.length === 0 ? (
+                          <p className="rounded border border-dashed border-border/80 bg-secondary/20 px-2.5 py-2 text-[11px] text-muted-foreground">
+                            Save another book in My Books to pick it here, or add an Exact Wrap
+                            Size PDF.
+                          </p>
+                        ) : (
+                          <ul className="grid max-h-40 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
+                            {otherSavedBooks.map((book) => {
+                              const alreadyAdded = queuedProjectIds.has(book.id);
+                              return (
+                                <li
+                                  key={book.id}
+                                  data-testid="pdf-my-books-picker-item"
+                                  data-project-id={book.id}
+                                  className="flex items-center justify-between gap-2 rounded border border-border/80 bg-secondary/25 px-2 py-1.5 text-xs"
+                                >
+                                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                                    <div className="flex h-8 w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-border/70 bg-secondary/60">
+                                      {book.thumbnailDataUrl ? (
+                                        <img
+                                          src={book.thumbnailDataUrl}
+                                          alt=""
+                                          className="h-full w-full object-contain p-0.5"
+                                        />
+                                      ) : (
+                                        <BookOpen
+                                          className="h-3.5 w-3.5 text-brass"
+                                          aria-hidden="true"
+                                        />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div
+                                        className="truncate font-medium text-foreground"
+                                        title={book.name}
+                                      >
+                                        {book.name}
+                                      </div>
+                                      <div className="font-mono text-[10px] text-muted-foreground">
+                                        {UnitConverter.formatDimensions(
+                                          book.wrapPdfWidthMm,
+                                          book.wrapPdfHeightMm,
+                                          unit,
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {alreadyAdded ? (
+                                    <Badge
+                                      variant="success"
+                                      className="shrink-0 gap-1 rounded-full px-2 py-0.5 text-[10px]"
+                                    >
+                                      <Check className="h-2.5 w-2.5" aria-hidden="true" />
+                                      Added
+                                    </Badge>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      data-testid="pdf-add-saved-book"
+                                      data-project-id={book.id}
+                                      aria-label={`Add ${book.name} to print layout`}
+                                      className="h-6 shrink-0 gap-1 px-2 text-[11px]"
+                                      onClick={() => handleAddSavedBook(book)}
+                                    >
+                                      <Plus className="h-3 w-3" aria-hidden="true" />
+                                      Add
+                                    </Button>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+
                       {gangUploadError && (
                         <p className="text-[11px] text-destructive">{gangUploadError}</p>
                       )}
 
-                      {gangQueue.length > 0 && (
-                        <ul className="space-y-1.5" data-testid="pdf-roll-gang-list">
-                          {gangQueue.map((item) => (
-                            <li
-                              key={item.id}
-                              className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/80 bg-secondary/35 px-2.5 py-1.5 text-xs"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <span className="font-medium text-foreground">{item.label}</span>
-                                <span className="ml-2 font-mono text-[10px] text-muted-foreground">
-                                  {item.widthMm} × {item.heightMm} mm
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-6 w-6 p-0 font-mono text-xs"
-                                  aria-label={`Decrease copies for ${item.label}`}
-                                  onClick={() =>
-                                    setGangQueue((prev) =>
-                                      prev.map((q) =>
-                                        q.id === item.id
-                                          ? { ...q, copies: Math.max(1, q.copies - 1) }
-                                          : q,
-                                      ),
-                                    )
-                                  }
-                                >
-                                  −
-                                </Button>
-                                <span className="min-w-5 text-center font-mono text-[11px]">
-                                  {item.copies}×
-                                </span>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-6 w-6 p-0 font-mono text-xs"
-                                  aria-label={`Increase copies for ${item.label}`}
-                                  onClick={() =>
-                                    setGangQueue((prev) =>
-                                      prev.map((q) =>
-                                        q.id === item.id
-                                          ? { ...q, copies: Math.min(50, q.copies + 1) }
-                                          : q,
-                                      ),
-                                    )
-                                  }
-                                >
-                                  +
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                                  aria-label={`Remove ${item.label}`}
-                                  onClick={() =>
-                                    setGangQueue((prev) => prev.filter((q) => q.id !== item.id))
-                                  }
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                </Button>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+                      {multiBookQueue.length > 0 && (
+                        <div className="space-y-1.5 border-t border-border/60 pt-2">
+                          <span className="text-[11px] font-medium text-muted-foreground">
+                            Added Covers ({multiBookQueue.length})
+                          </span>
+                          <ul className="space-y-1.5" data-testid="pdf-roll-gang-list">
+                            {multiBookQueue.map((item) => (
+                              <li
+                                key={item.id}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/80 bg-secondary/35 px-2.5 py-1.5 text-xs"
+                              >
+                                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                                  <Badge
+                                    variant={
+                                      isSavedProjectQueueEntry(item) ? 'brass' : 'outline'
+                                    }
+                                    className="rounded-full px-1.5 py-0 text-[9.5px]"
+                                  >
+                                    {isSavedProjectQueueEntry(item) ? 'My Books' : 'PDF'}
+                                  </Badge>
+                                  <span className="truncate font-medium text-foreground">
+                                    {item.label}
+                                  </span>
+                                  <span className="font-mono text-[10px] text-muted-foreground">
+                                    {UnitConverter.formatDimensions(
+                                      item.widthMm,
+                                      item.heightMm,
+                                      unit,
+                                    )}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 w-6 p-0 font-mono text-xs"
+                                    aria-label={`Decrease copies for ${item.label}`}
+                                    onClick={() =>
+                                      setMultiBookQueue((prev) =>
+                                        prev.map((q) =>
+                                          q.id === item.id
+                                            ? { ...q, copies: Math.max(1, q.copies - 1) }
+                                            : q,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    −
+                                  </Button>
+                                  <span className="min-w-5 text-center font-mono text-[11px]">
+                                    {item.copies}×
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-6 w-6 p-0 font-mono text-xs"
+                                    aria-label={`Increase copies for ${item.label}`}
+                                    onClick={() =>
+                                      setMultiBookQueue((prev) =>
+                                        prev.map((q) =>
+                                          q.id === item.id
+                                            ? { ...q, copies: Math.min(50, q.copies + 1) }
+                                            : q,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    +
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                    aria-label={`Remove ${item.label}`}
+                                    onClick={() =>
+                                      setMultiBookQueue((prev) =>
+                                        prev.filter((q) => q.id !== item.id),
+                                      )
+                                    }
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                  </Button>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1597,15 +1902,18 @@ export function PdfExportDialog({
                       Include Detached Pockets (Page 2)
                     </Label>
                     <p className="text-[11px] opacity-90">
-                      Appends {detachedInnerPlan.pageCount}{' '}
-                      {detachedInnerPlan.pageCount === 1 ? 'page' : 'pages'} of detached
-                      fore-edge pockets ({PAGE_SIZES[resolvedInnerPageSizeId].shortLabel}).
+                      {isMultiCoverActive && packInnerPockets
+                        ? 'Already packed alongside covers in the multi-cover layout.'
+                        : `Appends ${detachedInnerPlan.pageCount} ${
+                            detachedInnerPlan.pageCount === 1 ? 'page' : 'pages'
+                          } of detached fore-edge pockets (${PAGE_SIZES[resolvedInnerPageSizeId].shortLabel}).`}
                     </p>
                   </div>
                   <Switch
                     id={appendPocketsSwitchId}
                     data-testid="pdf-opt-append-pockets"
-                    checked={appendInnerPocketsPage}
+                    disabled={isMultiCoverActive && packInnerPockets}
+                    checked={effectiveAppendPockets}
                     onCheckedChange={setAppendInnerPocketsPage}
                   />
                 </div>
@@ -1871,7 +2179,7 @@ export function PdfExportDialog({
                 onClick={() => void handleConfirm()}
               >
                 <Download className="h-4 w-4" aria-hidden="true" />
-                {isBusy ? 'Generating PDF…' : 'Download PDF'}
+                {isBusy ? (exportProgressLabel || 'Generating PDF…') : 'Download PDF'}
               </Button>
             </div>
           </div>
