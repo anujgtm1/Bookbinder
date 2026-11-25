@@ -139,4 +139,39 @@ describe('generateOuterWrapSvg', () => {
     expect(djSvg).not.toContain('<g id="glue-tabs"');
     expect(djSvg).not.toContain('GLUE BACK');
   });
+
+  it('emits external fold-guide-ticks layer and honors independent cut/fold/tick options in single and 3-piece SVGs', () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    const defaultSvg = generateOuterWrapSvg(geom, 'single');
+    expect(defaultSvg).toContain('<g id="fold-guide-ticks" fill="none" stroke="#0066FF" stroke-width="0.35">');
+
+    const noFoldSvg = generateOuterWrapSvg(geom, 'single', {
+      includeCutLines: true,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    expect(noFoldSvg).toContain('<g id="cut-lines" fill="none" stroke="#FF0000"');
+    expect(noFoldSvg).toContain('<g id="board-guides" />');
+    expect(noFoldSvg).toContain('<g id="fold-guide-ticks" fill="none" stroke="#0066FF"');
+
+    const noCutNoTicksSvg = generateOuterWrapSvg(geom, 'single', {
+      includeCutLines: false,
+      includeFoldLines: true,
+      includeFoldGuideTicks: false,
+    });
+    expect(noCutNoTicksSvg).toContain('<g id="cut-lines" />');
+    expect(noCutNoTicksSvg).not.toContain('stroke="#FF0000"');
+    expect(noCutNoTicksSvg).toContain('<g id="board-guides" fill="none" stroke="#0066FF"');
+    expect(noCutNoTicksSvg).toContain('<g id="fold-guide-ticks" />');
+
+    const splitSvg = generateOuterWrapSvg(geom, 'three-piece', {
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    expect(splitSvg).toContain('<g id="cut-lines" />');
+    expect(splitSvg).toContain('<g id="board-guides" />');
+    expect(splitSvg).toContain('<g id="fold-guide-ticks" fill="none" stroke="#0066FF"');
+  });
 });

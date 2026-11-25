@@ -599,4 +599,77 @@ describe('studio renderEngine', () => {
     const singlePdf = await PDFDocument.load(singleBytes);
     expect(singlePdf.getPageCount()).toBe(1);
   });
+
+  it('uses Print defaults (cut=true, external fold ticks=true, interior fold lines=false) and supports independent toggles across sheet, tiled, and roll-nested PDFs', async () => {
+    const getPageStream = (doc: PDFDocument, pageIndex = 0): string => {
+      const contents = doc.getPage(pageIndex).node.Contents();
+      const refs = contents instanceof PDFArray ? contents.asArray() : [contents];
+      return refs
+        .map((item) => {
+          const resolved = item ? doc.context.lookup(item) : undefined;
+          if (resolved instanceof PDFRawStream) {
+            return inflateSync(Buffer.from(resolved.contents)).toString('latin1');
+          }
+          return '';
+        })
+        .join('\n');
+    };
+
+    const a6PbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      includeBleed: false,
+    });
+    const studio = CoverStudioModel.createDefault();
+
+    // 1. Default Print PDF on exact-auto: red cut lines ON, interior dashed fold lines OFF
+    const defaultExactBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'exact-auto',
+    });
+    const defaultExactStream = getPageStream(await PDFDocument.load(defaultExactBytes), 0);
+    expect(defaultExactStream).toContain('0.92 0.14 0.14 RG');
+    expect(defaultExactStream).not.toContain('[4 2.5] 0 d');
+
+    // 2. Explicit includeFoldLines: true emits interior dashed fold lines
+    const withFoldLinesBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'exact-auto',
+      includeFoldLines: true,
+    });
+    const withFoldLinesStream = getPageStream(await PDFDocument.load(withFoldLinesBytes), 0);
+    expect(withFoldLinesStream).toContain('[4 2.5] 0 d');
+
+    // 3. Default Print PDF on 1-sheet US Letter: external blue fold guide ticks ON in sheet margin
+    const letterDefaultBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+    });
+    const letterDefaultStream = getPageStream(await PDFDocument.load(letterDefaultBytes), 0);
+    expect(letterDefaultStream).toContain('0.12 0.42 0.88 RG');
+
+    // 4. Turning external fold guide ticks OFF removes blue ticks from sheet margin
+    const letterNoTicksBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      includeFoldGuideTicks: false,
+    });
+    const letterNoTicksStream = getPageStream(await PDFDocument.load(letterNoTicksBytes), 0);
+    expect(letterNoTicksStream).not.toContain('0.12 0.42 0.88 RG');
+
+    // 5. Cut lines OFF + Fold lines OFF + External ticks ON on 1-sheet Letter
+    const ticksOnlyBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    const ticksOnlyStream = getPageStream(await PDFDocument.load(ticksOnlyBytes), 0);
+    expect(ticksOnlyStream).toContain('0.12 0.42 0.88 RG');
+    expect(ticksOnlyStream).not.toContain('0.92 0.14 0.14 RG');
+  });
 });

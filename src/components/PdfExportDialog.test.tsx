@@ -126,10 +126,16 @@ describe('PdfExportDialog', () => {
     await user.click(screen.getByTestId('pdf-opt-overlap-15'));
     expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent('15 mm overlap');
 
-    // Toggle 600 DPI, toggle guides off, toggle scale bar off
+    // Print defaults on cover-styled: Cut Lines ON, External Fold Guides ON, Fold Lines OFF
+    expect(screen.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'false');
+
+    // Toggle 600 DPI, toggle cut lines off, toggle fold lines on, toggle scale bar off
     await user.click(screen.getByTestId('pdf-opt-dpi-600'));
     expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent('600 DPI');
-    await user.click(screen.getByTestId('pdf-opt-guides'));
+    await user.click(screen.getByTestId('pdf-opt-cut-lines'));
+    await user.click(screen.getByTestId('pdf-opt-fold-lines'));
     await user.click(screen.getByTestId('pdf-opt-scale-bar'));
 
     // Confirm download
@@ -140,6 +146,9 @@ describe('PdfExportDialog', () => {
       printMediaId: 'letter',
       pageSizeId: 'letter',
       splitMode: 'single',
+      includeCutLines: false,
+      includeFoldLines: true,
+      includeFoldGuideTicks: true,
       includeGuides: false,
       includeScaleBar: false,
       includeLegend: false,
@@ -237,8 +246,14 @@ describe('PdfExportDialog', () => {
     expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent(/with 50 mm legend/i);
     expect(screen.getByTestId('pdf-export-sheet-preview')).toHaveTextContent('50 mm Legend');
 
-    // Toggle Cut & Fold Lines OFF and confirm
-    await user.click(screen.getByTestId('pdf-opt-guides'));
+    // Print defaults on inner-styled: Cut Lines ON, External Fold Guides ON, Fold Lines OFF
+    expect(screen.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'false');
+
+    // Toggle Cut Lines OFF and External Fold Guides OFF and confirm
+    await user.click(screen.getByTestId('pdf-opt-cut-lines'));
+    await user.click(screen.getByTestId('pdf-opt-fold-ticks'));
     await user.click(screen.getByTestId('pdf-export-confirm-btn'));
 
     expect(onConfirmExport).toHaveBeenCalledWith({
@@ -246,6 +261,9 @@ describe('PdfExportDialog', () => {
       printMediaId: 'letter',
       pageSizeId: 'tabloid',
       splitMode: 'single',
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: false,
       includeGuides: false,
       includeScaleBar: true,
       includeLegend: true,
@@ -589,5 +607,66 @@ describe('PdfExportDialog', () => {
         }),
       }),
     );
+  });
+
+  it('shows all 3 independent Cut & Fold Marks switches across all 4 targets with exact print vs template defaults and updates the live SVG preview', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+    });
+    const onConfirmExport = vi.fn();
+
+    // 1. outer-blueprint (template): all 3 ON by default
+    const { rerender } = render(
+      <StatefulPdfExportDialog
+        target="outer-blueprint"
+        geometry={geom}
+        initialMedia="letter"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+    expect(screen.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('preview-fold-lines')).toBeInTheDocument();
+    expect(screen.getByTestId('preview-fold-ticks')).toBeInTheDocument();
+
+    // Toggle Fold Lines OFF -> preview hides dashed interior fold lines while keeping external ticks
+    await user.click(screen.getByTestId('pdf-opt-fold-lines'));
+    expect(screen.queryByTestId('preview-fold-lines')).not.toBeInTheDocument();
+    expect(screen.getByTestId('preview-fold-ticks')).toBeInTheDocument();
+
+    // Toggle External Fold Guides OFF -> preview hides external ticks
+    await user.click(screen.getByTestId('pdf-opt-fold-ticks'));
+    expect(screen.queryByTestId('preview-fold-ticks')).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onConfirmExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'outer-blueprint',
+        includeCutLines: true,
+        includeFoldLines: false,
+        includeFoldGuideTicks: false,
+      }),
+    );
+
+    // 2. inner-blueprint (template): all 3 ON by default
+    onConfirmExport.mockClear();
+    const hcGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    rerender(
+      <StatefulPdfExportDialog
+        target="inner-blueprint"
+        geometry={hcGeom}
+        initialPageSize="tabloid"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+    expect(screen.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'true');
   });
 });

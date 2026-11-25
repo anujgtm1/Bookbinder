@@ -73,6 +73,9 @@ describe('InnerPocketsStudio', () => {
     expect(onDownloadInnerPdf).toHaveBeenLastCalledWith({
       pageSizeId: 'tabloid',
       includeLegend: false,
+      includeCutLines: true,
+      includeFoldLines: true,
+      includeFoldGuideTicks: true,
     });
 
     // Reopen dialog, opt in to printing 50x50 mm calibration & legend -> passes includeLegend=true
@@ -82,6 +85,9 @@ describe('InnerPocketsStudio', () => {
     expect(onDownloadInnerPdf).toHaveBeenLastCalledWith({
       pageSizeId: 'tabloid',
       includeLegend: true,
+      includeCutLines: true,
+      includeFoldLines: true,
+      includeFoldGuideTicks: true,
     });
   });
 

@@ -1,4 +1,5 @@
-import { PDFDocument } from 'pdf-lib';
+import { inflateSync } from 'node:zlib';
+import { PDFArray, PDFDocument, PDFRawStream } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BOOK_PARAMETERS, PAGE_SIZES } from '@/types/bookParams';
 import { UnitConverter } from '@/types/units';
@@ -8,6 +9,20 @@ import {
   generateOuterWrapPdf,
   planInnerTemplateLayout,
 } from './pdfExport';
+
+function getPageStream(doc: PDFDocument, pageIndex = 0): string {
+  const contents = doc.getPage(pageIndex).node.Contents();
+  const refs = contents instanceof PDFArray ? contents.asArray() : [contents];
+  return refs
+    .map((item) => {
+      const resolved = item ? doc.context.lookup(item) : undefined;
+      if (resolved instanceof PDFRawStream) {
+        return inflateSync(Buffer.from(resolved.contents)).toString('latin1');
+      }
+      return '';
+    })
+    .join('\n');
+}
 
 describe('Inner Envelopes & Spine Liner PDF exporter', () => {
   it('omits the legend block by default for tighter packing and includes it on Page 1 when includeLegend is enabled', () => {
@@ -209,5 +224,143 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     const djSize = djDoc.getPage(0).getSize();
     expect(UnitConverter.pointsToMm(djSize.width)).toBeCloseTo(323.5, 2);
     expect(UnitConverter.pointsToMm(djSize.height)).toBeCloseTo(148, 2);
+  });
+
+  it('independently toggles cut lines, fold lines, and external fold guide ticks on outer wrap PDFs (1-sheet, 2-sheet tiled, 3-piece, and roll-nested)', async () => {
+    // A6 paperback-wrap (220 x 148 mm, no bleed) fits 1x US Letter Landscape with generous white margin for external ticks
+    const pbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      includeBleed: false,
+    });
+
+    // Template default: cut=true, fold=true, ticks=true -> external ticks (0.12 0.42 0.88 RG) present on sheet page
+    const defaultSheetBytes = await generateOuterWrapPdf(pbGeom, 'single', {
+      printMediaId: 'letter',
+    });
+    const defaultSheetDoc = await PDFDocument.load(defaultSheetBytes);
+    const defaultSheetStream = getPageStream(defaultSheetDoc, 0);
+    expect(defaultSheetStream).toContain('0.12 0.42 0.88 RG');
+
+    // Disable external fold guide ticks -> no solid blue tick color on the outer sheet page
+    const noTicksSheetBytes = await generateOuterWrapPdf(pbGeom, 'single', {
+      printMediaId: 'letter',
+      includeFoldGuideTicks: false,
+    });
+    const noTicksSheetDoc = await PDFDocument.load(noTicksSheetBytes);
+    const noTicksSheetStream = getPageStream(noTicksSheetDoc, 0);
+    expect(noTicksSheetStream).not.toContain('0.12 0.42 0.88 RG');
+
+    // Cut=false, Fold=false, Ticks=false on exact-auto -> zero red cut stroke, zero dashed fold, zero blue ticks
+    const cleanExactBytes = await generateOuterWrapPdf(pbGeom, 'single', {
+      printMediaId: 'exact-auto',
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: false,
+    });
+    const cleanExactStream = getPageStream(await PDFDocument.load(cleanExactBytes), 0);
+    expect(cleanExactStream).not.toContain('0.9 0.1 0.1 RG');
+    expect(cleanExactStream).not.toContain('[5 2.5] 0 d');
+    expect(cleanExactStream).not.toContain('0.12 0.42 0.88 RG');
+
+    // Cut=true, Fold=false on exact-auto -> red cut stroke present, dashed fold lines absent
+    const cutOnlyBytes = await generateOuterWrapPdf(pbGeom, 'single', {
+      printMediaId: 'exact-auto',
+      includeCutLines: true,
+      includeFoldLines: false,
+      includeFoldGuideTicks: false,
+    });
+    const cutOnlyStream = getPageStream(await PDFDocument.load(cutOnlyBytes), 0);
+    expect(cutOnlyStream).toContain('0.9 0.1 0.1 RG');
+    expect(cutOnlyStream).not.toContain('[5 2.5] 0 d');
+
+    // 2-sheet tiled PDF (Trade Digest hardcover on Letter) -> both Sheet 1 and Sheet 2 get external ticks
+    const hcGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const tiledBytes = await generateOuterWrapPdf(hcGeom, 'single', {
+      printMediaId: 'letter',
+      includeFoldGuideTicks: true,
+    });
+    const tiledNoTicksBytes = await generateOuterWrapPdf(hcGeom, 'single', {
+      printMediaId: 'letter',
+      includeFoldGuideTicks: false,
+    });
+    const tiledDoc = await PDFDocument.load(tiledBytes);
+    expect(tiledDoc.getPageCount()).toBe(2);
+    expect(tiledBytes.byteLength).toBeGreaterThan(tiledNoTicksBytes.byteLength);
+
+    // 3-piece split PDF honors independent cut/fold/tick toggles
+    const splitWithTicks = await generateOuterWrapPdf(hcGeom, 'three-piece', {
+      printMediaId: 'exact-auto',
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    const splitDoc = await PDFDocument.load(splitWithTicks);
+    expect(splitDoc.getPageCount()).toBe(3);
+    const backPanelStream = getPageStream(splitDoc, 0);
+    expect(backPanelStream).not.toContain('0.9 0.1 0.1 RG');
+    expect(backPanelStream).toContain('0.12 0.42 0.88 RG');
+
+    // Wide-format roll nested PDF renders external fold guide ticks when enabled
+    const rollWithTicks = await generateOuterWrapPdf(hcGeom, 'single', {
+      printMediaId: 'roll-36',
+      includeFoldGuideTicks: true,
+      rollNesting: {
+        enabled: true,
+        copies: 2,
+        gutterMm: 10,
+        packInnerPockets: true,
+        allowRotation: true,
+      },
+    });
+    const rollWithoutTicks = await generateOuterWrapPdf(hcGeom, 'single', {
+      printMediaId: 'roll-36',
+      includeFoldGuideTicks: false,
+      rollNesting: {
+        enabled: true,
+        copies: 2,
+        gutterMm: 10,
+        packInnerPockets: true,
+        allowRotation: true,
+      },
+    });
+    expect(getPageStream(await PDFDocument.load(rollWithTicks), 0)).toContain('0.12 0.42 0.88 RG');
+    expect(getPageStream(await PDFDocument.load(rollWithoutTicks), 0)).not.toContain(
+      '0.12 0.42 0.88 RG',
+    );
+  });
+
+  it('independently toggles cut lines, fold lines, and external fold guide ticks on inner templates PDF (print vs template defaults)', async () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    // Template default: cut=true, fold=true, ticks=true
+    const { bytes: templateBytes } = await generateInnerTemplatesPdf(geom, 'tabloid');
+    const templateStream = getPageStream(await PDFDocument.load(templateBytes), 0);
+    expect(templateStream).toContain('0.85 0.1 0.1 RG');
+    expect(templateStream).toContain('[4 3] 0 d');
+    expect(templateStream).toContain('0.12 0.42 0.88 RG');
+
+    // Print default (hideFaceTextOnStyled=true): cut=true, fold=false, ticks=true
+    const { bytes: printDefaultBytes } = await generateInnerTemplatesPdf(geom, 'tabloid', {
+      hideFaceTextOnStyled: true,
+    });
+    const printDefaultStream = getPageStream(await PDFDocument.load(printDefaultBytes), 0);
+    expect(printDefaultStream).toContain('0.85 0.1 0.1 RG');
+    expect(printDefaultStream).not.toContain('[4 3] 0 d');
+    expect(printDefaultStream).toContain('0.12 0.42 0.88 RG');
+
+    // Only ticks enabled (cut=false, fold=false, ticks=true)
+    const { bytes: ticksOnlyBytes } = await generateInnerTemplatesPdf(geom, 'tabloid', {
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    const ticksOnlyStream = getPageStream(await PDFDocument.load(ticksOnlyBytes), 0);
+    expect(ticksOnlyStream).not.toContain('0.85 0.1 0.1 RG');
+    expect(ticksOnlyStream).not.toContain('[4 3] 0 d');
+    expect(ticksOnlyStream).toContain('0.12 0.42 0.88 RG');
   });
 });
