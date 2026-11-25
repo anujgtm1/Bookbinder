@@ -8,17 +8,29 @@ import {
 } from './fonts';
 
 describe('studio font registry', () => {
-  it('provides all 6 spec-defined curated literary fonts', () => {
-    expect(CURATED_FONTS.map((f) => f.label)).toEqual([
-      'EB Garamond',
-      'Libre Baskerville',
-      'Cormorant Garamond',
-      'Lora',
-      'Inter',
-      'Montserrat',
-    ]);
+  it('provides all 23 spec-defined curated genre fonts', () => {
+    expect(CURATED_FONTS).toHaveLength(23);
+    expect(CURATED_FONTS.map((f) => f.label)).toEqual(
+      expect.arrayContaining([
+        'EB Garamond',
+        'Libre Baskerville',
+        'Cormorant Garamond',
+        'Lora',
+        'Inter',
+        'Montserrat',
+        'Cinzel Decorative',
+        'Orbitron',
+        'UnifrakturMaguntia',
+        'Great Vibes',
+        'Bebas Neue',
+        'Poiret One',
+        'Playfair Display',
+      ]),
+    );
     expect(getCuratedFont('lora').category).toBe('serif');
     expect(getCuratedFont('montserrat').category).toBe('sans-serif');
+    expect(getCuratedFont('cinzel-decorative').casingRule).toBe('swash-on-caps');
+    expect(getCuratedFont('great-vibes').cricutFriendly).toBe('large-only');
   });
 
   it('resolves CSS font family for curated and custom fonts', () => {

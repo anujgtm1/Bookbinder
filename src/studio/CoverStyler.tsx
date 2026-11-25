@@ -76,7 +76,11 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
-import type { CustomFontAsset } from './fonts';
+import {
+  collectStudioCuratedFontIds,
+  ensureCuratedFontsLoaded,
+  type CustomFontAsset,
+} from './fonts';
 import { useCoverElementsInteraction } from './hooks/useCoverElementsInteraction';
 import { useCoverStudioActions } from './hooks/useCoverStudioActions';
 import { useStudioHistory, type StudioHistoryPushOptions } from './hooks/useStudioHistory';
@@ -218,6 +222,17 @@ export function CoverStyler({
     onChangeRef.current = onChange;
     onStatusMessageRef.current = onStatusMessage;
   }, [studio, onChange, onStatusMessage]);
+
+  const activeStudioFontKey = useMemo(
+    () => [...collectStudioCuratedFontIds(studio)].sort().join(','),
+    [studio],
+  );
+  useEffect(() => {
+    const ids = collectStudioCuratedFontIds(studioRef.current);
+    if (ids.length > 0) {
+      void ensureCuratedFontsLoaded(ids);
+    }
+  }, [activeStudioFontKey]);
 
   const handleApplyFromHistory = useCallback((next: CoverStudioState) => {
     studioRef.current = next;
