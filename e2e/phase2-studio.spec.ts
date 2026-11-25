@@ -240,7 +240,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const svgDownload = await svgPromise;
     expect(svgDownload.suggestedFilename()).toBe('outer_cover_300dpi.svg');
     const svgText = await readFile((await svgDownload.path())!, 'utf-8');
-    expect(svgText).toContain('width="372mm"');
+    expect(svgText).toContain('width="374mm"');
     expect(svgText).toContain('height="265mm"');
     expect(svgText).toContain('id="artwork-layer"');
     expect(svgText).toContain('id="spine-typography"');
@@ -357,8 +357,8 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.mouse.move(layerBox!.x + layerBox!.width / 2, layerBox!.y + layerBox!.height / 2);
     await page.mouse.down();
     await page.mouse.move(
-      layerBox!.x + layerBox!.width / 2 - 45,
-      layerBox!.y + layerBox!.height / 2 + 15,
+      layerBox!.x + layerBox!.width / 2 - 75,
+      layerBox!.y + layerBox!.height / 2 - 15,
       { steps: 5 },
     );
     await page.mouse.up();
@@ -629,7 +629,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('studio-view-blueprint-btn').click();
     const outerDims = page.getByTestId('outer-blueprint-dimensions');
     await expect(outerDims).toBeVisible();
-    await expect(outerDims).toContainText('TOTAL W: 366.0 mm');
+    await expect(outerDims).toContainText('TOTAL W: 368.0 mm');
     await expect(outerDims).toContainText('TOTAL H: 259.0 mm');
     await expect(page.getByTestId('blueprint-cumulative-ruler')).toContainText('RULER (mm)');
     await expect(page.getByTestId('blueprint-miter-callout')).toContainText('45° MITER LEG');

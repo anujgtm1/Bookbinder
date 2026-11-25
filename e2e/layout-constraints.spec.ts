@@ -51,8 +51,8 @@ test.describe('Declarative Layout Constraints — Pin, Resize Persistence & Deta
     await expect(page.getByTestId('selection-bar-unpin-btn')).toBeVisible();
 
     // 4. Resize book to A6 Pocket Notebook (105 x 148 mm)
-    // On A6 rigid-case (boardW=108, boardH=155, turnIn=18, hinge=9, spine=26, bleed=3):
-    // Front board rect is x=173..281 (center 227.0), y=21..176 (center 98.5)
+    // On A6 rigid-case (boardW=108, boardH=155, turnIn=18, hinge=9, spine=28, bleed=3):
+    // Front board rect is x=175..283 (center 229.0), y=21..176 (center 98.5)
     await selectDropdownOption(page, 'preset-select', /A6 Pocket Notebook/i);
 
     // Title remains pinned to Front Center and dead-centered on A6 front board
@@ -60,7 +60,7 @@ test.describe('Declarative Layout Constraints — Pin, Resize Persistence & Deta
     await expect(page.getByTestId('selection-bar-unpin-btn')).toBeVisible();
 
     const titleX = Number(await coverTitle.locator('text').first().getAttribute('x'));
-    expect(Math.abs(titleX - 227.0)).toBeLessThan(0.5);
+    expect(Math.abs(titleX - 229.0)).toBeLessThan(0.5);
 
     // Frame holds exact 12 mm margins on A6 (108 - 24 = 84 mm wide, 155 - 24 = 131 mm tall)
     const frameHitRect = frameOrnament.locator('rect').first();
@@ -70,7 +70,7 @@ test.describe('Declarative Layout Constraints — Pin, Resize Persistence & Deta
       w: Number(await frameHitRect.getAttribute('width')),
       h: Number(await frameHitRect.getAttribute('height')),
     };
-    expect(Math.abs(frameBoxOnA6.x - 185)).toBeLessThan(0.5);
+    expect(Math.abs(frameBoxOnA6.x - 187)).toBeLessThan(0.5);
     expect(Math.abs(frameBoxOnA6.y - 33)).toBeLessThan(0.5);
     expect(Math.abs(frameBoxOnA6.w - 84)).toBeLessThan(0.5);
     expect(Math.abs(frameBoxOnA6.h - 131)).toBeLessThan(0.5);
