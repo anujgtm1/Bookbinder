@@ -363,4 +363,25 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     expect(ticksOnlyStream).not.toContain('[4 3] 0 d');
     expect(ticksOnlyStream).toContain('0.12 0.42 0.88 RG');
   });
+
+  it('generates a valid 1-page PDF for an L-shaped compact inner layout (1 horizontal pocket + 1 vertical pocket + spine liner)', async () => {
+    // 105 × 140 mm, 46 mm spine on US Letter: only an L-shaped packing fits all 3 pieces onto 1 page
+    const compactLGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      pbWidthMm: 105,
+      pbHeightMm: 140,
+      pbThicknessMm: 46,
+    });
+
+    const { bytes, plan } = await generateInnerTemplatesPdf(compactLGeom, 'letter');
+    expect(plan.pageCount).toBe(1);
+    expect(plan.placements).toHaveLength(3);
+    expect(plan.placements.every((p) => p.pageIndex === 0 && !p.clipped)).toBe(true);
+
+    const loaded = await PDFDocument.load(bytes);
+    expect(loaded.getPageCount()).toBe(1);
+    const sz = loaded.getPage(0).getSize();
+    expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(PAGE_SIZES.letter.widthMm, 2);
+    expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(PAGE_SIZES.letter.heightMm, 2);
+  });
 });
