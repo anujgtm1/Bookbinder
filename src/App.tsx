@@ -109,8 +109,10 @@ export function App() {
   const isMountedRef = useRef(true);
   const repoRef = useRef<ProjectRepository | null>(null);
   const bootstrapPromiseRef = useRef<Promise<ProjectRepository> | null>(null);
+  const bootstrapDoneRef = useRef(false);
   const opQueueRef = useRef<Promise<void>>(Promise.resolve());
   const hasUserEditedRef = useRef(false);
+  const hasUserChangedFontRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const projectRef = useRef<BookbinderProject>(project);
@@ -145,10 +147,14 @@ export function App() {
     const next = opQueueRef.current
       .catch(() => {})
       .then(async () => {
-        let repo = repoRef.current;
-        if (!repo && bootstrapPromiseRef.current) {
-          repo = await bootstrapPromiseRef.current;
+        while (!bootstrapDoneRef.current && bootstrapPromiseRef.current) {
+          const pending = bootstrapPromiseRef.current;
+          await pending;
+          if (pending === bootstrapPromiseRef.current) {
+            break;
+          }
         }
+        let repo = repoRef.current;
         if (!repo) {
           repo = await getDefaultProjectRepository();
           repoRef.current = repo;
@@ -246,13 +252,13 @@ export function App() {
   // Bootstrap local IndexedDB (or fallback) project library on mount
   useEffect(() => {
     isMountedRef.current = true;
+    bootstrapDoneRef.current = false;
     let cancelled = false;
     let unsubscribeExternal: (() => void) | null = null;
 
     const init = async (): Promise<ProjectRepository> => {
       const repo = await getDefaultProjectRepository();
       if (cancelled) return repo;
-      repoRef.current = repo;
       setStorageKind(repo.kind);
 
       const result = await bootstrapProjectLibrary(repo);
@@ -278,20 +284,32 @@ export function App() {
         !Number.isNaN(dbUpdatedMs) &&
         localUpdatedMs > dbUpdatedMs;
 
+      let initialThumbSnapshot: ActiveBookSnapshot | null = null;
+
       if (hasUserEditedRef.current || localIsNewerThanDb) {
         const currentProject = projectRef.current;
-        const currentFont = activeCustomFontRef.current;
         const targetId = activeProjectIdRef.current ?? result.activeRecord.id;
         const targetCreatedAt = activeProjectIdRef.current
           ? activeCreatedAtRef.current
           : result.activeRecord.createdAt;
+        const shouldPreserveDbFont =
+          targetId === result.activeRecord.id && !hasUserChangedFontRef.current;
+        const currentFont = shouldPreserveDbFont
+          ? (result.activeRecord.customFont ?? null)
+          : activeCustomFontRef.current;
 
         activeProjectIdRef.current = targetId;
         activeCreatedAtRef.current = targetCreatedAt;
+        activeCustomFontRef.current = currentFont;
         lastPersistedProjectRef.current = currentProject;
         lastPersistedFontRef.current = currentFont;
         setActiveProjectId(targetId);
         setActiveCreatedAt(targetCreatedAt);
+        setActiveCustomFont(currentFont);
+
+        if (shouldPreserveDbFont && currentFont) {
+          void registerCustomFontAsset(currentFont);
+        }
 
         const thumbnailDataUrl =
           (await renderProjectThumbnailDataUrl(
@@ -336,16 +354,23 @@ export function App() {
         }
 
         if (!result.activeRecord.thumbnailDataUrl) {
-          const snapshot: ActiveBookSnapshot = {
+          initialThumbSnapshot = {
             id: result.activeRecord.id,
             createdAt: result.activeRecord.createdAt,
             project: result.activeRecord.project,
             customFont: restoredFont,
           };
-          void enqueueRepoOp((r) => persistSnapshotToRepo(r, snapshot, true));
         }
       }
 
+      if (!cancelled) {
+        repoRef.current = repo;
+        bootstrapDoneRef.current = true;
+        if (initialThumbSnapshot) {
+          const snapshot = initialThumbSnapshot;
+          void enqueueRepoOp((r) => persistSnapshotToRepo(r, snapshot, true));
+        }
+      }
       return repo;
     };
 
@@ -460,6 +485,7 @@ export function App() {
 
   const handleCustomFontChange = useCallback((font: CustomFontAsset | null) => {
     hasUserEditedRef.current = true;
+    hasUserChangedFontRef.current = true;
     activeCustomFontRef.current = font;
     setActiveCustomFont(font);
   }, []);
@@ -577,9 +603,9 @@ export function App() {
     await createAndActivateNewBook(freshProject, `Created "${freshProject.name}"`, true);
   };
 
-  const handleLoadSampleBook = () => {
+  const handleLoadSampleBook = (): Promise<void> => {
     const sampleProject = createSampleBookProject();
-    void createAndActivateNewBook(
+    return createAndActivateNewBook(
       sampleProject,
       'Loaded sample book: Twenty Thousand Leagues Under the Seas',
       true,
@@ -643,7 +669,13 @@ export function App() {
     const prevSnapshot = captureActiveSnapshot();
 
     await enqueueRepoOp(async (repo) => {
-      if (prevSnapshot && prevSnapshot.id === id) {
+      if (
+        prevSnapshot &&
+        (prevSnapshot.project !== lastPersistedProjectRef.current ||
+          prevSnapshot.customFont !== lastPersistedFontRef.current)
+      ) {
+        lastPersistedProjectRef.current = prevSnapshot.project;
+        lastPersistedFontRef.current = prevSnapshot.customFont;
         await persistSnapshotToRepo(repo, prevSnapshot, true);
       }
 
@@ -960,6 +992,7 @@ export function App() {
 
   const handleResetDefaults = () => {
     hasUserEditedRef.current = true;
+    hasUserChangedFontRef.current = true;
     clearProjectStorage();
     activeCustomFontRef.current = null;
     setActiveCustomFont(null);
@@ -979,7 +1012,9 @@ export function App() {
         statusMessage={statusMessage}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
-        onLoadSampleBook={handleLoadSampleBook}
+        onLoadSampleBook={() => {
+          void handleLoadSampleBook();
+        }}
         activeBookName={project.name}
         savedBookCount={savedSummaries.length}
         onOpenMyBooks={handleOpenMyBooks}

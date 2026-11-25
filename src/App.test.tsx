@@ -1,7 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { resetDefaultProjectRepository } from '@/core/projectLibrary';
+import {
+  getDefaultProjectRepository,
+  resetDefaultProjectRepository,
+} from '@/core/projectLibrary';
+import { saveProjectToStorage } from '@/core/storage';
+import { BookParametersModel } from '@/types/bookParams';
+import { BookbinderProjectModel } from '@/types/project';
+import { asProjectId } from '@/types/projectLibrary';
+import { CoverStudioModel } from '@/types/studio';
 import { App } from './App';
 
 describe('App', () => {
@@ -143,5 +151,112 @@ describe('App', () => {
     await user.click(screen.getByTestId('nav-pockets'));
     expect(screen.getByTestId('inner-pockets-studio')).toBeInTheDocument();
     expect(screen.queryByTestId('pockets-not-needed-notice')).not.toBeInTheDocument();
+  });
+
+  it('preserves saved customFont when localStorage has a newer pre-bootstrap edit for the active book', async () => {
+    const repo = await getDefaultProjectRepository();
+    const bookId = asProjectId('book-with-font');
+    const olderDbProject = {
+      ...BookbinderProjectModel.create(
+        BookParametersModel.clampAndNormalize({ pbWidthMm: 140 }),
+        CoverStudioModel.createDefault(),
+        'Fonted Edition',
+      ),
+      updatedAt: '2026-10-01T10:00:00.000Z',
+    };
+    await repo.saveProject({
+      id: bookId,
+      createdAt: '2026-10-01T09:00:00.000Z',
+      updatedAt: olderDbProject.updatedAt,
+      project: olderDbProject,
+      thumbnailDataUrl: null,
+      customFont: {
+        familyName: 'BookbinderCustom-Press',
+        fileName: 'Press.ttf',
+        bytes: new Uint8Array([1, 2, 3, 4]),
+        pdfEmbeddable: true,
+      },
+    });
+    await repo.setActiveProjectId(bookId);
+
+    // Simulate a fast local edit saved to localStorage before IndexedDB debounce wrote it
+    const newerLocalProject = {
+      ...olderDbProject,
+      parameters: BookParametersModel.clampAndNormalize({ pbWidthMm: 155 }),
+      updatedAt: '2026-10-01T10:05:00.000Z',
+    };
+    saveProjectToStorage(newerLocalProject);
+
+    render(<App />);
+
+    await waitFor(async () => {
+      const saved = await repo.getProject(bookId);
+      expect(saved?.project.parameters.pbWidthMm).toBe(155);
+      expect(saved?.customFont?.fileName).toBe('Press.ttf');
+    });
+  });
+
+  it('flushes pending active-book edits before duplicating an inactive book', async () => {
+    const user = userEvent.setup();
+    const repo = await getDefaultProjectRepository();
+
+    const activeId = asProjectId('book-active');
+    const inactiveId = asProjectId('book-inactive');
+
+    const activeProject = {
+      ...BookbinderProjectModel.create(
+        BookParametersModel.clampAndNormalize({ pbWidthMm: 140 }),
+        CoverStudioModel.createDefault(),
+        'Active Book',
+      ),
+      updatedAt: '2026-10-01T10:00:00.000Z',
+    };
+    const inactiveProject = {
+      ...BookbinderProjectModel.create(
+        BookParametersModel.clampAndNormalize({ pbWidthMm: 110 }),
+        CoverStudioModel.createDefault(),
+        'Inactive Book',
+      ),
+      updatedAt: '2026-10-01T09:00:00.000Z',
+    };
+
+    await repo.saveProject({
+      id: activeId,
+      createdAt: activeProject.updatedAt,
+      updatedAt: activeProject.updatedAt,
+      project: activeProject,
+      thumbnailDataUrl: null,
+      customFont: null,
+    });
+    await repo.saveProject({
+      id: inactiveId,
+      createdAt: inactiveProject.updatedAt,
+      updatedAt: inactiveProject.updatedAt,
+      project: inactiveProject,
+      thumbnailDataUrl: null,
+      customFont: null,
+    });
+    await repo.setActiveProjectId(activeId);
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('my-books-count-badge')).toHaveTextContent('2');
+    });
+
+    // Edit active book width (triggers pending debounced auto-save)
+    const widthInput = screen.getByTestId('input-pb-width');
+    await user.clear(widthInput);
+    await user.type(widthInput, '162');
+
+    // Immediately open My Books and duplicate the INACTIVE book
+    await user.click(screen.getByTestId('open-my-books-btn'));
+    await user.click(screen.getByTestId(`my-books-duplicate-btn-${inactiveId}`));
+
+    await waitFor(async () => {
+      const summaries = await repo.listSummaries();
+      expect(summaries).toHaveLength(3);
+      const savedActive = await repo.getProject(activeId);
+      expect(savedActive?.project.parameters.pbWidthMm).toBe(162);
+    });
   });
 });
