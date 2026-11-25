@@ -188,6 +188,8 @@ export interface SpineLinerGeometry {
   readonly widthMm: number;
   readonly heightMm: number;
   readonly boardOverlapMm: number;
+  /** Top & bottom vertical inset inside the cover board height (mm) for chipboard hardcovers */
+  readonly boardInsetTopBottomMm?: number;
   readonly scoreLines: readonly LineSegment2D[];
   readonly spineZoneRect: Rect2D;
   readonly leftHingeZoneRect: Rect2D;
@@ -203,6 +205,10 @@ export interface PocketEnvelopeGeometry {
   readonly flapWidthMm: number;
   readonly totalWidthMm: number;
   readonly totalHeightMm: number;
+  /** Top & bottom board gluing inset (mm) on chipboard slip-in pockets */
+  readonly boardInsetTopBottomMm?: number;
+  /** Fore-edge board gluing inset (mm) on chipboard slip-in pockets */
+  readonly boardInsetForeEdgeMm?: number;
   readonly openEdge: 'left' | 'right';
   readonly outerCutPolygon: Polygon2D;
   readonly faceRect: Rect2D;

@@ -9,7 +9,7 @@ import {
   getPageSizeSpec,
   getPrintMediaSpec,
 } from '@/resources/paperSpecs';
-import { UnitConverter, clampFinite, type UnitSystem } from './units';
+import { UnitConverter, clampFinite, roundTo, type UnitSystem } from './units';
 
 export {
   BINDING_STYLES,
@@ -113,9 +113,9 @@ export interface BookParameters {
   overhangTopBottomMm: number;
   /** Fore-edge board overhang in mm (OVERHANG_FORE) */
   overhangForeEdgeMm: number;
-  /** Extra spine clearance for removable pockets in mm (SPINE_ALLOWANCE) */
+  /** Extra spine clearance for board thickness & removable pockets in mm (SPINE_ALLOWANCE) */
   spineAllowanceMm: number;
-  /** Whether spineAllowanceMm automatically tracks 1.0x boardThicknessMm */
+  /** Whether spineAllowanceMm automatically tracks 2.0x boardThicknessMm */
   spineAllowanceLinked: boolean;
   /** Outer wrap turn-in margin in mm (TURN_IN) */
   turnInMm: number;
@@ -125,7 +125,7 @@ export interface BookParameters {
   bleedMm: number;
   /** Whether to include the bleed frame on previews/exports */
   includeBleed: boolean;
-  /** Inner pocket width ratio as % of BOARD_W (65–80%) */
+  /** Inner pocket width ratio as % of PB_W on chipboard hardcovers (65–80%) */
   pocketDepthPct: number;
   /** Pocket glue flap width in mm (POCKET_FLAP) */
   pocketFlapMm: number;
@@ -182,7 +182,7 @@ export const DEFAULT_BOOK_PARAMETERS: Readonly<BookParameters> = {
   hingeWidthMm: 9.0,
   overhangTopBottomMm: 7.0,
   overhangForeEdgeMm: 3.0,
-  spineAllowanceMm: 2.0,
+  spineAllowanceMm: 4.0,
   spineAllowanceLinked: true,
   turnInMm: 18.0,
   miterFactor: 1.5,
@@ -235,6 +235,11 @@ function parseInteriorStyle(value: unknown): InteriorStyle | undefined {
   return undefined;
 }
 
+function linkedSpineAllowanceMm(boardThicknessMm: number): number {
+  const b = BOOK_PARAM_BOUNDS.spineAllowanceMm;
+  return clampFinite(roundTo(boardThicknessMm * 2, 2), b.min, b.min, b.max);
+}
+
 export const BookParametersModel = {
   createDefault(): BookParameters {
     return { ...DEFAULT_BOOK_PARAMETERS };
@@ -254,9 +259,10 @@ export const BookParametersModel = {
         ? partial.spineAllowanceLinked
         : d.spineAllowanceLinked;
 
+    const defaultLinkedAllowance = linkedSpineAllowanceMm(boardThicknessMm);
     const rawSpineAllowance =
       spineAllowanceLinked && partial.spineAllowanceMm === undefined
-        ? boardThicknessMm
+        ? defaultLinkedAllowance
         : partial.spineAllowanceMm;
 
     const jacketFlapWidthMm =
@@ -306,7 +312,7 @@ export const BookParametersModel = {
       ),
       spineAllowanceMm: clampFinite(
         rawSpineAllowance,
-        boardThicknessMm,
+        defaultLinkedAllowance,
         b.spineAllowanceMm.min,
         b.spineAllowanceMm.max,
       ),
@@ -355,7 +361,9 @@ export const BookParametersModel = {
     return {
       ...params,
       boardThicknessMm: clamped,
-      spineAllowanceMm: params.spineAllowanceLinked ? clamped : params.spineAllowanceMm,
+      spineAllowanceMm: params.spineAllowanceLinked
+        ? linkedSpineAllowanceMm(clamped)
+        : params.spineAllowanceMm,
     };
   },
 
