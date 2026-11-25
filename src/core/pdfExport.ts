@@ -25,6 +25,7 @@ import {
   drawPdfFoldGuideTicks,
   transformTicks90CW,
 } from './foldGuideTicks';
+import { packRects2D, type PackableRect } from './innerTemplatePacker';
 import {
   layoutPdfToPrintMedia,
   type PdfSheetLayoutOptions,
@@ -38,8 +39,10 @@ import {
 } from './printerMargins';
 import { composeNestedRollPdf, type RollPdfSource } from './rollNesting';
 
-const PAGE_MARGIN_MM = 7.5;
-const PIECE_GAP_MM = 5.0;
+export const INNER_PAGE_MARGIN_MM = 7.5;
+export const INNER_PIECE_GAP_MM = 5.0;
+const PAGE_MARGIN_MM = INNER_PAGE_MARGIN_MM;
+const PIECE_GAP_MM = INNER_PIECE_GAP_MM;
 const CALIBRATION_SIZE_MM = 50.0;
 const CALIBRATION_BOX_H_MM = 84.0; // 50mm square + compact title & legend
 const CALIBRATION_BOX_W_MM = 62.0;
@@ -65,136 +68,6 @@ export interface InnerPdfLayoutPlan {
   readonly placements: readonly PlannedPlacement[];
 }
 
-interface PackableItem {
-  readonly kind: InnerPieceKind;
-  readonly widthMm: number;
-  readonly heightMm: number;
-  readonly allowRotate: boolean;
-}
-
-interface Shelf {
-  yMm: number;
-  heightMm: number;
-  cursorXMm: number;
-}
-
-interface PageBin {
-  shelves: Shelf[];
-}
-
-function tryPlaceInPage(
-  bin: PageBin,
-  usableW: number,
-  usableH: number,
-  w: number,
-  h: number,
-): { xMm: number; yMm: number } | null {
-  for (const shelf of bin.shelves) {
-    const nextX = shelf.cursorXMm === 0 ? 0 : shelf.cursorXMm + PIECE_GAP_MM;
-    if (nextX + w <= usableW + 0.01 && h <= shelf.heightMm + 0.01) {
-      shelf.cursorXMm = nextX + w;
-      return { xMm: PAGE_MARGIN_MM + nextX, yMm: PAGE_MARGIN_MM + shelf.yMm };
-    }
-  }
-
-  const nextShelfY =
-    bin.shelves.length === 0
-      ? 0
-      : bin.shelves[bin.shelves.length - 1].yMm +
-        bin.shelves[bin.shelves.length - 1].heightMm +
-        PIECE_GAP_MM;
-
-  if (w <= usableW + 0.01 && nextShelfY + h <= usableH + 0.01) {
-    bin.shelves.push({ yMm: nextShelfY, heightMm: h, cursorXMm: w });
-    return { xMm: PAGE_MARGIN_MM, yMm: PAGE_MARGIN_MM + nextShelfY };
-  }
-
-  return null;
-}
-
-function packOrderedItems(
-  items: readonly PackableItem[],
-  usableW: number,
-  usableH: number,
-): { pageCount: number; placements: PlannedPlacement[] } {
-  const bins: PageBin[] = [{ shelves: [] }];
-  const placements: PlannedPlacement[] = [];
-
-  for (const item of items) {
-    const orientations: { w: number; h: number; rotated90: boolean }[] = [
-      { w: item.widthMm, h: item.heightMm, rotated90: false },
-    ];
-    if (item.allowRotate) {
-      orientations.push({ w: item.heightMm, h: item.widthMm, rotated90: true });
-    }
-
-    let placed = false;
-
-    for (let pageIndex = 0; pageIndex < bins.length && !placed; pageIndex++) {
-      for (const orient of orientations) {
-        const pos = tryPlaceInPage(bins[pageIndex], usableW, usableH, orient.w, orient.h);
-        if (pos) {
-          placements.push({
-            kind: item.kind,
-            pageIndex,
-            xMm: pos.xMm,
-            yMm: pos.yMm,
-            widthMm: orient.w,
-            heightMm: orient.h,
-            rotated90: orient.rotated90,
-            clipped: false,
-          });
-          placed = true;
-          break;
-        }
-      }
-    }
-
-    if (!placed) {
-      const newPageIndex = bins.length;
-      const newBin: PageBin = { shelves: [] };
-      bins.push(newBin);
-
-      for (const orient of orientations) {
-        const pos = tryPlaceInPage(newBin, usableW, usableH, orient.w, orient.h);
-        if (pos) {
-          placements.push({
-            kind: item.kind,
-            pageIndex: newPageIndex,
-            xMm: pos.xMm,
-            yMm: pos.yMm,
-            widthMm: orient.w,
-            heightMm: orient.h,
-            rotated90: orient.rotated90,
-            clipped: false,
-          });
-          placed = true;
-          break;
-        }
-      }
-
-      if (!placed) {
-        const bestOrient =
-          item.allowRotate && item.heightMm < item.widthMm
-            ? { w: item.heightMm, h: item.widthMm, rotated90: true }
-            : { w: item.widthMm, h: item.heightMm, rotated90: false };
-        placements.push({
-          kind: item.kind,
-          pageIndex: newPageIndex,
-          xMm: PAGE_MARGIN_MM,
-          yMm: PAGE_MARGIN_MM,
-          widthMm: bestOrient.w,
-          heightMm: bestOrient.h,
-          rotated90: bestOrient.rotated90,
-          clipped: true,
-        });
-      }
-    }
-  }
-
-  return { pageCount: bins.length, placements };
-}
-
 export interface InnerPdfLayoutOptions {
   /** Include the 50×50 mm scale verification square & cut/score visual legend block. Defaults to false for tighter sheet packing. */
   readonly includeLegend?: boolean;
@@ -207,70 +80,51 @@ export function planInnerTemplateLayout(
 ): InnerPdfLayoutPlan {
   const includeLegend = options?.includeLegend ?? false;
   const sheet = PAGE_SIZES[pageSizeId];
-  const usableW = sheet.widthMm - PAGE_MARGIN_MM * 2;
-  const usableH = sheet.heightMm - PAGE_MARGIN_MM * 2;
 
-  const backPocket: PackableItem = {
-    kind: 'back-pocket',
-    widthMm: geometry.backPocket.totalWidthMm,
-    heightMm: geometry.backPocket.totalHeightMm,
-    allowRotate: true,
-  };
-  const frontPocket: PackableItem = {
-    kind: 'front-pocket',
-    widthMm: geometry.frontPocket.totalWidthMm,
-    heightMm: geometry.frontPocket.totalHeightMm,
-    allowRotate: true,
-  };
-  const spineLiner: PackableItem = {
-    kind: 'spine-liner',
-    widthMm: geometry.spineLiner.widthMm,
-    heightMm: geometry.spineLiner.heightMm,
-    allowRotate: true,
-  };
+  const items: PackableRect<InnerPieceKind>[] = [
+    {
+      kind: 'back-pocket',
+      widthMm: geometry.backPocket.totalWidthMm,
+      heightMm: geometry.backPocket.totalHeightMm,
+      allowRotate: true,
+    },
+    {
+      kind: 'front-pocket',
+      widthMm: geometry.frontPocket.totalWidthMm,
+      heightMm: geometry.frontPocket.totalHeightMm,
+      allowRotate: true,
+    },
+    {
+      kind: 'spine-liner',
+      widthMm: geometry.spineLiner.widthMm,
+      heightMm: geometry.spineLiner.heightMm,
+      allowRotate: true,
+    },
+  ];
 
-  if (!includeLegend) {
-    const packed = packOrderedItems([backPocket, frontPocket, spineLiner], usableW, usableH);
-    return {
-      pageSizeId,
-      pageWidthMm: sheet.widthMm,
-      pageHeightMm: sheet.heightMm,
-      pageCount: packed.pageCount,
-      placements: packed.placements,
-    };
+  if (includeLegend) {
+    items.push({
+      kind: 'calibration-legend',
+      widthMm: CALIBRATION_BOX_W_MM,
+      heightMm: CALIBRATION_BOX_H_MM,
+      allowRotate: false,
+    });
   }
 
-  const calibration: PackableItem = {
-    kind: 'calibration-legend',
-    widthMm: CALIBRATION_BOX_W_MM,
-    heightMm: CALIBRATION_BOX_H_MM,
-    allowRotate: false,
-  };
-
-  // Candidate A: pack largest templates first (optimizes 1-page Tabloid packing)
-  const candidateA = packOrderedItems(
-    [backPocket, frontPocket, spineLiner, calibration],
-    usableW,
-    usableH,
-  );
-  // Candidate B: guarantee calibration square stays on Page 1 alongside back pocket
-  const candidateB = packOrderedItems(
-    [backPocket, calibration, frontPocket, spineLiner],
-    usableW,
-    usableH,
-  );
-
-  const aCalOnPage1 =
-    candidateA.placements.find((p) => p.kind === 'calibration-legend')?.pageIndex === 0;
-  const chosen =
-    aCalOnPage1 && candidateA.pageCount <= candidateB.pageCount ? candidateA : candidateB;
+  const packed = packRects2D(items, {
+    pageWidthMm: sheet.widthMm,
+    pageHeightMm: sheet.heightMm,
+    marginMm: PAGE_MARGIN_MM,
+    gapMm: PIECE_GAP_MM,
+    preferFirstPageKind: includeLegend ? 'calibration-legend' : undefined,
+  });
 
   return {
     pageSizeId,
     pageWidthMm: sheet.widthMm,
     pageHeightMm: sheet.heightMm,
-    pageCount: chosen.pageCount,
-    placements: chosen.placements,
+    pageCount: packed.pageCount,
+    placements: packed.placements,
   };
 }
 
