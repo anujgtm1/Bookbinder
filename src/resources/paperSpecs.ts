@@ -1,4 +1,5 @@
 import type {
+  BindingStyle,
   BindingStyleOption,
   PageSizeId,
   PageSizeSpec,
@@ -111,6 +112,10 @@ export const BINDING_STYLES: readonly BindingStyleOption[] = paperSpecsData.bind
     summary: style.summary,
   }),
 );
+
+export function getBindingStyleSpec(id: BindingStyle): BindingStyleOption {
+  return BINDING_STYLES.find((style) => style.id === id) ?? BINDING_STYLES[0];
+}
 
 function buildPageSizeSpec(id: PageSizeId): PageSizeSpec {
   const sheet = paperSpecsData.desktopSheets[id];
