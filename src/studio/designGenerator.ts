@@ -30,7 +30,7 @@ import {
   type StudioFontId,
 } from '@/types/studio';
 import { CoverImageLayerModel, type CoverImageLayer, type LayerClipZone } from '@/types/studioLayer';
-import { clampFinite, roundTo } from '@/types/units';
+import { UnitConverter, clampFinite, roundTo } from '@/types/units';
 import { computeStudioCanvasSpec, type StudioCanvasSpec } from './canvasSpec';
 import { getCuratedFont } from './fonts';
 import { resolveOrnamentLayerConstraint, resolveTextLayerConstraint } from './layoutConstraints';
@@ -78,6 +78,10 @@ export interface GeneratedDesignResult {
 
 const LIGHT_CONTRAST_CANDIDATES = ['#f6f0e4', '#e6c97a', '#d9b566', '#dce2ea', '#ffffff'] as const;
 const DARK_CONTRAST_CANDIDATES = ['#181615', '#0f172a', '#000000'] as const;
+const TEXT_SAFE_SPINE_ORNAMENTS: readonly ClassicOrnamentId[] = [
+  'spine-head-tail-bands',
+  'spine-classic-bands',
+];
 
 /**
  * Guarantees WCAG contrast `>= minRatio` between a preferred foreground foil/ink hex and a background hex,
@@ -560,20 +564,53 @@ export function generateBookCoverDesign(
 
   const textLayers: CoverTextLayer[] = [frontTitleLayer, frontAuthorLayer, backBlurbLayer];
 
-  // 5. Thin-Spine Safety Guard
+  // 5. Thin-Spine Safety Guard & Editorial + Height-Aware Spine Sizing
   const spineWidthMm = spec.spineBoardRect.width;
+  const spineHeightMm = spec.spineBoardRect.height;
   const maxSpinePt = CoverStudioModel.maxSpineFontSizePt(spineWidthMm);
-  const safeSpineCapPt = Math.min(maxSpinePt, Math.max(STUDIO_BOUNDS.fontSizePt.min, Math.floor(maxSpinePt * 0.82)));
   const isThinSpine = spineWidthMm < 14;
   const spineLayout: SpineLayoutPreset = isThinSpine
     ? 'inline'
     : rng() > 0.35
       ? 'stacked'
       : 'inline';
-  const spineAuthorOrientation =
+
+  const combinedSpineChars =
+    spineLayout === 'inline'
+      ? [spineTitleText.trim(), spineAuthorText.trim()].filter(Boolean).join(' — ').length
+      : spineTitleText.trim().length;
+  const safeSpineHeightMm =
+    spineLayout === 'stacked' ? spineHeightMm * 0.68 : Math.max(12, spineHeightMm - 20);
+  const maxVerticalSpinePt =
+    combinedSpineChars > 0
+      ? Math.floor(
+          UnitConverter.mmToPoints(safeSpineHeightMm / (combinedSpineChars * 0.62)) * 10,
+        ) / 10
+      : STUDIO_BOUNDS.fontSizePt.max;
+  const editorialTargetSpinePt = clampFinite(Math.round(spineWidthMm * 0.55), 14, 10, 18);
+  const spineFontSizePt = roundTo(
+    Math.max(
+      STUDIO_BOUNDS.fontSizePt.min,
+      Math.min(editorialTargetSpinePt, maxSpinePt, maxVerticalSpinePt),
+    ),
+    1,
+  );
+
+  let spineAuthorOrientation: 'vertical' | 'horizontal' =
     !isThinSpine && spineLayout === 'stacked' && spineWidthMm >= 20 && rng() > 0.35
       ? 'horizontal'
       : 'vertical';
+  if (spineAuthorOrientation === 'horizontal' && spineAuthorText.trim().length > 0) {
+    const authorLines = CoverStudioModel.splitHorizontalAuthorLines(spineAuthorText);
+    const horizPt = CoverStudioModel.horizontalAuthorFontSizePt(
+      authorLines,
+      CoverStudioModel.effectiveSpineFontSizePt(spineFontSizePt, spineWidthMm),
+      spineWidthMm,
+    );
+    if (horizPt < 6.5) {
+      spineAuthorOrientation = 'vertical';
+    }
+  }
 
   const spineText = {
     ...currentStudio.spineText,
@@ -581,10 +618,10 @@ export function generateBookCoverDesign(
     author: spineAuthorText,
     layout: spineLayout,
     orientation: 'top-to-bottom' as const,
-    authorOrientation: spineAuthorOrientation as 'vertical' | 'horizontal',
+    authorOrientation: spineAuthorOrientation,
     fontId: spineFontId,
     customFontName: locks.lockFonts ? currentStudio.spineText.customFontName : null,
-    fontSizePt: roundTo(clampFinite(safeSpineCapPt, safeSpineCapPt, STUDIO_BOUNDS.fontSizePt.min, safeSpineCapPt), 1),
+    fontSizePt: spineFontSizePt,
     textColor: spineTextColor,
     opticalNudgeMm: 0,
   };
@@ -675,9 +712,20 @@ export function generateBookCoverDesign(
       }
     }
 
-    // Add a spine ornament ONLY when spine is >= 14 mm wide
+    // Add a spine ornament ONLY when spine is >= 14 mm wide.
+    // When spine text is present, pick only head/tail-framing bands so center lettering stays clear.
     if (!isThinSpine && profile.spineOrnaments.length > 0) {
-      const spinePreset = pickOne(profile.spineOrnaments, rng);
+      const hasSpineText =
+        spineTitleText.trim().length > 0 || spineAuthorText.trim().length > 0;
+      const textSafeOrnaments = profile.spineOrnaments.filter((id) =>
+        TEXT_SAFE_SPINE_ORNAMENTS.includes(id),
+      );
+      const spineOrnamentPool = hasSpineText
+        ? textSafeOrnaments.length > 0
+          ? textSafeOrnaments
+          : (['spine-head-tail-bands'] as const)
+        : profile.spineOrnaments;
+      const spinePreset = pickOne(spineOrnamentPool, rng);
       const rawSpineOrn = CoverOrnamentLayerModel.createForZone(
         spinePreset,
         spec.spineBoardRect,
