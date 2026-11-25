@@ -58,7 +58,7 @@ Design and print removable hardcover cases, flexible-spine covers, 1-piece fold-
 ## Print & Cutting-Machine Exports
 
 - **Unified Print & Export PDF Dialog** — Clicking any PDF button in **Cover Studio**, **Measure & Cut**, or **Inner Pockets** opens a shared Export Dialog comparing **US Letter**, **A4**, **US Legal**, **Tabloid**, **Exact Wrap Size**, **`13"–44"`** wide-format rolls, and **Custom Roll Width (`200–1600 mm`)** with live sheet-layout previews and **1-click fixes**.
-- **Wide-Format Roll Multi-Up / Gang-Sheet Nesting** — On any wide-format or custom roll, enable **Multi-Up / Roll Strip** to pack multiple copies side-by-side (`Fill Row`, configurable `6 / 10 / 15 mm` cut gutters, automatic 90° rotation, optional inner pocket packing, multi-book PDF gang-sheet uploads, and live roll efficiency readout).
+- **Multi-Book Cut-Sheet & Wide-Format Roll Printing** — Enable **Combine Multiple Covers / Multi-Up** on any desktop cut sheet (**US Letter**, **A4**, **US Legal**, **Tabloid**) or wide-format roll to pick additional saved books directly from **My Books** (or upload PDFs), print multiple copies side-by-side (`Fill Sheet` / `Fill Row`, `6 / 10 / 15 mm` cut gutters, automatic 90° rotation, optional inner pocket packing), preview multi-page sheet layouts live, and export a ready-to-print PDF.
 - **Asymmetric Printer Margins & 1-Click Calibration Sheet** — Dial in non-uniform printer unprintable margins (or choose presets like **Fine-Art / Heavy Sheet**), preview hatched dead zones directly on the sheet, and download a 1-click **Printer Margin Calibration Sheet PDF** to measure your exact desktop printer margins.
 - **Flexible Multi-Sheet Tiling & Calibration** — Print on a single larger sheet or tile across `2× US Letter / A4` sheets with configurable overlap (`10 / 15 / 20 mm`), shaded tape-zone guides, alignment crosshairs, and an optional **`50 mm` Scale-Check Ruler** bar to verify print scale before cutting.
 - **`300 / 600 DPI` Cover PDFs & Hybrid HTV Workflow** — Crisp embedded vector text and ornaments over `300` or `600 DPI` artwork, with **Cut, Fold & Glue Guides** or **Registration Marks Only**, **Single Wrap** or **3-Piece Split**, plus **Base Only (For HTV)** (`outer_cover_base_for_htv.pdf`) with outer `3 mm` center-alignment ticks for zero-ghosting foil pressing.
@@ -72,7 +72,7 @@ Design and print removable hardcover cases, flexible-spine covers, 1-piece fold-
 ## Private & Local-First
 
 - Runs completely offline in your browser—no accounts, no cloud uploads, and no tracking.
-- Projects auto-save locally and can be backed up or shared anytime as portable `.json` files.
+- **My Books Local Library** — Auto-saves multiple book projects (dimensions, cover artwork, custom fonts, and thumbnails) locally in IndexedDB, with instant switching, renaming, duplication, and full `.json` library backup/import.
 
 ---
 
