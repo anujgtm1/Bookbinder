@@ -21,7 +21,8 @@ import {
   type SpineTypographyConfig,
   type StudioFontId,
 } from '@/types/studio';
-import { CURATED_FONTS, type CustomFontAsset } from './fonts';
+import { FontSelect } from './FontSelect';
+import type { CustomFontAsset } from './fonts';
 
 export interface SpineTypographyCardProps {
   readonly spineText: SpineTypographyConfig;
@@ -160,24 +161,14 @@ export function SpineTypographyCard({
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[1fr_auto] sm:items-end">
           <div className="space-y-1">
             <Label htmlFor="spine-font-select">Spine Typeface</Label>
-            <Select
+            <FontSelect
+              id="spine-font-select"
               value={spineText.fontId}
-              onValueChange={(val) => onUpdateSpineText({ fontId: val as StudioFontId })}
-            >
-              <SelectTrigger id="spine-font-select" data-testid="studio-font-select">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CURATED_FONTS.map((font) => (
-                  <SelectItem key={font.id} value={font.id}>
-                    {font.label} ({font.category})
-                  </SelectItem>
-                ))}
-                {customFont && (
-                  <SelectItem value="custom">Custom: {customFont.fileName}</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+              customFont={customFont}
+              triggerTestId="studio-font-select"
+              customLabelStyle="filename"
+              onValueChange={(fontId: StudioFontId) => onUpdateSpineText({ fontId })}
+            />
           </div>
 
           <div>

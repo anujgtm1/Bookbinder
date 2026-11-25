@@ -47,15 +47,41 @@ export function SelectContent({
       >
         <SelectPrimitive.Viewport
           className={cn(
-            'p-1',
-            position === 'popper' &&
-              'h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]',
+            'max-h-80 overflow-y-auto p-1',
+            position === 'popper' && 'w-full min-w-[var(--radix-select-trigger-width)]',
           )}
         >
           {children}
         </SelectPrimitive.Viewport>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
+  );
+}
+
+export function SelectLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Label>) {
+  return (
+    <SelectPrimitive.Label
+      className={cn(
+        'px-2 py-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function SelectSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof SelectPrimitive.Separator>) {
+  return (
+    <SelectPrimitive.Separator
+      className={cn('-mx-1 my-1 h-px bg-border/70', className)}
+      {...props}
+    />
   );
 }
 

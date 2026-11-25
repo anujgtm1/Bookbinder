@@ -34,7 +34,8 @@ import {
 import type { StudioFontId } from '@/types/studio';
 import { nextQuarterTurn, normalizeQuarterTurn } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
-import { CURATED_FONTS, type CustomFontAsset } from './fonts';
+import { FontSelect } from './FontSelect';
+import type { CustomFontAsset } from './fonts';
 
 export interface CoverTextCardProps {
   readonly textLayers: readonly CoverTextLayer[];
@@ -249,26 +250,17 @@ export function CoverTextCard({
                 )}
               </div>
               <div className="flex items-center gap-1.5">
-                <Select
+                <FontSelect
+                  id="cover-text-font"
                   value={selectedText.fontId}
-                  onValueChange={(v) =>
-                    onUpdateTextLayer(selectedText.id, { fontId: v as StudioFontId })
+                  customFont={customFont}
+                  triggerClassName="h-8 flex-1 text-xs"
+                  triggerTestId="cover-text-font-select"
+                  customLabelStyle="family"
+                  onValueChange={(fontId: StudioFontId) =>
+                    onUpdateTextLayer(selectedText.id, { fontId })
                   }
-                >
-                  <SelectTrigger id="cover-text-font" className="h-8 flex-1 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CURATED_FONTS.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.label}
-                      </SelectItem>
-                    ))}
-                    {customFont && (
-                      <SelectItem value="custom">Custom ({customFont.familyName})</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                />
                 {onCustomFontSelected && (
                   <>
                     <Button
