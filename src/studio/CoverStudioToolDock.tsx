@@ -31,6 +31,7 @@ import {
 } from './ArtworkControlsCard';
 import { ClassicDesignsCard } from './ClassicDesignsCard';
 import { CoverTextCard } from './CoverTextCard';
+import type { DesignMuseCardProps } from './DesignMuseCard';
 import { DesignPresetsCard } from './DesignPresetsCard';
 import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
@@ -99,7 +100,8 @@ export interface CoverStudioToolDockProps {
   readonly onDeleteOrnament: (id: string) => void;
   // Spine actions
   readonly onUpdateSpineText: (patch: Partial<SpineTypographyConfig>) => void;
-  // Presets actions
+  // Presets & Design Muse actions
+  readonly designMuse?: DesignMuseCardProps;
   readonly onSavePreset: (name: string) => void;
   readonly onApplyPreset: (preset: CoverDesignPreset) => void;
   readonly onDeletePreset: (id: string) => void;
@@ -163,6 +165,7 @@ export function CoverStudioToolDock({
   onQuickAlignOrnament,
   onDeleteOrnament,
   onUpdateSpineText,
+  designMuse,
   onSavePreset,
   onApplyPreset,
   onDeletePreset,
@@ -386,6 +389,7 @@ export function CoverStudioToolDock({
           <DesignPresetsCard
             savedPresets={savedPresets}
             builtInPresets={BUILT_IN_DESIGN_PRESETS}
+            designMuse={designMuse}
             onSaveCurrent={onSavePreset}
             onApplyPreset={onApplyPreset}
             onDeletePreset={onDeletePreset}
