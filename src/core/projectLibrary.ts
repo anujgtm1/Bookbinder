@@ -225,6 +225,11 @@ export class IndexedDbProjectRepository implements ProjectRepository {
       try {
         request = factory.open(this.dbName, DEFAULT_PROJECT_DB_VERSION);
       } catch (err) {
+        queueMicrotask(() => {
+          if (this.dbPromise === pending) {
+            this.dbPromise = null;
+          }
+        });
         reject(err instanceof Error ? err : new Error('Failed to open IndexedDB.'));
         return;
       }
@@ -316,14 +321,41 @@ export class IndexedDbProjectRepository implements ProjectRepository {
     const fontsStore = tx.objectStore(STORE_FONTS);
 
     const txDone = waitForTransaction(tx);
+    let summaryResult: SavedProjectSummary | null = null;
 
-    let effectiveFont: SavedCustomFontRecord | null = null;
+    const writeProjectAndSummary = (effectiveFont: SavedCustomFontRecord | null) => {
+      const normalizedRecord: SavedProjectRecord = {
+        id: record.id,
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        project: serializedProject,
+        thumbnailDataUrl: record.thumbnailDataUrl,
+        customFont: effectiveFont,
+      };
+
+      const summary = ProjectLibraryModel.deriveSummary(normalizedRecord, wrapDims);
+      const projectEntry: StoredProjectEntry = {
+        id: normalizedRecord.id,
+        createdAt: normalizedRecord.createdAt,
+        updatedAt: normalizedRecord.updatedAt,
+        project: serializedProject,
+        thumbnailDataUrl: normalizedRecord.thumbnailDataUrl,
+      };
+
+      summariesStore.put(summary);
+      projectsStore.put(projectEntry);
+      summaryResult = summary;
+    };
+
     if (record.customFont === undefined) {
-      const existingRawFont = await readRequestResult<unknown>(fontsStore.get(record.id));
-      effectiveFont = deserializeSavedCustomFont(existingRawFont);
+      const getFontReq = fontsStore.get(record.id);
+      getFontReq.onsuccess = () => {
+        const existingFont = deserializeSavedCustomFont(getFontReq.result as unknown);
+        writeProjectAndSummary(existingFont);
+      };
     } else if (record.customFont === null) {
       fontsStore.delete(record.id);
-      effectiveFont = null;
+      writeProjectAndSummary(null);
     } else {
       const clonedFont = cloneCustomFont(record.customFont);
       const storedFont: StoredFontEntry = {
@@ -331,33 +363,25 @@ export class IndexedDbProjectRepository implements ProjectRepository {
         ...clonedFont,
       };
       fontsStore.put(storedFont);
-      effectiveFont = clonedFont;
+      writeProjectAndSummary(clonedFont);
     }
-
-    const normalizedRecord: SavedProjectRecord = {
-      id: record.id,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-      project: serializedProject,
-      thumbnailDataUrl: record.thumbnailDataUrl,
-      customFont: effectiveFont,
-    };
-
-    const summary = ProjectLibraryModel.deriveSummary(normalizedRecord, wrapDims);
-    const projectEntry: StoredProjectEntry = {
-      id: normalizedRecord.id,
-      createdAt: normalizedRecord.createdAt,
-      updatedAt: normalizedRecord.updatedAt,
-      project: serializedProject,
-      thumbnailDataUrl: normalizedRecord.thumbnailDataUrl,
-    };
-
-    summariesStore.put(summary);
-    projectsStore.put(projectEntry);
 
     await txDone;
     this.notifyExternalChange();
-    return summary;
+    return (
+      summaryResult ??
+      ProjectLibraryModel.deriveSummary(
+        {
+          id: record.id,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+          project: serializedProject,
+          thumbnailDataUrl: record.thumbnailDataUrl,
+          customFont: null,
+        },
+        wrapDims,
+      )
+    );
   }
 
   async deleteProject(id: ProjectId): Promise<void> {
@@ -377,10 +401,13 @@ export class IndexedDbProjectRepository implements ProjectRepository {
     projectsStore.delete(id);
     fontsStore.delete(id);
 
-    const activeMeta = await readRequestResult<unknown>(metaStore.get(META_KEY_ACTIVE_PROJECT_ID));
-    if (isRecord(activeMeta) && activeMeta.value === id) {
-      metaStore.delete(META_KEY_ACTIVE_PROJECT_ID);
-    }
+    const activeReq = metaStore.get(META_KEY_ACTIVE_PROJECT_ID);
+    activeReq.onsuccess = () => {
+      const activeMeta: unknown = activeReq.result;
+      if (isRecord(activeMeta) && activeMeta.value === id) {
+        metaStore.delete(META_KEY_ACTIVE_PROJECT_ID);
+      }
+    };
 
     await txDone;
     this.notifyExternalChange();
