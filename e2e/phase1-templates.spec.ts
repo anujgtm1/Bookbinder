@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { PDFDocument } from 'pdf-lib';
 
 test.describe('Phase 1 — Structural Templates & Exports', () => {
   test.beforeEach(async ({ page }) => {
@@ -132,5 +133,45 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
       .locator('meta[name="color-scheme"]')
       .getAttribute('content');
     expect(metaContent === 'dark' || metaContent === 'light').toBe(true);
+  });
+
+  test('packs L-shaped compact inner pockets + spine liner onto 1 US Letter page in PdfExportDialog (inner-styled and inner-blueprint)', async ({
+    page,
+  }) => {
+    // 105 × 140 mm, 46 mm spine on US Letter requires L-shaped 2D packing
+    // (1 horizontal pocket + 1 vertical pocket + spine liner in the L-corner) to fit on 1 page.
+    await page.getByTestId('input-pb-width').fill('105');
+    await page.getByTestId('input-pb-width').blur();
+    await page.getByTestId('input-pb-height').fill('140');
+    await page.getByTestId('input-pb-height').blur();
+    await page.getByTestId('input-pb-thickness').fill('46');
+    await page.getByTestId('input-pb-thickness').blur();
+
+    await page.getByTestId('nav-pockets').click();
+    await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
+
+    const dialog = page.getByTestId('pdf-export-dialog');
+
+    // 1. Styled Pockets PDF ('inner-styled') reports 1 page on US Letter
+    await page.getByTestId('download-styled-inner-pdf-btn').click();
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId('pdf-page-option-letter')).toContainText('1 page');
+    await expect(page.getByTestId('pdf-export-summary')).toContainText('1 page • US Letter');
+    await page.getByTestId('pdf-export-close-btn').click();
+    await expect(dialog).toBeHidden();
+
+    // 2. Plain Cut PDF ('inner-blueprint') reports 1 page and exports a valid 1-page PDF
+    await page.getByTestId('download-inner-pdf-btn').click();
+    await expect(dialog).toBeVisible();
+    await expect(page.getByTestId('pdf-page-option-letter')).toContainText('1 page');
+    await expect(page.getByTestId('pdf-export-summary')).toContainText('1 page • US Letter');
+
+    const pdfPromise = page.waitForEvent('download');
+    await page.getByTestId('pdf-export-confirm-btn').click();
+    const pdfDownload = await pdfPromise;
+    await expect(dialog).toBeHidden();
+
+    const pdfDoc = await PDFDocument.load(await readFile((await pdfDownload.path())!));
+    expect(pdfDoc.getPageCount()).toBe(1);
   });
 });
