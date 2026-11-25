@@ -12,10 +12,15 @@ import {
 } from 'pdf-lib';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { computeExternalFoldGuideTicks } from '@/core/foldGuideTicks';
-import { appendDetachedInnerPocketsPdf, composeRollNestedCoverPdf } from '@/core/pdfExport';
+import {
+  appendDetachedInnerPocketsPdf,
+  composeRollNestedCoverPdf,
+  composeSheetNestedCoverPdf,
+} from '@/core/pdfExport';
 import {
   layoutPdfToPrintMedia,
   type RollNestingExportOptions,
+  type SheetNestingExportOptions,
 } from '@/core/pdfSheetLayout';
 import type { PrinterMargins } from '@/core/printerMargins';
 import { canvasToPngBytes } from '@/lib/canvasImage';
@@ -595,6 +600,8 @@ export interface PrintReadyCoverPdfOptions extends PdfGuideOptionsInput {
   readonly printerMargins?: PrinterMargins;
   /** Optional wide-format roll multi-up nesting / gang-sheet configuration. */
   readonly rollNesting?: RollNestingExportOptions;
+  /** Optional fixed cut-sheet multi-up / multi-book nesting configuration. */
+  readonly sheetNesting?: SheetNestingExportOptions;
   /** Skip DOM canvas rasterization (useful in headless/unit tests without HTML canvas). */
   readonly skipCanvasRaster?: boolean;
 }
@@ -641,6 +648,7 @@ export async function generatePrintReadyRollPdf(
 
   const printMediaId = options?.printMediaId ?? options?.printMedia ?? 'exact-auto';
   const mediaSpec = getPrintMediaSpec(printMediaId);
+  const { capabilities } = resolveBindingStrategy(geometry);
 
   if (options?.rollNesting?.enabled && mediaSpec.kind === 'roll') {
     const nestedBytes = await composeRollNestedCoverPdf(sourceBytes, geometry, printMediaId, {
@@ -657,8 +665,36 @@ export async function generatePrintReadyRollPdf(
     if (
       options.appendInnerPocketsPage &&
       !options.rollNesting.packInnerPockets &&
-      geometry.bindingStyle === 'softcover-jacket' &&
-      geometry.softcoverPocketMode === 'separate'
+      !capabilities.usesChipboard &&
+      capabilities.usesInnerPockets
+    ) {
+      return appendDetachedInnerPocketsPdf(
+        nestedBytes,
+        geometry,
+        options.innerPageSizeId ?? 'letter',
+        guideOptions,
+      );
+    }
+
+    return nestedBytes;
+  }
+
+  if (options?.sheetNesting?.enabled && mediaSpec.kind === 'sheet') {
+    const nestedBytes = await composeSheetNestedCoverPdf(sourceBytes, geometry, printMediaId, {
+      sheetNesting: options.sheetNesting,
+      printerMargins: options.printerMargins,
+      includeScaleBar: options.includeScaleBar,
+      coverLabel: studio.spineText.title.trim() || 'Outer Cover',
+      externalFoldGuideTicks,
+      bleedMm: spec.bleedMm,
+      guideOptions,
+    });
+
+    if (
+      options.appendInnerPocketsPage &&
+      !options.sheetNesting.packInnerPockets &&
+      !capabilities.usesChipboard &&
+      capabilities.usesInnerPockets
     ) {
       return appendDetachedInnerPocketsPdf(
         nestedBytes,

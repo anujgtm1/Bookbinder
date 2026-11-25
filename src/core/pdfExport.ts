@@ -30,6 +30,7 @@ import {
   layoutPdfToPrintMedia,
   type PdfSheetLayoutOptions,
   type RollNestingExportOptions,
+  type SheetNestingExportOptions,
 } from './pdfSheetLayout';
 import {
   DEFAULT_PRINTER_MARGINS,
@@ -38,6 +39,7 @@ import {
   type PrinterMargins,
 } from './printerMargins';
 import { composeNestedRollPdf, type RollPdfSource } from './rollNesting';
+import { composeNestedSheetPdf, type SheetPdfSource } from './sheetNesting';
 
 export const INNER_PAGE_MARGIN_MM = 7.5;
 export const INNER_PIECE_GAP_MM = 5.0;
@@ -728,6 +730,8 @@ export interface OuterWrapPdfOptions extends PdfSheetLayoutOptions, PdfGuideOpti
   readonly innerPageSizeId?: PageSizeId;
   /** Optional wide-format roll multi-up nesting / gang-sheet configuration. */
   readonly rollNesting?: RollNestingExportOptions;
+  /** Optional fixed cut-sheet multi-up / multi-book nesting configuration. */
+  readonly sheetNesting?: SheetNestingExportOptions;
 }
 
 /**
@@ -910,6 +914,72 @@ export async function composeRollNestedCoverPdf(
     gutterMm: options.rollNesting.gutterMm,
     includeScaleBar: options.includeScaleBar,
     allowRotation: options.rollNesting.allowRotation,
+  });
+  return bytes;
+}
+
+/**
+ * Composes an outer cover PDF (+ optional inner pieces + optional extra multi-book queue PDFs)
+ * onto fixed desktop cut sheets (Letter, A4, Legal, Tabloid) respecting printable safe margins.
+ */
+export async function composeSheetNestedCoverPdf(
+  coverBytes: Uint8Array,
+  geometry: CaseGeometry,
+  printMediaId: PrintMediaId,
+  options: {
+    readonly sheetNesting: SheetNestingExportOptions;
+    readonly printerMargins?: PrinterMargins;
+    readonly includeScaleBar?: boolean;
+    readonly documentTitle?: string;
+    readonly coverLabel?: string;
+    readonly externalFoldGuideTicks?: readonly LineSegment2D[];
+    readonly bleedMm?: number;
+    readonly guideOptions?: PdfGuideOptionsInput;
+  },
+): Promise<Uint8Array> {
+  const copies = Math.max(1, Math.floor(options.sheetNesting.copies));
+
+  const sources: SheetPdfSource[] = [
+    {
+      id: 'current-cover',
+      label: options.coverLabel ?? 'Outer Cover',
+      pdfBytes: coverBytes,
+      copies,
+      externalFoldGuideTicks: options.externalFoldGuideTicks,
+      bleedMm: options.bleedMm,
+    },
+  ];
+
+  if (
+    options.sheetNesting.packInnerPockets &&
+    resolveBindingStrategy(geometry).capabilities.usesInnerPockets
+  ) {
+    const innerSources = await generateInnerPieceRollSources(
+      geometry,
+      copies,
+      options.guideOptions,
+    );
+    sources.push(...innerSources);
+  }
+
+  for (const extra of options.sheetNesting.extraQueueItems ?? []) {
+    if (extra.pdfBytes.byteLength > 0 && extra.copies > 0) {
+      sources.push({
+        id: extra.id,
+        label: extra.label,
+        pdfBytes: extra.pdfBytes,
+        copies: Math.max(1, Math.floor(extra.copies)),
+      });
+    }
+  }
+
+  const { bytes } = await composeNestedSheetPdf(sources, {
+    mediaId: printMediaId,
+    printerMargins: options.printerMargins,
+    gutterMm: options.sheetNesting.gutterMm,
+    allowRotation: options.sheetNesting.allowRotation,
+    includeScaleBar: options.includeScaleBar,
+    documentTitle: options.documentTitle,
   });
   return bytes;
 }
@@ -1197,8 +1267,40 @@ export async function generateOuterWrapPdf(
     if (
       options.appendInnerPocketsPage &&
       !options.rollNesting.packInnerPockets &&
-      geometry.bindingStyle === 'softcover-jacket' &&
-      geometry.softcoverPocketMode === 'separate'
+      !capabilities.usesChipboard &&
+      capabilities.usesInnerPockets
+    ) {
+      return appendDetachedInnerPocketsPdf(
+        nestedBytes,
+        geometry,
+        options.innerPageSizeId ?? 'letter',
+        guideOptions,
+      );
+    }
+    return nestedBytes;
+  }
+
+  if (options?.sheetNesting?.enabled && mediaSpec?.kind === 'sheet') {
+    const nestedBytes = await composeSheetNestedCoverPdf(
+      baseBytes,
+      geometry,
+      options.printMediaId,
+      {
+        sheetNesting: options.sheetNesting,
+        printerMargins: options.printerMargins,
+        includeScaleBar: options.includeScaleBar,
+        documentTitle:
+          options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template',
+        externalFoldGuideTicks,
+        bleedMm: bleed,
+        guideOptions,
+      },
+    );
+    if (
+      options.appendInnerPocketsPage &&
+      !options.sheetNesting.packInnerPockets &&
+      !capabilities.usesChipboard &&
+      capabilities.usesInnerPockets
     ) {
       return appendDetachedInnerPocketsPdf(
         nestedBytes,

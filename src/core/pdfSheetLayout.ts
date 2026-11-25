@@ -41,13 +41,24 @@ export interface RollGangQueueItem {
   readonly copies: number;
 }
 
+export type MultiBookGangPdfItem = RollGangQueueItem;
+
 export interface RollNestingExportOptions {
   readonly enabled: boolean;
   readonly copies: number;
   readonly gutterMm: number;
   readonly packInnerPockets: boolean;
   readonly allowRotation: boolean;
-  readonly extraQueueItems?: readonly RollGangQueueItem[];
+  readonly extraQueueItems?: readonly MultiBookGangPdfItem[];
+}
+
+export interface SheetNestingExportOptions {
+  readonly enabled: boolean;
+  readonly copies: number;
+  readonly gutterMm: number;
+  readonly packInnerPockets: boolean;
+  readonly allowRotation: boolean;
+  readonly extraQueueItems?: readonly MultiBookGangPdfItem[];
 }
 
 export interface PdfSheetLayoutOptions {
