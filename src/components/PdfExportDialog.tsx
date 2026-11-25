@@ -409,6 +409,7 @@ export function PdfExportDialog({
     if (open) {
       if (didOpenOrSwitchTarget) {
         userEditedCopiesRef.current = false;
+        setGangUploadError(null);
         setIncludeCutLines(resolvedDefaultGuides.includeCutLines);
         setIncludeFoldLines(resolvedDefaultGuides.includeFoldLines);
         setIncludeFoldGuideTicks(resolvedDefaultGuides.includeFoldGuideTicks);

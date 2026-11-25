@@ -955,7 +955,8 @@ export function PdfSheetPreviewSvg({
               sheetCount > 1 ? `, Sheet ${safePageIdx + 1} of ${sheetCount}` : ''
             }`}
             viewBox={`0 0 ${sheetW} ${sheetH}`}
-            className="max-h-56 w-full max-w-[540px] rounded border border-border/90 bg-[#fffdf9] shadow-xs"
+            style={{ aspectRatio: `${sheetW} / ${sheetH}` }}
+            className="h-52 max-w-full rounded border border-border/90 bg-[#fffdf9] shadow-xs"
           >
             <UnprintableMarginStrips
               sheetW={sheetW}
