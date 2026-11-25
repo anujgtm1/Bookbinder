@@ -20,9 +20,19 @@ import {
 } from '@/core/printerMargins';
 import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PrintMediaId } from '@/types/bookParams';
-import type { LineSegment2D, PrintMediaFitEvaluation } from '@/types/geometry';
+import type { LineSegment2D, PrintMediaFitEvaluation, Rect2D } from '@/types/geometry';
 import { UnitConverter } from '@/types/units';
 import { drawPdfFoldGuideTicks } from './foldGuideTicks';
+import {
+  SCALE_BAR_BOX_H_MM,
+  SCALE_BAR_BOX_W_MM,
+  SCALE_BAR_LENGTH_MM,
+  SCALE_BAR_PAD_X_MM,
+  planScaleBarPlacement,
+  ticksToPdfAvoidRects,
+  type PdfSafeBox,
+  type ScaleBarPlacement,
+} from './scaleBarPlacement';
 
 export interface RollGangQueueItem {
   readonly id: string;
@@ -55,14 +65,6 @@ export interface PdfSheetLayoutOptions {
   readonly externalFoldGuideTicks?: readonly LineSegment2D[];
 }
 
-interface PdfSafeBox {
-  readonly leftMm: number;
-  readonly bottomMm: number;
-  readonly widthMm: number;
-  readonly heightMm: number;
-  readonly topMm: number;
-}
-
 function computePdfSafeBox(
   sheetWMm: number,
   sheetHMm: number,
@@ -81,62 +83,124 @@ function computePdfSafeBox(
   };
 }
 
-const SCALE_BAR_LENGTH_MM = 50;
-const SCALE_BAR_PAD_X_MM = 2.0;
-const SCALE_BAR_BOX_W_MM = SCALE_BAR_LENGTH_MM + SCALE_BAR_PAD_X_MM * 2;
-const SCALE_BAR_BOX_H_MM = 8.4;
-
 /**
  * Draws a crisp 50.0 mm physical calibration ruler bar (0/10/20/30/40/50 mm ticks)
- * so users can verify 100% Actual Size printing with a ruler.
+ * either horizontally (`rotated90: false`) or vertically rotated 90° CCW (`rotated90: true`)
+ * so users can verify 100% Actual Size printing with a physical ruler in either orientation.
  */
-function drawScaleCheckBar(
+export function drawScaleCheckBar(
   page: PDFPage,
   font: PDFFont,
   boldFont: PDFFont,
-  originXMm: number,
-  originYMm: number,
+  placement: Pick<ScaleBarPlacement, 'xMm' | 'yMm' | 'rotated90'>,
 ): void {
-  const barX0Mm = originXMm + SCALE_BAR_PAD_X_MM;
-  const baselineYMm = originYMm + 3.0;
+  const { xMm: originXMm, yMm: originYMm, rotated90 } = placement;
+  const strokeColor = rgb(0.12, 0.12, 0.12);
+  const mutedColor = rgb(0.32, 0.32, 0.32);
 
-  // Light semi-opaque backing strip so ticks & label stay readable over artwork or margins
+  if (!rotated90) {
+    const barX0Mm = originXMm + SCALE_BAR_PAD_X_MM;
+    const baselineYMm = originYMm + 3.0;
+
+    // Light semi-opaque backing strip so ticks & label stay readable over artwork or margins
+    page.drawRectangle({
+      x: UnitConverter.mmToPoints(originXMm),
+      y: UnitConverter.mmToPoints(originYMm),
+      width: UnitConverter.mmToPoints(SCALE_BAR_BOX_W_MM),
+      height: UnitConverter.mmToPoints(SCALE_BAR_BOX_H_MM),
+      color: rgb(1, 1, 1),
+      opacity: 0.92,
+      borderColor: rgb(0.72, 0.72, 0.72),
+      borderWidth: 0.35,
+    });
+
+    // Exact 50.0 mm horizontal baseline
+    page.drawLine({
+      start: {
+        x: UnitConverter.mmToPoints(barX0Mm),
+        y: UnitConverter.mmToPoints(baselineYMm),
+      },
+      end: {
+        x: UnitConverter.mmToPoints(barX0Mm + SCALE_BAR_LENGTH_MM),
+        y: UnitConverter.mmToPoints(baselineYMm),
+      },
+      color: strokeColor,
+      thickness: 0.75,
+    });
+
+    // 0, 10, 20, 30, 40, 50 mm major ticks (+ 5 mm half-cm ticks)
+    for (let mm = 0; mm <= SCALE_BAR_LENGTH_MM; mm += 5) {
+      const isMajor = mm % 10 === 0;
+      const tickHeightMm = isMajor ? 1.9 : 1.0;
+      const txPt = UnitConverter.mmToPoints(barX0Mm + mm);
+      page.drawLine({
+        start: { x: txPt, y: UnitConverter.mmToPoints(baselineYMm) },
+        end: { x: txPt, y: UnitConverter.mmToPoints(baselineYMm + tickHeightMm) },
+        color: strokeColor,
+        thickness: isMajor ? 0.65 : 0.4,
+      });
+
+      if (isMajor) {
+        const tickLabel = String(mm);
+        const labelW = font.widthOfTextAtSize(tickLabel, 4.8);
+        page.drawText(tickLabel, {
+          x: txPt - labelW / 2,
+          y: UnitConverter.mmToPoints(originYMm + 0.8),
+          size: 4.8,
+          font,
+          color: mutedColor,
+        });
+      }
+    }
+
+    page.drawText('50 mm Scale Check', {
+      x: UnitConverter.mmToPoints(barX0Mm),
+      y: UnitConverter.mmToPoints(originYMm + 5.6),
+      size: 5.2,
+      font: boldFont,
+      color: strokeColor,
+    });
+    return;
+  }
+
+  // Exact rigid 90° CCW vertical orientation inside [originXMm, originYMm] of size (BOX_H x BOX_W):
+  // Local (lx, ly) -> (originXMm + SCALE_BAR_BOX_H_MM - ly, originYMm + lx)
+  const barY0Mm = originYMm + SCALE_BAR_PAD_X_MM;
+  const baselineXMm = originXMm + SCALE_BAR_BOX_H_MM - 3.0;
+
   page.drawRectangle({
     x: UnitConverter.mmToPoints(originXMm),
     y: UnitConverter.mmToPoints(originYMm),
-    width: UnitConverter.mmToPoints(SCALE_BAR_BOX_W_MM),
-    height: UnitConverter.mmToPoints(SCALE_BAR_BOX_H_MM),
+    width: UnitConverter.mmToPoints(SCALE_BAR_BOX_H_MM),
+    height: UnitConverter.mmToPoints(SCALE_BAR_BOX_W_MM),
     color: rgb(1, 1, 1),
     opacity: 0.92,
     borderColor: rgb(0.72, 0.72, 0.72),
     borderWidth: 0.35,
   });
 
-  const strokeColor = rgb(0.12, 0.12, 0.12);
-  const mutedColor = rgb(0.32, 0.32, 0.32);
-
-  // Exact 50.0 mm horizontal baseline
+  // Exact 50.0 mm vertical baseline
   page.drawLine({
     start: {
-      x: UnitConverter.mmToPoints(barX0Mm),
-      y: UnitConverter.mmToPoints(baselineYMm),
+      x: UnitConverter.mmToPoints(baselineXMm),
+      y: UnitConverter.mmToPoints(barY0Mm),
     },
     end: {
-      x: UnitConverter.mmToPoints(barX0Mm + SCALE_BAR_LENGTH_MM),
-      y: UnitConverter.mmToPoints(baselineYMm),
+      x: UnitConverter.mmToPoints(baselineXMm),
+      y: UnitConverter.mmToPoints(barY0Mm + SCALE_BAR_LENGTH_MM),
     },
     color: strokeColor,
     thickness: 0.75,
   });
 
-  // 0, 10, 20, 30, 40, 50 mm major ticks (+ 5 mm half-cm ticks)
+  // 0, 10, 20, 30, 40, 50 mm major ticks (+ 5 mm half-cm ticks) along vertical ruler
   for (let mm = 0; mm <= SCALE_BAR_LENGTH_MM; mm += 5) {
     const isMajor = mm % 10 === 0;
     const tickHeightMm = isMajor ? 1.9 : 1.0;
-    const txPt = UnitConverter.mmToPoints(barX0Mm + mm);
+    const tyPt = UnitConverter.mmToPoints(barY0Mm + mm);
     page.drawLine({
-      start: { x: txPt, y: UnitConverter.mmToPoints(baselineYMm) },
-      end: { x: txPt, y: UnitConverter.mmToPoints(baselineYMm + tickHeightMm) },
+      start: { x: UnitConverter.mmToPoints(baselineXMm), y: tyPt },
+      end: { x: UnitConverter.mmToPoints(baselineXMm - tickHeightMm), y: tyPt },
       color: strokeColor,
       thickness: isMajor ? 0.65 : 0.4,
     });
@@ -145,22 +209,72 @@ function drawScaleCheckBar(
       const tickLabel = String(mm);
       const labelW = font.widthOfTextAtSize(tickLabel, 4.8);
       page.drawText(tickLabel, {
-        x: txPt - labelW / 2,
-        y: UnitConverter.mmToPoints(originYMm + 0.8),
+        x: UnitConverter.mmToPoints(originXMm + SCALE_BAR_BOX_H_MM - 0.8),
+        y: tyPt - labelW / 2,
         size: 4.8,
         font,
         color: mutedColor,
+        rotate: degrees(90),
       });
     }
   }
 
   page.drawText('50 mm Scale Check', {
-    x: UnitConverter.mmToPoints(barX0Mm),
-    y: UnitConverter.mmToPoints(originYMm + 5.6),
+    x: UnitConverter.mmToPoints(originXMm + SCALE_BAR_BOX_H_MM - 5.6),
+    y: UnitConverter.mmToPoints(barY0Mm),
     size: 5.2,
     font: boldFont,
     color: strokeColor,
+    rotate: degrees(90),
   });
+}
+
+function computeFooterReservedRect(safeBox: PdfSafeBox): Rect2D {
+  const footerYMm = Math.max(2.0, safeBox.bottomMm + 1.5);
+  const footerTopMm = footerYMm + 2.6;
+  return {
+    x: safeBox.leftMm,
+    y: safeBox.bottomMm,
+    width: safeBox.widthMm,
+    height: Math.max(4.0, footerTopMm - safeBox.bottomMm),
+  };
+}
+
+function computeHeaderReservedRect(
+  safeBox: PdfSafeBox,
+  sheetHMm: number,
+  boldFont: PDFFont,
+  text: string,
+): Rect2D {
+  const headerYMm = Math.min(sheetHMm - 4.2, safeBox.topMm - 3.2);
+  const headerBottomMm = Math.max(safeBox.bottomMm, headerYMm - 0.8);
+  const textWidthMm = UnitConverter.pointsToMm(boldFont.widthOfTextAtSize(text, 7.0));
+  const padXMm = 4.0;
+  const boxWidthMm = Math.min(safeBox.widthMm, textWidthMm + padXMm * 2);
+  const centerXMm = safeBox.leftMm + safeBox.widthMm / 2;
+  return {
+    x: Math.max(safeBox.leftMm, centerXMm - boxWidthMm / 2),
+    y: headerBottomMm,
+    width: boxWidthMm,
+    height: Math.max(0, safeBox.topMm - headerBottomMm),
+  };
+}
+
+function computeTileOverlapAvoidRect(
+  safeBox: PdfSafeBox,
+  sheetHMm: number,
+  seamXMm: number,
+  overlapMm: number,
+): Rect2D {
+  const halfSpanMm = Math.max(overlapMm / 2, 3.5) + 0.5;
+  const lineBottomMm = Math.max(5.5, safeBox.bottomMm + 1.5);
+  const lineTopMm = Math.min(sheetHMm - 6.0, safeBox.topMm - 1.5);
+  return {
+    x: seamXMm - halfSpanMm,
+    y: lineBottomMm,
+    width: halfSpanMm * 2,
+    height: Math.max(0, lineTopMm - lineBottomMm),
+  };
 }
 
 function drawCenteredSheetFooter(
@@ -346,14 +460,18 @@ async function layoutSingleSheetCenteredPdf(
   });
   sheetPage.pushOperators(popGraphicsState());
 
+  const bleedMm = Math.max(0, options.bleedMm ?? 0);
+  const sourceTopMm = sheetHMm - (offsetYMm + sourceHeightMm);
+  const tickOffsetXMm = offsetXMm + bleedMm;
+  const tickOffsetYMm = sourceTopMm + bleedMm;
+  const pageClipRectMm: Rect2D = { x: 0, y: 0, width: sheetWMm, height: sheetHMm };
+
   if (options.externalFoldGuideTicks && options.externalFoldGuideTicks.length > 0) {
-    const bleedMm = Math.max(0, options.bleedMm ?? 0);
-    const sourceTopMm = sheetHMm - (offsetYMm + sourceHeightMm);
     drawPdfFoldGuideTicks(sheetPage, options.externalFoldGuideTicks, {
       pageHeightMm: sheetHMm,
-      offsetXMm: offsetXMm + bleedMm,
-      offsetYMm: sourceTopMm + bleedMm,
-      clipRectMm: { x: 0, y: 0, width: sheetWMm, height: sheetHMm },
+      offsetXMm: tickOffsetXMm,
+      offsetYMm: tickOffsetYMm,
+      clipRectMm: pageClipRectMm,
     });
   }
 
@@ -365,9 +483,23 @@ async function layoutSingleSheetCenteredPdf(
   );
 
   if (options.includeScaleBar) {
-    const scaleXMm = Math.max(2.0, safeBox.leftMm + 1.0);
-    const scaleYMm = Math.max(safeBox.bottomMm + 1.0, safeBox.topMm - SCALE_BAR_BOX_H_MM - 1.5);
-    drawScaleCheckBar(sheetPage, font, boldFont, scaleXMm, scaleYMm);
+    const avoidRects: Rect2D[] = [
+      { x: offsetXMm, y: offsetYMm, width: sourceWidthMm, height: sourceHeightMm },
+      ...ticksToPdfAvoidRects(options.externalFoldGuideTicks, {
+        pageHeightMm: sheetHMm,
+        offsetXMm: tickOffsetXMm,
+        offsetYMm: tickOffsetYMm,
+        clipRectMm: pageClipRectMm,
+      }),
+      computeFooterReservedRect(safeBox),
+    ];
+    const placement = planScaleBarPlacement({
+      safeBox,
+      barWidthMm: SCALE_BAR_BOX_W_MM,
+      barHeightMm: SCALE_BAR_BOX_H_MM,
+      avoidRects,
+    });
+    drawScaleCheckBar(sheetPage, font, boldFont, placement);
   }
 
   return outDoc.save();
@@ -435,18 +567,20 @@ async function layoutTwoSheetTiledPdf(
   });
   page1.pushOperators(popGraphicsState());
 
+  const p1TickClipRectMm: Rect2D = { x: 0, y: 0, width: Math.max(0, p1ClipX2Mm), height: sheetHMm };
   if (options.externalFoldGuideTicks && options.externalFoldGuideTicks.length > 0) {
     drawPdfFoldGuideTicks(page1, options.externalFoldGuideTicks, {
       pageHeightMm: sheetHMm,
       offsetXMm: p1OriginXMm + bleedMm,
       offsetYMm: sourceTopMm + bleedMm,
-      clipRectMm: { x: 0, y: 0, width: Math.max(0, p1ClipX2Mm), height: sheetHMm },
+      clipRectMm: p1TickClipRectMm,
     });
   }
 
   const p1SeamXMm = leftMarginMm + contentWMm / 2;
+  const p1HeaderText = 'SHEET 1 OF 2 (LEFT)';
   drawTileOverlapOverlay(page1, boldFont, safeBox, sheetHMm, p1SeamXMm, overlapMm, 'left');
-  drawCenteredSheetHeader(page1, boldFont, safeBox, sheetHMm, 'SHEET 1 OF 2 (LEFT)');
+  drawCenteredSheetHeader(page1, boldFont, safeBox, sheetHMm, p1HeaderText);
   drawCenteredSheetFooter(
     page1,
     font,
@@ -455,9 +589,30 @@ async function layoutTwoSheetTiledPdf(
   );
 
   if (options.includeScaleBar) {
-    const scaleXMm = Math.max(2.0, safeBox.leftMm + 1.0);
-    const scaleYMm = Math.max(safeBox.bottomMm + 1.0, safeBox.topMm - SCALE_BAR_BOX_H_MM - 1.5);
-    drawScaleCheckBar(page1, font, boldFont, scaleXMm, scaleYMm);
+    const avoidRects: Rect2D[] = [
+      {
+        x: p1ClipX1Mm,
+        y: drawOriginYMm,
+        width: Math.max(0, p1ClipX2Mm - p1ClipX1Mm),
+        height: sourceHeightMm,
+      },
+      ...ticksToPdfAvoidRects(options.externalFoldGuideTicks, {
+        pageHeightMm: sheetHMm,
+        offsetXMm: p1OriginXMm + bleedMm,
+        offsetYMm: sourceTopMm + bleedMm,
+        clipRectMm: p1TickClipRectMm,
+      }),
+      computeTileOverlapAvoidRect(safeBox, sheetHMm, p1SeamXMm, overlapMm),
+      computeHeaderReservedRect(safeBox, sheetHMm, boldFont, p1HeaderText),
+      computeFooterReservedRect(safeBox),
+    ];
+    const placement = planScaleBarPlacement({
+      safeBox,
+      barWidthMm: SCALE_BAR_BOX_W_MM,
+      barHeightMm: SCALE_BAR_BOX_H_MM,
+      avoidRects,
+    });
+    drawScaleCheckBar(page1, font, boldFont, placement);
   }
 
   // Sheet 2: Right half [midX - halfOverlap .. sourceWidthMm]
@@ -560,8 +715,34 @@ export async function layoutPdfToPrintMedia(
     if (options.includeScaleBar) {
       const font = await doc.embedFont(StandardFonts.Helvetica);
       const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
-      const safeOriginXMm = Math.min(6.0, Math.max(1.0, sourceWidthMm - SCALE_BAR_BOX_W_MM - 1.0));
-      drawScaleCheckBar(page, font, boldFont, safeOriginXMm, 4.0);
+      const exactSafeBox: PdfSafeBox = {
+        leftMm: 0,
+        bottomMm: 0,
+        widthMm: sourceWidthMm,
+        heightMm: sourceHeightMm,
+        topMm: sourceHeightMm,
+      };
+      const avoidRects: Rect2D[] = [
+        {
+          x: bleedMm,
+          y: bleedMm,
+          width: Math.max(0, sourceWidthMm - bleedMm * 2),
+          height: Math.max(0, sourceHeightMm - bleedMm * 2),
+        },
+        ...ticksToPdfAvoidRects(options.externalFoldGuideTicks, {
+          pageHeightMm: sourceHeightMm,
+          offsetXMm: bleedMm,
+          offsetYMm: bleedMm,
+          clipRectMm: { x: 0, y: 0, width: sourceWidthMm, height: sourceHeightMm },
+        }),
+      ];
+      const placement = planScaleBarPlacement({
+        safeBox: exactSafeBox,
+        barWidthMm: SCALE_BAR_BOX_W_MM,
+        barHeightMm: SCALE_BAR_BOX_H_MM,
+        avoidRects,
+      });
+      drawScaleCheckBar(page, font, boldFont, placement);
     }
     return doc.save();
   }
