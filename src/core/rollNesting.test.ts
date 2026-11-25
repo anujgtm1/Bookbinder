@@ -1,6 +1,7 @@
 import { inflateSync } from 'node:zlib';
 import { PDFDocument, PDFName, PDFRawStream, rgb } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
+import type { Rect2D } from '@/types/geometry';
 import { UnitConverter } from '@/types/units';
 import {
   composeNestedRollPdf,
@@ -8,6 +9,11 @@ import {
   packItemsOntoRoll,
   type RollPlacedRect,
 } from './rollNesting';
+import {
+  SCALE_BAR_BOX_H_MM,
+  SCALE_BAR_BOX_W_MM,
+  rectsIntersectMm,
+} from './scaleBarPlacement';
 
 async function createSamplePdf(widthMm: number, heightMm: number): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -23,7 +29,7 @@ async function createSamplePdf(widthMm: number, heightMm: number): Promise<Uint8
   return doc.save();
 }
 
-function extractPageContentText(pdfDoc: PDFDocument, pageIndex: number): string {
+function extractPageRawStream(pdfDoc: PDFDocument, pageIndex: number): string {
   const page = pdfDoc.getPage(pageIndex);
   const contents = page.node.Contents();
   if (!contents) return '';
@@ -46,12 +52,49 @@ function extractPageContentText(pdfDoc: PDFDocument, pageIndex: number): string 
     }
   }
 
-  const rawStream = chunks.join('\n');
+  return chunks.join('\n');
+}
+
+function extractPageContentText(pdfDoc: PDFDocument, pageIndex: number): string {
+  const rawStream = extractPageRawStream(pdfDoc, pageIndex);
   const decodedHexStrings: string[] = [];
   for (const match of rawStream.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) {
     decodedHexStrings.push(Buffer.from(match[1], 'hex').toString('latin1'));
   }
   return decodedHexStrings.join('\n');
+}
+
+function extractScaleBarBackingRectMm(
+  pdfDoc: PDFDocument,
+  pageIndex: number,
+): (Rect2D & { readonly rotated90: boolean }) | null {
+  const raw = extractPageRawStream(pdfDoc, pageIndex);
+  const wPt = UnitConverter.mmToPoints(SCALE_BAR_BOX_W_MM);
+  const hPt = UnitConverter.mmToPoints(SCALE_BAR_BOX_H_MM);
+
+  // pdf-lib drawRectangle emits:
+  //   1 0 0 1 <x> <y> cm ... 0 0 m 0 <h> l <w> <h> l <w> 0 l h
+  const rectRegex =
+    /1\s+0\s+0\s+1\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+cm[\s\S]{0,160}?0\s+0\s+m\s+0\s+(-?\d+(?:\.\d+)?)\s+l\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+l\s+(-?\d+(?:\.\d+)?)\s+0\s+l\s+h/g;
+  for (const match of raw.matchAll(rectRegex)) {
+    const tx = Number(match[1]);
+    const ty = Number(match[2]);
+    const rh = Number(match[3]);
+    const rw = Number(match[4]);
+
+    const isHorizontal = Math.abs(rw - wPt) < 0.2 && Math.abs(rh - hPt) < 0.2;
+    const isVertical = Math.abs(rw - hPt) < 0.2 && Math.abs(rh - wPt) < 0.2;
+    if (isHorizontal || isVertical) {
+      return {
+        x: UnitConverter.pointsToMm(tx),
+        y: UnitConverter.pointsToMm(ty),
+        width: UnitConverter.pointsToMm(rw),
+        height: UnitConverter.pointsToMm(rh),
+        rotated90: isVertical,
+      };
+    }
+  }
+  return null;
 }
 
 function rectsOverlap(a: RollPlacedRect, b: RollPlacedRect): boolean {
@@ -224,5 +267,38 @@ describe('rollNesting', () => {
       noBar.plan.usedLengthMm,
       2,
     );
+  });
+
+  it('places the 50 mm scale bar collision-free on a nested roll without overlapping any placed copy or footer', async () => {
+    const coverA = await createSamplePdf(381, 260);
+    const { bytes, plan } = await composeNestedRollPdf(
+      [{ id: 'cover-a', label: 'Hardcover A', pdfBytes: coverA, copies: 3 }],
+      {
+        rollWidthMm: 914.4,
+        sideMarginMm: 5,
+        leadingMarginMm: 5,
+        gutterMm: 10,
+        includeScaleBar: true,
+      },
+    );
+
+    const outDoc = await PDFDocument.load(bytes);
+    const barRect = extractScaleBarBackingRectMm(outDoc, 0);
+    expect(barRect).not.toBeNull();
+    expect(barRect!.rotated90).toBe(false);
+
+    // Must not overlap ANY placed copy (converted to PDF bottom-up coords) or the roll footer
+    const pageHeightMm = plan.usedLengthMm;
+    for (const placed of plan.placements) {
+      const placedPdfRect: Rect2D = {
+        x: placed.xMm,
+        y: pageHeightMm - placed.yMm - placed.heightMm,
+        width: placed.widthMm,
+        height: placed.heightMm,
+      };
+      expect(rectsIntersectMm(barRect!, placedPdfRect, 1.4)).toBe(false);
+    }
+    const footerRect: Rect2D = { x: 5, y: 1, width: 904.4, height: 3.4 };
+    expect(rectsIntersectMm(barRect!, footerRect, 1.4)).toBe(false);
   });
 });
