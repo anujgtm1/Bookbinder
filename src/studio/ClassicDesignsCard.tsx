@@ -248,7 +248,7 @@ export function ClassicDesignsCard({
 
       {filteredOrnaments.length > 0 ? (
         <div
-          className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto pr-0.5 sm:grid-cols-3"
+          className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto pr-0.5"
           data-testid="classic-ornament-gallery"
         >
           {filteredOrnaments.map((spec) => (
@@ -264,10 +264,10 @@ export function ClassicDesignsCard({
                   defaultFoilColor,
                 )
               }
-              className="flex items-center gap-2 rounded-md border border-border bg-secondary/25 px-2 py-1.5 text-left transition-colors hover:border-brass/70 hover:bg-accent/50 cursor-pointer"
+              className="flex min-w-0 w-full items-center gap-2 rounded-md border border-border bg-secondary/25 px-2 py-1.5 text-left transition-colors hover:border-brass/70 hover:bg-accent/50 cursor-pointer"
             >
               <OrnamentThumb presetId={spec.id} />
-              <span className="min-w-0 text-[11px] leading-tight font-medium text-foreground">
+              <span className="min-w-0 flex-1 break-words text-balance text-[11px] leading-tight font-medium text-foreground">
                 {spec.label}
               </span>
             </button>
