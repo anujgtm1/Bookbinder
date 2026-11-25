@@ -41,7 +41,7 @@ export interface OrnamentStyleFilterSpec {
 }
 
 export const ORNAMENT_STYLE_FILTERS: readonly OrnamentStyleFilterSpec[] = [
-  { id: 'all', label: 'All Styles' },
+  { id: 'all', label: 'All' },
   { id: 'classic', label: 'Classic' },
   { id: 'fantasy', label: 'Fantasy' },
   { id: 'art-deco', label: 'Art Deco' },
