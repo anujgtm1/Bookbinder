@@ -1,5 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
+import {
+  computeExternalFoldGuideTicks,
+  deriveSplitPanelFoldLines,
+} from '@/core/foldGuideTicks';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry } from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
@@ -21,6 +25,9 @@ export interface OuterBlueprintCanvasProps {
   readonly pan: { readonly x: number; readonly y: number };
   readonly onPanChange: (next: { readonly x: number; readonly y: number }) => void;
   readonly showDimensions?: boolean;
+  readonly showCutLines?: boolean;
+  readonly showFoldLines?: boolean;
+  readonly showFoldGuideTicks?: boolean;
 }
 
 const PAPER_SHEET_FILL = '#FAF6EE';
@@ -39,6 +46,9 @@ export function OuterBlueprintCanvas({
   pan,
   onPanChange,
   showDimensions = true,
+  showCutLines = true,
+  showFoldLines = true,
+  showFoldGuideTicks = true,
 }: OuterBlueprintCanvasProps) {
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{
@@ -119,6 +129,14 @@ export function OuterBlueprintCanvas({
     }
     return segs;
   }, [outerWrap, capabilities.hasFlaps, capabilities.hasTurnIns]);
+
+  const externalFoldTicks = useMemo(
+    () =>
+      showFoldGuideTicks
+        ? computeExternalFoldGuideTicks(outerWrap.outerCutPolygon, outerWrap.foldLines)
+        : [],
+    [showFoldGuideTicks, outerWrap.outerCutPolygon, outerWrap.foldLines],
+  );
 
   const cumulativeStops = useMemo<readonly CumulativeRulerStop[]>(() => {
     const pts: number[] = [0];
@@ -223,8 +241,10 @@ export function OuterBlueprintCanvas({
               <path
                 d={GeometryPrimitives.polygonToSvgPath(outerWrap.outerCutPolygon, 2)}
                 fill={PAPER_SHEET_FILL}
-                stroke="#D93829"
-                strokeWidth="1.25"
+                stroke={showCutLines ? '#D93829' : 'rgba(148, 163, 184, 0.45)'}
+                strokeWidth={showCutLines ? '1.25' : '0.65'}
+                strokeDasharray={showCutLines ? undefined : '2.5 2.5'}
+                data-cut-visible={showCutLines ? 'true' : 'false'}
                 data-testid="blueprint-cut-polygon"
               />
 
@@ -243,7 +263,7 @@ export function OuterBlueprintCanvas({
                       height={rect.height}
                       fill="#1D5BD6"
                       fillOpacity="0.06"
-                      stroke="#1D5BD6"
+                      stroke={showFoldLines ? '#1D5BD6' : 'none'}
                       strokeWidth="0.9"
                       strokeDasharray="6 3"
                     />
@@ -276,7 +296,7 @@ export function OuterBlueprintCanvas({
               })}
 
               {/* Strategy fold / score dashed lines */}
-              {outerWrap.foldLines.length > 0 && (
+              {showFoldLines && outerWrap.foldLines.length > 0 && (
                 <g data-testid="blueprint-fold-lines">
                   {outerWrap.foldLines.map((line, idx) => (
                     <line
@@ -295,6 +315,24 @@ export function OuterBlueprintCanvas({
                 </g>
               )}
 
+              {/* External fold guide registration ticks outside the cut perimeter */}
+              {showFoldGuideTicks && externalFoldTicks.length > 0 && (
+                <g data-testid="blueprint-fold-ticks">
+                  {externalFoldTicks.map((tick, idx) => (
+                    <line
+                      key={`tick-${idx}`}
+                      data-testid="blueprint-fold-tick"
+                      x1={tick.x1}
+                      y1={tick.y1}
+                      x2={tick.x2}
+                      y2={tick.y2}
+                      stroke="#1D5BD6"
+                      strokeWidth="0.95"
+                    />
+                  ))}
+                </g>
+              )}
+
               {/* Rigid hinge spacers (only when hingeSpacerMm > 0) */}
               {cutList.hingeSpacerMm > 0 &&
                 [outerWrap.leftHingeRect, outerWrap.rightHingeRect].map((hinge, i) => {
@@ -308,7 +346,7 @@ export function OuterBlueprintCanvas({
                         height={hinge.height}
                         fill="#C59B48"
                         fillOpacity="0.18"
-                        stroke="#A67B2E"
+                        stroke={showFoldLines ? '#A67B2E' : 'none'}
                         strokeWidth="0.65"
                         strokeDasharray="2 2"
                       />
@@ -545,23 +583,45 @@ export function OuterBlueprintCanvas({
                   <path
                     d={GeometryPrimitives.polygonToSvgPath(panel.cutPolygon, 2)}
                     fill={PAPER_SHEET_FILL}
-                    stroke="#D93829"
-                    strokeWidth="1.25"
+                    stroke={showCutLines ? '#D93829' : 'rgba(148, 163, 184, 0.45)'}
+                    strokeWidth={showCutLines ? '1.25' : '0.65'}
+                    strokeDasharray={showCutLines ? undefined : '2.5 2.5'}
+                    data-cut-visible={showCutLines ? 'true' : 'false'}
                   />
-                  {panel.guideRects.map((g) => (
-                    <rect
-                      key={g.label}
-                      x={g.rect.x}
-                      y={g.rect.y}
-                      width={g.rect.width}
-                      height={g.rect.height}
-                      fill="#1D5BD6"
-                      fillOpacity="0.07"
-                      stroke="#1D5BD6"
-                      strokeWidth="0.8"
-                      strokeDasharray="5 2.5"
-                    />
-                  ))}
+                  {showFoldLines &&
+                    panel.guideRects.map((g) => (
+                      <rect
+                        key={g.label}
+                        x={g.rect.x}
+                        y={g.rect.y}
+                        width={g.rect.width}
+                        height={g.rect.height}
+                        fill="#1D5BD6"
+                        fillOpacity="0.07"
+                        stroke="#1D5BD6"
+                        strokeWidth="0.8"
+                        strokeDasharray="5 2.5"
+                      />
+                    ))}
+                  {showFoldGuideTicks && (
+                    <g data-testid="blueprint-fold-ticks">
+                      {computeExternalFoldGuideTicks(
+                        panel.cutPolygon,
+                        deriveSplitPanelFoldLines(panel),
+                      ).map((tick, tidx) => (
+                        <line
+                          key={`sp-tick-${tidx}`}
+                          data-testid="blueprint-fold-tick"
+                          x1={tick.x1}
+                          y1={tick.y1}
+                          x2={tick.x2}
+                          y2={tick.y2}
+                          stroke="#1D5BD6"
+                          strokeWidth="0.95"
+                        />
+                      ))}
+                    </g>
+                  )}
                   <text
                     x={panel.widthMm / 2}
                     y={panel.heightMm / 2 - 4}

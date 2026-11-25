@@ -793,6 +793,9 @@ export function useCoverStudioActions({
   };
 
   const handleExportPrintPdf = async (options?: {
+    readonly includeCutLines?: boolean;
+    readonly includeFoldLines?: boolean;
+    readonly includeFoldGuideTicks?: boolean;
     readonly includeGuides?: boolean;
     readonly printMediaId?: PrintMediaId;
     readonly dpi?: 300 | 600;
@@ -813,8 +816,9 @@ export function useCoverStudioActions({
       const effectiveLayerMode: CoverPdfLayerMode = options?.exportLayerMode ?? 'full';
       const isBaseOnly = effectiveLayerMode === 'base-only';
       const fileName = isBaseOnly ? 'outer_cover_base_for_htv.pdf' : 'outer_cover_print.pdf';
-      if (options?.includeGuides !== undefined) {
-        const nextCutLineMode = options.includeGuides ? 'full-cut-miter' : 'bleed-registration';
+      const resolvedCutLines = options?.includeCutLines ?? options?.includeGuides;
+      if (resolvedCutLines !== undefined) {
+        const nextCutLineMode = resolvedCutLines ? 'full-cut-miter' : 'bleed-registration';
         if (nextCutLineMode !== studio.cutLineMode) {
           updateStudio({ cutLineMode: nextCutLineMode });
         }
@@ -822,6 +826,9 @@ export function useCoverStudioActions({
       const effectiveCustomRollWidthMm =
         options?.customRollWidthMm ?? effectiveParams.customRollWidthMm;
       const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
+        includeCutLines: options?.includeCutLines,
+        includeFoldLines: options?.includeFoldLines,
+        includeFoldGuideTicks: options?.includeFoldGuideTicks,
         includeGuides: options?.includeGuides,
         exportLayerMode: effectiveLayerMode,
         printMediaId: effectiveMediaId,

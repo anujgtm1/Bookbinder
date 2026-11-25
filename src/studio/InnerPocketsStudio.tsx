@@ -116,7 +116,6 @@ export function InnerPocketsStudio({
   const [viewMode, setViewMode] = useState<PocketViewMode>('styled');
   const [showGuides, setShowGuides] = useState(true);
   const [showBlueprintDimensions, setShowBlueprintDimensions] = useState(true);
-  const [includePdfGuides, setIncludePdfGuides] = useState(true);
   const [includePdfLegend, setIncludePdfLegend] = useState(false);
   const [pdfDialogTarget, setPdfDialogTarget] = useState<'inner-styled' | 'inner-blueprint' | null>(
     null,
@@ -375,13 +374,13 @@ export function InnerPocketsStudio({
 
   const handleDownloadStyledPdf = async (options?: {
     readonly pageSizeId?: PageSizeId;
-    readonly includeGuides?: boolean;
+    readonly includeCutLines?: boolean;
+    readonly includeFoldLines?: boolean;
+    readonly includeFoldGuideTicks?: boolean;
     readonly includeLegend?: boolean;
   }) => {
     const effectivePageSize = options?.pageSizeId ?? activePageSize;
-    const effectiveGuides = options?.includeGuides ?? includePdfGuides;
     const effectiveLegend = options?.includeLegend ?? includePdfLegend;
-    setIncludePdfGuides(effectiveGuides);
     setIncludePdfLegend(effectiveLegend);
     setExportingStyledPdf(true);
     try {
@@ -390,7 +389,12 @@ export function InnerPocketsStudio({
         effectivePageSize,
         pocketStyle,
         undefined,
-        { includeLegend: effectiveLegend, includeGuides: effectiveGuides },
+        {
+          includeLegend: effectiveLegend,
+          includeCutLines: options?.includeCutLines,
+          includeFoldLines: options?.includeFoldLines,
+          includeFoldGuideTicks: options?.includeFoldGuideTicks,
+        },
       );
       const fileName = isFoldedEndpapers
         ? 'folded_endpapers_styled.pdf'
@@ -411,12 +415,13 @@ export function InnerPocketsStudio({
   };
 
   const handleConfirmPdfExport = async (selection: PdfExportSelection) => {
-    setIncludePdfGuides(selection.includeGuides);
     setIncludePdfLegend(selection.includeLegend);
     if (selection.target === 'inner-styled') {
       await handleDownloadStyledPdf({
         pageSizeId: selection.pageSizeId,
-        includeGuides: selection.includeGuides,
+        includeCutLines: selection.includeCutLines,
+        includeFoldLines: selection.includeFoldLines,
+        includeFoldGuideTicks: selection.includeFoldGuideTicks,
         includeLegend: selection.includeLegend,
       });
       return;
@@ -424,6 +429,9 @@ export function InnerPocketsStudio({
     await onDownloadInnerPdf({
       pageSizeId: selection.pageSizeId,
       includeLegend: selection.includeLegend,
+      includeCutLines: selection.includeCutLines,
+      includeFoldLines: selection.includeFoldLines,
+      includeFoldGuideTicks: selection.includeFoldGuideTicks,
     });
   };
 
@@ -1164,7 +1172,6 @@ export function InnerPocketsStudio({
           onChangePageSize?.(sizeId);
         }}
         splitMode="single"
-        defaultIncludeGuides={includePdfGuides}
         defaultIncludeLegend={includePdfLegend}
         exporting={exportingStyledPdf || exportingInnerPdf}
         onConfirmExport={handleConfirmPdfExport}

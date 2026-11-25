@@ -712,6 +712,9 @@ export function CoverStyler({
           printMediaId: selection.printMediaId,
           tileOverlapMm: selection.tileOverlapMm,
           includeScaleBar: selection.includeScaleBar,
+          includeCutLines: selection.includeCutLines,
+          includeFoldLines: selection.includeFoldLines,
+          includeFoldGuideTicks: selection.includeFoldGuideTicks,
           appendInnerPocketsPage: selection.appendInnerPocketsPage,
           innerPageSizeId: selection.pageSizeId,
           customRollWidthMm: selection.customRollWidthMm,
@@ -722,7 +725,9 @@ export function CoverStyler({
       }
     }
     await actions.handleExportPrintPdf({
-      includeGuides: selection.includeGuides,
+      includeCutLines: selection.includeCutLines,
+      includeFoldLines: selection.includeFoldLines,
+      includeFoldGuideTicks: selection.includeFoldGuideTicks,
       printMediaId: selection.printMediaId,
       dpi: selection.dpi,
       tileOverlapMm: selection.tileOverlapMm,
@@ -1443,7 +1448,9 @@ export function CoverStyler({
         onDetachSlipFlaps={
           onUpdateParams ? () => onUpdateParams({ softcoverPocketMode: 'separate' }) : undefined
         }
-        defaultIncludeGuides={studio.cutLineMode === 'full-cut-miter'}
+        defaultIncludeCutLines={
+          pdfDialogTarget === 'cover-styled' ? studio.cutLineMode === 'full-cut-miter' : true
+        }
         defaultExportLayerMode={pdfExportLayerModeDefault}
         exporting={actions.exportingKind === 'pdf' || exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}

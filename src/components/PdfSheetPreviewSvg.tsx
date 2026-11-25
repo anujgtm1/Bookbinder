@@ -2,6 +2,12 @@ import { AlertTriangle, CheckCircle2, Layers } from 'lucide-react';
 import { useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
+import {
+  FOLD_GUIDE_TICK_GAP_MM,
+  INNER_FOLD_GUIDE_TICK_LENGTH_MM,
+  computeExternalFoldGuideTicks,
+  transformTicks90CW,
+} from '@/core/foldGuideTicks';
 import { evaluatePrintMediaFit } from '@/core/geometry';
 import type { InnerPdfLayoutPlan, InnerPieceKind } from '@/core/pdfExport';
 import {
@@ -13,7 +19,13 @@ import {
 import type { RollNestPlan } from '@/core/rollNesting';
 import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PrintMediaId, SplitMode } from '@/types/bookParams';
-import type { CaseGeometry, PrintMediaFitEvaluation } from '@/types/geometry';
+import {
+  GeometryPrimitives,
+  type CaseGeometry,
+  type LineSegment2D,
+  type Polygon2D,
+  type PrintMediaFitEvaluation,
+} from '@/types/geometry';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export interface PdfSheetPreviewProps {
@@ -25,6 +37,9 @@ export interface PdfSheetPreviewProps {
   readonly activeFit: PrintMediaFitEvaluation;
   readonly tileOverlapMm: number;
   readonly includeScaleBar: boolean;
+  readonly includeCutLines?: boolean;
+  readonly includeFoldLines?: boolean;
+  readonly includeFoldGuideTicks?: boolean;
   readonly innerPlan: InnerPdfLayoutPlan;
   readonly printerMargins?: PrinterMargins;
   readonly customRollWidthMm?: number;
@@ -160,62 +175,87 @@ function CoverCreaseLines({
   originX,
   originY,
   clipId,
+  tickClipId,
+  includeCutLines = true,
+  includeFoldLines = true,
+  includeFoldGuideTicks = true,
 }: {
   readonly geometry: CaseGeometry;
   readonly originX: number;
   readonly originY: number;
   readonly clipId?: string;
+  readonly tickClipId?: string;
+  readonly includeCutLines?: boolean;
+  readonly includeFoldLines?: boolean;
+  readonly includeFoldGuideTicks?: boolean;
 }) {
   const { outerWrap } = geometry;
-  const xs = [
-    outerWrap.backBoardRect.x,
-    outerWrap.spineRect.x,
-    outerWrap.spineRect.x + outerWrap.spineRect.width,
-    outerWrap.frontBoardRect.x + outerWrap.frontBoardRect.width,
-  ];
-  const uniqueXs: number[] = [];
-  for (const x of xs) {
-    if (x <= 1 || x >= outerWrap.widthMm - 1) continue;
-    if (!uniqueXs.some((prev) => Math.abs(prev - x) < 1)) {
-      uniqueXs.push(x);
-    }
-  }
+  const shiftedCutPath = GeometryPrimitives.polygonToSvgPath(
+    GeometryPrimitives.translatePolygon(outerWrap.outerCutPolygon, originX, originY),
+    2,
+  );
+  const externalTicks = includeFoldGuideTicks
+    ? computeExternalFoldGuideTicks(outerWrap.outerCutPolygon, outerWrap.foldLines)
+    : [];
 
   return (
-    <g clipPath={clipId ? `url(#${clipId})` : undefined}>
-      <rect
-        x={originX}
-        y={originY}
-        width={outerWrap.widthMm}
-        height={outerWrap.heightMm}
-        fill="rgba(30, 77, 68, 0.15)"
-        stroke="#1e4d44"
-        strokeWidth={1.1}
-        rx={1}
-      />
-      {/* Spine band highlight */}
-      <rect
-        x={originX + outerWrap.spineRect.x}
-        y={originY}
-        width={outerWrap.spineRect.width}
-        height={outerWrap.heightMm}
-        fill="rgba(166, 123, 46, 0.22)"
-      />
-      {/* Vertical panel fold hints */}
-      {uniqueXs.map((vx) => (
-        <line
-          key={vx}
-          x1={originX + vx}
-          y1={originY}
-          x2={originX + vx}
-          y2={originY + outerWrap.heightMm}
-          stroke="#1d5bd6"
-          strokeWidth={0.75}
-          strokeDasharray="3 2.5"
-          opacity={0.75}
+    <>
+      <g clipPath={clipId ? `url(#${clipId})` : undefined}>
+        <path
+          d={shiftedCutPath}
+          fill="rgba(30, 77, 68, 0.15)"
+          stroke={includeCutLines ? '#d93829' : '#64748b'}
+          strokeWidth={includeCutLines ? 1.2 : 0.7}
+          strokeDasharray={includeCutLines ? undefined : '2 2'}
+          data-testid={includeCutLines ? 'preview-cut-lines' : 'preview-cut-outline-muted'}
         />
-      ))}
-    </g>
+        {/* Spine band highlight */}
+        <rect
+          x={originX + outerWrap.spineRect.x}
+          y={originY + outerWrap.spineRect.y}
+          width={outerWrap.spineRect.width}
+          height={outerWrap.spineRect.height}
+          fill="rgba(166, 123, 46, 0.22)"
+        />
+        {/* Interior dashed fold / score lines */}
+        {includeFoldLines && outerWrap.foldLines.length > 0 && (
+          <g data-testid="preview-fold-lines">
+            {outerWrap.foldLines.map((line, idx) => (
+              <line
+                key={`fold-${idx}`}
+                x1={originX + line.x1}
+                y1={originY + line.y1}
+                x2={originX + line.x2}
+                y2={originY + line.y2}
+                stroke="#1d5bd6"
+                strokeWidth={0.8}
+                strokeDasharray="3 2.5"
+                opacity={0.78}
+              />
+            ))}
+          </g>
+        )}
+      </g>
+      {/* External fold guide registration ticks outside the cut perimeter */}
+      {externalTicks.length > 0 && (
+        <g
+          clipPath={tickClipId ? `url(#${tickClipId})` : undefined}
+          data-testid="preview-fold-ticks"
+        >
+          {externalTicks.map((tick, idx) => (
+            <line
+              key={`tick-${idx}`}
+              x1={originX + tick.x1}
+              y1={originY + tick.y1}
+              x2={originX + tick.x2}
+              y2={originY + tick.y2}
+              stroke="#1d5bd6"
+              strokeWidth={1.0}
+            />
+          ))}
+        </g>
+      )}
+    </>
   );
 }
 
@@ -260,6 +300,9 @@ export function PdfSheetPreviewSvg({
   activeFit,
   tileOverlapMm,
   includeScaleBar,
+  includeCutLines = true,
+  includeFoldLines = true,
+  includeFoldGuideTicks = true,
   innerPlan,
   printerMargins,
   customRollWidthMm,
@@ -271,6 +314,8 @@ export function PdfSheetPreviewSvg({
   const uid = useId().replace(/:/g, '');
   const tile1ClipId = `${uid}-tile-1`;
   const tile2ClipId = `${uid}-tile-2`;
+  const tile1TickClipId = `${uid}-tile-1-ticks`;
+  const tile2TickClipId = `${uid}-tile-2-ticks`;
   const singleHatchId = `${uid}-margin-single`;
   const tile1HatchId = `${uid}-margin-tile-1`;
   const tile2HatchId = `${uid}-margin-tile-2`;
@@ -331,6 +376,60 @@ export function PdfSheetPreviewSvg({
                   />
                   {pagePlacements.map((p) => {
                     const st = INNER_PIECE_STYLES[p.kind];
+                    const pieceMeta: {
+                      readonly polygon: Polygon2D;
+                      readonly scores: readonly LineSegment2D[];
+                      readonly origH: number;
+                    } | null =
+                      p.kind === 'back-pocket'
+                        ? {
+                            polygon: geometry.backPocket.outerCutPolygon,
+                            scores: geometry.backPocket.scoreLines,
+                            origH: geometry.backPocket.totalHeightMm,
+                          }
+                        : p.kind === 'front-pocket'
+                          ? {
+                              polygon: geometry.frontPocket.outerCutPolygon,
+                              scores: geometry.frontPocket.scoreLines,
+                              origH: geometry.frontPocket.totalHeightMm,
+                            }
+                          : p.kind === 'spine-liner'
+                            ? {
+                                polygon: [
+                                  { x: 0, y: 0 },
+                                  { x: geometry.spineLiner.widthMm, y: 0 },
+                                  {
+                                    x: geometry.spineLiner.widthMm,
+                                    y: geometry.spineLiner.heightMm,
+                                  },
+                                  { x: 0, y: geometry.spineLiner.heightMm },
+                                ],
+                                scores: geometry.spineLiner.scoreLines,
+                                origH: geometry.spineLiner.heightMm,
+                              }
+                            : null;
+
+                    const transformedScores =
+                      pieceMeta && includeFoldLines
+                        ? p.rotated90
+                          ? transformTicks90CW(pieceMeta.scores, pieceMeta.origH)
+                          : pieceMeta.scores
+                        : [];
+                    const transformedTicks =
+                      pieceMeta && includeFoldGuideTicks
+                        ? (() => {
+                            const raw = computeExternalFoldGuideTicks(
+                              pieceMeta.polygon,
+                              pieceMeta.scores,
+                              {
+                                gapMm: FOLD_GUIDE_TICK_GAP_MM,
+                                lengthMm: INNER_FOLD_GUIDE_TICK_LENGTH_MM,
+                              },
+                            );
+                            return p.rotated90 ? transformTicks90CW(raw, pieceMeta.origH) : raw;
+                          })()
+                        : [];
+
                     return (
                       <g key={`${p.kind}-${p.pageIndex}`}>
                         <rect
@@ -339,10 +438,53 @@ export function PdfSheetPreviewSvg({
                           width={p.widthMm}
                           height={p.heightMm}
                           fill={p.clipped ? 'rgba(185, 56, 34, 0.2)' : st.fill}
-                          stroke={p.clipped ? '#b93822' : st.stroke}
+                          stroke={
+                            p.clipped
+                              ? '#b93822'
+                              : p.kind === 'calibration-legend'
+                                ? st.stroke
+                                : includeCutLines
+                                  ? '#d93829'
+                                  : '#94a3b8'
+                          }
                           strokeWidth={1.3}
+                          strokeDasharray={
+                            p.kind !== 'calibration-legend' && !includeCutLines ? '2 2' : undefined
+                          }
                           rx={1.5}
                         />
+                        {transformedScores.length > 0 && (
+                          <g data-testid="preview-fold-lines">
+                            {transformedScores.map((s, si) => (
+                              <line
+                                key={`is-${si}`}
+                                x1={p.xMm + s.x1}
+                                y1={p.yMm + s.y1}
+                                x2={p.xMm + s.x2}
+                                y2={p.yMm + s.y2}
+                                stroke="#1d5bd6"
+                                strokeWidth={1.0}
+                                strokeDasharray="3 2.5"
+                                opacity={0.85}
+                              />
+                            ))}
+                          </g>
+                        )}
+                        {transformedTicks.length > 0 && (
+                          <g data-testid="preview-fold-ticks">
+                            {transformedTicks.map((t, ti) => (
+                              <line
+                                key={`it-${ti}`}
+                                x1={p.xMm + t.x1}
+                                y1={p.yMm + t.y1}
+                                x2={p.xMm + t.x2}
+                                y2={p.yMm + t.y2}
+                                stroke="#1d5bd6"
+                                strokeWidth={1.1}
+                              />
+                            ))}
+                          </g>
+                        )}
                         <text
                           x={p.xMm + p.widthMm / 2}
                           y={p.yMm + p.heightMm / 2}
@@ -833,7 +975,14 @@ export function PdfSheetPreviewSvg({
               stroke="#94a3b8"
               strokeWidth={1}
             />
-            <CoverCreaseLines geometry={geometry} originX={pad} originY={pad} />
+            <CoverCreaseLines
+              geometry={geometry}
+              originX={pad}
+              originY={pad}
+              includeCutLines={includeCutLines}
+              includeFoldLines={includeFoldLines}
+              includeFoldGuideTicks={includeFoldGuideTicks}
+            />
             <text
               x={pad + wrapW / 2}
               y={pad + wrapH / 2}
@@ -907,7 +1056,14 @@ export function PdfSheetPreviewSvg({
               strokeWidth={1}
               strokeDasharray="4 3"
             />
-            <CoverCreaseLines geometry={geometry} originX={originX} originY={originY} />
+            <CoverCreaseLines
+              geometry={geometry}
+              originX={originX}
+              originY={originY}
+              includeCutLines={includeCutLines}
+              includeFoldLines={includeFoldLines}
+              includeFoldGuideTicks={includeFoldGuideTicks}
+            />
             {includeScaleBar && <ScaleBarSvg x={safeBox.xMm + 2} y={safeBox.yMm + 2} />}
           </svg>
         </div>
@@ -959,6 +1115,9 @@ export function PdfSheetPreviewSvg({
               <clipPath id={tile1ClipId}>
                 <rect x={Math.max(0, leftMargin)} y={0} width={wrapHalfWithOverlap} height={sheetH} />
               </clipPath>
+              <clipPath id={tile1TickClipId}>
+                <rect x={0} y={0} width={Math.max(0, leftMargin + wrapHalfWithOverlap)} height={sheetH} />
+              </clipPath>
             </defs>
             <UnprintableMarginStrips
               sheetW={sheetW}
@@ -981,6 +1140,10 @@ export function PdfSheetPreviewSvg({
               originX={leftMargin}
               originY={drawOriginY}
               clipId={tile1ClipId}
+              tickClipId={tile1TickClipId}
+              includeCutLines={includeCutLines}
+              includeFoldLines={includeFoldLines}
+              includeFoldGuideTicks={includeFoldGuideTicks}
             />
             {/* Amber overlap & tape zone */}
             <rect
@@ -1029,6 +1192,9 @@ export function PdfSheetPreviewSvg({
               <clipPath id={tile2ClipId}>
                 <rect x={leftMargin} y={0} width={wrapHalfWithOverlap} height={sheetH} />
               </clipPath>
+              <clipPath id={tile2TickClipId}>
+                <rect x={leftMargin} y={0} width={Math.max(0, sheetW - leftMargin)} height={sheetH} />
+              </clipPath>
             </defs>
             <UnprintableMarginStrips
               sheetW={sheetW}
@@ -1051,6 +1217,10 @@ export function PdfSheetPreviewSvg({
               originX={p2OriginX}
               originY={drawOriginY}
               clipId={tile2ClipId}
+              tickClipId={tile2TickClipId}
+              includeCutLines={includeCutLines}
+              includeFoldLines={includeFoldLines}
+              includeFoldGuideTicks={includeFoldGuideTicks}
             />
             {/* Amber overlap & tape zone */}
             <rect
