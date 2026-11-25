@@ -20,8 +20,9 @@ import {
 } from '@/core/printerMargins';
 import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PrintMediaId } from '@/types/bookParams';
-import type { PrintMediaFitEvaluation } from '@/types/geometry';
+import type { LineSegment2D, PrintMediaFitEvaluation } from '@/types/geometry';
 import { UnitConverter } from '@/types/units';
+import { drawPdfFoldGuideTicks } from './foldGuideTicks';
 
 export interface RollGangQueueItem {
   readonly id: string;
@@ -50,6 +51,8 @@ export interface PdfSheetLayoutOptions {
   readonly printerMargins?: PrinterMargins;
   /** Optional custom wide-format roll width in mm when printMediaId === 'roll-custom'. */
   readonly customRollWidthMm?: number;
+  /** Optional wrap-local external fold guide ticks (top-down mm) drawn outside the cut perimeter. */
+  readonly externalFoldGuideTicks?: readonly LineSegment2D[];
 }
 
 interface PdfSafeBox {
@@ -343,6 +346,17 @@ async function layoutSingleSheetCenteredPdf(
   });
   sheetPage.pushOperators(popGraphicsState());
 
+  if (options.externalFoldGuideTicks && options.externalFoldGuideTicks.length > 0) {
+    const bleedMm = Math.max(0, options.bleedMm ?? 0);
+    const sourceTopMm = sheetHMm - (offsetYMm + sourceHeightMm);
+    drawPdfFoldGuideTicks(sheetPage, options.externalFoldGuideTicks, {
+      pageHeightMm: sheetHMm,
+      offsetXMm: offsetXMm + bleedMm,
+      offsetYMm: sourceTopMm + bleedMm,
+      clipRectMm: { x: 0, y: 0, width: sheetWMm, height: sheetHMm },
+    });
+  }
+
   drawCenteredSheetFooter(
     sheetPage,
     font,
@@ -393,6 +407,7 @@ async function layoutTwoSheetTiledPdf(
   const leftMarginMm = safeBox.leftMm + (safeBox.widthMm - wrapHalfWithOverlapMm) / 2;
   const drawOriginYMm = safeBox.bottomMm + (safeBox.heightMm - sourceHeightMm) / 2;
   const drawOriginYPt = UnitConverter.mmToPoints(drawOriginYMm);
+  const sourceTopMm = sheetHMm - (drawOriginYMm + sourceHeightMm);
   const midXMm = sourceWidthMm / 2;
 
   // Sheet 1: Left half [0 .. midX + halfOverlap]
@@ -419,6 +434,15 @@ async function layoutTwoSheetTiledPdf(
     height: sourceHPt,
   });
   page1.pushOperators(popGraphicsState());
+
+  if (options.externalFoldGuideTicks && options.externalFoldGuideTicks.length > 0) {
+    drawPdfFoldGuideTicks(page1, options.externalFoldGuideTicks, {
+      pageHeightMm: sheetHMm,
+      offsetXMm: p1OriginXMm + bleedMm,
+      offsetYMm: sourceTopMm + bleedMm,
+      clipRectMm: { x: 0, y: 0, width: Math.max(0, p1ClipX2Mm), height: sheetHMm },
+    });
+  }
 
   const p1SeamXMm = leftMarginMm + contentWMm / 2;
   drawTileOverlapOverlay(page1, boldFont, safeBox, sheetHMm, p1SeamXMm, overlapMm, 'left');
@@ -461,6 +485,20 @@ async function layoutTwoSheetTiledPdf(
   });
   page2.pushOperators(popGraphicsState());
 
+  if (options.externalFoldGuideTicks && options.externalFoldGuideTicks.length > 0) {
+    drawPdfFoldGuideTicks(page2, options.externalFoldGuideTicks, {
+      pageHeightMm: sheetHMm,
+      offsetXMm: p2OriginXMm + bleedMm,
+      offsetYMm: sourceTopMm + bleedMm,
+      clipRectMm: {
+        x: p2ClipX1Mm,
+        y: 0,
+        width: Math.max(0, sheetWMm - p2ClipX1Mm),
+        height: sheetHMm,
+      },
+    });
+  }
+
   const p2SeamXMm = leftMarginMm + halfOverlapMm;
   drawTileOverlapOverlay(page2, boldFont, safeBox, sheetHMm, p2SeamXMm, overlapMm, 'right');
   drawCenteredSheetHeader(page2, boldFont, safeBox, sheetHMm, 'SHEET 2 OF 2 (RIGHT)');
@@ -502,16 +540,29 @@ export async function layoutPdfToPrintMedia(
     fit.sheetPageWidthMm === null ||
     fit.sheetPageHeightMm === null
   ) {
-    if (!options.includeScaleBar) {
+    const hasExternalTicks = Boolean(
+      options.externalFoldGuideTicks && options.externalFoldGuideTicks.length > 0,
+    );
+    if (!options.includeScaleBar && !hasExternalTicks) {
       return sourceBytes;
     }
 
     const doc = await PDFDocument.load(sourceBytes);
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
     const page = doc.getPage(0);
-    const safeOriginXMm = Math.min(6.0, Math.max(1.0, sourceWidthMm - SCALE_BAR_BOX_W_MM - 1.0));
-    drawScaleCheckBar(page, font, boldFont, safeOriginXMm, 4.0);
+    if (hasExternalTicks && options.externalFoldGuideTicks) {
+      drawPdfFoldGuideTicks(page, options.externalFoldGuideTicks, {
+        pageHeightMm: sourceHeightMm,
+        offsetXMm: bleedMm,
+        offsetYMm: bleedMm,
+        clipRectMm: { x: 0, y: 0, width: sourceWidthMm, height: sourceHeightMm },
+      });
+    }
+    if (options.includeScaleBar) {
+      const font = await doc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+      const safeOriginXMm = Math.min(6.0, Math.max(1.0, sourceWidthMm - SCALE_BAR_BOX_W_MM - 1.0));
+      drawScaleCheckBar(page, font, boldFont, safeOriginXMm, 4.0);
+    }
     return doc.save();
   }
 

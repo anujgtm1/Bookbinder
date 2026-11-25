@@ -12,7 +12,9 @@ import {
   type PDFFont,
   type PDFPage,
 } from 'pdf-lib';
+import type { LineSegment2D } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
+import { drawPdfFoldGuideTicks, transformTicks90CW, translateTicks } from './foldGuideTicks';
 
 export interface RollNestItem {
   readonly id: string;
@@ -70,6 +72,10 @@ export interface RollPdfSource {
   readonly label: string;
   readonly pdfBytes: Uint8Array;
   readonly copies: number;
+  /** Optional wrap/piece-local external fold guide ticks (top-down mm, before source bleed). */
+  readonly externalFoldGuideTicks?: readonly LineSegment2D[];
+  /** Symmetric bleed margin (mm) baked into pdfBytes around the piece. Defaults to 0. */
+  readonly bleedMm?: number;
 }
 
 export interface ComposeNestedRollPdfOptions extends PackRollOptions {
@@ -702,6 +708,24 @@ export async function composeNestedRollPdf(
     }
 
     page.pushOperators(popGraphicsState());
+
+    if (loaded.source.externalFoldGuideTicks && loaded.source.externalFoldGuideTicks.length > 0) {
+      const srcBleedMm = Math.max(0, loaded.source.bleedMm ?? 0);
+      const localTicks = translateTicks(
+        loaded.source.externalFoldGuideTicks,
+        srcBleedMm,
+        srcBleedMm,
+      );
+      const orientedTicks = rect.rotated90
+        ? transformTicks90CW(localTicks, loaded.heightMm)
+        : localTicks;
+      drawPdfFoldGuideTicks(page, orientedTicks, {
+        pageHeightMm,
+        offsetXMm: rect.xMm,
+        offsetYMm: rect.yMm,
+        clipRectMm: { x: 0, y: 0, width: pageWidthMm, height: pageHeightMm },
+      });
+    }
   }
 
   if (plan.placements.length > 0) {

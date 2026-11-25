@@ -11,6 +11,7 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
+import { computeExternalFoldGuideTicks } from '@/core/foldGuideTicks';
 import { appendDetachedInnerPocketsPdf, composeRollNestedCoverPdf } from '@/core/pdfExport';
 import {
   layoutPdfToPrintMedia,
@@ -27,6 +28,11 @@ import {
   type Point2D,
   type Rect2D,
 } from '@/types/geometry';
+import {
+  PdfGuideOptionsModel,
+  type PdfGuideOptions,
+  type PdfGuideOptionsInput,
+} from '@/types/pdfGuides';
 import type { CoverStudioState, StudioFontId } from '@/types/studio';
 import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, UnitConverter } from '@/types/units';
@@ -85,8 +91,8 @@ async function embedFontByIdInPdf(
   return fallback;
 }
 
-/** Draws hairline cut polygon, dashed score/fold lines, and optional softcover trim-waste instructions. */
-async function drawCoverCutAndFoldOverlay(
+/** Draws hairline solid red outer cut polygon and optional softcover trim-waste instructions. */
+async function drawCoverCutOutline(
   pdfDoc: PDFDocument,
   page: PDFPage,
   geometry: CaseGeometry,
@@ -103,9 +109,8 @@ async function drawCoverCutAndFoldOverlay(
   );
 
   const hairlineCut = rgb(0.92, 0.14, 0.14);
-  const hairlineFold = rgb(0.12, 0.42, 0.88);
 
-  // 3a. Solid hairline outer cut polygon (including 45° corner miters)
+  // Solid hairline outer cut polygon (including 45° corner miters)
   for (let i = 0; i < shiftedCutPoly.length; i++) {
     const a = shiftedCutPoly[i];
     const b = shiftedCutPoly[(i + 1) % shiftedCutPoly.length];
@@ -117,23 +122,7 @@ async function drawCoverCutAndFoldOverlay(
     });
   }
 
-  // 3b. Subtle dashed fold / score lines supplied by the active binding strategy
-  const drawFoldLine = (x1Mm: number, y1Mm: number, x2Mm: number, y2Mm: number) => {
-    page.drawLine({
-      start: { x: toPdfX(x1Mm), y: toPdfY(y1Mm) },
-      end: { x: toPdfX(x2Mm), y: toPdfY(y2Mm) },
-      color: hairlineFold,
-      thickness: 0.45,
-      dashArray: [4, 2.5],
-      opacity: 0.78,
-    });
-  };
-
-  for (const line of outerWrap.foldLines) {
-    drawFoldLine(bleed + line.x1, bleed + line.y1, bleed + line.x2, bleed + line.y2);
-  }
-
-  // 3c. Optional trim-waste fold & glue instructions for binding styles with mitered glue tabs
+  // Optional trim-waste fold & glue instructions for binding styles with mitered glue tabs
   const strategy = resolveBindingStrategy(outerWrap);
   if (strategy.capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length >= 2) {
     // Compute the exact gap between Back Top Glue Tab and Front Top Glue Tab so instructions stay strictly in trim waste
@@ -169,6 +158,29 @@ async function drawCoverCutAndFoldOverlay(
         color: rgb(0.2, 0.2, 0.2),
       });
     }
+  }
+}
+
+/** Draws subtle dashed interior fold / score lines across the cover supplied by the active binding strategy. */
+function drawCoverInteriorFoldLines(
+  page: PDFPage,
+  geometry: CaseGeometry,
+  spec: StudioCanvasSpec,
+  coords: PdfCoordMapper,
+): void {
+  const { toPdfX, toPdfY } = coords;
+  const bleed = spec.bleedMm;
+  const hairlineFold = rgb(0.12, 0.42, 0.88);
+
+  for (const line of geometry.outerWrap.foldLines) {
+    page.drawLine({
+      start: { x: toPdfX(bleed + line.x1), y: toPdfY(bleed + line.y1) },
+      end: { x: toPdfX(bleed + line.x2), y: toPdfY(bleed + line.y2) },
+      color: hairlineFold,
+      thickness: 0.45,
+      dashArray: [4, 2.5],
+      opacity: 0.78,
+    });
   }
 }
 
@@ -319,10 +331,10 @@ async function renderBaseCoverPdfPage(
   studio: CoverStudioState,
   customFont: CustomFontAsset | null,
   spec: StudioCanvasSpec,
-  options?: {
+  options: {
     rasterDpi?: number;
     skipCanvasRaster?: boolean;
-    includeGuides?: boolean;
+    guideOptions: PdfGuideOptions;
     exportLayerMode?: CoverPdfLayerMode;
   },
 ): Promise<{ bytes: Uint8Array; pageW: number; pageH: number }> {
@@ -539,12 +551,15 @@ async function renderBaseCoverPdfPage(
     }
   }
 
-  // 3. Cut Lines vs. Outer Corner Registration Marks Only
-  const showFullGuides = options?.includeGuides ?? studio.cutLineMode === 'full-cut-miter';
-  if (showFullGuides) {
-    await drawCoverCutAndFoldOverlay(pdfDoc, page, geometry, spec, coords);
+  // 3. Independent Cut Outline (or Outer Corner Registration Marks) & Interior Fold Lines
+  if (options.guideOptions.includeCutLines) {
+    await drawCoverCutOutline(pdfDoc, page, geometry, spec, coords);
   } else {
     drawOuterRegistrationMarks(page, geometry, spec, coords);
+  }
+
+  if (options.guideOptions.includeFoldLines) {
+    drawCoverInteriorFoldLines(page, geometry, spec, coords);
   }
 
   // 4. Subtle outer HTV center-alignment ticks for Base-Only mode
@@ -555,9 +570,7 @@ async function renderBaseCoverPdfPage(
   return { bytes: await pdfDoc.save(), pageW, pageH };
 }
 
-export interface PrintReadyCoverPdfOptions {
-  /** Override cut/fold overlay visibility (true = full cut & fold lines, false = outer corner marks only; defaults to studio.cutLineMode). */
-  readonly includeGuides?: boolean;
+export interface PrintReadyCoverPdfOptions extends PdfGuideOptionsInput {
   /** 'full' prints artwork + vector text & ornaments; 'base-only' prints artwork/background + guides & HTV center ticks only. */
   readonly exportLayerMode?: CoverPdfLayerMode;
   /** Target output paper sheet or roll media ID. */
@@ -590,7 +603,7 @@ export interface PrintReadyCoverPdfOptions {
  * Generates the Print-Ready Outer Cover PDF (`outer_cover_print.pdf`) at exact 1:1 physical mm scale:
  * - Solid vector fills or 300/600 DPI embedded artwork raster
  * - True vector spine & cover typography via pdf-lib + fontkit (omitted when exportLayerMode === 'base-only')
- * - Cut-line toggle: Full Cut & Miter Guides vs. Bleed + Outer Corner Registration Marks Only
+ * - Independent cut outline, interior dashed fold lines, and external fold guide ticks
  * - Shared print-media sheet centering, 2-sheet tiling with overlap marks, wide-format roll nesting, and optional 50 mm scale check bar
  */
 export async function generatePrintReadyRollPdf(
@@ -601,6 +614,11 @@ export async function generatePrintReadyRollPdf(
 ): Promise<Uint8Array> {
   const rasterDpi = options?.dpi ?? options?.rasterDpi ?? PRINT_DPI;
   const spec = computeStudioCanvasSpec(geometry, rasterDpi);
+  const guideOptions = PdfGuideOptionsModel.resolve(
+    'print',
+    options,
+    studio.cutLineMode === 'full-cut-miter',
+  );
   const { bytes: sourceBytes } = await renderBaseCoverPdfPage(
     geometry,
     studio,
@@ -609,10 +627,17 @@ export async function generatePrintReadyRollPdf(
     {
       rasterDpi,
       skipCanvasRaster: options?.skipCanvasRaster,
-      includeGuides: options?.includeGuides,
+      guideOptions,
       exportLayerMode: options?.exportLayerMode,
     },
   );
+
+  const externalFoldGuideTicks = guideOptions.includeFoldGuideTicks
+    ? computeExternalFoldGuideTicks(
+        geometry.outerWrap.outerCutPolygon,
+        geometry.outerWrap.foldLines,
+      )
+    : [];
 
   const printMediaId = options?.printMediaId ?? options?.printMedia ?? 'exact-auto';
   const mediaSpec = getPrintMediaSpec(printMediaId);
@@ -624,6 +649,9 @@ export async function generatePrintReadyRollPdf(
       printerMargins: options.printerMargins,
       includeScaleBar: options.includeScaleBar,
       coverLabel: studio.spineText.title.trim() || 'Outer Cover',
+      externalFoldGuideTicks,
+      bleedMm: spec.bleedMm,
+      guideOptions,
     });
 
     if (
@@ -636,6 +664,7 @@ export async function generatePrintReadyRollPdf(
         nestedBytes,
         geometry,
         options.innerPageSizeId ?? 'letter',
+        guideOptions,
       );
     }
 
@@ -649,6 +678,7 @@ export async function generatePrintReadyRollPdf(
     bleedMm: spec.bleedMm,
     printerMargins: options?.printerMargins,
     customRollWidthMm: options?.customRollWidthMm,
+    externalFoldGuideTicks,
   });
 
   if (
@@ -656,7 +686,12 @@ export async function generatePrintReadyRollPdf(
     geometry.bindingStyle === 'softcover-jacket' &&
     geometry.softcoverPocketMode === 'separate'
   ) {
-    return appendDetachedInnerPocketsPdf(outerBytes, geometry, options.innerPageSizeId ?? 'letter');
+    return appendDetachedInnerPocketsPdf(
+      outerBytes,
+      geometry,
+      options.innerPageSizeId ?? 'letter',
+      guideOptions,
+    );
   }
 
   return outerBytes;

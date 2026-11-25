@@ -1,8 +1,18 @@
 import { escapeXml, fmtMm } from '@/lib/svgFormat';
 import type { SplitMode } from '@/types/bookParams';
 import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
+import {
+  PdfGuideOptionsModel,
+  type PdfGuideOptions,
+  type PdfGuideOptionsInput,
+} from '@/types/pdfGuides';
 import { roundTo } from '@/types/units';
 import { resolveBindingStrategy } from './bindingStyles';
+import {
+  computeExternalFoldGuideTicks,
+  deriveSplitPanelFoldLines,
+  translateTicks,
+} from './foldGuideTicks';
 
 const SPLIT_PANEL_GAP_MM = 12;
 
@@ -10,7 +20,7 @@ function svgRect(rect: Rect2D, attrs: string): string {
   return `<rect x="${fmtMm(rect.x)}" y="${fmtMm(rect.y)}" width="${fmtMm(rect.width)}" height="${fmtMm(rect.height)}" ${attrs} />`;
 }
 
-function renderSinglePieceSvg(geometry: CaseGeometry): string {
+function renderSinglePieceSvg(geometry: CaseGeometry, guides: PdfGuideOptions): string {
   const { outerWrap, cutList } = geometry;
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
   const totalWidth = roundTo(outerWrap.widthMm + bleed * 2, 3);
@@ -76,7 +86,7 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
       : '';
 
   const glueTabGroup =
-    capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
+    guides.includeFoldLines && capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
       ? `  <g id="glue-tabs" fill="#e6dccb" fill-opacity="0.65" stroke="#A67B2E" stroke-width="0.25" stroke-dasharray="2 1.5">
     ${outerWrap.jacketGlueTabPolygons
       .map(
@@ -86,6 +96,35 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
       .join('\n    ')}
   </g>`
       : '';
+
+  const cutLinesGroup = guides.includeCutLines
+    ? `  <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
+    <path d="${cutPath}" data-label="Outer Case Wrap Cut Polygon" />
+  </g>`
+    : `  <g id="cut-lines" />`;
+
+  const boardGuidesGroup = guides.includeFoldLines
+    ? `  <g id="board-guides" fill="none" stroke="#0066FF" stroke-width="0.35" stroke-dasharray="4 2">
+    ${boardGuides}
+    ${hingeGuides}
+    ${flapGuides}
+  </g>`
+    : `  <g id="board-guides" />`;
+
+  const foldGuideTicks = guides.includeFoldGuideTicks
+    ? computeExternalFoldGuideTicks(outerWrap.outerCutPolygon, outerWrap.foldLines)
+    : [];
+  const foldGuideTicksGroup =
+    foldGuideTicks.length > 0
+      ? `  <g id="fold-guide-ticks" fill="none" stroke="#0066FF" stroke-width="0.35">
+    ${foldGuideTicks
+      .map(
+        (tick) =>
+          `<line x1="${fmtMm(tick.x1)}" y1="${fmtMm(tick.y1)}" x2="${fmtMm(tick.x2)}" y2="${fmtMm(tick.y2)}"${tick.label ? ` data-label="${escapeXml(tick.label)}"` : ''} />`,
+      )
+      .join('\n    ')}
+  </g>`
+      : `  <g id="fold-guide-ticks" />`;
 
   const backCenter = GeometryPrimitives.rectCenter(outerWrap.backBoardRect);
   const spineCenter = GeometryPrimitives.rectCenter(outerWrap.spineRect);
@@ -112,7 +151,7 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
       : '';
 
   const glueTabNotes =
-    capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
+    guides.includeFoldLines && capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0
       ? outerWrap.jacketGlueTabPolygons
           .map((poly) => {
             const bbox = GeometryPrimitives.boundingBox(poly);
@@ -137,14 +176,9 @@ function renderSinglePieceSvg(geometry: CaseGeometry): string {
   <title>Outer Case Wrap — ${escapeXml(wrapDim)}</title>
 ${bleedGroup}
 ${glueTabGroup}
-  <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
-    <path d="${cutPath}" data-label="Outer Case Wrap Cut Polygon" />
-  </g>
-  <g id="board-guides" fill="none" stroke="#0066FF" stroke-width="0.35" stroke-dasharray="4 2">
-    ${boardGuides}
-    ${hingeGuides}
-    ${flapGuides}
-  </g>
+${cutLinesGroup}
+${boardGuidesGroup}
+${foldGuideTicksGroup}
   <g id="dimensions-notes" font-family="sans-serif" fill="#0066FF" text-anchor="middle" dominant-baseline="middle">
     <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="6" font-weight="600">${escapeXml(panelLabels.back)}</text>
     <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 4)}" font-size="4.5">${escapeXml(boardDim)}</text>
@@ -160,7 +194,7 @@ ${glueTabNotes}
 `;
 }
 
-function renderThreePieceSvg(geometry: CaseGeometry): string {
+function renderThreePieceSvg(geometry: CaseGeometry, guides: PdfGuideOptions): string {
   const { splitPanels, outerWrap } = geometry;
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
 
@@ -194,23 +228,61 @@ function renderThreePieceSvg(geometry: CaseGeometry): string {
           .join('\n    ')
       : '';
 
-  const cutElements = positioned
-    .map(({ panel, xOffset }) => {
-      const shifted = GeometryPrimitives.translatePolygon(panel.cutPolygon, xOffset, 0);
-      return `<path d="${GeometryPrimitives.polygonToSvgPath(shifted, 3)}" data-label="${escapeXml(panel.label)}" />`;
-    })
-    .join('\n    ');
+  const cutElements = guides.includeCutLines
+    ? positioned
+        .map(({ panel, xOffset }) => {
+          const shifted = GeometryPrimitives.translatePolygon(panel.cutPolygon, xOffset, 0);
+          return `<path d="${GeometryPrimitives.polygonToSvgPath(shifted, 3)}" data-label="${escapeXml(panel.label)}" />`;
+        })
+        .join('\n    ')
+    : '';
 
-  const guideElements = positioned
-    .flatMap(({ panel, xOffset }) =>
-      panel.guideRects.map(({ label, rect }) =>
-        svgRect(
-          { ...rect, x: rect.x + xOffset },
-          `data-label="${escapeXml(`${panel.label} — ${label}`)}"`,
-        ),
-      ),
-    )
-    .join('\n    ');
+  const guideElements = guides.includeFoldLines
+    ? positioned
+        .flatMap(({ panel, xOffset }) =>
+          panel.guideRects.map(({ label, rect }) =>
+            svgRect(
+              { ...rect, x: rect.x + xOffset },
+              `data-label="${escapeXml(`${panel.label} — ${label}`)}"`,
+            ),
+          ),
+        )
+        .join('\n    ')
+    : '';
+
+  const tickElements = guides.includeFoldGuideTicks
+    ? positioned
+        .flatMap(({ panel, xOffset }) => {
+          const panelTicks = translateTicks(
+            computeExternalFoldGuideTicks(panel.cutPolygon, deriveSplitPanelFoldLines(panel)),
+            xOffset,
+            0,
+          );
+          return panelTicks.map(
+            (tick) =>
+              `<line x1="${fmtMm(tick.x1)}" y1="${fmtMm(tick.y1)}" x2="${fmtMm(tick.x2)}" y2="${fmtMm(tick.y2)}"${tick.label ? ` data-label="${escapeXml(`${panel.label} — ${tick.label}`)}"` : ''} />`,
+          );
+        })
+        .join('\n    ')
+    : '';
+
+  const cutLinesGroup = guides.includeCutLines
+    ? `  <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
+    ${cutElements}
+  </g>`
+    : `  <g id="cut-lines" />`;
+
+  const boardGuidesGroup = guides.includeFoldLines
+    ? `  <g id="board-guides" fill="none" stroke="#0066FF" stroke-width="0.35" stroke-dasharray="4 2">
+    ${guideElements}
+  </g>`
+    : `  <g id="board-guides" />`;
+
+  const foldGuideTicksGroup = tickElements
+    ? `  <g id="fold-guide-ticks" fill="none" stroke="#0066FF" stroke-width="0.35">
+    ${tickElements}
+  </g>`
+    : `  <g id="fold-guide-ticks" />`;
 
   const noteElements = positioned
     .map(({ panel, xOffset }) => {
@@ -231,12 +303,9 @@ function renderThreePieceSvg(geometry: CaseGeometry): string {
   <g id="bleed-box" fill="none" stroke="#00AA44" stroke-width="0.35" stroke-dasharray="3 2">
     ${bleedElements}
   </g>
-  <g id="cut-lines" fill="none" stroke="#FF0000" stroke-width="0.4">
-    ${cutElements}
-  </g>
-  <g id="board-guides" fill="none" stroke="#0066FF" stroke-width="0.35" stroke-dasharray="4 2">
-    ${guideElements}
-  </g>
+${cutLinesGroup}
+${boardGuidesGroup}
+${foldGuideTicksGroup}
   <g id="dimensions-notes" font-family="sans-serif" fill="#0066FF" text-anchor="middle" dominant-baseline="middle">
 ${noteElements}
   </g>
@@ -244,10 +313,15 @@ ${noteElements}
 `;
 }
 
-export function generateOuterWrapSvg(geometry: CaseGeometry, splitMode: SplitMode): string {
+export function generateOuterWrapSvg(
+  geometry: CaseGeometry,
+  splitMode: SplitMode,
+  options?: PdfGuideOptionsInput,
+): string {
+  const guides = PdfGuideOptionsModel.resolve('template', options);
   return splitMode === 'three-piece'
-    ? renderThreePieceSvg(geometry)
-    : renderSinglePieceSvg(geometry);
+    ? renderThreePieceSvg(geometry, guides)
+    : renderSinglePieceSvg(geometry, guides);
 }
 
 /**

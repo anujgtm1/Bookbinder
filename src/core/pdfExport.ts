@@ -10,8 +10,21 @@ import {
   type Polygon2D,
   type SpineLinerGeometry,
 } from '@/types/geometry';
+import {
+  PdfGuideOptionsModel,
+  type PdfGuideOptions,
+  type PdfGuideOptionsInput,
+} from '@/types/pdfGuides';
 import { UnitConverter, roundTo } from '@/types/units';
 import { resolveBindingStrategy } from './bindingStyles';
+import {
+  FOLD_GUIDE_TICK_GAP_MM,
+  INNER_FOLD_GUIDE_TICK_LENGTH_MM,
+  computeExternalFoldGuideTicks,
+  deriveSplitPanelFoldLines,
+  drawPdfFoldGuideTicks,
+  transformTicks90CW,
+} from './foldGuideTicks';
 import {
   layoutPdfToPrintMedia,
   type PdfSheetLayoutOptions,
@@ -453,30 +466,63 @@ function transformLine(
 }
 
 function renderPocket(
+  page: PDFPage,
   writer: PdfMmWriter,
+  pageWidthMm: number,
+  pageHeightMm: number,
   pocket: PocketEnvelopeGeometry,
   placement: PlannedPlacement,
   font: PDFFont,
   boldFont: PDFFont,
-  showInteriorLabels = true,
+  showInteriorLabels: boolean,
+  guideOptions: PdfGuideOptions,
 ): void {
   const cutColor = rgb(0.85, 0.1, 0.1);
   const scoreColor = rgb(0.05, 0.35, 0.85);
 
-  for (const flap of pocket.glueFlapPolygons) {
-    const transformedFlap = transformPolygon(flap, placement, pocket.totalHeightMm);
-    writer.drawHatchedPolygon(transformedFlap);
+  if (guideOptions.includeFoldLines) {
+    for (const flap of pocket.glueFlapPolygons) {
+      const transformedFlap = transformPolygon(flap, placement, pocket.totalHeightMm);
+      writer.drawHatchedPolygon(transformedFlap);
+    }
   }
 
-  const cutPoly = transformPolygon(pocket.outerCutPolygon, placement, pocket.totalHeightMm);
-  writer.drawPolygonOutline(cutPoly, { color: cutColor, thicknessPt: 0.9 });
-
-  for (const score of pocket.scoreLines) {
-    const { a, b } = transformLine(score, placement, pocket.totalHeightMm);
-    writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
+  if (guideOptions.includeCutLines) {
+    const cutPoly = transformPolygon(pocket.outerCutPolygon, placement, pocket.totalHeightMm);
+    writer.drawPolygonOutline(cutPoly, { color: cutColor, thicknessPt: 0.9 });
   }
 
-  if (!showInteriorLabels) return;
+  if (guideOptions.includeFoldLines) {
+    for (const score of pocket.scoreLines) {
+      const { a, b } = transformLine(score, placement, pocket.totalHeightMm);
+      writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
+    }
+  }
+
+  if (guideOptions.includeFoldGuideTicks) {
+    const rawTicks = computeExternalFoldGuideTicks(pocket.outerCutPolygon, pocket.scoreLines, {
+      gapMm: FOLD_GUIDE_TICK_GAP_MM,
+      lengthMm: INNER_FOLD_GUIDE_TICK_LENGTH_MM,
+    });
+    const orientedTicks = placement.rotated90
+      ? transformTicks90CW(rawTicks, pocket.totalHeightMm)
+      : rawTicks;
+    drawPdfFoldGuideTicks(page, orientedTicks, {
+      pageHeightMm,
+      offsetXMm: placement.xMm,
+      offsetYMm: placement.yMm,
+      clipRectMm: { x: 0, y: 0, width: pageWidthMm, height: pageHeightMm },
+    });
+  }
+
+  if (
+    !showInteriorLabels ||
+    (!guideOptions.includeCutLines &&
+      !guideOptions.includeFoldLines &&
+      !guideOptions.includeFoldGuideTicks)
+  ) {
+    return;
+  }
 
   const centerLocal = GeometryPrimitives.rectCenter(pocket.faceRect);
   const center = transformPoint(centerLocal, placement, pocket.totalHeightMm);
@@ -533,12 +579,16 @@ function renderPocket(
 }
 
 function renderSpineLiner(
+  page: PDFPage,
   writer: PdfMmWriter,
+  pageWidthMm: number,
+  pageHeightMm: number,
   liner: SpineLinerGeometry,
   placement: PlannedPlacement,
   font: PDFFont,
   boldFont: PDFFont,
-  showInteriorLabels = true,
+  showInteriorLabels: boolean,
+  guideOptions: PdfGuideOptions,
 ): void {
   const cutColor = rgb(0.85, 0.1, 0.1);
   const scoreColor = rgb(0.05, 0.35, 0.85);
@@ -549,15 +599,43 @@ function renderSpineLiner(
     { x: liner.widthMm, y: liner.heightMm },
     { x: 0, y: liner.heightMm },
   ];
-  const cutPoly = transformPolygon(outlineLocal, placement, liner.heightMm);
-  writer.drawPolygonOutline(cutPoly, { color: cutColor, thicknessPt: 0.9 });
 
-  for (const score of liner.scoreLines) {
-    const { a, b } = transformLine(score, placement, liner.heightMm);
-    writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
+  if (guideOptions.includeCutLines) {
+    const cutPoly = transformPolygon(outlineLocal, placement, liner.heightMm);
+    writer.drawPolygonOutline(cutPoly, { color: cutColor, thicknessPt: 0.9 });
   }
 
-  if (!showInteriorLabels) return;
+  if (guideOptions.includeFoldLines) {
+    for (const score of liner.scoreLines) {
+      const { a, b } = transformLine(score, placement, liner.heightMm);
+      writer.drawLine(a, b, { color: scoreColor, thicknessPt: 0.75, dashArray: [4, 3] });
+    }
+  }
+
+  if (guideOptions.includeFoldGuideTicks) {
+    const rawTicks = computeExternalFoldGuideTicks(outlineLocal, liner.scoreLines, {
+      gapMm: FOLD_GUIDE_TICK_GAP_MM,
+      lengthMm: INNER_FOLD_GUIDE_TICK_LENGTH_MM,
+    });
+    const orientedTicks = placement.rotated90
+      ? transformTicks90CW(rawTicks, liner.heightMm)
+      : rawTicks;
+    drawPdfFoldGuideTicks(page, orientedTicks, {
+      pageHeightMm,
+      offsetXMm: placement.xMm,
+      offsetYMm: placement.yMm,
+      clipRectMm: { x: 0, y: 0, width: pageWidthMm, height: pageHeightMm },
+    });
+  }
+
+  if (
+    !showInteriorLabels ||
+    (!guideOptions.includeCutLines &&
+      !guideOptions.includeFoldLines &&
+      !guideOptions.includeFoldGuideTicks)
+  ) {
+    return;
+  }
 
   const center = transformPoint(
     { x: liner.widthMm / 2, y: liner.heightMm / 2 },
@@ -649,7 +727,7 @@ function renderCalibrationAndLegend(
   writer.drawText(spacerNote, x, legY + 23, boldFont, 6.8, rgb(0.05, 0.35, 0.85));
 }
 
-export interface InnerPdfRenderOptions {
+export interface InnerPdfRenderOptions extends PdfGuideOptionsInput {
   /** Optional 300 DPI pre-rendered PNG artwork keyed by inner piece kind */
   readonly pieceArtworkPng?: Partial<
     Record<Exclude<InnerPieceKind, 'calibration-legend'>, Uint8Array>
@@ -658,8 +736,6 @@ export interface InnerPdfRenderOptions {
   readonly hideFaceTextOnStyled?: boolean;
   /** Include the 50×50 mm calibration square & visual legend block. Defaults to false. */
   readonly includeLegend?: boolean;
-  /** Include red cut lines, dashed blue fold/score lines & glue-flap hatches. Defaults to true. */
-  readonly includeGuides?: boolean;
 }
 
 export async function generateInnerTemplatesPdf(
@@ -700,7 +776,13 @@ export async function generateInnerTemplatesPdf(
   }
 
   const showLabels = !options?.hideFaceTextOnStyled;
-  const showGuides = options?.includeGuides ?? true;
+  const hasStyledArtwork = Boolean(
+    options?.pieceArtworkPng && Object.keys(options.pieceArtworkPng).length > 0,
+  );
+  const guideOptions = PdfGuideOptionsModel.resolve(
+    hasStyledArtwork || options?.hideFaceTextOnStyled ? 'print' : 'template',
+    options,
+  );
 
   for (const placement of plan.placements) {
     const page = pages[placement.pageIndex];
@@ -719,19 +801,48 @@ export async function generateInnerTemplatesPdf(
       }
     }
 
-    if (!showGuides && placement.kind !== 'calibration-legend') {
-      continue;
-    }
-
     switch (placement.kind) {
       case 'back-pocket':
-        renderPocket(writer, geometry.backPocket, placement, font, boldFont, showLabels);
+        renderPocket(
+          page,
+          writer,
+          plan.pageWidthMm,
+          plan.pageHeightMm,
+          geometry.backPocket,
+          placement,
+          font,
+          boldFont,
+          showLabels,
+          guideOptions,
+        );
         break;
       case 'front-pocket':
-        renderPocket(writer, geometry.frontPocket, placement, font, boldFont, showLabels);
+        renderPocket(
+          page,
+          writer,
+          plan.pageWidthMm,
+          plan.pageHeightMm,
+          geometry.frontPocket,
+          placement,
+          font,
+          boldFont,
+          showLabels,
+          guideOptions,
+        );
         break;
       case 'spine-liner':
-        renderSpineLiner(writer, geometry.spineLiner, placement, font, boldFont, showLabels);
+        renderSpineLiner(
+          page,
+          writer,
+          plan.pageWidthMm,
+          plan.pageHeightMm,
+          geometry.spineLiner,
+          placement,
+          font,
+          boldFont,
+          showLabels,
+          guideOptions,
+        );
         break;
       case 'calibration-legend':
         renderCalibrationAndLegend(writer, placement, geometry, font, boldFont);
@@ -743,7 +854,7 @@ export async function generateInnerTemplatesPdf(
   return { bytes, plan };
 }
 
-export interface OuterWrapPdfOptions extends PdfSheetLayoutOptions {
+export interface OuterWrapPdfOptions extends PdfSheetLayoutOptions, PdfGuideOptionsInput {
   /** When true on 2-sheet softcover-jacket ('separate'), appends detached inner pockets page(s) to the exported PDF. */
   readonly appendInnerPocketsPage?: boolean;
   /** Sheet size for appended inner pockets page(s). Defaults to 'letter'. */
@@ -759,12 +870,14 @@ export interface OuterWrapPdfOptions extends PdfSheetLayoutOptions {
 export async function generateInnerPieceRollSources(
   geometry: CaseGeometry,
   copies = 1,
+  guideInput?: PdfGuideOptionsInput,
 ): Promise<RollPdfSource[]> {
   const { capabilities } = resolveBindingStrategy(geometry);
   if (!capabilities.usesInnerPockets) {
     return [];
   }
 
+  const guideOptions = PdfGuideOptionsModel.resolve('template', guideInput);
   const safeCopies = Math.max(1, Math.floor(copies));
   const sources: RollPdfSource[] = [];
 
@@ -789,12 +902,22 @@ export async function generateInnerPieceRollSources(
       rotated90: false,
       clipped: false,
     };
-    renderPocket(writer, pocket, placement, font, boldFont, true);
+    renderPocket(page, writer, wMm, hMm, pocket, placement, font, boldFont, true, {
+      ...guideOptions,
+      includeFoldGuideTicks: false,
+    });
+    const externalFoldGuideTicks = guideOptions.includeFoldGuideTicks
+      ? computeExternalFoldGuideTicks(pocket.outerCutPolygon, pocket.scoreLines, {
+          gapMm: FOLD_GUIDE_TICK_GAP_MM,
+          lengthMm: INNER_FOLD_GUIDE_TICK_LENGTH_MM,
+        })
+      : undefined;
     return {
       id,
       label: pocket.label,
       pdfBytes: await doc.save(),
       copies: safeCopies,
+      externalFoldGuideTicks,
     };
   };
 
@@ -820,12 +943,28 @@ export async function generateInnerPieceRollSources(
       rotated90: false,
       clipped: false,
     };
-    renderSpineLiner(writer, liner, placement, font, boldFont, true);
+    renderSpineLiner(page, writer, wMm, hMm, liner, placement, font, boldFont, true, {
+      ...guideOptions,
+      includeFoldGuideTicks: false,
+    });
+    const linerOutline: Polygon2D = [
+      { x: 0, y: 0 },
+      { x: liner.widthMm, y: 0 },
+      { x: liner.widthMm, y: liner.heightMm },
+      { x: 0, y: liner.heightMm },
+    ];
+    const externalFoldGuideTicks = guideOptions.includeFoldGuideTicks
+      ? computeExternalFoldGuideTicks(linerOutline, liner.scoreLines, {
+          gapMm: FOLD_GUIDE_TICK_GAP_MM,
+          lengthMm: INNER_FOLD_GUIDE_TICK_LENGTH_MM,
+        })
+      : undefined;
     sources.push({
       id: 'inner-spine-liner',
       label: 'Spine Liner',
       pdfBytes: await doc.save(),
       copies: safeCopies,
+      externalFoldGuideTicks,
     });
   }
 
@@ -846,6 +985,9 @@ export async function composeRollNestedCoverPdf(
     readonly printerMargins?: PrinterMargins;
     readonly includeScaleBar?: boolean;
     readonly coverLabel?: string;
+    readonly externalFoldGuideTicks?: readonly LineSegment2D[];
+    readonly bleedMm?: number;
+    readonly guideOptions?: PdfGuideOptionsInput;
   },
 ): Promise<Uint8Array> {
   const spec = getPrintMediaSpec(printMediaId);
@@ -866,6 +1008,8 @@ export async function composeRollNestedCoverPdf(
       label: options.coverLabel ?? 'Outer Cover',
       pdfBytes: coverBytes,
       copies,
+      externalFoldGuideTicks: options.externalFoldGuideTicks,
+      bleedMm: options.bleedMm,
     },
   ];
 
@@ -873,7 +1017,11 @@ export async function composeRollNestedCoverPdf(
     options.rollNesting.packInnerPockets &&
     resolveBindingStrategy(geometry).capabilities.usesInnerPockets
   ) {
-    const innerSources = await generateInnerPieceRollSources(geometry, copies);
+    const innerSources = await generateInnerPieceRollSources(
+      geometry,
+      copies,
+      options.guideOptions,
+    );
     sources.push(...innerSources);
   }
 
@@ -906,9 +1054,11 @@ export async function appendDetachedInnerPocketsPdf(
   outerBytes: Uint8Array,
   geometry: CaseGeometry,
   innerPageSizeId: PageSizeId = 'letter',
+  guideOptions?: PdfGuideOptionsInput,
 ): Promise<Uint8Array> {
   const { bytes: innerBytes } = await generateInnerTemplatesPdf(geometry, innerPageSizeId, {
     includeLegend: false,
+    ...guideOptions,
   });
   const mergedDoc = await PDFDocument.load(outerBytes);
   const innerDoc = await PDFDocument.load(innerBytes);
@@ -930,6 +1080,7 @@ export async function generateOuterWrapPdf(
 ): Promise<Uint8Array> {
   const { outerWrap, splitPanels, cutList } = geometry;
   const bleed = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
+  const guideOptions = PdfGuideOptionsModel.resolve('template', options);
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.setTitle('Bookbinder — Outer Case Wrap Structural Template');
@@ -961,21 +1112,38 @@ export async function generateOuterWrapPdf(
         });
       }
 
-      const shiftedCut = GeometryPrimitives.translatePolygon(panel.cutPolygon, bleed, bleed);
-      writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.9 });
+      if (guideOptions.includeCutLines) {
+        const shiftedCut = GeometryPrimitives.translatePolygon(panel.cutPolygon, bleed, bleed);
+        writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.9 });
+      }
 
-      for (const guide of panel.guideRects) {
-        writer.drawRect(
-          guide.rect.x + bleed,
-          guide.rect.y + bleed,
-          guide.rect.width,
-          guide.rect.height,
-          {
-            borderColor: guideColor,
-            borderWidthPt: 0.7,
-            dashArray: [4, 2.5],
-          },
+      if (guideOptions.includeFoldLines) {
+        for (const guide of panel.guideRects) {
+          writer.drawRect(
+            guide.rect.x + bleed,
+            guide.rect.y + bleed,
+            guide.rect.width,
+            guide.rect.height,
+            {
+              borderColor: guideColor,
+              borderWidthPt: 0.7,
+              dashArray: [4, 2.5],
+            },
+          );
+        }
+      }
+
+      if (guideOptions.includeFoldGuideTicks) {
+        const panelTicks = computeExternalFoldGuideTicks(
+          panel.cutPolygon,
+          deriveSplitPanelFoldLines(panel),
         );
+        drawPdfFoldGuideTicks(page, panelTicks, {
+          pageHeightMm: pageH,
+          offsetXMm: bleed,
+          offsetYMm: bleed,
+          clipRectMm: { x: 0, y: 0, width: pageW, height: pageH },
+        });
       }
 
       const cx = pageW / 2;
@@ -1013,7 +1181,7 @@ export async function generateOuterWrapPdf(
   const { capabilities, panelLabels } = strategy;
   const usesPlacementRects = capabilities.usesChipboard || capabilities.hasGlueTabs;
 
-  if (capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0) {
+  if (capabilities.hasGlueTabs && outerWrap.jacketGlueTabPolygons.length > 0 && guideOptions.includeFoldLines) {
     const tabFoldStyle = { color: guideColor, thicknessPt: 0.65, dashArray: [3.5, 2] };
     for (const tabPoly of outerWrap.jacketGlueTabPolygons) {
       const shiftedTab = GeometryPrimitives.translatePolygon(tabPoly, bleed, bleed);
@@ -1033,7 +1201,9 @@ export async function generateOuterWrapPdf(
     }
   }
 
-  writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
+  if (guideOptions.includeCutLines) {
+    writer.drawPolygonOutline(shiftedCut, { color: cutColor, thicknessPt: 0.95 });
+  }
 
   const drawCenteredLabel = (
     text: string,
@@ -1047,7 +1217,7 @@ export async function generateOuterWrapPdf(
     writer.drawText(text, centerXMm - textWidthMm / 2, yMm, useFont, sizePt, color);
   };
 
-  if (!usesPlacementRects) {
+  if (!usesPlacementRects && guideOptions.includeFoldLines) {
     const foldStyle = { color: guideColor, thicknessPt: 0.75, dashArray: [5, 2.5] };
     for (const line of outerWrap.foldLines) {
       writer.drawLine(
@@ -1064,7 +1234,7 @@ export async function generateOuterWrapPdf(
     { label: panelLabels.front, rect: outerWrap.frontBoardRect, isSpine: false },
   ];
   for (const { label, rect, isSpine } of boardRects) {
-    if (usesPlacementRects) {
+    if (usesPlacementRects && guideOptions.includeFoldLines) {
       writer.drawRect(rect.x + bleed, rect.y + bleed, rect.width, rect.height, {
         borderColor: guideColor,
         borderWidthPt: 0.75,
@@ -1102,7 +1272,7 @@ export async function generateOuterWrapPdf(
     drawCenteredLabel(flapDim, rightCenterX, flapCenterY + 4, font, 6.5, mutedColor);
   }
 
-  if (cutList.hingeSpacerMm > 0) {
+  if (cutList.hingeSpacerMm > 0 && guideOptions.includeFoldLines) {
     for (const hinge of [outerWrap.leftHingeRect, outerWrap.rightHingeRect]) {
       writer.drawRect(hinge.x + bleed, hinge.y + bleed, hinge.width, hinge.height, {
         borderColor: guideColor,
@@ -1137,6 +1307,9 @@ export async function generateOuterWrapPdf(
   );
 
   const baseBytes = await pdfDoc.save();
+  const externalFoldGuideTicks = guideOptions.includeFoldGuideTicks
+    ? computeExternalFoldGuideTicks(outerWrap.outerCutPolygon, outerWrap.foldLines)
+    : [];
 
   const mediaSpec = options ? getPrintMediaSpec(options.printMediaId) : null;
   if (options?.rollNesting?.enabled && mediaSpec?.kind === 'roll') {
@@ -1149,6 +1322,9 @@ export async function generateOuterWrapPdf(
         customRollWidthMm: options.customRollWidthMm,
         printerMargins: options.printerMargins,
         includeScaleBar: options.includeScaleBar,
+        externalFoldGuideTicks,
+        bleedMm: bleed,
+        guideOptions,
       },
     );
     if (
@@ -1161,27 +1337,41 @@ export async function generateOuterWrapPdf(
         nestedBytes,
         geometry,
         options.innerPageSizeId ?? 'letter',
+        guideOptions,
       );
     }
     return nestedBytes;
   }
 
-  const outerBytes =
-    options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)
-      ? await layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
-          ...options,
-          bleedMm: options.bleedMm ?? bleed,
-          documentTitle:
-            options.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template',
-        })
-      : baseBytes;
+  const needsMediaLayout = Boolean(
+    (options && (options.printMediaId !== 'exact-auto' || options.includeScaleBar)) ||
+      externalFoldGuideTicks.length > 0,
+  );
+  const outerBytes = needsMediaLayout
+    ? await layoutPdfToPrintMedia(baseBytes, pageW, pageH, {
+        printMediaId: options?.printMediaId ?? 'exact-auto',
+        tileOverlapMm: options?.tileOverlapMm,
+        includeScaleBar: options?.includeScaleBar,
+        printerMargins: options?.printerMargins,
+        customRollWidthMm: options?.customRollWidthMm,
+        bleedMm: options?.bleedMm ?? bleed,
+        externalFoldGuideTicks,
+        documentTitle:
+          options?.documentTitle ?? 'Bookbinder — Outer Case Wrap Structural Template',
+      })
+    : baseBytes;
 
   if (
     options?.appendInnerPocketsPage &&
     geometry.bindingStyle === 'softcover-jacket' &&
     geometry.softcoverPocketMode === 'separate'
   ) {
-    return appendDetachedInnerPocketsPdf(outerBytes, geometry, options.innerPageSizeId ?? 'letter');
+    return appendDetachedInnerPocketsPdf(
+      outerBytes,
+      geometry,
+      options.innerPageSizeId ?? 'letter',
+      guideOptions,
+    );
   }
 
   return outerBytes;
