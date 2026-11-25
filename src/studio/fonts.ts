@@ -406,6 +406,7 @@ const CURATED_FONT_CSS_LOADERS: Readonly<Record<CuratedFontId, () => Promise<unk
 
 const curatedFontCssPromiseCache = new Map<CuratedFontId, Promise<void>>();
 const curatedFontBytesCache = new Map<CuratedFontId, Uint8Array>();
+const FONT_FACE_LOAD_TIMEOUT_MS = 2500;
 
 export function getCuratedFont(fontId: CuratedFontId): CuratedFontSpec {
   return CURATED_FONT_REGISTRY[fontId] ?? CURATED_FONT_REGISTRY['eb-garamond'];
@@ -417,13 +418,41 @@ export function getCuratedFontsByGenreGroup(
   return CURATED_FONTS.filter((font) => font.genreGroup === genreGroup);
 }
 
-/** Lazily loads the `@fontsource` CSS chunk for a curated font (cached per font ID). */
+/**
+ * Awaits `document.fonts.load(...)` for a CSS font descriptor so canvas 2D rasterizers
+ * render the true webfont on first export rather than falling back to system fonts.
+ * Safely no-ops in SSR/jsdom and guards with a short timeout so it never hangs.
+ */
+export async function awaitFontFaceLoaded(fontDescriptor: string): Promise<void> {
+  if (typeof document === 'undefined' || typeof document.fonts?.load !== 'function') {
+    return;
+  }
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      document.fonts.load(fontDescriptor, 'Bookbinder 0123456789'),
+      new Promise<void>((resolve) => {
+        timeoutId = setTimeout(resolve, FONT_FACE_LOAD_TIMEOUT_MS);
+      }),
+    ]);
+  } catch {
+    // Ignore FontFaceSet load failures in restricted or headless environments
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+/** Lazily loads the `@fontsource` CSS chunk and awaits font face readiness (cached per font ID). */
 export function ensureCuratedFontLoaded(fontId: CuratedFontId): Promise<void> {
   const existing = curatedFontCssPromiseCache.get(fontId);
   if (existing) return existing;
 
   const loader = CURATED_FONT_CSS_LOADERS[fontId];
+  const spec = getCuratedFont(fontId);
   const promise = (loader ? loader() : Promise.resolve())
+    .then(() => awaitFontFaceLoaded(`400 16px ${spec.cssFamily}`))
     .then(() => undefined)
     .catch(() => {
       curatedFontCssPromiseCache.delete(fontId);

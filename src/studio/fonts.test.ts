@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import fontkit from '@pdf-lib/fontkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CURATED_FONT_IDS, CoverStudioModel } from '@/types/studio';
 import {
   CURATED_FONTS,
@@ -145,6 +145,32 @@ describe('studio font registry', () => {
       ],
     };
     expect(collectStudioCuratedFontIds(studio)).toEqual(['poiret-one', 'orbitron']);
+  });
+
+  it('awaits document.fonts.load after lazy CSS import and tolerates font-load rejections', async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(document, 'fonts');
+    const loadMock = vi.fn().mockResolvedValue([]);
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: { load: loadMock },
+    });
+
+    try {
+      await ensureCuratedFontLoaded('audiowide');
+      expect(loadMock).toHaveBeenCalledWith(
+        "400 16px 'Audiowide', system-ui, sans-serif",
+        'Bookbinder 0123456789',
+      );
+
+      loadMock.mockRejectedValueOnce(new Error('font fetch failed'));
+      await expect(ensureCuratedFontLoaded('syne')).resolves.toBeUndefined();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(document, 'fonts', originalDescriptor);
+      } else {
+        delete (document as unknown as { fonts?: unknown }).fonts;
+      }
+    }
   });
 
   it('resolves CSS font family for curated and custom fonts', () => {

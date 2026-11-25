@@ -12,6 +12,7 @@ import {
 } from '../canvasSpec';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from '../classicOrnaments';
 import {
+  awaitFontFaceLoaded,
   collectStudioCuratedFontIds,
   ensureCuratedFontsLoaded,
   resolveFontCssFamily,
@@ -227,6 +228,9 @@ export async function renderCoverArtworkCanvas(
   const includeTextAndOrnaments = options.includeTextAndOrnaments ?? true;
   if (options.includeSpineText && includeTextAndOrnaments) {
     await ensureCuratedFontsLoaded(collectStudioCuratedFontIds(studio));
+    if (customFont) {
+      await awaitFontFaceLoaded(`400 16px '${customFont.familyName}'`);
+    }
     drawCoverOrnaments(ctx, studio, pxPerMm);
     drawCoverLettering(ctx, geometry, studio, customFont, dpi, pxPerMm);
   }
