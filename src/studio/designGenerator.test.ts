@@ -18,6 +18,7 @@ import {
   wrapTitleIntoBalancedLines,
 } from './designGenerator';
 import { getCuratedFont } from './fonts';
+import { PreflightEngine } from './preflight';
 
 const MIXED_CASE_ONLY_FONTS = new Set<string>([
   'great-vibes',
@@ -26,12 +27,23 @@ const MIXED_CASE_ONLY_FONTS = new Set<string>([
   'pirata-one',
 ]);
 
-function makeGeometry(overrides: Partial<Parameters<typeof BookParametersModel.clampAndNormalize>[0]> = {}) {
+const TEXT_SAFE_SPINE_ORNAMENT_IDS = new Set<string>([
+  'spine-head-tail-bands',
+  'spine-classic-bands',
+]);
+
+function makeParamsAndGeometry(
+  overrides: Partial<Parameters<typeof BookParametersModel.clampAndNormalize>[0]> = {},
+) {
   const params = BookParametersModel.clampAndNormalize({
     ...BookParametersModel.createDefault(),
     ...overrides,
   });
-  return calculateCaseGeometry(params);
+  return { params, geometry: calculateCaseGeometry(params) };
+}
+
+function makeGeometry(overrides: Partial<Parameters<typeof BookParametersModel.clampAndNormalize>[0]> = {}) {
+  return makeParamsAndGeometry(overrides).geometry;
 }
 
 describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
@@ -65,8 +77,8 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
   });
 
   it('satisfies all mathematical invariants across 120 fuzzed seeds, all 8 genres, thick & narrow spines, and Pure Foil / +Artwork', () => {
-    const standardGeom = makeGeometry({ pbThicknessMm: 32, bindingStyle: 'rigid-case' });
-    const thinGeom = makeGeometry({
+    const standardSetup = makeParamsAndGeometry({ pbThicknessMm: 32, bindingStyle: 'rigid-case' });
+    const thinSetup = makeParamsAndGeometry({
       pbWidthMm: 130,
       pbHeightMm: 200,
       pbThicknessMm: 8,
@@ -80,7 +92,7 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
     for (let seed = 1; seed <= 120; seed++) {
       const genre = genres[seed % genres.length];
       const includeBackgroundArt = seed % 2 === 0;
-      const geometry = seed % 4 === 0 ? thinGeom : standardGeom;
+      const { params, geometry } = seed % 4 === 0 ? thinSetup : standardSetup;
       const spec = computeStudioCanvasSpec(geometry);
       const maxSpinePt = CoverStudioModel.maxSpineFontSizePt(spec.spineBoardRect.width);
       const isThinSpine = spec.spineBoardRect.width < 14;
@@ -160,18 +172,33 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
         }
       }
 
-      // 5. Thin-spine & thick-spine safety guard
+      // 5. Thin-spine, editorial spine sizing, ornament clash prevention, and zero Preflight typography warnings
       expect(studio.spineText.fontSizePt, `seed ${seed} spine font <= maxPt`).toBeLessThanOrEqual(
         maxSpinePt,
       );
-      expect(studio.spineText.fontSizePt).toBeLessThanOrEqual(
-        Math.max(6, Math.floor(maxSpinePt * 0.82)),
+      expect(studio.spineText.fontSizePt, `seed ${seed} spine editorial cap`).toBeLessThanOrEqual(
+        18,
       );
+      const spineOrnaments = studio.ornaments.filter((o) => o.zone === 'spine');
       if (isThinSpine) {
         expect(studio.spineText.layout).toBe('inline');
         expect(studio.spineText.authorOrientation).toBe('vertical');
-        expect(studio.ornaments.filter((o) => o.zone === 'spine')).toHaveLength(0);
+        expect(spineOrnaments).toHaveLength(0);
+      } else {
+        for (const orn of spineOrnaments) {
+          expect(
+            TEXT_SAFE_SPINE_ORNAMENT_IDS.has(orn.presetId),
+            `seed ${seed} spine ornament ${orn.presetId} must not clash with spine text`,
+          ).toBe(true);
+        }
       }
+
+      const preflight = PreflightEngine.evaluate(params, geometry, studio);
+      const typographyIssues = preflight.issues.filter((i) => i.category === 'typography');
+      expect(
+        typographyIssues,
+        `seed ${seed} (${summary.genreId}/${summary.archetypeId}) unexpected Preflight typography issues`,
+      ).toEqual([]);
 
       // 6. Background art inclusion matches option
       if (includeBackgroundArt) {
@@ -375,5 +402,86 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
       },
     });
     expect(bgLockedFalse.studio.layers).toEqual([existingImg]);
+  });
+
+  it('produces zero Preflight typography warnings across 120 fuzzed seeds with default and long locked titles/authors', () => {
+    const defaultSetup = makeParamsAndGeometry();
+    const compactSetup = makeParamsAndGeometry({
+      pbWidthMm: 110,
+      pbHeightMm: 175,
+      pbThicknessMm: 22,
+      boardThicknessMm: 1.5,
+      bindingStyle: 'rigid-case',
+    });
+
+    const cases = [
+      {
+        name: 'default Grand Pavilion / Vivian Sterling',
+        setup: defaultSetup,
+        title: 'The Grand Pavilion',
+        author: 'Vivian Sterling',
+      },
+      {
+        name: 'extra-long title and author on compact spine',
+        setup: compactSetup,
+        title: 'The Extraordinary Chronicles of the Gilded Pavilion',
+        author: 'Bartholomew Worthington-Sterling',
+      },
+    ] as const;
+
+    const genres: readonly DesignGenreId[] = ['surprise', ...CONCRETE_DESIGN_GENRE_IDS];
+
+    for (const testCase of cases) {
+      const { params, geometry } = testCase.setup;
+      const spec = computeStudioCanvasSpec(geometry);
+      const seededStudio = {
+        ...CoverStudioModel.createDefault(),
+        spineText: {
+          ...CoverStudioModel.createDefault().spineText,
+          title: testCase.title,
+          author: testCase.author,
+        },
+        textLayers: [
+          {
+            ...CoverTextLayerModel.createPreset('front-title', spec.frontBoardRect),
+            text: testCase.title,
+          },
+          {
+            ...CoverTextLayerModel.createPreset('front-author', spec.frontBoardRect),
+            text: testCase.author,
+          },
+        ],
+      };
+
+      for (let seed = 1; seed <= 120; seed++) {
+        const genre = genres[seed % genres.length];
+        const { studio, summary } = generateBookCoverDesign(geometry, seededStudio, {
+          genre,
+          seed: seed * 131 + 7,
+          includeBackgroundArt: seed % 2 === 0,
+          locks: {
+            ...DEFAULT_DESIGN_GENERATOR_LOCKS,
+            lockTextContent: true,
+          },
+        });
+
+        expect(studio.spineText.fontSizePt, `${testCase.name} seed ${seed}`).toBeLessThanOrEqual(
+          18,
+        );
+        for (const orn of studio.ornaments.filter((o) => o.zone === 'spine')) {
+          expect(
+            TEXT_SAFE_SPINE_ORNAMENT_IDS.has(orn.presetId),
+            `${testCase.name} seed ${seed} spine ornament ${orn.presetId} clashes with text`,
+          ).toBe(true);
+        }
+
+        const report = PreflightEngine.evaluate(params, geometry, studio);
+        const typographyIssues = report.issues.filter((i) => i.category === 'typography');
+        expect(
+          typographyIssues,
+          `${testCase.name} seed ${seed} (${summary.genreId}) typography issues`,
+        ).toEqual([]);
+      }
+    }
   });
 });
