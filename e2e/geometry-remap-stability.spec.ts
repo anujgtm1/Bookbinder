@@ -124,14 +124,14 @@ test.describe('Geometry Remap Stability — Notebook Presets, Binding Styles & E
     await selectDropdownOption(page, 'preset-select', /A6 Pocket Notebook/i);
     const onA6 = await readCanvasSnapshot(page);
 
-    // On A6 rigid-case (boardW=108, boardH=155, turnIn=18, hinge=9, spine=26, bleed=3):
-    // Front board rect is x=173..281 (center 227.0), y=21..176 (center 98.5)
-    expect(Math.abs(onA6.titleX - 227.0)).toBeLessThan(0.5);
-    expect(Math.abs(onA6.frameX + onA6.frameW / 2 - 227.0)).toBeLessThan(0.5);
+    // On A6 rigid-case (boardW=108, boardH=155, turnIn=18, hinge=9, spine=28, bleed=3):
+    // Front board rect is x=175..283 (center 229.0), y=21..176 (center 98.5)
+    expect(Math.abs(onA6.titleX - 229.0)).toBeLessThan(0.5);
+    expect(Math.abs(onA6.frameX + onA6.frameW / 2 - 229.0)).toBeLessThan(0.5);
     expect(Math.abs(onA6.frameY + onA6.frameH / 2 - 98.5)).toBeLessThan(0.5);
-    expect(onA6.frameX).toBeGreaterThan(173);
-    expect(onA6.frameX + onA6.frameW).toBeLessThan(281);
-    expect(Math.abs(onA6.compassX + onA6.compassW / 2 - 227.0)).toBeLessThan(0.5);
+    expect(onA6.frameX).toBeGreaterThan(175);
+    expect(onA6.frameX + onA6.frameW).toBeLessThan(283);
+    expect(Math.abs(onA6.compassX + onA6.compassW / 2 - 229.0)).toBeLessThan(0.5);
     expect(Math.abs(onA6.compassW - onA6.compassH)).toBeLessThan(0.1);
 
     // Switch back to US Trade Digest -> must return to exact original coordinates
@@ -147,8 +147,8 @@ test.describe('Geometry Remap Stability — Notebook Presets, Binding Styles & E
     await expect(page.getByTestId('studio-cover-text-0')).toContainText('TWENTY THOUSAND');
 
     const baseline = await readCanvasSnapshot(page);
-    // Sample Book US Trade Digest (140 x 216 x 24, rigid-case): front center = (279.5, 132.5)
-    expect(Math.abs(baseline.titleX - 279.5)).toBeLessThan(0.2);
+    // Sample Book US Trade Digest (140 x 216 x 24, rigid-case, spine=28): front center = (281.5, 132.5)
+    expect(Math.abs(baseline.titleX - 281.5)).toBeLessThan(0.2);
 
     // 1. Switch to Fold-and-Glue Slip Cover (1-Piece Flaps)
     await selectDropdownOption(page, 'binding-style-select', /Fold-and-Glue Slip Cover/i);

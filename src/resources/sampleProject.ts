@@ -70,28 +70,10 @@ export function createSampleBookProject(): BookbinderProject {
 
   const geometry = calculateCaseGeometry(parameters);
   const canvasSpec = computeStudioCanvasSpec(geometry);
-  const { bleedMm } = canvasSpec;
-  const { backBoardRect, spineRect, frontBoardRect } = geometry.outerWrap;
 
-  // Board rectangles shifted into Cover Studio canvas mm coordinates (includes bleed offset)
-  const frontCanvas = {
-    x: roundTo(bleedMm + frontBoardRect.x, 2),
-    y: roundTo(bleedMm + frontBoardRect.y, 2),
-    width: roundTo(frontBoardRect.width, 2),
-    height: roundTo(frontBoardRect.height, 2),
-  };
-  const backCanvas = {
-    x: roundTo(bleedMm + backBoardRect.x, 2),
-    y: roundTo(bleedMm + backBoardRect.y, 2),
-    width: roundTo(backBoardRect.width, 2),
-    height: roundTo(backBoardRect.height, 2),
-  };
-  const spineCanvas = {
-    x: roundTo(bleedMm + spineRect.x, 2),
-    y: roundTo(bleedMm + spineRect.y, 2),
-    width: roundTo(spineRect.width, 2),
-    height: roundTo(spineRect.height, 2),
-  };
+  const frontCanvas = canvasSpec.frontBoardRect;
+  const backCanvas = canvasSpec.backBoardRect;
+  const spineCanvas = canvasSpec.spineBoardRect;
 
   const frontCx = roundTo(frontCanvas.x + frontCanvas.width / 2, 2);
   const backCx = roundTo(backCanvas.x + backCanvas.width / 2, 2);
@@ -162,6 +144,7 @@ export function createSampleBookProject(): BookbinderProject {
       align: 'center',
       color: SAMPLE_GOLD_HEX,
       uppercase: true,
+      role: 'title',
     },
     {
       id: 'sample-txt-front-subtitle',
@@ -176,6 +159,7 @@ export function createSampleBookProject(): BookbinderProject {
       align: 'center',
       color: SAMPLE_LIGHT_GOLD_HEX,
       uppercase: true,
+      role: 'subtitle',
     },
     {
       id: 'sample-txt-front-author',
@@ -190,6 +174,7 @@ export function createSampleBookProject(): BookbinderProject {
       align: 'center',
       color: SAMPLE_GOLD_HEX,
       uppercase: true,
+      role: 'author',
     },
     {
       id: 'sample-txt-back-blurb',
@@ -203,6 +188,7 @@ export function createSampleBookProject(): BookbinderProject {
       lineHeight: 1.44,
       align: 'center',
       color: SAMPLE_LIGHT_GOLD_HEX,
+      role: 'blurb',
     },
   ];
 

@@ -65,7 +65,11 @@ export function triggerBlobDownload(blob: Blob, filename: string): void {
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => {
+    if (typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(url);
+    }
+  }, 1000);
 }
 
 export function triggerTextDownload(content: string, filename: string, mimeType: string): void {

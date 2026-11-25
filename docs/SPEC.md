@@ -61,11 +61,11 @@ src/
 - `HINGE_W` — Hinge Spacer Width (default: `9.0 mm`)
 - `OVERHANG_TB` — Top & Bottom Board Overhang total (default: `7.0 mm`, i.e., `3.5 mm` top + `3.5 mm` bottom)
 - `OVERHANG_FORE` — Fore-edge Board Overhang (default: `3.0 mm`)
-- `SPINE_ALLOWANCE` — Extra Spine Width Allowance for removable pocket clearance (default: `1.0 × BOARD_T`, adjustable)
+- `SPINE_ALLOWANCE` — Extra Spine Width Allowance for board thickness & removable pocket clearance (default: `2.0 × BOARD_T`, i.e. `4.0 mm` on `2.0 mm` chipboard; auto-linked to `2 × BOARD_T`, adjustable)
 - `TURN_IN` — Outer Wrap Turn-In Margin (default: `18.0 mm`)
 - `MITER_FACTOR` — Corner Miter Gap Multiplier (default: `1.5 × BOARD_T` clearance from board corner)
 - `BLEED` — Outer Artwork Bleed Margin (default: `3.0 mm`, toggleable on/off)
-- `POCKET_DEPTH_PCT` — Inner Pocket Width Ratio (default: `72%` of `BOARD_W`, slider `65%–80%`)
+- `POCKET_DEPTH_PCT` — Inner Pocket Width Ratio (default: `72%` of `PB_W` on chipboard hardcovers, slider `65%–80%`)
 - `POCKET_FLAP` — Pocket Glue Flap Width (default: `12.0 mm`)
 - `SPLIT_MODE` — Default: `Single-Piece Continuous Wrap` (optimized for large-format roll printers). Secondary toggle: `3-Piece / Quarter-Bound Split` (separate Front, Back, and Spine wraps for standard desktop sheet printers).
 - `PRINT_MEDIA` — User's target printer media / paper size (`exact-auto` default, or desktop sheets `letter` `8.5×11"`, `a4` `210×297 mm`, `legal` `8.5×14"`, `tabloid` `11×17"`, or large-format rolls `roll-13`, `roll-17`, `roll-24`, `roll-36`, `roll-44`):
@@ -81,7 +81,7 @@ src/
   - `BOARD_W = PB_W + OVERHANG_FORE`
   - `BOARD_H = PB_H + OVERHANG_TB`
 - **Spine Strip (Qty: 1):**
-  - `SPINE_W = PB_THICK + SPINE_ALLOWANCE`
+  - `SPINE_W = PB_THICK + SPINE_ALLOWANCE` (linked default `SPINE_ALLOWANCE = 2.0 × BOARD_T`, so `SPINE_W = PB_THICK + 2 × BOARD_T`)
   - `SPINE_H = BOARD_H`
 
 ### 4.2 Outer Case Wrap Geometry
@@ -101,12 +101,15 @@ src/
 
 ### 4.3 Inner Spine Reinforcement Liner
 - `LINER_W = SPINE_W + (HINGE_W * 2) + 30.0` (spans spine + both hinges + `15.0 mm` overlap onto each inner board)
-- `LINER_H = BOARD_H - 2.0` (`1.0 mm` inset top & bottom)
+- `LINER_INSET_TB = min(BOARD_H / 4, max(2.0, (BOARD_H - POCKET_H) / 2))`
+- `LINER_H = max(10, BOARD_H - LINER_INSET_TB * 2)` (`2.5 mm` inset top & bottom on defaults → `218.0 mm`, aligned flush with both inner pockets)
 - Includes dashed vertical score lines marking the spine and hinge boundaries.
 
 ### 4.4 Slip-In Pocket Envelopes (Qty: 2 — Front & Back)
-- `POCKET_W = BOARD_W * (POCKET_DEPTH_PCT / 100)`
-- `POCKET_H = BOARD_H - 2.0` (`1.0 mm` inset top & bottom)
+- `POCKET_H = max(10, min(BOARD_H - 2.0, PB_H + 2.0))` (`218.0 mm` on defaults, matching text-block height plus `2.0 mm` ease without spanning the outer board squares)
+- `BOARD_INSET_TB = max(1.0, (BOARD_H - POCKET_H) / 2)` (`2.5 mm` gluing inset at both head and tail on defaults)
+- `BOARD_INSET_FORE = OVERHANG_FORE >= 1.5 ? max(1.5, OVERHANG_FORE - 0.5) : max(0, OVERHANG_FORE)` (`2.5 mm` fore-edge gluing inset on defaults)
+- `POCKET_W = min(BOARD_W - BOARD_INSET_FORE, max(10, PB_W * (POCKET_DEPTH_PCT / 100)))` (`100.8 mm` on defaults, sized to `PB_W` rather than `BOARD_W`)
 - Glue flaps (`POCKET_FLAP = 12.0 mm`) on top, bottom, and outer fore-edge only; spine-facing vertical edge remains open (no flap).
 - Outer corners of top/bottom/fore-edge flaps mitered at 45° to prevent double-layer bulk when folded behind the pocket face.
 
@@ -114,24 +117,24 @@ src/
 
 ## 5. UI / UX & Visual Components
 
-### 5.1 Aesthetic & Layout Architecture ("Bindery Cutting Mat" + "Folio Workbench")
-- **Visual Theme ("Bindery Cutting Mat"):**
-  - Pairs a deep spruce-teal self-healing cutting-mat drafting surface (`#1B3A34` light / `#112420` dark) with subtle dual-scale millimeter grid lines against warm cotton-rag paper control sheets (`#F8F4EC` / `#1C1917`), lampblack ink (`#231F1B` / `#F3EDE2`), antique brass foil (`#C59B48`), and vermilion cut-line (`#C84B31`) accents.
+### 5.1 Aesthetic & Layout Architecture ("Tokyo Bindery Desk" + 3-Column Studio Workbench)
+- **Visual Theme ("Tokyo Bindery Desk"):**
+  - Sets the entire workbench over a warm smoked-walnut wooden desk (`src/assets/atelier/desk-walnut.jpg`) paired with tactile handmade Japanese *washi* cotton-rag paper sheets (`src/assets/atelier/washi-paper.jpg`, Light) or woven charcoal-linen panels with burnished brass rims (Dark), Sumi-ink typography (`#1A1715` / `#F2ECE0`), Vermilion *hanko* red craft accents (`#C63D27` / `#EF6F54`), and a deep spruce-teal self-healing cutting mat (`#1B3A34` / `#112420`) with brass corner registration ticks and sharp `3px` cardstock corners.
   - Display headings use `EB Garamond`, UI labels use `Inter`, and all millimeter/inch readouts use `tabular-nums` monospace typography for jitter-free editing.
-  - Respects `prefers-reduced-motion` (opting into spatial transitions inside `@media (prefers-reduced-motion: no-preference)`) and dual-mode `color-scheme` (`light-dark()` with fallbacks).
-- **Folio Workbench Layout:**
-  - **Compact Single-Row Header:** Brand wordmark, collapsible Book Spec Rail toggle, live status readout, and light/dark theme toggle.
-  - **Collapsible Left Book Spec Rail (`SidebarControls.tsx`):** Can be collapsed on demand to expand the drafting cutting mat edge-to-edge:
-    - Unit toggle (`mm` / `in`) + Preset selector
-    - Paperback Dimensions (`H`, `W`, `Spine Thickness`)
+  - Respects `prefers-reduced-motion`, `@media (forced-colors: active)`, and dual-mode `color-scheme` (`light-dark()` with `prefers-color-scheme` fallbacks and semantic `.status-{warning,danger,success}-*` classes — zero OS-bound Tailwind `dark:` warning classes).
+- **3-Column Desktop Studio Layout:**
+  - **Editorial Press Masthead (`Header.tsx`):** Bespoke woodcut colophon emblem (`src/assets/atelier/atelier-colophon.jpg`), `Bookbinder Studio` serif wordmark, collapsible Spec Ledger toggle, 1-click **`Sample Book`** showcase loader, quiet monochrome ledger status readout, and light/dark theme toggle.
+  - **Collapsible Left Washi Spec Ledger (`SidebarControls.tsx`):**
+    - Sharp `mm` / `in` segmented switch + **5-Style Architectural Cross-Section Quick-Picker** (`BindingStyleIcon.tsx`) synced with `binding-style-select`
+    - Paperback Preset selector + compact ruled `PB_H` / `PB_W` / `PB_THICK` Vernier Spec Ledger
+    - Target Print Media selector (`Exact Wrap Size`, desktop sheets, `13"–44"` rolls, and **`Custom Roll Width…`** with inline width input)
     - Collapsible "Construction & Hinge Settings" (`9.0 mm` hinge spacer, board thickness, turn-in, pocket depth %, bleed, 3-piece split toggle)
-    - PDF Page Size selector for Inner Envelopes (`US Letter 8.5×11"`, `A4`, `Tabloid 11×17"`)
-    - Project Save/Load (`Export .json` / `Import .json` + automatic `localStorage` persistence)
-  - **3-Tab Hybrid Folio Workbench (Workflow Tabs + Compact Studio Tool Dock):**
-    - **Tab 1 — `Measure & Cut`:** Dedicated clutter-free structural workbench for chipboard, leather, bookcloth, and paper cutting. Houses the full **Chipboard Cut List & Assembly Diagram** (`CutListCard.tsx`), full-bleed `1:1 mm` interactive CAD **Outer Blueprint Canvas** (45° miters, board guides, `9 mm` hinges, 3-piece split panels, zoom/pan, **Manual-Cutting CAD Dimension Lines**, running **Cumulative Steel-Ruler Datum Strip**, **45° Miter Callout**, and **Grain Direction** arrow), plus direct **Cut-Only SVG** and **Cut-Only PDF** downloads.
-    - **Tab 2 — `Cover Studio` (Default Active Tab):** Focused interactive design studio with the live cutting-mat canvas (`Styled Cover` / `Blueprint` / `3D Book` HUD switcher), 300 DPI `Print PDF`, `PNG`, `Affinity SVG`, and `Cricut / HTV SVG` exports, plus a slim live sheet-fit spec badge. Directly beneath the canvas sits a single **Compact Tabbed Studio Tool Dock** (`Artwork & Fill` · `Cover Text` · `Classic Designs` · `Spine` · `Preflight`) with live count/status badges—eliminating long vertical scrolling while keeping every tool 1 click away (and auto-switching to the matching tab when selecting any image, text block, or ornament on the canvas).
-    - **Tab 3 — `Inner Pockets`:** Full-bleed cutting-mat canvas for the mirrored Front/Back slip-in pockets and Spine Reinforcement Liner (`Styled Pockets` & `Blueprint` HUD switcher, CAD dimensions, endpaper color + `Match Cover Color`, drag/drop/resize/snap artwork, `Tile Pattern`, and Styled/Cut PDF & SVG exports). When **`Fold-and-Glue Slip Cover (0-Board, 1 Sheet)`** is active, the tab displays a **`Built-In`** badge (auto-switching back to `Cover Studio`) and explains that separate inner pockets are not required for the 1-piece slip cover.
-    - **Full-Page Canvas Focus Mode (`useFullPageCanvas.ts`):** Every cutting-mat canvas (`Measure & Cut` Blueprint, `Cover Studio` 2D/Blueprint/3D, and `Inner Pockets` Styled/Blueprint) includes a 1-click **`Full Screen`** toggle in its `FloatingHudToolbar` that expands the interactive stage edge-to-edge across the entire viewport (`fixed inset-0 z-50 h-dvh w-screen`) with full drag/resize/orbit/zoom/drop support and instant `Esc` or button dismissal.
+    - Inner Envelopes PDF Page Size selector (`US Letter`, `A4`, `US Legal`, `Tabloid`) + Project Save/Load (`.json` + `localStorage`)
+  - **3-Tab Folio Workbench (`Measure & Cut` · `Cover Studio` · `Inner Pockets`):** High-contrast folio index tabs resting directly above the workbench on the walnut desk with a `3px` vermilion active top rule:
+    - **Tab 1 — `Measure & Cut`:** Printed *washi* **Specimen Cut List & Gluing Diagram** (`CutListCard.tsx`), full-bleed interactive CAD **Outer Blueprint Canvas** with `Cut SVG`, `Cut PDF…`, and **`Bench Recipe & Jigs PDF`** exports, plus the collapsible **Matching Slipcase Box Calculator** (`SlipcaseCard.tsx`).
+    - **Tab 2 — `Cover Studio` (Default Active Tab):** True 3-column desktop studio (`xl:`) placing the huge walnut-framed cutting mat (`Styled Cover` / `Blueprint` / `3D Book` sharp-bezel HUD + zero-CLS docked top **`CanvasSelectionBar`** + non-printing Surface/Foil preview bar) directly beside a docked right-hand **`Design Inspector`** (`Artwork` · `Text` · `Designs` · `Spine` · `Presets` · `Preflight`) so tools sit at eye level with zero page scrolling.
+    - **Tab 3 — `Inner Pockets`:** Full-bleed cutting-mat canvas with a 1-click **Interior Style** switcher (`Removable Slip-In Pockets` ↔ `Folded Glue-In Endpapers` on chipboard styles), mirrored `PASTEDOWN` / `FLYLEAF` annotations, drag/drop/resize/snap artwork, `Tile Pattern`, and Styled/Cut PDF & SVG exports.
+    - **Full-Page Canvas Focus Mode (`useFullPageCanvas.ts`):** Every cutting-mat canvas includes a 1-click **`Full Screen`** toggle (`fixed inset-0 z-50 h-dvh w-screen`) keeping `CanvasSelectionBar` accessible and dismissing cleanly on `Esc`.
 
 ---
 
@@ -220,13 +223,13 @@ src/
   - **Inner Pockets Shape Helpers:** Quick-Fit presets (`Fit Back Pocket`, `Fit Front Pocket`, `Fit Spine Liner`, `Fit All Pieces`), one-click **Copy to Other Pocket** (mirrors a layer cleanly between Front & Back pockets), a one-click **Tile Pattern** toggle on any selected layer (turning any swatch into a seamless repeating endpaper pattern whose repeat size and offset respond live to corner-handle resizing and dragging), plus `Pocket Faces Only` vs `Full Cut Envelope` clip scope and opacity control.
   - **Exact 300 DPI PDF Compositing (`pocketRenderEngine.ts`):** All positioned inner pocket layers composite at exact 1:1 mm alignment onto each auto-paginated (and 90°-rotated if needed) sheet underneath vector cut/score/glue lines.
 
-### 7.6 Cricut / Silhouette / ScanNCut HTV & Foil SVG Export (`src/studio/cricutExport.ts`, `CricutExportDialog.tsx`)
-- Dedicated cutting-machine vector exporter designed for **Cricut Design Space**, **Silhouette Studio**, and **Brother CanvasWorkspace (ScanNCut)** so binders can cut Heat Transfer Vinyl (HTV), foil iron-on lettering, or bookcloth wraps without font-substitution or scaling errors:
-  - **True Vector Glyph Outlines (Zero `<text>` Tags, Zero `transform` Attributes):** Parses the active curated `.woff` font or custom uploaded `.ttf`/`.otf`/`.woff` font client-side via `@pdf-lib/fontkit`, lays out properly kerned glyphs, and bakes every curve (`M/L/Q/C/Z`) into flattened absolute millimeter coordinates inside a single compound `<path id="spine-lettering" />`.
-  - **Strict `1:1 mm` Physical Scaling:** Root `<svg>` explicitly specifies `width="{W}mm" height="{H}mm" viewBox="0 0 {W} {H}"` with zero embedded rasters, filters, or gradients.
-  - **Export Options Modal (Native `<dialog closedby="any">` with live preview & mat compatibility badges):**
-    - **Scope:** `Spine Strip Only` (`SPINE_W × BOARD_H`), `Front Cover Only` (`BOARD_W × BOARD_H`), `Back Cover Only` (`BOARD_W × BOARD_H`), or `Full Cover Wrap` (`WRAP_W × WRAP_H`).
-    - **Weeding Box (`+4 mm`):** Tight cut box around outlined lettering and classic ornaments for effortless HTV weeding.
+### 7.6 Cricut / Silhouette / ScanNCut Basic Cut HTV (`.SVG`) & Print Then Cut Printable HTV (`.PNG`) (`src/studio/cricutExport.ts`, `src/studio/cricutPrintThenCut.ts`, `CricutExportDialog.tsx`)
+- Dedicated dual-mode cutting-machine exporter designed for **Cricut Design Space**, **Silhouette Studio**, and **Brother CanvasWorkspace (ScanNCut)** so binders can cut Heat Transfer Vinyl (HTV), foil iron-on lettering, printable HTV transfers, or bookcloth wraps without font-substitution or scaling errors:
+  - **Basic Cut (`.SVG`) — True Vector Glyph, Ornament & `.svg` Artwork Outlines (Zero `<text>`, Zero `<image>`, Zero `transform=`):** Parses the active curated `.woff` font or custom uploaded `.ttf`/`.otf`/`.woff` font client-side via `@pdf-lib/fontkit`, plus uploaded `.svg` artwork layers (`data:image/svg+xml`, base64 & UTF-8) via `svgStampParser.ts`, baking every curve (`M/L/Q/C/Z`), flip, quarter-turn rotation, and HTV mirror into flattened absolute millimeter coordinates with explicit `width="{W}mm" height="{H}mm" viewBox="0 0 {W} {H}"`.
+  - **Print Then Cut (`.PNG`) — Transparent 300 DPI Printable HTV (`cricutPrintThenCut.ts`):** Exports the visible **Front Cover**, **Back Cover**, **Spine Strip**, or **Full Cover Wrap** panel (excluding turn-ins, tuck flaps, and glue tabs on individual panels) with transparent alpha background by default (`includeBaseFill: false`) so Cricut kiss-cuts cleanly around uploaded raster art, lettering, and ornaments. Injects a valid CRC32 `pHYs` DPI chunk (`11811 px/m` at 300 DPI) immediately after `IHDR`, supports **Trim to Design Bounds** (`+2 mm` clamped padding) and horizontal HTV mirroring, previews over an always-light alpha checkerboard, displays exact physical `W × H` (`in` / `mm` + `px`), and evaluates portrait/landscape fit against Cricut Print-Then-Cut sheet bounds (`US Letter 6.75 × 9.25"`, `A4 6.54 × 9.93"`, `US Legal 6.75 × 12.25"`, `Tabloid 9.25 × 15.25"`).
+  - **Dual-Mode Export Modal (Native `<dialog closedby="any">` with accessible segmented tabs, live preview & mat/sheet compatibility badges):**
+    - **Scope:** `Spine Strip Only` (`SPINE_W × BOARD_H`), `Front Cover` (`BOARD_W × BOARD_H`), `Back Cover` (`BOARD_W × BOARD_H`), or `Full Cover Wrap` (`WRAP_W × WRAP_H`).
+    - **Weeding Box (`+4 mm`):** Tight cut box around outlined lettering, ornaments, and parsed SVG artwork for effortless HTV weeding.
     - **Alignment Corner Marks:** Thin closed-path L-brackets at exact spine/board corners for dead-center HTV transfer onto wrapped bookcloth.
     - **Outer Wrap Cut Outline:** Optional separate-color `#D93829` outer cut polygon (with 45° miters or fold-and-glue tabs) for cutting bookcloth or cardstock directly on a cutting machine.
     - **Mirror Horizontally (HTV Iron-On):** Optional horizontal coordinate flip (off by default to avoid double-mirroring with Cricut Design Space's *Make It → Mirror* toggle).
@@ -273,9 +276,36 @@ src/
 - Shared `layoutPdfToPrintMedia` engine (`src/core/pdfSheetLayout.ts`) supports centered 1-sheet placement, 2-sheet horizontal tiling with configurable `10 / 15 / 20 mm` overlap strips and alignment crosshairs, optional `50 mm` physical Scale-Check Ruler bar, `300 / 600 DPI` raster resolution, `Cut, Fold & Glue Guides` vs. Registration Marks Only, `Single Wrap` vs. `3-Piece Split`, and auto-paginated Inner Pockets (`Letter / A4 / Legal / Tabloid`) with optional `50 × 50 mm` calibration legend.
 - **Flap-Depth Guardrails (`evaluateFlapDepth`):** Displays `Rec. ≥ ...` beside the flap slider, warns inline with a 1-click fix whenever a flap is shallower than recommended for the book width, and emits a `flap-too-shallow` Preflight warning highlighting both shallow flaps on the 2D canvas.
 
-### 7.11 Hybrid Printed Base + Multi-Color Cricut HTV Foil Workflow (`coverPdfExporter.ts`, `cricutExport.ts`, `CricutExportDialog.tsx`)
+### 7.11 Hybrid Printed Base, Multi-Color HTV Foil & Print Then Cut Printable HTV (`coverPdfExporter.ts`, `cricutExport.ts`, `cricutPrintThenCut.ts`, `CricutExportDialog.tsx`)
 - **Base-Only Print PDF (`exportLayerMode: 'base-only'`):** Outputs `outer_cover_base_for_htv.pdf` containing background fills, uploaded artwork layers, cut/fold guides, and subtle `3 mm` brass HTV center-alignment ticks in the outer top/bottom margins at the Back, Spine, and Front centerlines—omitting cover text, spine text, and vector ornaments so HTV foil presses cleanly with zero double-vision ghosting.
-- **Multi-Color Foil Mat Grouping (`groupByColor: true`) & High-Contrast Mat Preview:** Groups filled lettering and ornament curves by hex color (`id="foil-color-…"`, `_multicolor.svg`) so Cricut Design Space / Silhouette Studio splits multi-color foil designs onto separate mats automatically; previews dark cut paths on an always-light `.cricut-mat-surface` carrier sheet for crisp dark-mode contrast; includes a 1-click **Export Printed Base PDF…** handoff opening `PdfExportDialog` pre-configured to `Base Only (For HTV)`.
+- **Multi-Color Foil Mat Grouping (`groupByColor: true`), `.svg` Artwork Parsing & Print Then Cut Mode:** Groups filled lettering, ornaments, and parsed `.svg` artwork curves by hex color (`id="foil-color-…"`, `_multicolor.svg`) so Cricut Design Space / Silhouette Studio splits multi-color foil designs onto separate mats automatically; previews dark cut paths on an always-light `.cricut-mat-surface` carrier sheet; offers a 1-click **Switch to Print Then Cut (.PNG)** button for raster cover art alongside **Export Printed Base PDF…** (`Base Only (For HTV)`).
+
+### 7.12 Folded Glue-In Endpapers Mode (`src/types/bookParams.ts`, `src/core/geometry.ts`, `src/studio/InnerPocketsStudio.tsx`)
+- Adds optional `interiorStyle: 'slip-pockets' | 'folded-endpapers'` (default `'slip-pockets'`) for chipboard binding styles (`capabilities.usesChipboard`), selectable via a segmented toggle in **Inner Pockets**:
+  - Outputs two double-width folded endpaper sheets (`totalWidthMm = 2 × PB_W`, `totalHeightMm = PB_H`, `0` glue flaps, clean 4-vertex rectangular `outerCutPolygon`, and 1 vertical center fold score line at `x = PB_W`) with mirrored `PASTEDOWN` / `FLYLEAF` zone annotations (`front`: left `PASTEDOWN` / right `FLYLEAF`; `back`: left `FLYLEAF` / right `PASTEDOWN`).
+  - Reuses the full drag-and-drop / seamless Tile Pattern endpaper studio and exports cleanly to Styled PDF, Cut PDF, and SVG (`inner_pockets_and_liner.pdf` / `.svg`).
+
+### 7.13 Cover Studio Undo/Redo, Clipboard, Contextual Canvas Selection Bar & Invertible Geometry Remapping (`useStudioHistory.ts`, `studioClipboard.ts`, `CanvasSelectionBar.tsx`, `studioGeometryRemap.ts`)
+- **History & Clipboard:** Deep-cloned (`structuredClone`) 50-step Undo/Redo stack (`Cmd/Ctrl+Z`, `Cmd/Ctrl+Shift+Z`, `Ctrl+Y`) with coalesced keys for drags/colors/nudges; element clipboard (`Cmd/Ctrl+C`, `Cmd/Ctrl+V` with `+6 mm` clamped offset, `Cmd/Ctrl+D` duplicate); `1 mm` / `5 mm` (`Shift`) arrow-key nudging; and direct OS clipboard image paste (`paste` event) onto the cover canvas.
+- **Docked Contextual Canvas Selection Bar (`CanvasSelectionBar.tsx`):** Mounted as a zero-CLS absolute top overlay inside `#studio-mat-viewport` (accessible in normal and Full Screen 2D modes) using native `focusgroup="toolbar wrap"` + roving-tabindex fallback. Contextually displays **`6 mm · 12 mm · 18 mm · Center`** board-margin fit presets for frames & corners, or **`Top ⅓ · Center · Bottom ⅓`** vertical alignment for text, emblems, dividers, and images, alongside `Flip H`, `Flip V`, static `<RotateCw /> 90°` rotation, foil color swatches, `Duplicate`, and `Delete`.
+- **Invertible Geometry Remapping (`studioGeometryRemap.ts`):** Wired atomically into `App.tsx`'s `handleParamsChange` so switching paperback presets, dimensions, binding styles, or interior styles remaps Cover Text & Ornaments against visible board rects (`outerWrap.*BoardRect + bleedMm`) and Cover Images against `*ArtworkRect` using exact invertible area-preserving scaling (`sqrt((nextW·nextH)/(prevW·prevH))` for emblems/images, per-axis for frames/corners) — keeping front designs centered across sizes and round-tripping `A → B → A` with `< 0.01 mm` drift while preserving `pocketStyle.layers` across boardless styles.
+
+### 7.14 Printable Bench Recipe Card, Scrap-Chipboard Cutting Jigs & Matching Slipcase Box Calculator (`benchRecipePdf.ts`, `slipcaseGeometry.ts`, `slipcaseExport.ts`, `SlipcaseCard.tsx`)
+- **Bench Recipe & Cutting Jigs PDF (`bindery_bench_recipe_and_jigs.pdf`):** 1-page portrait `pdf-lib` sheet containing a capability-driven cut list & grain reminder, numbered assembly checklist, `50 mm` Scale-Check ruler, exact `HINGE_W × 110 mm` **Hinge Spacer Jig** (or `10 × 110 mm` glue-tab guide on boardless covers), and an exact **`45°` Corner Miter Gauge Jig** offset by `MITER_GAP = BOARD_T × MITER_FACTOR` ready to glue onto scrap chipboard.
+- **Matching Slipcase Box Calculator (`SlipcaseCard.tsx`):** Computes 5 flush-stacking DAS Bookbinding chipboard panels directly from the finished hardcover's outer dimensions (`cavityW = bookOuterW + max(1.0, clearance × 0.75)`, `cavityH = bookOuterH + clearance`, `cavityT = bookOuterT + clearance`):
+  - **Side Walls (Qty 2):** `(cavityW + wallT) × (cavityH + 2 × wallT)` with centered semi-circular **Thumb-Notch Cutout** (`0–25 mm` radius, true SVG `A` arc in `matching_slipcase.svg` and smooth polyline arc in paginated `matching_slipcase.pdf`).
+  - **Spine Wall (Qty 1):** `cavityT × cavityH`.
+  - **Head & Tail Walls (Qty 2):** `(cavityW + wallT) × cavityT`.
+  - **Outer Box Wrap Strips:** Continuous Side-Spine-Side wrap + 2 Head/Tail cap strips.
+
+### 7.15 1-Click Sample Book & Non-Printing 2D/3D Material & Foil Previews (`sampleProject.ts`, `materialPreview.ts`, `Book3DPreview.tsx`)
+- **Sample Book (`createSampleBookProject`):** 1-click offline *Twenty Thousand Leagues Under the Seas* (Jules Verne, `140 × 216 × 24 mm`, Prussian navy + antique gold) showcase with stacked spine + horizontal author, front/back typography, classic vector ornaments, and an inline SVG seamless marbled wave endpaper tile.
+- **Visual Material & Foil Shaders:** Non-printing procedural `rgba(...)` overlays (zero `mix-blend-mode` / group opacity so CSS 3D `backface-visibility: hidden` and inner pocket/flap folds render cleanly!) for **Matte Paper**, **Bookcloth Linen**, and **Pebbled Leather**, plus orbit-reactive metallic SVG `<linearGradient>` **Gold / Silver / Copper Foil** sheen in `Book3DPreview`.
+
+### 7.16 Wide-Format Custom Roll Width, Multi-Up / Gang-Sheet Nesting & Asymmetric Printer Margins (`printerMargins.ts`, `marginTestSheetPdf.ts`, `rollNesting.ts`, `pdfSheetLayout.ts`, `PdfExportDialog.tsx`)
+- **Custom Roll Width (`roll-custom`):** Supports arbitrary `200–1600 mm` wide-format rolls (default `914.4 mm` / 36") persisted in `localStorage` and synced across `SidebarControls` and `PdfExportDialog`.
+- **Asymmetric Printer Margins & Calibration Sheet:** Per-edge hardware margins (`topMm`, `bottomMm`, `leftMm`, `rightMm`, `0–50 mm`) with hardware presets (`Standard 5 mm`, `Borderless`, `Fine-Art Sheet 20 mm bottom`, `Roll Cut-Sheet 30 mm bottom`, `Custom`) persisted locally. `evaluatePrintMediaFit` and `layoutPdfToPrintMedia` compute the true printable safe box (`computePrintableSafeBox`), center artwork/rulers/footers strictly inside it, and shade unprintable dead zones in `PdfSheetPreviewSvg`. Includes a 1-click **Print Margin Test Sheet (PDF)** (`printer_margin_calibration_sheet.pdf`) with `0–40 mm` inward-radiating millimeter rulers along all 4 physical edges + a `50 × 50 mm` scale check.
+- **Wide-Format Roll Multi-Up & Gang-Sheet Nesting (`rollNesting.ts`):** Deterministic FFDH shelf-strip 2D bin-packer (`packItemsOntoRoll` + `composeNestedRollPdf`) embedding each unique source PDF page once via `pdf-lib` `embedPage()` onto a single exact `rollWidthMm × usedLengthMm` output page with configurable `6 / 10 / 15 mm` cut gutters, automatic 90° rotation, optional companion inner pocket/endpaper packing, multi-book `.pdf` gang-sheet upload, and a live proportional roll-strip efficiency preview.
 
 ---
 

@@ -111,13 +111,14 @@ describe('CanvasSelectionBar', () => {
     expect(screen.getByTestId('selection-element-badge')).toHaveTextContent('Text');
     expect(screen.getByTestId('selection-element-badge')).toHaveTextContent('THE ODYSSEY');
 
-    // Vertical alignment action buttons never carry aria-pressed
+    // Vertical alignment pin toggle buttons carry aria-pressed="false" when unpinned
     const alignUpper = screen.getByTestId('selection-align-upper');
     const alignCenter = screen.getByTestId('selection-align-center');
     const alignLower = screen.getByTestId('selection-align-lower');
-    expect(alignUpper).not.toHaveAttribute('aria-pressed');
-    expect(alignCenter).not.toHaveAttribute('aria-pressed');
-    expect(alignLower).not.toHaveAttribute('aria-pressed');
+    expect(alignUpper).toHaveAttribute('aria-pressed', 'false');
+    expect(alignCenter).toHaveAttribute('aria-pressed', 'false');
+    expect(alignLower).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('selection-bar-unpin-btn')).not.toBeInTheDocument();
 
     await user.click(alignUpper);
     await user.click(alignCenter);
@@ -297,6 +298,134 @@ describe('CanvasSelectionBar', () => {
     fireEvent.keyDown(lastBtn, { key: 'Home' });
     expect(document.activeElement).toBe(firstBtn);
   });
+
+  it('displays aria-pressed on active pin buttons, shows Unpin button, and detaches on re-click or Unpin click', async () => {
+    const user = userEvent.setup();
+    const callbacks = createCallbacks();
+    const onFitMargin = vi.fn();
+    const onDetachConstraint = vi.fn();
+
+    const pinnedFrame = makeOrnamentLayer({
+      presetId: 'frame-double-rule',
+      layoutConstraint: {
+        anchorZone: 'front',
+        horizontal: { kind: 'inset-both', marginMm: 12 },
+        vertical: { kind: 'inset-both', marginMm: 12 },
+      },
+    });
+
+    const { rerender } = render(
+      <CanvasSelectionBar
+        selection={{ kind: 'ornament', layer: pinnedFrame }}
+        onFitMargin={onFitMargin}
+        onDetachConstraint={onDetachConstraint}
+        {...callbacks}
+      />,
+    );
+
+    expect(screen.getByTestId('selection-margin-6')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-margin-12')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('selection-margin-18')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-align-center')).toHaveAttribute('aria-pressed', 'false');
+
+    const unpinBtn = screen.getByTestId('selection-bar-unpin-btn');
+    expect(unpinBtn).toBeInTheDocument();
+    expect(unpinBtn).not.toHaveAttribute('aria-pressed');
+
+    // Clicking already-pinned 12 mm toggles/detaches via onDetachConstraint
+    await user.click(screen.getByTestId('selection-margin-12'));
+    expect(onDetachConstraint).toHaveBeenCalledTimes(1);
+    expect(onFitMargin).not.toHaveBeenCalled();
+
+    // Clicking Unpin also detaches
+    await user.click(unpinBtn);
+    expect(onDetachConstraint).toHaveBeenCalledTimes(2);
+
+    // Pinned text layer shows active Center toggle & Unpin button
+    const pinnedText = makeTextLayer({
+      layoutConstraint: {
+        anchorZone: 'front',
+        horizontal: { kind: 'center' },
+        vertical: { kind: 'center' },
+      },
+    });
+    rerender(
+      <CanvasSelectionBar
+        selection={{ kind: 'text', layer: pinnedText }}
+        onDetachConstraint={onDetachConstraint}
+        {...callbacks}
+      />,
+    );
+    expect(screen.getByTestId('selection-align-upper')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-align-center')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('selection-align-lower')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('selection-bar-unpin-btn')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('selection-align-center'));
+    expect(onDetachConstraint).toHaveBeenCalledTimes(3);
+    expect(callbacks.onQuickAlign).not.toHaveBeenCalled();
+  });
+
+  it('keeps exactly one roving tab stop on mount, when Unpin mounts, and when Unpin unmounts', async () => {
+    const user = userEvent.setup();
+    const callbacks = createCallbacks();
+
+    function StatefulToolbar() {
+      const [layer, setLayer] = useState<CoverTextLayer>(() => makeTextLayer());
+      return (
+        <CanvasSelectionBar
+          selection={{ kind: 'text', layer }}
+          {...callbacks}
+          onQuickAlign={(slot) =>
+            setLayer((prev) => ({
+              ...prev,
+              layoutConstraint: {
+                anchorZone: 'front',
+                horizontal: { kind: 'center' },
+                vertical: {
+                  kind: slot === 'upper' ? 'top-third' : slot === 'lower' ? 'bottom-third' : 'center',
+                },
+              },
+            }))
+          }
+          onDetachConstraint={() =>
+            setLayer((prev) => ({ ...prev, layoutConstraint: undefined }))
+          }
+        />
+      );
+    }
+
+    render(<StatefulToolbar />);
+
+    const getTabbableItems = () =>
+      Array.from(
+        screen
+          .getByTestId('canvas-selection-bar')
+          .querySelectorAll<HTMLElement>('button:not([disabled]), input[type="color"]:not([disabled])'),
+      ).filter((el) => el.tabIndex === 0);
+
+    // 1. On initial mount before any focusin, exactly one toolbar item is tabbable
+    const initialTabbable = getTabbableItems();
+    expect(initialTabbable).toHaveLength(1);
+    expect(initialTabbable[0]).toBe(screen.getByTestId('selection-align-upper'));
+
+    // 2. Focus & click Center -> Unpin mounts, yet Center remains the sole tab stop
+    const centerBtn = screen.getByTestId('selection-align-center');
+    await user.click(centerBtn);
+    const unpinBtn = screen.getByTestId('selection-bar-unpin-btn');
+    expect(unpinBtn).toBeInTheDocument();
+    const afterPinTabbable = getTabbableItems();
+    expect(afterPinTabbable).toHaveLength(1);
+    expect(afterPinTabbable[0]).toBe(centerBtn);
+    expect(unpinBtn.tabIndex).toBe(-1);
+
+    // 3. Click Unpin -> Unpin unmounts, and toolbar immediately normalizes back to one tab stop
+    await user.click(unpinBtn);
+    expect(screen.queryByTestId('selection-bar-unpin-btn')).not.toBeInTheDocument();
+    const afterUnpinTabbable = getTabbableItems();
+    expect(afterUnpinTabbable).toHaveLength(1);
+    expect(afterUnpinTabbable[0]).toBe(screen.getByTestId('selection-align-upper'));
+  });
 });
 
 describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · Bottom ⅓ alignment', () => {
@@ -395,9 +524,7 @@ describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · B
     await user.click(screen.getByTestId('selection-align-upper'));
     const ornUpperY = latestState.ornaments![0].yMm;
     expect(ornUpperY).toBeCloseTo(
-      spec.frontArtworkRect.y +
-        spec.frontArtworkRect.height * 0.24 -
-        latestState.ornaments![0].heightMm / 2,
+      frontBoard.y + frontBoard.height * 0.24 - latestState.ornaments![0].heightMm / 2,
       1,
     );
 
@@ -443,5 +570,61 @@ describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · B
 
     await user.click(screen.getByTestId('selection-delete-btn'));
     expect(latestState.textLayers).toHaveLength(1);
+  }, 15_000);
+
+  it('detaches imageFit constraint when rotating a Fit Front image from either the selection bar or sidebar', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const spec = computeStudioCanvasSpec(geom);
+
+    const coverImg = CoverImageLayerModel.createInRect({
+      id: 'img-fit-rot',
+      dataUrl: 'data:image/png;base64,AAA',
+      fileName: 'portrait-cover.png',
+      naturalWidth: 1000,
+      naturalHeight: 1500,
+      targetRect: spec.frontArtworkRect,
+      clipZone: 'front',
+    });
+
+    let latestState: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      layers: [coverImg],
+    };
+
+    function StatefulHarness() {
+      const [studio, setStudio] = useState<CoverStudioState>(latestState);
+      return (
+        <CoverStyler
+          params={DEFAULT_BOOK_PARAMETERS}
+          geometry={geom}
+          studio={studio}
+          onChange={(next) => {
+            latestState = next;
+            setStudio(next);
+          }}
+          onStatusMessage={vi.fn()}
+        />
+      );
+    }
+
+    render(<StatefulHarness />);
+
+    // 1. Pin via Fit Front -> imageFit: 'cover' active
+    await user.click(screen.getByTestId('quick-fit-front'));
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBe('cover');
+
+    // 2. Rotate 90° from selection bar -> imageFit detaches cleanly
+    await user.click(screen.getByTestId('selection-rotate-90'));
+    expect(latestState.layers[0].rotationDeg).toBe(90);
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBeUndefined();
+
+    // 3. Re-pin via Fit Front, then rotate 90° from sidebar ArtworkControlsCard -> imageFit also detaches
+    await user.click(screen.getByTestId('quick-fit-front'));
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBe('cover');
+
+    await user.click(screen.getByTestId('layer-rotate-90-btn'));
+    expect(latestState.layers[0].rotationDeg).toBe(180);
+    expect(latestState.layers[0].layoutConstraint?.imageFit).toBeUndefined();
   }, 15_000);
 });

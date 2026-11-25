@@ -7,6 +7,7 @@ import {
 import { canvasToPngBytes, loadHtmlImage } from '@/lib/canvasImage';
 import type { PageSizeId } from '@/types/bookParams';
 import type { CaseGeometry, Polygon2D, Rect2D } from '@/types/geometry';
+import type { PdfGuideOptionsInput } from '@/types/pdfGuides';
 import type { PocketImageFitMode, PocketStyleConfig } from '@/types/studio';
 import {
   getLayerVisualRect,
@@ -335,10 +336,9 @@ export async function generateStyledInnerTemplatesPdf(
   pageSizeId: PageSizeId,
   pocketStyle: PocketStyleConfig,
   dpi = PRINT_DPI,
-  options?: { readonly includeLegend?: boolean; readonly includeGuides?: boolean },
+  options?: PdfGuideOptionsInput & { readonly includeLegend?: boolean },
 ): Promise<{ readonly bytes: Uint8Array; readonly plan: InnerPdfLayoutPlan }> {
   const includeLegend = options?.includeLegend ?? false;
-  const includeGuides = options?.includeGuides ?? true;
   const plan = planInnerTemplateLayout(geometry, pageSizeId, { includeLegend });
   const layout = computeInnerPocketsLayout(geometry);
 
@@ -423,6 +423,9 @@ export async function generateStyledInnerTemplatesPdf(
     pieceArtworkPng,
     hideFaceTextOnStyled: true,
     includeLegend,
-    includeGuides,
+    includeCutLines: options?.includeCutLines,
+    includeFoldLines: options?.includeFoldLines,
+    includeFoldGuideTicks: options?.includeFoldGuideTicks,
+    includeGuides: options?.includeGuides,
   });
 }

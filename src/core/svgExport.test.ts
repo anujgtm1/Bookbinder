@@ -8,10 +8,10 @@ describe('generateOuterWrapSvg', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const svg = generateOuterWrapSvg(geom, 'single');
 
-    // Default WRAP_W = 366, WRAP_H = 259, bleed = 3 => 372mm x 265mm
-    expect(svg).toContain('width="372mm"');
+    // Default WRAP_W = 368, WRAP_H = 259, bleed = 3 => 374mm x 265mm
+    expect(svg).toContain('width="374mm"');
     expect(svg).toContain('height="265mm"');
-    expect(svg).toContain('viewBox="-3 -3 372 265"');
+    expect(svg).toContain('viewBox="-3 -3 374 265"');
     expect(svg).toContain('<g id="bleed-box"');
     expect(svg).toContain('<g id="cut-lines"');
     expect(svg).toContain('<g id="board-guides"');
@@ -26,9 +26,9 @@ describe('generateOuterWrapSvg', () => {
     const geom = calculateCaseGeometry({ ...DEFAULT_BOOK_PARAMETERS, includeBleed: false });
     const svg = generateOuterWrapSvg(geom, 'single');
 
-    expect(svg).toContain('width="366mm"');
+    expect(svg).toContain('width="368mm"');
     expect(svg).toContain('height="259mm"');
-    expect(svg).toContain('viewBox="0 0 366 259"');
+    expect(svg).toContain('viewBox="0 0 368 259"');
     expect(svg).toContain('<g id="bleed-box" />');
   });
 
@@ -58,6 +58,15 @@ describe('generateOuterWrapSvg', () => {
     expect(svg).toContain('data-label="Spine Reinforcement Liner"');
     expect(svg).toContain('data-label="Front Pocket Envelope"');
     expect(svg).toContain('width="50" height="50"');
+    expect(svg).toContain('Glue inset: 2.5 mm T/B · 2.5 mm fore-edge');
+
+    // Separate softcover pockets omit chipboard board-inset callout
+    const separateGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+    });
+    expect(generateInnerTemplatesSvg(separateGeom)).not.toContain('Glue inset:');
   });
 
   it('omits zero-width hinge labels on Flexible Spine and labels integrated Tuck Flaps on Softcover Jacket', () => {
@@ -138,5 +147,40 @@ describe('generateOuterWrapSvg', () => {
     );
     expect(djSvg).not.toContain('<g id="glue-tabs"');
     expect(djSvg).not.toContain('GLUE BACK');
+  });
+
+  it('emits external fold-guide-ticks layer and honors independent cut/fold/tick options in single and 3-piece SVGs', () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    const defaultSvg = generateOuterWrapSvg(geom, 'single');
+    expect(defaultSvg).toContain('<g id="fold-guide-ticks" fill="none" stroke="#0066FF" stroke-width="0.35">');
+
+    const noFoldSvg = generateOuterWrapSvg(geom, 'single', {
+      includeCutLines: true,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    expect(noFoldSvg).toContain('<g id="cut-lines" fill="none" stroke="#FF0000"');
+    expect(noFoldSvg).toContain('<g id="board-guides" />');
+    expect(noFoldSvg).toContain('<g id="fold-guide-ticks" fill="none" stroke="#0066FF"');
+
+    const noCutNoTicksSvg = generateOuterWrapSvg(geom, 'single', {
+      includeCutLines: false,
+      includeFoldLines: true,
+      includeFoldGuideTicks: false,
+    });
+    expect(noCutNoTicksSvg).toContain('<g id="cut-lines" />');
+    expect(noCutNoTicksSvg).not.toContain('stroke="#FF0000"');
+    expect(noCutNoTicksSvg).toContain('<g id="board-guides" fill="none" stroke="#0066FF"');
+    expect(noCutNoTicksSvg).toContain('<g id="fold-guide-ticks" />');
+
+    const splitSvg = generateOuterWrapSvg(geom, 'three-piece', {
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    expect(splitSvg).toContain('<g id="cut-lines" />');
+    expect(splitSvg).toContain('<g id="board-guides" />');
+    expect(splitSvg).toContain('<g id="fold-guide-ticks" fill="none" stroke="#0066FF"');
   });
 });

@@ -1,5 +1,9 @@
 import { resolveBindingStrategy } from '@/core/bindingStyles';
-import { CoverTextLayerModel, type CoverTextLayer } from '@/types/coverElements';
+import {
+  CoverTextLayerModel,
+  type CoverElementZone,
+  type CoverTextLayer,
+} from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState, type StudioFontId } from '@/types/studio';
 import {
@@ -21,6 +25,12 @@ export interface StudioCanvasSpec {
   readonly spineZoneRect: Rect2D;
   /** Full background band for front side (including turn-in / front flap). */
   readonly frontZoneRect: Rect2D;
+  /** Visible back board/cover face rect in StudioCanvasSpec mm coordinates (includes bleed offset). */
+  readonly backBoardRect: Rect2D;
+  /** Visible spine rect in StudioCanvasSpec mm coordinates (includes bleed offset). */
+  readonly spineBoardRect: Rect2D;
+  /** Visible front board/cover face rect in StudioCanvasSpec mm coordinates (includes bleed offset). */
+  readonly frontBoardRect: Rect2D;
   /** Artwork fit & clip bounds for back cover (excludes tuck flaps and glue tabs on flap covers). */
   readonly backArtworkRect: Rect2D;
   /** Artwork fit & clip bounds for spine (excludes top/bottom cut-away waste on glue-tab covers). */
@@ -132,6 +142,25 @@ export function computeStudioCanvasSpec(
     height: totalHeightMm,
   };
 
+  const backBoardRect: Rect2D = {
+    x: bleedMm + outerWrap.backBoardRect.x,
+    y: bleedMm + outerWrap.backBoardRect.y,
+    width: outerWrap.backBoardRect.width,
+    height: outerWrap.backBoardRect.height,
+  };
+  const spineBoardRect: Rect2D = {
+    x: bleedMm + outerWrap.spineRect.x,
+    y: bleedMm + outerWrap.spineRect.y,
+    width: outerWrap.spineRect.width,
+    height: outerWrap.spineRect.height,
+  };
+  const frontBoardRect: Rect2D = {
+    x: bleedMm + outerWrap.frontBoardRect.x,
+    y: bleedMm + outerWrap.frontBoardRect.y,
+    width: outerWrap.frontBoardRect.width,
+    height: outerWrap.frontBoardRect.height,
+  };
+
   // On covers with fold-in flaps or top/bottom glue tabs (slip covers & dust jackets), Fit Front/Back
   // and front/back clip masks target the visible cover face instead of spilling onto tuck flaps or glue tabs.
   const backArtworkRect: Rect2D =
@@ -174,6 +203,9 @@ export function computeStudioCanvasSpec(
     backZoneRect,
     spineZoneRect,
     frontZoneRect,
+    backBoardRect,
+    spineBoardRect,
+    frontBoardRect,
     backArtworkRect,
     spineArtworkRect,
     frontArtworkRect,
@@ -184,6 +216,20 @@ export function computeStudioCanvasSpec(
       height: totalHeightMm,
     },
   };
+}
+
+export function getPanelBoardRect(
+  spec: StudioCanvasSpec,
+  zone: CoverElementZone,
+): Rect2D {
+  switch (zone) {
+    case 'back':
+      return spec.backBoardRect;
+    case 'spine':
+      return spec.spineBoardRect;
+    case 'front':
+      return spec.frontBoardRect;
+  }
 }
 
 export function resolveZoneClipRect(
@@ -216,6 +262,79 @@ export function resolveQuickFitRect(
     case 'fullWrap':
       return spec.fullWrapRect;
   }
+}
+
+/**
+ * Infers the canonical cover panel zone ('back' | 'spine' | 'front') from an element's
+ * horizontal center in StudioCanvasSpec millimeter coordinates.
+ */
+export function inferZoneFromCenterX(
+  centerXMm: number,
+  spec: StudioCanvasSpec,
+): CoverElementZone {
+  if (centerXMm < spec.spineZoneRect.x) {
+    return 'back';
+  }
+  if (centerXMm < spec.frontZoneRect.x) {
+    return 'spine';
+  }
+  return 'front';
+}
+
+/**
+ * Computes the axis-aligned bounding box of a CoverTextLayer in StudioCanvasSpec mm coordinates,
+ * accounting for flips and quarter-turn rotations around the text anchor (layer.xMm, layer.yMm).
+ */
+export function getCoverTextAxisAlignedBounds(layer: CoverTextLayer): Rect2D {
+  const raw = CoverTextLayerModel.estimateBounds(layer);
+  const rot = normalizeQuarterTurn(layer.rotationDeg);
+  if (!layer.flipX && !layer.flipY && rot === 0) {
+    return raw;
+  }
+
+  const cx = layer.xMm;
+  const cy = layer.yMm;
+  const corners = [
+    { dx: raw.x - cx, dy: raw.y - cy },
+    { dx: raw.x + raw.width - cx, dy: raw.y - cy },
+    { dx: raw.x + raw.width - cx, dy: raw.y + raw.height - cy },
+    { dx: raw.x - cx, dy: raw.y + raw.height - cy },
+  ];
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  for (const pt of corners) {
+    const fx = layer.flipX ? -pt.dx : pt.dx;
+    const fy = layer.flipY ? -pt.dy : pt.dy;
+    let rx = fx;
+    let ry = fy;
+    if (rot === 90) {
+      rx = -fy;
+      ry = fx;
+    } else if (rot === 180) {
+      rx = -fx;
+      ry = -fy;
+    } else if (rot === 270) {
+      rx = fy;
+      ry = -fx;
+    }
+    const wx = cx + rx;
+    const wy = cy + ry;
+    if (wx < minX) minX = wx;
+    if (wy < minY) minY = wy;
+    if (wx > maxX) maxX = wx;
+    if (wy > maxY) maxY = wy;
+  }
+
+  return {
+    x: roundTo(minX, 2),
+    y: roundTo(minY, 2),
+    width: roundTo(maxX - minX, 2),
+    height: roundTo(maxY - minY, 2),
+  };
 }
 
 export function computeSpineTextPlacements(

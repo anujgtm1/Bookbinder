@@ -53,9 +53,9 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ## Tier 3 — Home-Printer & Bench Ergonomics
 
-### 10. [Shipped] Tiled Poster Print Mode (Letter / A4 Desktop Printers)
-- **Implemented in:** `src/core/pdfSheetLayout.ts`, `src/components/PdfExportDialog.tsx`, `src/components/PdfSheetPreviewSvg.tsx`.
-- Unified Print & Export PDF Dialog compares `US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact 1:1`, and `13"–44"` rolls with live `1 sheet` vs. `2 sheets (tiled)` fit badges, configurable `10 / 15 / 20 mm` overlap + alignment crosshairs, and an optional `50 mm` Scale-Check Ruler bar.
+### 10. [Shipped] Tiled Poster Print Mode, Wide-Format Roll Nesting & Asymmetric Printer Margins
+- **Implemented in:** `src/core/pdfSheetLayout.ts`, `src/core/printerMargins.ts`, `src/core/marginTestSheetPdf.ts`, `src/core/rollNesting.ts`, `src/components/PdfExportDialog.tsx`, `src/components/PdfSheetPreviewSvg.tsx`.
+- Unified Print & Export PDF Dialog compares `US Letter`, `A4`, `US Legal`, `Tabloid`, `Exact Wrap Size`, `13"–44"` rolls, and **Custom Roll Width (`200–1600 mm`)** with live `1 sheet` vs. `2 sheets (tiled)` fit badges, configurable `10 / 15 / 20 mm` overlap + alignment crosshairs, optional `50 mm` Scale-Check Ruler, per-edge **Asymmetric Printer Margins** + **1-Click Printer Margin Calibration Sheet PDF**, and **Wide-Format Roll Multi-Up / Gang-Sheet Nesting** (copies, optional inner pockets, and multi-book PDF uploads).
 
 ### 11. [Shipped] Printable "Bench Recipe Card" & Step-by-Step Cut Checklist
 - **Implemented in:** `src/core/benchRecipePdf.ts`, `src/components/MeasureAndCutPanel.tsx`.
@@ -71,7 +71,21 @@ A prioritized backlog of feature ideas gathered from **r/bookbinding** discussio
 
 ---
 
-## Intentional Scope Guardrails (What *Not* to Build)
+### 14. [Shipped] Cricut Print Then Cut Printable HTV (Transparent 300 DPI PNG) + `.svg` Artwork-Layer HTV Support
+- **Implemented in:** `src/studio/cricutExport.ts`, `src/studio/cricutPrintThenCut.ts`, `src/studio/exporters/coverRasterExporter.ts`, `src/studio/CricutExportDialog.tsx`.
+- **Basic Cut HTV (`.SVG`) Upgrade:** Automatically decodes and parses `.svg` artwork layers (`data:image/svg+xml` in `CoverImageLayer`, base64 & UTF-8) through `svgStampParser.ts` into flattened cuttable Bezier `<path>` curves with zero `<image>`, `<text>`, or `transform=` attributes, honoring rotation, flips, clip zones, HTV mirror, and `Split Mats by Foil Color`.
+- **Print Then Cut HTV Mode (Transparent 300 DPI `.PNG`):** Adds a dual-mode segmented switcher inside `CricutExportDialog.tsx` exporting isolated **Front Cover**, **Back Cover**, **Spine Strip**, or **Full Cover Wrap** transparent 300 DPI PNGs with an embedded CRC32 `pHYs` DPI chunk, optional **Trim to Design Bounds** (`+2 mm` margin), optional HTV mirror, optional solid base fill (off by default), always-light alpha checkerboard preview, exact physical `W × H` (`in` / `mm` + `px`) readout, and live Cricut Print-Then-Cut bounds badges (**US Letter `6.75 × 9.25"`**, **A4**, **US Legal**, **Tabloid**).
+
+---
+
+## Intentional Scope Guardrails & Recorded Product Decisions (What *Not* to Build)
 To keep Bookbinder fast, focused, and joyful rather than bloated:
 - **Skip full text-block signature imposition** — excellent dedicated open-source tools already exist for that (`bookbinder-js`, `Wynkyn`), and linking to them as companion tools is far better than duplicating them.
 - **Skip heavy photo-editing / brush tools** — keep our 1:1 mm Affinity / Inkscape SVG & 300 DPI PNG round-trip exports crisp for users who want complex illustration workflows.
+- **Skip arbitrary user-uploaded structural cut dielines (keep flap/pocket shapes parametric):**
+  - Decorative vector shapes are already supported via `.svg` artwork uploads and `Designs → Import SVG Stamp` (`svgStampParser.ts`).
+  - Allowing arbitrary uploaded structural cut outlines (custom scalloped flaps, custom cover dielines) breaks parametric resizing across book dimensions, complicates cut-vs-score semantics, and hits all 6 geometry IR consumers (2D canvas, Blueprint, 3D preview, PDF + 2-sheet tiling, Affinity SVG, Cricut SVG, Preflight). Power users authoring custom dielines already use Affinity/Inkscape and prefer exporting Bookbinder's layered `1:1 mm` SVG.
+  - Instead, if structural flap/pocket variety is added later, limit it to **2–3 parametric craft profiles** (`straight`, `tapered` flap tips, `diagonal` inner pockets — all pure `Polygon2D`, plus optional `thumb-notch` arcs reusing `slipcaseGeometry.ts`).
+- **Cricut HTV Basic Cut `.SVG` vs. Print Then Cut `.PNG` separation:**
+  - Never embed raster `<image>` tags into Basic Cut `.SVG` files (Cricut Design Space strips or rejects `<image>` elements inside SVGs).
+  - Basic Cut `.SVG` stays strictly pure flattened vector `<path>` curves (zero `<text>`, zero `<image>`, zero `transform=`). Full-color raster art uses either the **Hybrid Printed Base PDF (`Base Only (For HTV)`)** workflow or a dedicated **Print Then Cut (Transparent 300 DPI PNG)** export sized to Cricut's Letter/Legal Print-Then-Cut bounds.

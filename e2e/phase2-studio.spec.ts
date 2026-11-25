@@ -214,7 +214,9 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     // 1. Export Print-Ready PDF (300 DPI + vector typography via unified Print & Export PDF dialog)
     await page.getByTestId('studio-export-pdf-btn').click();
     await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
-    await expect(page.getByTestId('pdf-opt-guides')).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'false');
     const pdfPromise = page.waitForEvent('download');
     await page.getByTestId('pdf-export-confirm-btn').click();
     const pdfDownload = await pdfPromise;
@@ -238,7 +240,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     const svgDownload = await svgPromise;
     expect(svgDownload.suggestedFilename()).toBe('outer_cover_300dpi.svg');
     const svgText = await readFile((await svgDownload.path())!, 'utf-8');
-    expect(svgText).toContain('width="372mm"');
+    expect(svgText).toContain('width="374mm"');
     expect(svgText).toContain('height="265mm"');
     expect(svgText).toContain('id="artwork-layer"');
     expect(svgText).toContain('id="spine-typography"');
@@ -355,8 +357,8 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.mouse.move(layerBox!.x + layerBox!.width / 2, layerBox!.y + layerBox!.height / 2);
     await page.mouse.down();
     await page.mouse.move(
-      layerBox!.x + layerBox!.width / 2 - 45,
-      layerBox!.y + layerBox!.height / 2 + 15,
+      layerBox!.x + layerBox!.width / 2 - 75,
+      layerBox!.y + layerBox!.height / 2 - 15,
       { steps: 5 },
     );
     await page.mouse.up();
@@ -400,7 +402,9 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     // Export Styled Pockets PDF (via unified Print & Export PDF dialog)
     await page.getByTestId('download-styled-inner-pdf-btn').click();
     await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
-    await expect(page.getByTestId('pdf-opt-guides')).toBeVisible();
+    await expect(page.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'false');
     await expect(page.getByTestId('pdf-opt-legend')).toBeVisible();
     const styledPdfPromise = page.waitForEvent('download');
     await page.getByTestId('pdf-export-confirm-btn').click();
@@ -625,7 +629,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('studio-view-blueprint-btn').click();
     const outerDims = page.getByTestId('outer-blueprint-dimensions');
     await expect(outerDims).toBeVisible();
-    await expect(outerDims).toContainText('TOTAL W: 366.0 mm');
+    await expect(outerDims).toContainText('TOTAL W: 368.0 mm');
     await expect(outerDims).toContainText('TOTAL H: 259.0 mm');
     await expect(page.getByTestId('blueprint-cumulative-ruler')).toContainText('RULER (mm)');
     await expect(page.getByTestId('blueprint-miter-callout')).toContainText('45° MITER LEG');
@@ -1039,15 +1043,19 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect((legalSize.width * 25.4) / 72).toBeCloseTo(355.6, 0);
     expect((legalSize.height * 25.4) / 72).toBeCloseTo(215.9, 0);
 
-    // 3. Re-open Print PDF dialog -> US Letter + 15 mm overlap + registration marks only (guides off)
+    // 3. Re-open Print PDF dialog -> US Letter + 15 mm overlap + Cut Lines OFF + Fold Lines ON
     await page.getByTestId('studio-export-pdf-btn').click();
     await expect(pdfDialog).toBeVisible();
     await page.getByTestId('pdf-media-option-letter').click();
     await page.getByTestId('pdf-opt-overlap-15').click();
     await expect(page.getByTestId('pdf-opt-overlap-15')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('pdf-opt-guides')).toHaveAttribute('aria-checked', 'true');
-    await page.getByTestId('pdf-opt-guides').click();
-    await expect(page.getByTestId('pdf-opt-guides')).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'false');
+    await page.getByTestId('pdf-opt-cut-lines').click();
+    await expect(page.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'false');
+    await page.getByTestId('pdf-opt-fold-lines').click();
+    await expect(page.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('pdf-opt-scale-bar')).toBeVisible();
 
     const tiledDownloadPromise = page.waitForEvent('download');

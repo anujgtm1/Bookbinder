@@ -8,35 +8,20 @@ import {
   computeSpineTextPlacements,
   computeStudioCanvasSpec,
   resolveZoneClipRect,
+  type StudioCanvasSpec,
 } from '../canvasSpec';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from '../classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from '../fonts';
 
-export async function renderCoverArtworkCanvas(
-  geometry: CaseGeometry,
+/** Draws the solid Back, Spine, and Front cover base fills onto a 2D canvas in studio mm space. */
+export function drawCoverBaseFills(
+  ctx: CanvasRenderingContext2D,
+  spec: StudioCanvasSpec,
   studio: CoverStudioState,
-  customFont: CustomFontAsset | null,
-  options: {
-    readonly includeSpineText: boolean;
-    readonly includeTextAndOrnaments?: boolean;
-    readonly dpi?: number;
-  },
-): Promise<HTMLCanvasElement> {
-  const dpi = options.dpi ?? PRINT_DPI;
-  const spec = computeStudioCanvasSpec(geometry, dpi);
-  const canvas = document.createElement('canvas');
-  canvas.width = spec.pixelWidth;
-  canvas.height = spec.pixelHeight;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Could not acquire 2D rendering context for cover export.');
-  }
-
-  const pxPerMm = dpi / 25.4;
+  pxPerMm: number,
+): void {
   const toPx = (mm: number) => mm * pxPerMm;
 
-  // 1. Solid zone backgrounds
   ctx.fillStyle = studio.backBgColor;
   ctx.fillRect(
     toPx(spec.backZoneRect.x),
@@ -60,8 +45,17 @@ export async function renderCoverArtworkCanvas(
     toPx(spec.frontZoneRect.width),
     toPx(spec.frontZoneRect.height),
   );
+}
 
-  // 2. Uploaded free-form artwork layers rendered bottom-to-top
+/** Draws all uploaded cover artwork layers bottom-to-top honoring zone clip masks, flips, and quarter-turns. */
+export async function drawCoverArtworkLayers(
+  ctx: CanvasRenderingContext2D,
+  spec: StudioCanvasSpec,
+  studio: CoverStudioState,
+  pxPerMm: number,
+): Promise<void> {
+  const toPx = (mm: number) => mm * pxPerMm;
+
   for (const layer of studio.layers) {
     const clipRect = resolveZoneClipRect(spec, layer.clipZone);
     const img = await loadHtmlImage(layer.dataUrl);
@@ -99,85 +93,136 @@ export async function renderCoverArtworkCanvas(
     }
     ctx.restore();
   }
+}
+
+/** Draws classic bookbindery vector ornaments and custom SVG stamps in studio mm space. */
+export function drawCoverOrnaments(
+  ctx: CanvasRenderingContext2D,
+  studio: CoverStudioState,
+  pxPerMm: number,
+): void {
+  for (const orn of studio.ornaments ?? []) {
+    const compoundD = buildOrnamentCompoundPath(orn);
+    if (!compoundD || typeof Path2D === 'undefined') continue;
+    const style = getOrnamentSvgStyle(orn);
+    const path2d = new Path2D(compoundD);
+    ctx.save();
+    ctx.scale(pxPerMm, pxPerMm);
+    if (style.fill !== 'none') {
+      ctx.fillStyle = style.fill;
+      ctx.fill(path2d);
+    }
+    if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
+      ctx.strokeStyle = style.stroke;
+      ctx.lineWidth = style.strokeWidthMm;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke(path2d);
+    }
+    ctx.restore();
+  }
+}
+
+/** Draws draggable Front / Back / Spine cover text layers and dedicated spine typography. */
+export function drawCoverLettering(
+  ctx: CanvasRenderingContext2D,
+  geometry: CaseGeometry,
+  studio: CoverStudioState,
+  customFont: CustomFontAsset | null,
+  dpi: number,
+  pxPerMm: number,
+): void {
+  const toPx = (mm: number) => mm * pxPerMm;
+
+  // Draggable Front / Back / Spine Cover Text Layers
+  for (const textLayer of studio.textLayers ?? []) {
+    const fontFamily = resolveFontCssFamily(textLayer.fontId, customFont);
+    const lineItems = computeCoverTextLinePlacements(textLayer);
+    ctx.save();
+    const textRot = normalizeQuarterTurn(textLayer.rotationDeg);
+    if (textLayer.flipX || textLayer.flipY || textRot !== 0) {
+      const cx = toPx(textLayer.xMm);
+      const cy = toPx(textLayer.yMm);
+      ctx.translate(cx, cy);
+      if (textRot !== 0) {
+        ctx.rotate((textRot * Math.PI) / 180);
+      }
+      if (textLayer.flipX || textLayer.flipY) {
+        ctx.scale(textLayer.flipX ? -1 : 1, textLayer.flipY ? -1 : 1);
+      }
+      ctx.translate(-cx, -cy);
+    }
+    ctx.fillStyle = textLayer.color;
+    ctx.textAlign = textLayer.align;
+    ctx.textBaseline = 'middle';
+
+    for (const item of lineItems) {
+      if (!item.text.trim()) continue;
+      const fontSizePx = (item.fontSizePt / 72) * dpi;
+      ctx.save();
+      ctx.font = `400 ${fontSizePx}px ${fontFamily}`;
+      if ('letterSpacing' in ctx) {
+        (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing =
+          `${item.letterSpacingEm}em`;
+      }
+      ctx.fillText(item.text, toPx(item.anchorXMm), toPx(item.anchorYMm));
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // Dedicated Spine Typography
+  const placements = computeSpineTextPlacements(geometry, studio);
+  const fontFamily = resolveFontCssFamily(studio.spineText.fontId, customFont);
+  ctx.fillStyle = studio.spineText.textColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (const item of placements) {
+    const fontSizePx = (item.fontSizePt / 72) * dpi;
+    ctx.save();
+    ctx.translate(toPx(item.anchorXMm), toPx(item.anchorYMm));
+    ctx.rotate((item.rotationDegCss * Math.PI) / 180);
+    ctx.font = `400 ${fontSizePx}px ${fontFamily}`;
+    ctx.fillText(item.text, 0, 0);
+    ctx.restore();
+  }
+}
+
+export async function renderCoverArtworkCanvas(
+  geometry: CaseGeometry,
+  studio: CoverStudioState,
+  customFont: CustomFontAsset | null,
+  options: {
+    readonly includeSpineText: boolean;
+    readonly includeTextAndOrnaments?: boolean;
+    readonly dpi?: number;
+  },
+): Promise<HTMLCanvasElement> {
+  const dpi = options.dpi ?? PRINT_DPI;
+  const spec = computeStudioCanvasSpec(geometry, dpi);
+  const canvas = document.createElement('canvas');
+  canvas.width = spec.pixelWidth;
+  canvas.height = spec.pixelHeight;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Could not acquire 2D rendering context for cover export.');
+  }
+
+  const pxPerMm = dpi / 25.4;
+
+  // 1. Solid zone backgrounds
+  drawCoverBaseFills(ctx, spec, studio, pxPerMm);
+
+  // 2. Uploaded free-form artwork layers rendered bottom-to-top
+  await drawCoverArtworkLayers(ctx, spec, studio, pxPerMm);
 
   // 3. Optional rasterized classic ornaments, cover text layers & spine typography (used for 300 DPI PNG export)
   const includeTextAndOrnaments = options.includeTextAndOrnaments ?? true;
   if (options.includeSpineText && includeTextAndOrnaments) {
-    // 3a. Classic Bookbindery Vector Ornaments & Custom SVG Stamps
-    for (const orn of studio.ornaments ?? []) {
-      const compoundD = buildOrnamentCompoundPath(orn);
-      if (!compoundD || typeof Path2D === 'undefined') continue;
-      const style = getOrnamentSvgStyle(orn);
-      const path2d = new Path2D(compoundD);
-      ctx.save();
-      ctx.scale(pxPerMm, pxPerMm);
-      if (style.fill !== 'none') {
-        ctx.fillStyle = style.fill;
-        ctx.fill(path2d);
-      }
-      if (style.stroke !== 'none' && style.strokeWidthMm > 0) {
-        ctx.strokeStyle = style.stroke;
-        ctx.lineWidth = style.strokeWidthMm;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        ctx.stroke(path2d);
-      }
-      ctx.restore();
-    }
-
-    // 3b. Draggable Front / Back / Spine Cover Text Layers
-    for (const textLayer of studio.textLayers ?? []) {
-      const fontFamily = resolveFontCssFamily(textLayer.fontId, customFont);
-      const lineItems = computeCoverTextLinePlacements(textLayer);
-      ctx.save();
-      const textRot = normalizeQuarterTurn(textLayer.rotationDeg);
-      if (textLayer.flipX || textLayer.flipY || textRot !== 0) {
-        const cx = toPx(textLayer.xMm);
-        const cy = toPx(textLayer.yMm);
-        ctx.translate(cx, cy);
-        if (textRot !== 0) {
-          ctx.rotate((textRot * Math.PI) / 180);
-        }
-        if (textLayer.flipX || textLayer.flipY) {
-          ctx.scale(textLayer.flipX ? -1 : 1, textLayer.flipY ? -1 : 1);
-        }
-        ctx.translate(-cx, -cy);
-      }
-      ctx.fillStyle = textLayer.color;
-      ctx.textAlign = textLayer.align;
-      ctx.textBaseline = 'middle';
-
-      for (const item of lineItems) {
-        if (!item.text.trim()) continue;
-        const fontSizePx = (item.fontSizePt / 72) * dpi;
-        ctx.save();
-        ctx.font = `400 ${fontSizePx}px ${fontFamily}`;
-        if ('letterSpacing' in ctx) {
-          (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing =
-            `${item.letterSpacingEm}em`;
-        }
-        ctx.fillText(item.text, toPx(item.anchorXMm), toPx(item.anchorYMm));
-        ctx.restore();
-      }
-      ctx.restore();
-    }
-
-    // 3c. Dedicated Spine Typography
-    const placements = computeSpineTextPlacements(geometry, studio);
-    const fontFamily = resolveFontCssFamily(studio.spineText.fontId, customFont);
-    ctx.fillStyle = studio.spineText.textColor;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    for (const item of placements) {
-      const fontSizePx = (item.fontSizePt / 72) * dpi;
-      ctx.save();
-      ctx.translate(toPx(item.anchorXMm), toPx(item.anchorYMm));
-      ctx.rotate((item.rotationDegCss * Math.PI) / 180);
-      ctx.font = `400 ${fontSizePx}px ${fontFamily}`;
-      ctx.fillText(item.text, 0, 0);
-      ctx.restore();
-    }
+    drawCoverOrnaments(ctx, studio, pxPerMm);
+    drawCoverLettering(ctx, geometry, studio, customFont, dpi, pxPerMm);
   }
 
   return canvas;

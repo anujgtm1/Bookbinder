@@ -1,5 +1,12 @@
 import { parseHexColor } from '@/lib/color';
 import type { Rect2D } from './geometry';
+import {
+  cloneLayerLayoutConstraint,
+  sanitizeCoverTextRole,
+  sanitizeLayerLayoutConstraint,
+  type CoverTextSemanticRole,
+  type LayerLayoutConstraint,
+} from './layoutConstraints';
 import type { CuratedFontId, StudioFontId } from './studio';
 import {
   nextQuarterTurn,
@@ -88,6 +95,10 @@ export interface CoverTextLayer {
   readonly flipY?: boolean;
   /** Clockwise quarter-turn rotation around text anchor (0, 90, 180, or 270 degrees) */
   readonly rotationDeg?: QuarterTurnDeg;
+  /** Optional semantic role preserved when switching cover design presets */
+  readonly role?: CoverTextSemanticRole;
+  /** Optional declarative layout pin/fit condition */
+  readonly layoutConstraint?: LayerLayoutConstraint;
 }
 
 export interface CoverOrnamentLayer {
@@ -112,6 +123,30 @@ export interface CoverOrnamentLayer {
   readonly flipY?: boolean;
   /** Clockwise quarter-turn rotation baked around ornament center (0, 90, 180, or 270 degrees) */
   readonly rotationDeg?: QuarterTurnDeg;
+  /** Optional declarative layout pin/margin condition */
+  readonly layoutConstraint?: LayerLayoutConstraint;
+}
+
+/**
+ * Returns true when an ornament is a board-framing motif (`frame-*` or `corners-*`)
+ * that benefits from contextual 6 / 12 / 18 mm board-margin presets.
+ */
+export function isFrameLikeOrnament(
+  ornament: ClassicOrnamentId | Pick<CoverOrnamentLayer, 'presetId'>,
+): boolean {
+  const presetId = typeof ornament === 'string' ? ornament : ornament.presetId;
+  return presetId.startsWith('frame-') || presetId.startsWith('corners-');
+}
+
+/**
+ * Returns true when an ornament stretches independently per axis to fill its target board box
+ * (`frame-*`, `corners-*`, and `spine-*`), as opposed to aspect-locked emblems, dividers, or custom SVGs.
+ */
+export function isBoxMappedOrnament(
+  ornament: ClassicOrnamentId | Pick<CoverOrnamentLayer, 'presetId'>,
+): boolean {
+  const presetId = typeof ornament === 'string' ? ornament : ornament.presetId;
+  return isFrameLikeOrnament(presetId) || presetId.startsWith('spine-');
 }
 
 /**
@@ -257,6 +292,7 @@ export const CoverTextLayerModel = {
         align: 'center',
         color,
         uppercase: true,
+        role: 'title',
       };
     }
 
@@ -274,6 +310,7 @@ export const CoverTextLayerModel = {
         align: 'center',
         color,
         uppercase: true,
+        role: 'author',
       };
     }
 
@@ -290,6 +327,7 @@ export const CoverTextLayerModel = {
       align: 'center',
       color,
       uppercase: false,
+      role: 'blurb',
     };
   },
 
@@ -301,10 +339,25 @@ export const CoverTextLayerModel = {
     };
   },
 
+  serialize(layer: CoverTextLayer): CoverTextLayer {
+    const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
+    const role = sanitizeCoverTextRole(layer.role);
+    const { role: _r, layoutConstraint: _c, ...rest } = layer;
+    void _r;
+    void _c;
+    return {
+      ...rest,
+      ...(role ? { role } : {}),
+      ...(layoutConstraint ? { layoutConstraint } : {}),
+    };
+  },
+
   deserialize(raw: unknown): CoverTextLayer | null {
     if (!raw || typeof raw !== 'object') return null;
     const obj = raw as Record<string, unknown>;
     if (typeof obj.text !== 'string') return null;
+    const role = sanitizeCoverTextRole(obj.role);
+    const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateElementId('txt'),
       text: obj.text.slice(0, 600),
@@ -336,6 +389,8 @@ export const CoverTextLayerModel = {
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
+      ...(role ? { role } : {}),
+      ...(layoutConstraint ? { layoutConstraint } : {}),
     };
   },
 } as const;
@@ -347,8 +402,7 @@ export const CoverOrnamentLayerModel = {
     zone: CoverElementZone,
     color = '#d9b566',
   ): CoverOrnamentLayer {
-    const isFrameOrCorner =
-      presetId.startsWith('frame-') || presetId.startsWith('corners-');
+    const isFrameOrCorner = isFrameLikeOrnament(presetId);
     const isDivider = presetId.startsWith('divider-');
     const isSpinePreset = presetId.startsWith('spine-');
 
@@ -535,12 +589,7 @@ export const CoverOrnamentLayerModel = {
       height: Math.max(COVER_ORNAMENT_BOUNDS.minSizeMm, targetBoardRectMm.height - m * 2),
     };
 
-    const fillsInsetBox =
-      layer.presetId.startsWith('frame-') ||
-      layer.presetId.startsWith('corners-') ||
-      layer.presetId.startsWith('spine-');
-
-    if (fillsInsetBox) {
+    if (isBoxMappedOrnament(layer)) {
       return {
         ...layer,
         xMm: roundTo(usable.x, 2),
@@ -619,6 +668,18 @@ export const CoverOrnamentLayerModel = {
     return rotateOrnament90(layer);
   },
 
+  serialize(layer: CoverOrnamentLayer): CoverOrnamentLayer {
+    const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
+    const { layoutConstraint: _c, ...rest } = layer;
+    void _c;
+    return {
+      ...rest,
+      ...(layer.customSvgPaths ? { customSvgPaths: [...layer.customSvgPaths] } : {}),
+      ...(layer.customSvgViewBox ? { customSvgViewBox: { ...layer.customSvgViewBox } } : {}),
+      ...(layoutConstraint ? { layoutConstraint } : {}),
+    };
+  },
+
   deserialize(raw: unknown): CoverOrnamentLayer | null {
     if (!raw || typeof raw !== 'object') return null;
     const obj = raw as Record<string, unknown>;
@@ -650,6 +711,8 @@ export const CoverOrnamentLayerModel = {
     if (presetId === 'custom-svg' && (!customSvgPaths || customSvgPaths.length === 0)) {
       return null;
     }
+
+    const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
 
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateElementId('orn'),
@@ -683,6 +746,7 @@ export const CoverOrnamentLayerModel = {
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
+      ...(layoutConstraint ? { layoutConstraint } : {}),
     };
   },
 } as const;

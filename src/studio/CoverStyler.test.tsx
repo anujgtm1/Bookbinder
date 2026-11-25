@@ -290,7 +290,7 @@ describe('CoverStyler', () => {
 
     // Clicking the compact spec/roll badge invokes onOpenMeasureAndCut
     const rollBadge = screen.getByTestId('studio-roll-badge');
-    expect(rollBadge).toHaveTextContent('366.0 × 259.0 mm');
+    expect(rollBadge).toHaveTextContent('368.0 × 259.0 mm');
     await user.click(rollBadge);
     expect(onOpenMeasureAndCut).toHaveBeenCalledTimes(1);
 

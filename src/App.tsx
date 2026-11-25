@@ -26,6 +26,7 @@ import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
 import { remapStudioForGeometryChange } from '@/studio/studioGeometryRemap';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
+import type { PdfGuideOptionsInput } from '@/types/pdfGuides';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 
@@ -89,8 +90,8 @@ export function App() {
     );
   };
 
-  const handleDownloadOuterSvg = () => {
-    const svg = generateOuterWrapSvg(geometry, project.parameters.splitMode);
+  const handleDownloadOuterSvg = (options?: PdfGuideOptionsInput) => {
+    const svg = generateOuterWrapSvg(geometry, project.parameters.splitMode, options);
     const filename =
       project.parameters.splitMode === 'three-piece'
         ? 'outer_case_wrap_3piece.svg'
@@ -108,6 +109,9 @@ export function App() {
         printMediaId: effectiveMediaId,
         tileOverlapMm: options?.tileOverlapMm,
         includeScaleBar: options?.includeScaleBar,
+        includeCutLines: options?.includeCutLines,
+        includeFoldLines: options?.includeFoldLines,
+        includeFoldGuideTicks: options?.includeFoldGuideTicks,
         appendInnerPocketsPage: options?.appendInnerPocketsPage,
         innerPageSizeId: options?.innerPageSizeId ?? project.parameters.pdfPageSize,
         customRollWidthMm: options?.customRollWidthMm ?? project.parameters.customRollWidthMm,
@@ -145,7 +149,12 @@ export function App() {
       const { bytes, plan } = await generateInnerTemplatesPdf(
         geometry,
         effectivePageSize,
-        { includeLegend },
+        {
+          includeLegend,
+          includeCutLines: options?.includeCutLines,
+          includeFoldLines: options?.includeFoldLines,
+          includeFoldGuideTicks: options?.includeFoldGuideTicks,
+        },
       );
       triggerBytesDownload(bytes, 'inner_pockets_and_liner.pdf', 'application/pdf');
       setStatusMessage(

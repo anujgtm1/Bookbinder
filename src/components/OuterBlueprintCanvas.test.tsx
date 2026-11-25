@@ -32,7 +32,7 @@ describe('OuterBlueprintCanvas', () => {
     expect(svg).toHaveTextContent('FRONT BOARD');
 
     const dims = screen.getByTestId('outer-blueprint-dimensions');
-    expect(dims).toHaveTextContent('TOTAL W: 366.0 mm');
+    expect(dims).toHaveTextContent('TOTAL W: 368.0 mm');
     expect(dims).toHaveTextContent('TOTAL H: 259.0 mm');
     expect(screen.getByTestId('blueprint-cumulative-ruler')).toHaveTextContent('RULER (mm)');
     expect(screen.getByTestId('blueprint-miter-callout')).toHaveTextContent('45° MITER LEG');

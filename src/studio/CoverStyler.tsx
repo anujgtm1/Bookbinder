@@ -44,6 +44,7 @@ import {
 } from '@/types/bookParams';
 import { rotateOrnament90 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
+import { detachConstraintOnResize } from '@/types/layoutConstraints';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { CoverImageLayerModel, nextQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
@@ -300,7 +301,7 @@ export function CoverStyler({
       textId: selectedTextId,
       ornamentId: selectedOrnamentId,
     };
-    const result = duplicateSelectedInStudio(studioRef.current, selection, canvasBounds);
+    const result = duplicateSelectedInStudio(studioRef.current, selection, canvasBounds, spec);
     if (!result) return false;
     applyStudioChange(result.studio);
     selectPastedResult(result);
@@ -311,6 +312,7 @@ export function CoverStyler({
     selectedTextId,
     selectedOrnamentId,
     canvasBounds,
+    spec,
     applyStudioChange,
     selectPastedResult,
   ]);
@@ -343,6 +345,7 @@ export function CoverStyler({
 
   const { elementSnapGuides, startTextDrag, startOrnamentDrag, startOrnamentResize } =
     useCoverElementsInteraction({
+      spec,
       studioRef,
       onChangeRef: elementOnChangeRef,
       toSvgMm,
@@ -437,6 +440,7 @@ export function CoverStyler({
               item,
               canvasBounds,
               pasteCountRef.current,
+              spec,
             );
             if (pasted) {
               applyStudioChange(pasted.studio);
@@ -472,7 +476,14 @@ export function CoverStyler({
         const step = e.shiftKey ? NUDGE_SHIFT_STEP_MM : NUDGE_STEP_MM;
         const dxMm = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dyMm = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-        const nudged = nudgeSelectedInStudio(studioRef.current, selection, dxMm, dyMm, canvasBounds);
+        const nudged = nudgeSelectedInStudio(
+          studioRef.current,
+          selection,
+          dxMm,
+          dyMm,
+          canvasBounds,
+          spec,
+        );
         if (nudged) {
           e.preventDefault();
           applyStudioChange(nudged, { coalesceKey: 'arrow-nudge' });
@@ -488,6 +499,7 @@ export function CoverStyler({
     selectedTextId,
     selectedOrnamentId,
     canvasBounds,
+    spec,
     handleUndo,
     handleRedo,
     handleDuplicateSelected,
@@ -617,11 +629,13 @@ export function CoverStyler({
         widthMm: rotated.widthMm,
         heightMm: rotated.heightMm,
         rotationDeg: rotated.rotationDeg,
+        layoutConstraint: detachConstraintOnResize(activeSelection.layer.layoutConstraint),
       });
     } else {
       actions.updateLayer(activeSelection.layer.id, (layer) => ({
         ...layer,
         rotationDeg: nextQuarterTurn(layer.rotationDeg),
+        layoutConstraint: detachConstraintOnResize(layer.layoutConstraint),
       }));
     }
   };
@@ -698,6 +712,9 @@ export function CoverStyler({
           printMediaId: selection.printMediaId,
           tileOverlapMm: selection.tileOverlapMm,
           includeScaleBar: selection.includeScaleBar,
+          includeCutLines: selection.includeCutLines,
+          includeFoldLines: selection.includeFoldLines,
+          includeFoldGuideTicks: selection.includeFoldGuideTicks,
           appendInnerPocketsPage: selection.appendInnerPocketsPage,
           innerPageSizeId: selection.pageSizeId,
           customRollWidthMm: selection.customRollWidthMm,
@@ -708,7 +725,9 @@ export function CoverStyler({
       }
     }
     await actions.handleExportPrintPdf({
-      includeGuides: selection.includeGuides,
+      includeCutLines: selection.includeCutLines,
+      includeFoldLines: selection.includeFoldLines,
+      includeFoldGuideTicks: selection.includeFoldGuideTicks,
       printMediaId: selection.printMediaId,
       dpi: selection.dpi,
       tileOverlapMm: selection.tileOverlapMm,
@@ -833,6 +852,15 @@ export function CoverStyler({
                 activeSelection?.kind === 'ornament'
                   ? (marginMm) =>
                       actions.handleFitOrnamentWithMargin(activeSelection.layer.id, marginMm)
+                  : undefined
+              }
+              onDetachConstraint={
+                activeSelection
+                  ? () =>
+                      actions.handleDetachConstraint({
+                        kind: activeSelection.kind,
+                        id: activeSelection.layer.id,
+                      })
                   : undefined
               }
               onChangeColor={handleSelectionChangeColor}
@@ -1265,7 +1293,13 @@ export function CoverStyler({
           actions.updateLayer(id, (layer) => ({ ...layer, clipZone }))
         }
         onScaleLayer={(id, factor) =>
-          actions.updateLayer(id, (layer) => CoverImageLayerModel.scaleAroundCenter(layer, factor))
+          actions.updateLayer(id, (layer) => {
+            const scaled = CoverImageLayerModel.scaleAroundCenter(layer, factor);
+            return {
+              ...scaled,
+              layoutConstraint: detachConstraintOnResize(layer.layoutConstraint),
+            };
+          })
         }
         onToggleLayerFlip={(id, axis) =>
           actions.updateLayer(id, (layer) =>
@@ -1273,7 +1307,24 @@ export function CoverStyler({
           )
         }
         onUpdateLayer={(id, patch) =>
-          actions.updateLayer(id, (layer) => ({ ...layer, ...patch }))
+          actions.updateLayer(id, (layer) => {
+            const resizesOrRotates =
+              patch.widthMm !== undefined ||
+              patch.heightMm !== undefined ||
+              patch.rotationDeg !== undefined;
+            const hasExplicitConstraint = Object.prototype.hasOwnProperty.call(
+              patch,
+              'layoutConstraint',
+            );
+            const next = { ...layer, ...patch };
+            if (resizesOrRotates && !hasExplicitConstraint) {
+              return {
+                ...next,
+                layoutConstraint: detachConstraintOnResize(layer.layoutConstraint),
+              };
+            }
+            return next;
+          })
         }
         onReorderLayer={(id, direction) =>
           applyStudioChange({
@@ -1397,7 +1448,9 @@ export function CoverStyler({
         onDetachSlipFlaps={
           onUpdateParams ? () => onUpdateParams({ softcoverPocketMode: 'separate' }) : undefined
         }
-        defaultIncludeGuides={studio.cutLineMode === 'full-cut-miter'}
+        defaultIncludeCutLines={
+          pdfDialogTarget === 'cover-styled' ? studio.cutLineMode === 'full-cut-miter' : true
+        }
         defaultExportLayerMode={pdfExportLayerModeDefault}
         exporting={actions.exportingKind === 'pdf' || exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}

@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import {
   CoverOrnamentLayerModel,
+  isBoxMappedOrnament,
+  type CoverElementZone,
   type CoverOrnamentLayer,
   type CoverTextLayer,
 } from '@/types/coverElements';
+import {
+  detachConstraintOnMove,
+  detachConstraintOnResize,
+  type LayerLayoutConstraint,
+} from '@/types/layoutConstraints';
 import type { CoverStudioState } from '@/types/studio';
 import type { ResizeCorner } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
+import {
+  getCoverTextAxisAlignedBounds,
+  inferZoneFromCenterX,
+  type StudioCanvasSpec,
+} from '../canvasSpec';
 import {
   snapBoxToTargets,
   snapPointToTargets,
@@ -23,6 +35,8 @@ type ElementDragState =
       readonly startYMm: number;
       readonly origXMm: number;
       readonly origYMm: number;
+      readonly origZone: CoverElementZone;
+      readonly origConstraint?: LayerLayoutConstraint;
     }
   | {
       readonly kind: 'ornament';
@@ -33,6 +47,8 @@ type ElementDragState =
       readonly origYMm: number;
       readonly widthMm: number;
       readonly heightMm: number;
+      readonly origZone: CoverElementZone;
+      readonly origConstraint?: LayerLayoutConstraint;
     }
   | {
       readonly kind: 'ornament-resize';
@@ -42,6 +58,7 @@ type ElementDragState =
     };
 
 export interface UseCoverElementsInteractionOptions {
+  readonly spec: StudioCanvasSpec;
   readonly studioRef: RefObject<CoverStudioState>;
   readonly onChangeRef: RefObject<(next: CoverStudioState) => void>;
   readonly toSvgMm: (
@@ -76,6 +93,7 @@ export interface CoverElementsInteractionApi {
  * and Classic Bookbindery Ornament layers on the 2D Cover Studio canvas.
  */
 export function useCoverElementsInteraction({
+  spec,
   studioRef,
   onChangeRef,
   toSvgMm,
@@ -102,10 +120,7 @@ export function useCoverElementsInteraction({
       const allowSnap = snapEnabled && !e.altKey;
 
       if (drag.kind === 'ornament-resize') {
-        const lockAspect =
-          drag.origOrnament.presetId === 'custom-svg' ||
-          drag.origOrnament.presetId.startsWith('emblem-') ||
-          drag.origOrnament.presetId.startsWith('divider-');
+        const lockAspect = !isBoxMappedOrnament(drag.origOrnament);
 
         const snapped = allowSnap
           ? snapPointToTargets(pt.xMm, pt.yMm, snapTargets)
@@ -119,10 +134,29 @@ export function useCoverElementsInteraction({
           snapped.yMm,
           lockAspect,
         );
+        const nextZone = inferZoneFromCenterX(resized.xMm + resized.widthMm / 2, spec);
+        const origCx = drag.origOrnament.xMm + drag.origOrnament.widthMm / 2;
+        const origCy = drag.origOrnament.yMm + drag.origOrnament.heightMm / 2;
+        const nextCx = resized.xMm + resized.widthMm / 2;
+        const nextCy = resized.yMm + resized.heightMm / 2;
+        const afterResize = detachConstraintOnResize(drag.origOrnament.layoutConstraint);
+        let nextConstraint = detachConstraintOnMove(
+          afterResize,
+          Math.abs(nextCx - origCx) > 0.05,
+          Math.abs(nextCy - origCy) > 0.05,
+        );
+        if (nextConstraint && nextZone !== drag.origOrnament.zone) {
+          nextConstraint = { ...nextConstraint, anchorZone: nextZone };
+        }
+        const updatedOrnament: CoverOrnamentLayer = {
+          ...resized,
+          zone: nextZone,
+          layoutConstraint: nextConstraint,
+        };
         const cur = studioRef.current;
         onChangeRef.current({
           ...cur,
-          ornaments: (cur.ornaments ?? []).map((o) => (o.id === drag.id ? resized : o)),
+          ornaments: (cur.ornaments ?? []).map((o) => (o.id === drag.id ? updatedOrnament : o)),
         });
         suppressNextClickRef.current = true;
         return;
@@ -140,13 +174,27 @@ export function useCoverElementsInteraction({
 
         setElementSnapGuides(snapped.guides);
         const cur = studioRef.current;
+        const nextX = roundTo(snapped.xMm, 2);
+        const nextY = roundTo(snapped.yMm, 2);
+        const movedX = Math.abs(nextX - drag.origXMm) > 0.05;
+        const movedY = Math.abs(nextY - drag.origYMm) > 0.05;
         onChangeRef.current({
           ...cur,
-          textLayers: (cur.textLayers ?? []).map((t) =>
-            t.id === drag.id
-              ? { ...t, xMm: roundTo(snapped.xMm, 2), yMm: roundTo(snapped.yMm, 2) }
-              : t,
-          ),
+          textLayers: (cur.textLayers ?? []).map((t) => {
+            if (t.id !== drag.id) return t;
+            const moved = { ...t, xMm: nextX, yMm: nextY };
+            const bounds = getCoverTextAxisAlignedBounds(moved);
+            const nextZone = inferZoneFromCenterX(bounds.x + bounds.width / 2, spec);
+            let nextConstraint = detachConstraintOnMove(drag.origConstraint, movedX, movedY);
+            if (nextConstraint && nextZone !== drag.origZone) {
+              nextConstraint = { ...nextConstraint, anchorZone: nextZone };
+            }
+            return {
+              ...moved,
+              zone: nextZone,
+              layoutConstraint: nextConstraint,
+            };
+          }),
         });
       } else {
         const rawX = drag.origXMm + dx;
@@ -157,11 +205,20 @@ export function useCoverElementsInteraction({
 
         setElementSnapGuides(snapped.guides);
         const cur = studioRef.current;
+        const nextX = roundTo(snapped.xMm, 2);
+        const nextY = roundTo(snapped.yMm, 2);
+        const nextZone = inferZoneFromCenterX(nextX + drag.widthMm / 2, spec);
+        const movedX = Math.abs(nextX - drag.origXMm) > 0.05;
+        const movedY = Math.abs(nextY - drag.origYMm) > 0.05;
+        let nextConstraint = detachConstraintOnMove(drag.origConstraint, movedX, movedY);
+        if (nextConstraint && nextZone !== drag.origZone) {
+          nextConstraint = { ...nextConstraint, anchorZone: nextZone };
+        }
         onChangeRef.current({
           ...cur,
           ornaments: (cur.ornaments ?? []).map((o) =>
             o.id === drag.id
-              ? { ...o, xMm: roundTo(snapped.xMm, 2), yMm: roundTo(snapped.yMm, 2) }
+              ? { ...o, xMm: nextX, yMm: nextY, zone: nextZone, layoutConstraint: nextConstraint }
               : o,
           ),
         });
@@ -184,7 +241,7 @@ export function useCoverElementsInteraction({
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
     };
-  }, [snapEnabled, snapTargets, toSvgMm, studioRef, onChangeRef, suppressNextClickRef]);
+  }, [spec, snapEnabled, snapTargets, toSvgMm, studioRef, onChangeRef, suppressNextClickRef]);
 
   // Keyboard Backspace/Delete removal for selected CoverTextLayer or CoverOrnamentLayer
   useEffect(() => {
@@ -241,6 +298,8 @@ export function useCoverElementsInteraction({
         startYMm: pt.yMm,
         origXMm: layer.xMm,
         origYMm: layer.yMm,
+        origZone: layer.zone,
+        origConstraint: layer.layoutConstraint,
       };
     },
     [onSelectText, toSvgMm],
@@ -260,6 +319,8 @@ export function useCoverElementsInteraction({
         origYMm: ornament.yMm,
         widthMm: ornament.widthMm,
         heightMm: ornament.heightMm,
+        origZone: ornament.zone,
+        origConstraint: ornament.layoutConstraint,
       };
     },
     [onSelectOrnament, toSvgMm],

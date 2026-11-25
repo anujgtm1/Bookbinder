@@ -1,10 +1,13 @@
 import {
   ClipboardList,
+  Crosshair,
   FileCode2,
   FileText,
+  FoldHorizontal,
   Maximize2,
   Minimize2,
   Ruler,
+  Scissors,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
@@ -40,6 +43,7 @@ import {
   type SplitMode,
 } from '@/types/bookParams';
 import type { CaseGeometry } from '@/types/geometry';
+import type { PdfGuideOptionsInput } from '@/types/pdfGuides';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export interface MeasureAndCutPanelProps {
@@ -56,7 +60,7 @@ export interface MeasureAndCutPanelProps {
   readonly onChangeSplitMode?: (mode: SplitMode) => void;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
   readonly onDetachSlipFlaps?: () => void;
-  readonly onDownloadOuterSvg: () => void;
+  readonly onDownloadOuterSvg: (options?: PdfGuideOptionsInput) => void;
   readonly onDownloadOuterPdf: (options?: OuterPdfExportOptions) => void | Promise<void>;
   readonly onStatusMessage?: (message: string) => void;
 }
@@ -82,6 +86,9 @@ export function MeasureAndCutPanel({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showDimensions, setShowDimensions] = useState(true);
+  const [showCutLines, setShowCutLines] = useState(true);
+  const [showFoldLines, setShowFoldLines] = useState(true);
+  const [showFoldGuideTicks, setShowFoldGuideTicks] = useState(true);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [exportingBenchPdf, setExportingBenchPdf] = useState(false);
   const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(printMediaId);
@@ -105,6 +112,9 @@ export function MeasureAndCutPanel({
       printMediaId: selection.printMediaId,
       tileOverlapMm: selection.tileOverlapMm,
       includeScaleBar: selection.includeScaleBar,
+      includeCutLines: selection.includeCutLines,
+      includeFoldLines: selection.includeFoldLines,
+      includeFoldGuideTicks: selection.includeFoldGuideTicks,
       appendInnerPocketsPage: selection.appendInnerPocketsPage,
       innerPageSizeId: selection.pageSizeId,
       customRollWidthMm: selection.customRollWidthMm,
@@ -178,7 +188,13 @@ export function MeasureAndCutPanel({
             <Button
               variant="outline"
               size="sm"
-              onClick={onDownloadOuterSvg}
+              onClick={() =>
+                onDownloadOuterSvg({
+                  includeCutLines: showCutLines,
+                  includeFoldLines: showFoldLines,
+                  includeFoldGuideTicks: showFoldGuideTicks,
+                })
+              }
               aria-label="Download Outer Case Wrap Cut SVG"
               data-testid="measure-download-svg-btn"
             >
@@ -236,6 +252,9 @@ export function MeasureAndCutPanel({
             pan={pan}
             onPanChange={setPan}
             showDimensions={showDimensions}
+            showCutLines={showCutLines}
+            showFoldLines={showFoldLines}
+            showFoldGuideTicks={showFoldGuideTicks}
           />
 
           {/* Floating Bottom-Center HUD Pill Toolbar */}
@@ -255,6 +274,33 @@ export function MeasureAndCutPanel({
                 >
                   <Ruler className="h-3.5 w-3.5" aria-hidden="true" />
                   Dimensions
+                </HudButton>
+                <HudButton
+                  pressed={showCutLines}
+                  onClick={() => setShowCutLines((v) => !v)}
+                  title="Show/hide solid red outer cut lines (also applies to Cut SVG and Cut PDF defaults)"
+                  data-testid="measure-cut-lines-btn"
+                >
+                  <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
+                  Cut Lines
+                </HudButton>
+                <HudButton
+                  pressed={showFoldLines}
+                  onClick={() => setShowFoldLines((v) => !v)}
+                  title="Show/hide dashed blue interior fold lines (also applies to Cut SVG and Cut PDF defaults)"
+                  data-testid="measure-fold-lines-btn"
+                >
+                  <FoldHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                  Fold Lines
+                </HudButton>
+                <HudButton
+                  pressed={showFoldGuideTicks}
+                  onClick={() => setShowFoldGuideTicks((v) => !v)}
+                  title="Show/hide external fold guide registration ticks outside the cut perimeter"
+                  data-testid="measure-fold-ticks-btn"
+                >
+                  <Crosshair className="h-3.5 w-3.5" aria-hidden="true" />
+                  Fold Guides
                 </HudButton>
               </HudGroup>
 
@@ -369,6 +415,9 @@ export function MeasureAndCutPanel({
         }}
         onReduceFlapWidth={onReduceFlapWidth}
         onDetachSlipFlaps={onDetachSlipFlaps}
+        defaultIncludeCutLines={showCutLines}
+        defaultIncludeFoldLines={showFoldLines}
+        defaultIncludeFoldGuideTicks={showFoldGuideTicks}
         exporting={exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}
         onClose={() => setPdfDialogOpen(false)}

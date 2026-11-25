@@ -72,28 +72,28 @@ export function computeCoverSafeMarginMm(boardWidthMm: number, boardHeightMm: nu
  * Bleed boundaries, and proportional safe-margin inset guides.
  */
 export function buildCanvasSnapTargets(
-  geometry: CaseGeometry,
+  _geometry: CaseGeometry,
   spec: StudioCanvasSpec,
 ): CanvasSnapTargets {
   const b = spec.bleedMm;
-  const back = geometry.outerWrap.backBoardRect;
-  const spine = geometry.outerWrap.spineRect;
-  const front = geometry.outerWrap.frontBoardRect;
+  const back = spec.backBoardRect;
+  const spine = spec.spineBoardRect;
+  const front = spec.frontBoardRect;
   const margin = computeCoverSafeMarginMm(front.width, front.height);
 
   const verticalRaw: SnapTargetLine[] = [
     // Centers first so centerlines win priority if overlapping
-    { axis: 'x', positionMm: b + spine.x + spine.width / 2, label: 'SPINE CENTER', kind: 'center' },
-    { axis: 'x', positionMm: b + front.x + front.width / 2, label: 'FRONT CENTER', kind: 'center' },
-    { axis: 'x', positionMm: b + back.x + back.width / 2, label: 'BACK CENTER', kind: 'center' },
+    { axis: 'x', positionMm: spine.x + spine.width / 2, label: 'SPINE CENTER', kind: 'center' },
+    { axis: 'x', positionMm: front.x + front.width / 2, label: 'FRONT CENTER', kind: 'center' },
+    { axis: 'x', positionMm: back.x + back.width / 2, label: 'BACK CENTER', kind: 'center' },
 
     // Board & spine structural seams
-    { axis: 'x', positionMm: b + front.x, label: 'FRONT HINGE', kind: 'board' },
-    { axis: 'x', positionMm: b + front.x + front.width, label: 'FRONT EDGE', kind: 'board' },
-    { axis: 'x', positionMm: b + back.x, label: 'BACK EDGE', kind: 'board' },
-    { axis: 'x', positionMm: b + back.x + back.width, label: 'BACK HINGE', kind: 'board' },
-    { axis: 'x', positionMm: b + spine.x, label: 'SPINE LEFT', kind: 'board' },
-    { axis: 'x', positionMm: b + spine.x + spine.width, label: 'SPINE RIGHT', kind: 'board' },
+    { axis: 'x', positionMm: front.x, label: 'FRONT HINGE', kind: 'board' },
+    { axis: 'x', positionMm: front.x + front.width, label: 'FRONT EDGE', kind: 'board' },
+    { axis: 'x', positionMm: back.x, label: 'BACK EDGE', kind: 'board' },
+    { axis: 'x', positionMm: back.x + back.width, label: 'BACK HINGE', kind: 'board' },
+    { axis: 'x', positionMm: spine.x, label: 'SPINE LEFT', kind: 'board' },
+    { axis: 'x', positionMm: spine.x + spine.width, label: 'SPINE RIGHT', kind: 'board' },
 
     // Cut & Bleed boundaries
     { axis: 'x', positionMm: 0, label: 'LEFT BLEED', kind: 'bleed' },
@@ -111,17 +111,17 @@ export function buildCanvasSnapTargets(
       : []),
 
     // Safe-margin inset guides (appended last so center & board edges retain priority)
-    { axis: 'x', positionMm: b + front.x + margin, label: 'FRONT MARGIN', kind: 'board' },
+    { axis: 'x', positionMm: front.x + margin, label: 'FRONT MARGIN', kind: 'board' },
     {
       axis: 'x',
-      positionMm: b + front.x + front.width - margin,
+      positionMm: front.x + front.width - margin,
       label: 'FRONT MARGIN',
       kind: 'board',
     },
-    { axis: 'x', positionMm: b + back.x + margin, label: 'BACK MARGIN', kind: 'board' },
+    { axis: 'x', positionMm: back.x + margin, label: 'BACK MARGIN', kind: 'board' },
     {
       axis: 'x',
-      positionMm: b + back.x + back.width - margin,
+      positionMm: back.x + back.width - margin,
       label: 'BACK MARGIN',
       kind: 'board',
     },
@@ -129,8 +129,8 @@ export function buildCanvasSnapTargets(
 
   const horizontalRaw: SnapTargetLine[] = [
     { axis: 'y', positionMm: spec.totalHeightMm / 2, label: 'CENTERLINE', kind: 'center' },
-    { axis: 'y', positionMm: b + front.y, label: 'BOARD TOP', kind: 'board' },
-    { axis: 'y', positionMm: b + front.y + front.height, label: 'BOARD BOTTOM', kind: 'board' },
+    { axis: 'y', positionMm: front.y, label: 'BOARD TOP', kind: 'board' },
+    { axis: 'y', positionMm: front.y + front.height, label: 'BOARD BOTTOM', kind: 'board' },
     { axis: 'y', positionMm: 0, label: 'TOP BLEED', kind: 'bleed' },
     { axis: 'y', positionMm: spec.totalHeightMm, label: 'BOTTOM BLEED', kind: 'bleed' },
     ...(b > 0
@@ -146,10 +146,10 @@ export function buildCanvasSnapTargets(
       : []),
 
     // Safe-margin inset guides
-    { axis: 'y', positionMm: b + front.y + margin, label: 'TOP MARGIN', kind: 'board' },
+    { axis: 'y', positionMm: front.y + margin, label: 'TOP MARGIN', kind: 'board' },
     {
       axis: 'y',
-      positionMm: b + front.y + front.height - margin,
+      positionMm: front.y + front.height - margin,
       label: 'BOTTOM MARGIN',
       kind: 'board',
     },

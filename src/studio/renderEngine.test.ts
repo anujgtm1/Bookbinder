@@ -23,10 +23,10 @@ describe('studio renderEngine', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const spec = computeStudioCanvasSpec(geom, 300);
 
-    // 366 + 6 = 372 mm, 259 + 6 = 265 mm
-    expect(spec.totalWidthMm).toBeCloseTo(372, 4);
+    // 368 + 6 = 374 mm, 259 + 6 = 265 mm
+    expect(spec.totalWidthMm).toBeCloseTo(374, 4);
     expect(spec.totalHeightMm).toBeCloseTo(265, 4);
-    expect(spec.pixelWidth).toBe(UnitConverter.mmToPixels(372, 300));
+    expect(spec.pixelWidth).toBe(UnitConverter.mmToPixels(374, 300));
     expect(spec.pixelHeight).toBe(UnitConverter.mmToPixels(265, 300));
 
     expect(
@@ -182,7 +182,7 @@ describe('studio renderEngine', () => {
     const loadedReg = await PDFDocument.load(bytesReg);
     expect(loadedReg.getPageCount()).toBe(1);
     const size = loadedReg.getPage(0).getSize();
-    expect(UnitConverter.pointsToMm(size.width)).toBeCloseTo(372, 2);
+    expect(UnitConverter.pointsToMm(size.width)).toBeCloseTo(374, 2);
     expect(UnitConverter.pointsToMm(size.height)).toBeCloseTo(265, 2);
 
     const bytesCut = await generatePrintReadyRollPdf(
@@ -209,7 +209,7 @@ describe('studio renderEngine', () => {
     };
 
     const svg = generateAffinityCoverSvg(geom, studio, null, 'data:image/png;base64,AAA');
-    expect(svg).toContain('width="372mm"');
+    expect(svg).toContain('width="374mm"');
     expect(svg).toContain('height="265mm"');
     expect(svg).toContain('<g id="artwork-layer">');
     expect(svg).toContain('<g id="spine-typography">');
@@ -498,7 +498,7 @@ describe('studio renderEngine', () => {
 
     expect(basePdf.getPageCount()).toBe(1);
     const baseSize = basePdf.getPage(0).getSize();
-    expect(UnitConverter.pointsToMm(baseSize.width)).toBeCloseTo(372, 2);
+    expect(UnitConverter.pointsToMm(baseSize.width)).toBeCloseTo(374, 2);
     expect(UnitConverter.pointsToMm(baseSize.height)).toBeCloseTo(265, 2);
     expect(basePdf.getTitle()).toContain('For HTV');
 
@@ -598,5 +598,78 @@ describe('studio renderEngine', () => {
     });
     const singlePdf = await PDFDocument.load(singleBytes);
     expect(singlePdf.getPageCount()).toBe(1);
+  });
+
+  it('uses Print defaults (cut=true, external fold ticks=true, interior fold lines=false) and supports independent toggles across sheet, tiled, and roll-nested PDFs', async () => {
+    const getPageStream = (doc: PDFDocument, pageIndex = 0): string => {
+      const contents = doc.getPage(pageIndex).node.Contents();
+      const refs = contents instanceof PDFArray ? contents.asArray() : [contents];
+      return refs
+        .map((item) => {
+          const resolved = item ? doc.context.lookup(item) : undefined;
+          if (resolved instanceof PDFRawStream) {
+            return inflateSync(Buffer.from(resolved.contents)).toString('latin1');
+          }
+          return '';
+        })
+        .join('\n');
+    };
+
+    const a6PbGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 10,
+      includeBleed: false,
+    });
+    const studio = CoverStudioModel.createDefault();
+
+    // 1. Default Print PDF on exact-auto: red cut lines ON, interior dashed fold lines OFF
+    const defaultExactBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'exact-auto',
+    });
+    const defaultExactStream = getPageStream(await PDFDocument.load(defaultExactBytes), 0);
+    expect(defaultExactStream).toContain('0.92 0.14 0.14 RG');
+    expect(defaultExactStream).not.toContain('[4 2.5] 0 d');
+
+    // 2. Explicit includeFoldLines: true emits interior dashed fold lines
+    const withFoldLinesBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'exact-auto',
+      includeFoldLines: true,
+    });
+    const withFoldLinesStream = getPageStream(await PDFDocument.load(withFoldLinesBytes), 0);
+    expect(withFoldLinesStream).toContain('[4 2.5] 0 d');
+
+    // 3. Default Print PDF on 1-sheet US Letter: external blue fold guide ticks ON in sheet margin
+    const letterDefaultBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+    });
+    const letterDefaultStream = getPageStream(await PDFDocument.load(letterDefaultBytes), 0);
+    expect(letterDefaultStream).toContain('0.12 0.42 0.88 RG');
+
+    // 4. Turning external fold guide ticks OFF removes blue ticks from sheet margin
+    const letterNoTicksBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      includeFoldGuideTicks: false,
+    });
+    const letterNoTicksStream = getPageStream(await PDFDocument.load(letterNoTicksBytes), 0);
+    expect(letterNoTicksStream).not.toContain('0.12 0.42 0.88 RG');
+
+    // 5. Cut lines OFF + Fold lines OFF + External ticks ON on 1-sheet Letter
+    const ticksOnlyBytes = await generatePrintReadyRollPdf(a6PbGeom, studio, null, {
+      skipCanvasRaster: true,
+      printMediaId: 'letter',
+      includeCutLines: false,
+      includeFoldLines: false,
+      includeFoldGuideTicks: true,
+    });
+    const ticksOnlyStream = getPageStream(await PDFDocument.load(ticksOnlyBytes), 0);
+    expect(ticksOnlyStream).toContain('0.12 0.42 0.88 RG');
+    expect(ticksOnlyStream).not.toContain('0.92 0.14 0.14 RG');
   });
 });

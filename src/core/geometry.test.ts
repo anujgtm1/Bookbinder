@@ -17,12 +17,12 @@ import { generateInnerTemplatesSvg } from './svgExport';
 describe('calculateCaseGeometry', () => {
   it('computes exact default chipboard cut list from SPEC.md', () => {
     const cutList = calculateChipboardCutList(DEFAULT_BOOK_PARAMETERS);
-    // BOARD_W = 140 + 3 = 143, BOARD_H = 216 + 7 = 223, SPINE_W = 24 + 2 = 26
+    // BOARD_W = 140 + 3 = 143, BOARD_H = 216 + 7 = 223, SPINE_W = 24 + 4 (2×BOARD_T) = 28
     expect(cutList.coverBoards.quantity).toBe(2);
     expect(cutList.coverBoards.widthMm).toBeCloseTo(143.0, 5);
     expect(cutList.coverBoards.heightMm).toBeCloseTo(223.0, 5);
     expect(cutList.spineStrip.quantity).toBe(1);
-    expect(cutList.spineStrip.widthMm).toBeCloseTo(26.0, 5);
+    expect(cutList.spineStrip.widthMm).toBeCloseTo(28.0, 5);
     expect(cutList.spineStrip.heightMm).toBeCloseTo(223.0, 5);
   });
 
@@ -30,10 +30,10 @@ describe('calculateCaseGeometry', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const { outerWrap } = geom;
 
-    // INNER_W = 143*2 + 9*2 + 26 = 330
-    // WRAP_W = 330 + 36 = 366, WRAP_H = 223 + 36 = 259
-    expect(outerWrap.innerWidthMm).toBeCloseTo(330.0, 5);
-    expect(outerWrap.widthMm).toBeCloseTo(366.0, 5);
+    // INNER_W = 143*2 + 9*2 + 28 = 332
+    // WRAP_W = 332 + 36 = 368, WRAP_H = 223 + 36 = 259
+    expect(outerWrap.innerWidthMm).toBeCloseTo(332.0, 5);
+    expect(outerWrap.widthMm).toBeCloseTo(368.0, 5);
     expect(outerWrap.heightMm).toBeCloseTo(259.0, 5);
 
     // 45° corner miter geometry: MITER_GAP = 2 * 1.5 = 3.0 mm perpendicular distance from (18, 18)
@@ -75,7 +75,7 @@ describe('calculateCaseGeometry', () => {
     );
 
     // Bleed frame extends 3 mm on all 4 sides
-    expect(outerWrap.bleedRect).toEqual({ x: -3, y: -3, width: 372, height: 265 });
+    expect(outerWrap.bleedRect).toEqual({ x: -3, y: -3, width: 374, height: 265 });
   });
 
   it('recommends narrowest compatible roll printer width and orientation', () => {
@@ -107,26 +107,33 @@ describe('calculateCaseGeometry', () => {
 
   it('computes inner spine reinforcement liner dimensions and 4 score lines', () => {
     const { spineLiner } = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
-    // LINER_W = 26 + 18 + 30 = 74 mm; LINER_H = 223 - 2 = 221 mm
-    expect(spineLiner.widthMm).toBeCloseTo(74.0, 5);
-    expect(spineLiner.heightMm).toBeCloseTo(221.0, 5);
+    // LINER_W = 28 + 18 + 30 = 76 mm; LINER_H = 223 - 2*2.5 = 218 mm (matching pockets)
+    expect(spineLiner.widthMm).toBeCloseTo(76.0, 5);
+    expect(spineLiner.heightMm).toBeCloseTo(218.0, 5);
+    expect(spineLiner.boardInsetTopBottomMm).toBeCloseTo(2.5, 5);
     expect(spineLiner.scoreLines).toHaveLength(4);
-    expect(spineLiner.scoreLines.map((l) => l.x1)).toEqual([15, 24, 50, 59]);
+    expect(spineLiner.scoreLines.map((l) => l.x1)).toEqual([15, 24, 52, 61]);
   });
 
-  it('computes mirrored front and back slip-in pocket envelopes with 45° mitered flaps', () => {
+  it('computes mirrored front and back slip-in pocket envelopes with 45° mitered flaps and board gluing insets', () => {
     const { frontPocket, backPocket } = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
 
-    // POCKET_W = 143 * 0.72 = 102.96, POCKET_H = 221
-    expect(frontPocket.pocketWidthMm).toBeCloseTo(102.96, 4);
-    expect(frontPocket.pocketHeightMm).toBeCloseTo(221.0, 5);
-    expect(frontPocket.totalWidthMm).toBeCloseTo(114.96, 4);
-    expect(frontPocket.totalHeightMm).toBeCloseTo(245.0, 5);
+    // POCKET_W = 140 * 0.72 = 100.8, POCKET_H = min(223 - 2, 216 + 2) = 218
+    // boardInsetTopBottomMm = (223 - 218) / 2 = 2.5, boardInsetForeEdgeMm = max(1.5, 3.0 - 0.5) = 2.5
+    expect(frontPocket.pocketWidthMm).toBeCloseTo(100.8, 4);
+    expect(frontPocket.pocketHeightMm).toBeCloseTo(218.0, 5);
+    expect(frontPocket.totalWidthMm).toBeCloseTo(112.8, 4);
+    expect(frontPocket.totalHeightMm).toBeCloseTo(242.0, 5);
+    expect(frontPocket.boardInsetTopBottomMm).toBeCloseTo(2.5, 5);
+    expect(frontPocket.boardInsetForeEdgeMm).toBeCloseTo(2.5, 5);
     expect(frontPocket.openEdge).toBe('left');
     expect(frontPocket.scoreLines).toHaveLength(3);
     expect(frontPocket.glueFlapPolygons).toHaveLength(3);
 
-    expect(backPocket.pocketWidthMm).toBeCloseTo(102.96, 4);
+    expect(backPocket.pocketWidthMm).toBeCloseTo(100.8, 4);
+    expect(backPocket.pocketHeightMm).toBeCloseTo(218.0, 5);
+    expect(backPocket.boardInsetTopBottomMm).toBeCloseTo(2.5, 5);
+    expect(backPocket.boardInsetForeEdgeMm).toBeCloseTo(2.5, 5);
     expect(backPocket.openEdge).toBe('right');
     expect(backPocket.scoreLines).toHaveLength(3);
     expect(backPocket.glueFlapPolygons).toHaveLength(3);
@@ -140,6 +147,79 @@ describe('calculateCaseGeometry', () => {
     expect(backBounds.height).toBeCloseTo(backPocket.totalHeightMm, 4);
   });
 
+  it('computes hardcover slip-in pocket & spine liner board insets across default, generous, and tiny/zero overhangs without altering boardless or folded-endpaper invariants', () => {
+    // 1. Generous overhang (10 mm T/B, 4 mm fore-edge) -> BOARD_H = 226, BOARD_W = 144
+    const generous = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      overhangTopBottomMm: 10,
+      overhangForeEdgeMm: 4,
+    });
+    expect(generous.frontPocket.pocketHeightMm).toBe(218);
+    expect(generous.frontPocket.pocketWidthMm).toBe(100.8);
+    expect(generous.frontPocket.boardInsetTopBottomMm).toBe(4);
+    expect(generous.frontPocket.boardInsetForeEdgeMm).toBe(3.5);
+    expect(generous.backPocket.boardInsetTopBottomMm).toBe(4);
+    expect(generous.backPocket.boardInsetForeEdgeMm).toBe(3.5);
+    expect(generous.spineLiner.boardInsetTopBottomMm).toBe(4);
+    expect(generous.spineLiner.heightMm).toBe(218);
+
+    // 2. Tiny / zero overhang (1 mm T/B, 0 mm fore-edge) -> BOARD_H = 217, BOARD_W = 140
+    // Pocket inset floors at 1.0 mm (pocketH = 215), liner inset floors at 2.0 mm (linerH = 213)
+    const tiny = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      overhangTopBottomMm: 1,
+      overhangForeEdgeMm: 0,
+    });
+    expect(tiny.frontPocket.pocketHeightMm).toBe(215);
+    expect(tiny.frontPocket.pocketWidthMm).toBe(100.8);
+    expect(tiny.frontPocket.boardInsetTopBottomMm).toBe(1);
+    expect(tiny.frontPocket.boardInsetForeEdgeMm).toBe(0);
+    expect(tiny.spineLiner.boardInsetTopBottomMm).toBe(2);
+    expect(tiny.spineLiner.heightMm).toBe(213);
+
+    // 3. Flexible-spine (2-board chipboard) uses the same slip-in pocket & liner inset formulas
+    const flex = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'flexible-spine',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 5,
+      overhangTopBottomMm: 6,
+      overhangForeEdgeMm: 2,
+    });
+    // BOARD_H = 154, pocketH = min(152, 150) = 150, insetTB = 2.0, insetFore = max(1.5, 1.5) = 1.5
+    // pocketW = 105 * 0.72 = 75.6
+    expect(flex.frontPocket.pocketHeightMm).toBe(150);
+    expect(flex.frontPocket.pocketWidthMm).toBe(75.6);
+    expect(flex.frontPocket.boardInsetTopBottomMm).toBe(2);
+    expect(flex.frontPocket.boardInsetForeEdgeMm).toBe(1.5);
+    expect(flex.spineLiner.boardInsetTopBottomMm).toBe(2);
+    expect(flex.spineLiner.heightMm).toBe(150);
+
+    // 4. Boardless styles and folded-endpapers do NOT carry chipboard slip-pocket insets
+    for (const params of [
+      { ...DEFAULT_BOOK_PARAMETERS, bindingStyle: 'softcover-jacket' as const },
+      {
+        ...DEFAULT_BOOK_PARAMETERS,
+        bindingStyle: 'softcover-jacket' as const,
+        softcoverPocketMode: 'separate' as const,
+      },
+      { ...DEFAULT_BOOK_PARAMETERS, bindingStyle: 'dust-jacket' as const },
+      { ...DEFAULT_BOOK_PARAMETERS, bindingStyle: 'paperback-wrap' as const },
+      {
+        ...DEFAULT_BOOK_PARAMETERS,
+        bindingStyle: 'rigid-case' as const,
+        interiorStyle: 'folded-endpapers' as const,
+      },
+    ]) {
+      const geom = calculateCaseGeometry(params);
+      expect(geom.frontPocket.boardInsetTopBottomMm).toBeUndefined();
+      expect(geom.frontPocket.boardInsetForeEdgeMm).toBeUndefined();
+      expect(geom.backPocket.boardInsetTopBottomMm).toBeUndefined();
+      expect(geom.backPocket.boardInsetForeEdgeMm).toBeUndefined();
+    }
+  });
+
   it('computes 3-piece quarter-bound split panels accurately', () => {
     const { splitPanels } = calculateCaseGeometry({
       ...DEFAULT_BOOK_PARAMETERS,
@@ -148,8 +228,8 @@ describe('calculateCaseGeometry', () => {
     });
     expect(splitPanels).toHaveLength(3);
     const [back, spine, front] = splitPanels;
-    // Spine wrap width = 26 + 18 + 40 = 84 mm
-    expect(spine.widthMm).toBeCloseTo(84.0, 5);
+    // Spine wrap width = 28 + 18 + 40 = 86 mm
+    expect(spine.widthMm).toBeCloseTo(86.0, 5);
     expect(spine.heightMm).toBeCloseTo(259.0, 5);
     // Cover panel width = (143 - 20 + 3) + 18 = 144 mm
     expect(back.widthMm).toBeCloseTo(144.0, 5);

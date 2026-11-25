@@ -673,6 +673,60 @@
   background-size: 20px 20px;
 }
 
+/* Always-light neutral alpha checkerboard for transparent Print Then Cut PNG previews in Light & Dark Mode */
+.cricut-alpha-checkerboard {
+  background-color: #f6f4ee;
+  background-image:
+    conic-gradient(#e4dfd4 90deg, transparent 90deg 180deg, #e4dfd4 180deg 270deg, transparent 270deg);
+  background-size: 16px 16px;
+}
+
+/* Accessible segmented mode tabs inside CricutExportDialog (modern-web-guidance tabs pattern) */
+.cricut-mode-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex: 1 1 0%;
+  min-block-size: 2.25rem;
+  padding-inline: 0.75rem;
+  padding-block: 0.45rem;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
+
+  &[aria-selected='true'] {
+    background-color: var(--card);
+    color: var(--foreground);
+    border-color: var(--border);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: auto 0.5rem 0;
+      border-block-end: 3px solid var(--vermilion);
+    }
+  }
+
+  @media (hover: hover) {
+    &:hover:not([aria-selected='true']) {
+      color: var(--foreground);
+      background-color: var(--accent);
+    }
+  }
+}
+
 /* Bookbinding kettle-stitch dashed section rule */
 .kettle-stitch-divider {
   border-block-start: 1px dashed var(--border);
@@ -800,6 +854,22 @@
     background-color: Highlight;
     color: HighlightText;
     border-color: Highlight;
+  }
+
+  .cricut-alpha-checkerboard {
+    background-image: none;
+    background-color: Canvas;
+    border-color: ButtonText;
+  }
+
+  .cricut-mode-tab[aria-selected='true'] {
+    background-color: Canvas;
+    color: Highlight;
+    border-color: Highlight;
+
+    &::after {
+      border-block-end-color: Highlight;
+    }
   }
 }
 

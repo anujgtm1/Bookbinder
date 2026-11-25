@@ -9,10 +9,19 @@ import {
   rectangle,
   rgb,
   type PDFEmbeddedPage,
-  type PDFFont,
   type PDFPage,
 } from 'pdf-lib';
+import type { LineSegment2D, Rect2D } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
+import { drawPdfFoldGuideTicks, transformTicks90CW, translateTicks } from './foldGuideTicks';
+import { drawScaleCheckBar } from './pdfSheetLayout';
+import {
+  SCALE_BAR_BOX_H_MM,
+  SCALE_BAR_BOX_W_MM,
+  planScaleBarPlacement,
+  ticksToPdfAvoidRects,
+  type PdfSafeBox,
+} from './scaleBarPlacement';
 
 export interface RollNestItem {
   readonly id: string;
@@ -70,6 +79,10 @@ export interface RollPdfSource {
   readonly label: string;
   readonly pdfBytes: Uint8Array;
   readonly copies: number;
+  /** Optional wrap/piece-local external fold guide ticks (top-down mm, before source bleed). */
+  readonly externalFoldGuideTicks?: readonly LineSegment2D[];
+  /** Symmetric bleed margin (mm) baked into pdfBytes around the piece. Defaults to 0. */
+  readonly bleedMm?: number;
 }
 
 export interface ComposeNestedRollPdfOptions extends PackRollOptions {
@@ -85,11 +98,6 @@ const DEFAULT_SIDE_MARGIN_MM = 5;
 const DEFAULT_LEADING_MARGIN_MM = 5;
 const DEFAULT_GUTTER_MM = 10;
 const FIT_EPS_MM = 0.05;
-
-const SCALE_BAR_LENGTH_MM = 50;
-const SCALE_BAR_PAD_X_MM = 2.0;
-const SCALE_BAR_BOX_W_MM = SCALE_BAR_LENGTH_MM + SCALE_BAR_PAD_X_MM * 2;
-const SCALE_BAR_BOX_H_MM = 8.4;
 
 function computeMaxAcross(spanMm: number, printableWidthMm: number, gutterMm: number): number {
   if (!Number.isFinite(spanMm) || spanMm <= 0 || printableWidthMm <= 0) {
@@ -424,76 +432,6 @@ function formatRollInches(rollWidthMm: number): string {
   return String(roundTo(inches, 1));
 }
 
-function drawScaleCheckBar(
-  page: PDFPage,
-  font: PDFFont,
-  boldFont: PDFFont,
-  originXMm: number,
-  originYMm: number,
-): void {
-  const barX0Mm = originXMm + SCALE_BAR_PAD_X_MM;
-  const baselineYMm = originYMm + 3.0;
-
-  page.drawRectangle({
-    x: UnitConverter.mmToPoints(originXMm),
-    y: UnitConverter.mmToPoints(originYMm),
-    width: UnitConverter.mmToPoints(SCALE_BAR_BOX_W_MM),
-    height: UnitConverter.mmToPoints(SCALE_BAR_BOX_H_MM),
-    color: rgb(1, 1, 1),
-    opacity: 0.92,
-    borderColor: rgb(0.72, 0.72, 0.72),
-    borderWidth: 0.35,
-  });
-
-  const strokeColor = rgb(0.12, 0.12, 0.12);
-  const mutedColor = rgb(0.32, 0.32, 0.32);
-
-  page.drawLine({
-    start: {
-      x: UnitConverter.mmToPoints(barX0Mm),
-      y: UnitConverter.mmToPoints(baselineYMm),
-    },
-    end: {
-      x: UnitConverter.mmToPoints(barX0Mm + SCALE_BAR_LENGTH_MM),
-      y: UnitConverter.mmToPoints(baselineYMm),
-    },
-    color: strokeColor,
-    thickness: 0.75,
-  });
-
-  for (let mm = 0; mm <= SCALE_BAR_LENGTH_MM; mm += 5) {
-    const isMajor = mm % 10 === 0;
-    const tickHeightMm = isMajor ? 1.9 : 1.0;
-    const txPt = UnitConverter.mmToPoints(barX0Mm + mm);
-    page.drawLine({
-      start: { x: txPt, y: UnitConverter.mmToPoints(baselineYMm) },
-      end: { x: txPt, y: UnitConverter.mmToPoints(baselineYMm + tickHeightMm) },
-      color: strokeColor,
-      thickness: isMajor ? 0.65 : 0.4,
-    });
-
-    if (isMajor) {
-      const tickLabel = String(mm);
-      const labelW = font.widthOfTextAtSize(tickLabel, 4.8);
-      page.drawText(tickLabel, {
-        x: txPt - labelW / 2,
-        y: UnitConverter.mmToPoints(originYMm + 0.8),
-        size: 4.8,
-        font,
-        color: mutedColor,
-      });
-    }
-  }
-
-  page.drawText('50 mm Scale Check', {
-    x: UnitConverter.mmToPoints(barX0Mm),
-    y: UnitConverter.mmToPoints(originYMm + 5.6),
-    size: 5.2,
-    font: boldFont,
-    color: strokeColor,
-  });
-}
-
 function drawCropMarksAndGutterGuides(
   page: PDFPage,
   plan: RollNestPlan,
@@ -660,6 +598,8 @@ export async function composeNestedRollPdf(
   const pageWPt = UnitConverter.mmToPoints(pageWidthMm);
   const pageHPt = UnitConverter.mmToPoints(pageHeightMm);
   const page = outDoc.addPage([pageWPt, pageHPt]);
+  const scaleBarAvoidRects: Rect2D[] = [];
+  const rollPageClipRectMm: Rect2D = { x: 0, y: 0, width: pageWidthMm, height: pageHeightMm };
 
   for (const rect of plan.placements) {
     const embedded = embeddedPages.get(rect.itemId);
@@ -669,6 +609,12 @@ export async function composeNestedRollPdf(
     const pdfLeftMm = rect.xMm;
     const pdfBottomMm = pageHeightMm - rect.yMm - rect.heightMm;
     const pdfTopMm = pageHeightMm - rect.yMm;
+    scaleBarAvoidRects.push({
+      x: pdfLeftMm,
+      y: pdfBottomMm,
+      width: rect.widthMm,
+      height: rect.heightMm,
+    });
 
     page.pushOperators(
       pushGraphicsState(),
@@ -702,6 +648,32 @@ export async function composeNestedRollPdf(
     }
 
     page.pushOperators(popGraphicsState());
+
+    if (loaded.source.externalFoldGuideTicks && loaded.source.externalFoldGuideTicks.length > 0) {
+      const srcBleedMm = Math.max(0, loaded.source.bleedMm ?? 0);
+      const localTicks = translateTicks(
+        loaded.source.externalFoldGuideTicks,
+        srcBleedMm,
+        srcBleedMm,
+      );
+      const orientedTicks = rect.rotated90
+        ? transformTicks90CW(localTicks, loaded.heightMm)
+        : localTicks;
+      drawPdfFoldGuideTicks(page, orientedTicks, {
+        pageHeightMm,
+        offsetXMm: rect.xMm,
+        offsetYMm: rect.yMm,
+        clipRectMm: rollPageClipRectMm,
+      });
+      scaleBarAvoidRects.push(
+        ...ticksToPdfAvoidRects(orientedTicks, {
+          pageHeightMm,
+          offsetXMm: rect.xMm,
+          offsetYMm: rect.yMm,
+          clipRectMm: rollPageClipRectMm,
+        }),
+      );
+    }
   }
 
   if (plan.placements.length > 0) {
@@ -720,10 +692,33 @@ export async function composeNestedRollPdf(
     color: rgb(0.32, 0.32, 0.32),
   });
 
-  if (options.includeScaleBar && pageWidthMm >= SCALE_BAR_BOX_W_MM + 4 && pageHeightMm >= SCALE_BAR_BOX_H_MM + 4) {
-    const scaleOriginXMm = Math.min(plan.sideMarginMm, Math.max(2, pageWidthMm - SCALE_BAR_BOX_W_MM - 2));
-    const scaleOriginYMm = Math.max(2, pageHeightMm - SCALE_BAR_BOX_H_MM - 2);
-    drawScaleCheckBar(page, font, boldFont, scaleOriginXMm, scaleOriginYMm);
+  const canFitHorizontal =
+    pageWidthMm >= SCALE_BAR_BOX_W_MM + 4 && pageHeightMm >= SCALE_BAR_BOX_H_MM + 4;
+  const canFitVertical =
+    pageWidthMm >= SCALE_BAR_BOX_H_MM + 4 && pageHeightMm >= SCALE_BAR_BOX_W_MM + 4;
+
+  if (options.includeScaleBar && (canFitHorizontal || canFitVertical)) {
+    const rollSideInsetMm = Math.max(0, Math.min(plan.sideMarginMm, pageWidthMm / 2));
+    const rollSafeBox: PdfSafeBox = {
+      leftMm: rollSideInsetMm,
+      bottomMm: 1.0,
+      widthMm: Math.max(0, pageWidthMm - rollSideInsetMm * 2),
+      heightMm: Math.max(0, pageHeightMm - 2.0),
+      topMm: Math.max(1.0, pageHeightMm - 1.0),
+    };
+    const rollFooterStrip: Rect2D = {
+      x: rollSafeBox.leftMm,
+      y: rollSafeBox.bottomMm,
+      width: rollSafeBox.widthMm,
+      height: 3.4,
+    };
+    const placement = planScaleBarPlacement({
+      safeBox: rollSafeBox,
+      barWidthMm: SCALE_BAR_BOX_W_MM,
+      barHeightMm: SCALE_BAR_BOX_H_MM,
+      avoidRects: [...scaleBarAvoidRects, rollFooterStrip],
+    });
+    drawScaleCheckBar(page, font, boldFont, placement);
   }
 
   const bytes = await outDoc.save();

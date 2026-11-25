@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { calculateCaseGeometry } from '@/core/geometry';
+import { DEFAULT_BOOK_PARAMETERS } from '@/types/bookParams';
 import type { CoverOrnamentLayer, CoverTextLayer } from '@/types/coverElements';
 import type { Rect2D } from '@/types/geometry';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { getLayerVisualRect, type CoverImageLayer } from '@/types/studioLayer';
+import { computeStudioCanvasSpec, inferZoneFromCenterX } from './canvasSpec';
 import {
   DEFAULT_PASTE_OFFSET_MM,
   NUDGE_SHIFT_STEP_MM,
@@ -431,6 +434,76 @@ describe('nudgeSelectedInStudio & nudgeSelectedInPockets', () => {
         CANVAS_BOUNDS,
       ),
     ).toBeNull();
+  });
+
+  it('syncs text and ornament zone metadata when nudged or pasted across panels with StudioCanvasSpec', () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const spec = computeStudioCanvasSpec(geom);
+    const bounds: Rect2D = { x: 0, y: 0, width: spec.totalWidthMm, height: spec.totalHeightMm };
+    const backCenterX = spec.bleedMm + geom.outerWrap.backBoardRect.x + geom.outerWrap.backBoardRect.width / 2;
+    const spineCenterX = spec.bleedMm + geom.outerWrap.spineRect.x + geom.outerWrap.spineRect.width / 2;
+    const frontCenterX = spec.bleedMm + geom.outerWrap.frontBoardRect.x + geom.outerWrap.frontBoardRect.width / 2;
+
+    expect(inferZoneFromCenterX(backCenterX, spec)).toBe('back');
+    expect(inferZoneFromCenterX(spineCenterX, spec)).toBe('spine');
+    expect(inferZoneFromCenterX(frontCenterX, spec)).toBe('front');
+
+    const studio: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      textLayers: [makeTextLayer({ id: 'txt-1', zone: 'front', xMm: frontCenterX, yMm: 100 })],
+      ornaments: [
+        makeOrnamentLayer({
+          id: 'orn-1',
+          zone: 'front',
+          xMm: frontCenterX - 20,
+          yMm: 80,
+          widthMm: 40,
+          heightMm: 40,
+        }),
+      ],
+    };
+
+    // Nudge text from Front Cover all the way onto Back Cover
+    const nudgedToBack = nudgeSelectedInStudio(
+      studio,
+      { imageId: null, textId: 'txt-1', ornamentId: null },
+      backCenterX - frontCenterX,
+      0,
+      bounds,
+      spec,
+    )!;
+    expect(nudgedToBack.textLayers[0].zone).toBe('back');
+
+    // Nudge ornament from Front Cover onto Spine
+    const nudgedToSpine = nudgeSelectedInStudio(
+      studio,
+      { imageId: null, textId: null, ornamentId: 'orn-1' },
+      spineCenterX - frontCenterX,
+      0,
+      bounds,
+      spec,
+    )!;
+    expect(nudgedToSpine.ornaments[0].zone).toBe('spine');
+
+    // Paste text sitting right at the right edge of Back Cover so +6 mm paste crosses into Spine
+    const nearEdgeBackStudio: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      textLayers: [
+        makeTextLayer({
+          id: 'txt-edge',
+          zone: 'back',
+          xMm: spec.spineZoneRect.x - 2,
+          yMm: 100,
+        }),
+      ],
+    };
+    const item = createClipboardItemFromSelection(nearEdgeBackStudio, {
+      imageId: null,
+      textId: 'txt-edge',
+      ornamentId: null,
+    })!;
+    const pasted = pasteClipboardItemToStudio(nearEdgeBackStudio, item, bounds, 1, spec)!;
+    expect(pasted.studio.textLayers[1].zone).toBe('spine');
   });
 });
 

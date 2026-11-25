@@ -57,6 +57,7 @@ import {
   type SplitMode,
 } from '@/types/bookParams';
 import type { CaseGeometry, PrintMediaFitEvaluation } from '@/types/geometry';
+import { PdfGuideOptionsModel, type PdfGuideTargetKind } from '@/types/pdfGuides';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export type PdfExportTarget =
@@ -70,6 +71,10 @@ export interface PdfExportSelection {
   readonly printMediaId: PrintMediaId;
   readonly pageSizeId: PageSizeId;
   readonly splitMode: SplitMode;
+  readonly includeCutLines: boolean;
+  readonly includeFoldLines: boolean;
+  readonly includeFoldGuideTicks: boolean;
+  /** Backward-compatible summary boolean (mirrors includeCutLines). */
   readonly includeGuides: boolean;
   readonly includeScaleBar: boolean;
   readonly includeLegend: boolean;
@@ -87,6 +92,9 @@ export interface OuterPdfExportOptions {
   readonly printMediaId?: PrintMediaId;
   readonly tileOverlapMm?: number;
   readonly includeScaleBar?: boolean;
+  readonly includeCutLines?: boolean;
+  readonly includeFoldLines?: boolean;
+  readonly includeFoldGuideTicks?: boolean;
   readonly appendInnerPocketsPage?: boolean;
   readonly innerPageSizeId?: PageSizeId;
   readonly customRollWidthMm?: number;
@@ -97,6 +105,9 @@ export interface OuterPdfExportOptions {
 export interface InnerPdfExportOptions {
   readonly pageSizeId?: PageSizeId;
   readonly includeLegend?: boolean;
+  readonly includeCutLines?: boolean;
+  readonly includeFoldLines?: boolean;
+  readonly includeFoldGuideTicks?: boolean;
 }
 
 export interface PdfExportDialogProps {
@@ -114,6 +125,10 @@ export interface PdfExportDialogProps {
   readonly onChangeSplitMode?: (mode: SplitMode) => void;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
   readonly onDetachSlipFlaps?: () => void;
+  readonly defaultIncludeCutLines?: boolean;
+  readonly defaultIncludeFoldLines?: boolean;
+  readonly defaultIncludeFoldGuideTicks?: boolean;
+  /** Legacy fallback for defaultIncludeCutLines when explicit granular prop is omitted. */
   readonly defaultIncludeGuides?: boolean;
   readonly defaultIncludeLegend?: boolean;
   readonly defaultExportLayerMode?: CoverPdfLayerMode;
@@ -203,7 +218,10 @@ export function PdfExportDialog({
   onChangeSplitMode,
   onReduceFlapWidth,
   onDetachSlipFlaps,
-  defaultIncludeGuides = true,
+  defaultIncludeCutLines,
+  defaultIncludeFoldLines,
+  defaultIncludeFoldGuideTicks,
+  defaultIncludeGuides,
   defaultIncludeLegend = false,
   defaultExportLayerMode = 'full',
   exporting = false,
@@ -211,7 +229,9 @@ export function PdfExportDialog({
   onClose,
 }: PdfExportDialogProps) {
   const titleId = useId();
-  const guidesSwitchId = useId();
+  const cutLinesSwitchId = useId();
+  const foldTicksSwitchId = useId();
+  const foldLinesSwitchId = useId();
   const scaleBarSwitchId = useId();
   const legendSwitchId = useId();
   const appendPocketsSwitchId = useId();
@@ -224,7 +244,29 @@ export function PdfExportDialog({
   const gangUploadInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  const [includeGuides, setIncludeGuides] = useState(defaultIncludeGuides);
+  const guideTargetKind: PdfGuideTargetKind =
+    target === 'cover-styled' || target === 'inner-styled' ? 'print' : 'template';
+  const resolvedDefaultGuides = useMemo(
+    () =>
+      PdfGuideOptionsModel.resolve(guideTargetKind, {
+        includeCutLines: defaultIncludeCutLines ?? defaultIncludeGuides,
+        includeFoldLines: defaultIncludeFoldLines,
+        includeFoldGuideTicks: defaultIncludeFoldGuideTicks,
+      }),
+    [
+      guideTargetKind,
+      defaultIncludeCutLines,
+      defaultIncludeGuides,
+      defaultIncludeFoldLines,
+      defaultIncludeFoldGuideTicks,
+    ],
+  );
+
+  const [includeCutLines, setIncludeCutLines] = useState(resolvedDefaultGuides.includeCutLines);
+  const [includeFoldLines, setIncludeFoldLines] = useState(resolvedDefaultGuides.includeFoldLines);
+  const [includeFoldGuideTicks, setIncludeFoldGuideTicks] = useState(
+    resolvedDefaultGuides.includeFoldGuideTicks,
+  );
   const [includeScaleBar, setIncludeScaleBar] = useState(true);
   const [includeLegend, setIncludeLegend] = useState(defaultIncludeLegend);
   const [appendInnerPocketsPage, setAppendInnerPocketsPage] = useState(true);
@@ -233,6 +275,10 @@ export function PdfExportDialog({
   const [dpi, setDpi] = useState<300 | 600>(300);
   const [tileOverlapMm, setTileOverlapMm] = useState<number>(10);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const prevOpenStateRef = useRef<{ open: boolean; target: PdfExportTarget }>({
+    open: false,
+    target,
+  });
 
   // Printer margins & calibration state (persisted in localStorage)
   const [marginsExpanded, setMarginsExpanded] = useState(false);
@@ -322,18 +368,25 @@ export function PdfExportDialog({
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
+    const prev = prevOpenStateRef.current;
+    const didOpenOrSwitchTarget = open && (!prev.open || prev.target !== target);
+    prevOpenStateRef.current = { open, target };
 
     if (open) {
-      setIncludeGuides(defaultIncludeGuides);
-      setIncludeLegend(defaultIncludeLegend);
+      if (didOpenOrSwitchTarget) {
+        setIncludeCutLines(resolvedDefaultGuides.includeCutLines);
+        setIncludeFoldLines(resolvedDefaultGuides.includeFoldLines);
+        setIncludeFoldGuideTicks(resolvedDefaultGuides.includeFoldGuideTicks);
+        setIncludeLegend(defaultIncludeLegend);
+        setAppendInnerPocketsPage(true);
+        setPrinterMargins(loadSavedPrinterMargins());
+        setLocalCustomRollWidthMm(
+          propCustomRollWidthMm !== undefined
+            ? clampCustomRollWidthMm(propCustomRollWidthMm)
+            : loadSavedCustomRollWidthMm(),
+        );
+      }
       setExportLayerMode(defaultExportLayerMode);
-      setAppendInnerPocketsPage(true);
-      setPrinterMargins(loadSavedPrinterMargins());
-      setLocalCustomRollWidthMm(
-        propCustomRollWidthMm !== undefined
-          ? clampCustomRollWidthMm(propCustomRollWidthMm)
-          : loadSavedCustomRollWidthMm(),
-      );
       if (!dialog.open) {
         if (typeof dialog.showModal === 'function') {
           dialog.showModal();
@@ -348,7 +401,14 @@ export function PdfExportDialog({
         dialog.removeAttribute('open');
       }
     }
-  }, [open, defaultIncludeGuides, defaultIncludeLegend, defaultExportLayerMode, propCustomRollWidthMm]);
+  }, [
+    open,
+    target,
+    resolvedDefaultGuides,
+    defaultIncludeLegend,
+    defaultExportLayerMode,
+    propCustomRollWidthMm,
+  ]);
 
   // Light-dismiss fallback for browsers without native HTMLDialogElement closedby support
   useEffect(() => {
@@ -770,7 +830,10 @@ export function PdfExportDialog({
       printMediaId,
       pageSizeId: effectiveAppendPockets ? resolvedInnerPageSizeId : pageSizeId,
       splitMode: effectiveSplitMode,
-      includeGuides,
+      includeCutLines,
+      includeFoldLines,
+      includeFoldGuideTicks,
+      includeGuides: includeCutLines,
       includeScaleBar,
       includeLegend,
       dpi,
@@ -1112,6 +1175,9 @@ export function PdfExportDialog({
               activeFit={activeFit}
               tileOverlapMm={tileOverlapMm}
               includeScaleBar={includeScaleBar}
+              includeCutLines={includeCutLines}
+              includeFoldLines={includeFoldLines}
+              includeFoldGuideTicks={includeFoldGuideTicks}
               innerPlan={activeInnerPlan}
               printerMargins={printerMargins}
               customRollWidthMm={effectiveCustomRollWidthMm}
@@ -1437,29 +1503,71 @@ export function PdfExportDialog({
                 </div>
               )}
 
-              {/* Cut / Fold / Glue Guides (cover-styled & inner-styled) */}
-              {(target === 'cover-styled' || target === 'inner-styled') && (
-                <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary/30 px-3 py-2">
-                  <div className="space-y-0.5">
-                    <Label htmlFor={guidesSwitchId} className="text-xs">
-                      {target === 'cover-styled' ? 'Cut, Fold & Glue Guides' : 'Cut & Fold Lines'}
-                    </Label>
-                    <p className="text-[11px] text-muted-foreground">
-                      {target === 'cover-styled'
-                        ? includeGuides
-                          ? 'Full red cut outline, dashed fold & glue lines.'
-                          : 'Clean artwork with outer corner registration marks only.'
-                        : 'Red cut lines, dashed blue fold lines & hatched glue flaps.'}
-                    </p>
+              {/* Independent Cut & Fold Marks (all 4 targets) */}
+              <div
+                data-testid="pdf-cut-fold-marks-section"
+                className="flex flex-col gap-2 rounded-md border border-border bg-secondary/25 p-3 sm:col-span-2"
+              >
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Cut &amp; Fold Marks
+                </span>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="flex items-center justify-between gap-2.5 rounded-md border border-border bg-card/75 px-3 py-2">
+                    <div className="min-w-0 space-y-0.5">
+                      <Label htmlFor={cutLinesSwitchId} className="text-xs">
+                        Cut Lines
+                      </Label>
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        {target === 'cover-styled' && !includeCutLines
+                          ? 'Outer corner crop marks only.'
+                          : 'Solid red outer trim outline.'}
+                      </p>
+                    </div>
+                    <Switch
+                      id={cutLinesSwitchId}
+                      data-testid="pdf-opt-cut-lines"
+                      checked={includeCutLines}
+                      onCheckedChange={setIncludeCutLines}
+                    />
                   </div>
-                  <Switch
-                    id={guidesSwitchId}
-                    data-testid="pdf-opt-guides"
-                    checked={includeGuides}
-                    onCheckedChange={setIncludeGuides}
-                  />
+
+                  <div className="flex items-center justify-between gap-2.5 rounded-md border border-border bg-card/75 px-3 py-2">
+                    <div className="min-w-0 space-y-0.5">
+                      <Label htmlFor={foldTicksSwitchId} className="text-xs">
+                        External Fold Guides
+                      </Label>
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        Short ticks outside the cut line (trimmed off with waste).
+                      </p>
+                    </div>
+                    <Switch
+                      id={foldTicksSwitchId}
+                      data-testid="pdf-opt-fold-ticks"
+                      checked={includeFoldGuideTicks}
+                      onCheckedChange={setIncludeFoldGuideTicks}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2.5 rounded-md border border-border bg-card/75 px-3 py-2">
+                    <div className="min-w-0 space-y-0.5">
+                      <Label htmlFor={foldLinesSwitchId} className="text-xs">
+                        Fold Lines
+                      </Label>
+                      <p className="text-[11px] leading-snug text-muted-foreground">
+                        {isOuterTarget
+                          ? 'Dashed fold lines across the cover.'
+                          : 'Dashed fold lines across the piece.'}
+                      </p>
+                    </div>
+                    <Switch
+                      id={foldLinesSwitchId}
+                      data-testid="pdf-opt-fold-lines"
+                      checked={includeFoldLines}
+                      onCheckedChange={setIncludeFoldLines}
+                    />
+                  </div>
                 </div>
-              )}
+              </div>
 
               {/* 50 mm Scale-Check Ruler (cover-styled & outer-blueprint) */}
               {isOuterTarget && (

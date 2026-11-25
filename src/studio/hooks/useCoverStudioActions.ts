@@ -33,10 +33,15 @@ import {
 } from '@/types/coverElements';
 import { CoverDesignPresetModel, type CoverDesignPreset } from '@/types/designPreset';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
+import {
+  detachConstraintOnMove,
+  detachConstraintOnResize,
+  hasActiveLayoutConstraint,
+  type LayerLayoutConstraint,
+} from '@/types/layoutConstraints';
 import type { CoverStudioState, SpineTypographyConfig } from '@/types/studio';
 import {
   CoverImageLayerModel,
-  getLayerVisualRect,
   type CoverImageLayer,
   type LayerClipZone,
   type QuickFitTarget,
@@ -51,11 +56,19 @@ import {
   type StubExtensionSide,
 } from '../edgeExtend';
 import { loadCustomFontFromFile, type CustomFontAsset } from '../fonts';
+import {
+  resolveImageLayerConstraint,
+  resolveOrnamentLayerConstraint,
+  resolveTextLayerConstraint,
+  verticalSlotToPinKind,
+} from '../layoutConstraints';
 import type { PreflightQuickFix } from '../preflight';
 import {
   exportCoverPng300Dpi,
   generateAffinityCoverSvg,
   generatePrintReadyRollPdf,
+  getPanelBoardRect,
+  inferZoneFromCenterX,
   renderCoverArtworkCanvas,
   resolveQuickFitRect,
   type CoverPdfLayerMode,
@@ -135,32 +148,7 @@ export function useCoverStudioActions({
     });
   };
 
-  const getBoardRectInCanvas = (zone: CoverElementZone): Rect2D => {
-    const base =
-      zone === 'back'
-        ? geometry.outerWrap.backBoardRect
-        : zone === 'spine'
-          ? geometry.outerWrap.spineRect
-          : geometry.outerWrap.frontBoardRect;
-    return {
-      x: base.x + spec.bleedMm,
-      y: base.y + spec.bleedMm,
-      width: base.width,
-      height: base.height,
-    };
-  };
-
-  const getArtworkRectForZone = (zone: CoverElementZone): Rect2D => {
-    switch (zone) {
-      case 'back':
-        return spec.backArtworkRect;
-      case 'spine':
-        return spec.spineArtworkRect;
-      case 'front':
-      default:
-        return spec.frontArtworkRect;
-    }
-  };
+  const getBoardRectInCanvas = (zone: CoverElementZone): Rect2D => getPanelBoardRect(spec, zone);
 
   const handleAddTextPreset = (preset: CoverTextPresetKind) => {
     const zone: CoverElementZone = preset === 'back-blurb' ? 'back' : 'front';
@@ -179,8 +167,26 @@ export function useCoverStudioActions({
       ...studio,
       textLayers: (studio.textLayers ?? []).map((t) => {
         if (t.id !== id) return t;
-        const next = { ...t, ...patch };
+        let next: CoverTextLayer = { ...t, ...patch };
+        if (patch.align && patch.align !== 'center' && next.layoutConstraint?.horizontal?.kind === 'center') {
+          next = {
+            ...next,
+            layoutConstraint: detachConstraintOnMove(next.layoutConstraint, true, false),
+          };
+        }
         if (patch.zone && patch.zone !== t.zone) {
+          if (hasActiveLayoutConstraint(next.layoutConstraint)) {
+            return resolveTextLayerConstraint(
+              {
+                ...next,
+                layoutConstraint: {
+                  ...next.layoutConstraint,
+                  anchorZone: patch.zone,
+                },
+              },
+              spec,
+            );
+          }
           const rect = getBoardRectInCanvas(patch.zone);
           return {
             ...next,
@@ -194,21 +200,22 @@ export function useCoverStudioActions({
   };
 
   const handleQuickAlignText = (id: string, verticalSlot: 'upper' | 'center' | 'lower') => {
-    const ratio = verticalSlot === 'upper' ? 0.3 : verticalSlot === 'lower' ? 0.76 : 0.5;
+    const pinKind = verticalSlotToPinKind(verticalSlot);
     onChange({
       ...studio,
       textLayers: (studio.textLayers ?? []).map((t) => {
         if (t.id !== id) return t;
-        const rect = getBoardRectInCanvas(t.zone);
-        return {
-          ...t,
-          align: 'center',
-          xMm: roundTo(rect.x + rect.width / 2, 2),
-          yMm: roundTo(rect.y + rect.height * ratio, 2),
+        const layoutConstraint: LayerLayoutConstraint = {
+          anchorZone: t.zone,
+          horizontal: { kind: 'center' },
+          vertical: { kind: pinKind },
         };
+        return resolveTextLayerConstraint({ ...t, layoutConstraint }, spec);
       }),
     });
   };
+
+  const handleCenterText = (id: string) => handleQuickAlignText(id, 'center');
 
   const handleDeleteTextLayer = (id: string) => {
     const remaining = (studio.textLayers ?? []).filter((t) => t.id !== id);
@@ -236,18 +243,38 @@ export function useCoverStudioActions({
   };
 
   const handleUpdateOrnament = (id: string, patch: Partial<CoverOrnamentLayer>) => {
+    const resizesOrRotates =
+      patch.widthMm !== undefined ||
+      patch.heightMm !== undefined ||
+      patch.rotationDeg !== undefined;
+    const hasExplicitConstraint = Object.prototype.hasOwnProperty.call(patch, 'layoutConstraint');
     onChange({
       ...studio,
-      ornaments: (studio.ornaments ?? []).map((o) => (o.id === id ? { ...o, ...patch } : o)),
+      ornaments: (studio.ornaments ?? []).map((o) => {
+        if (o.id !== id) return o;
+        const next: CoverOrnamentLayer = { ...o, ...patch };
+        if (resizesOrRotates && !hasExplicitConstraint) {
+          return {
+            ...next,
+            layoutConstraint: detachConstraintOnResize(o.layoutConstraint),
+          };
+        }
+        return next;
+      }),
     });
   };
 
   const handleScaleOrnament = (id: string, factor: number) => {
     onChange({
       ...studio,
-      ornaments: (studio.ornaments ?? []).map((o) =>
-        o.id === id ? CoverOrnamentLayerModel.scaleAroundCenter(o, factor) : o,
-      ),
+      ornaments: (studio.ornaments ?? []).map((o) => {
+        if (o.id !== id) return o;
+        const scaled = CoverOrnamentLayerModel.scaleAroundCenter(o, factor);
+        return {
+          ...scaled,
+          layoutConstraint: detachConstraintOnResize(o.layoutConstraint),
+        };
+      }),
     });
   };
 
@@ -318,66 +345,87 @@ export function useCoverStudioActions({
   const handleFitOrnamentWithMargin = (id: string, marginMm: number) => {
     onChange({
       ...studio,
-      ornaments: (studio.ornaments ?? []).map((o) =>
-        o.id === id
-          ? CoverOrnamentLayerModel.fitInsideBoardWithMargin(o, getBoardRectInCanvas(o.zone), marginMm)
-          : o,
-      ),
+      ornaments: (studio.ornaments ?? []).map((o) => {
+        if (o.id !== id) return o;
+        const layoutConstraint: LayerLayoutConstraint = {
+          anchorZone: o.zone,
+          horizontal: { kind: 'inset-both', marginMm },
+          vertical: { kind: 'inset-both', marginMm },
+        };
+        return resolveOrnamentLayerConstraint({ ...o, layoutConstraint }, spec);
+      }),
     });
   };
 
   const handleCenterOrnament = (id: string) => {
     onChange({
       ...studio,
-      ornaments: (studio.ornaments ?? []).map((o) =>
-        o.id === id ? CoverOrnamentLayerModel.centerInBoard(o, getBoardRectInCanvas(o.zone)) : o,
-      ),
+      ornaments: (studio.ornaments ?? []).map((o) => {
+        if (o.id !== id) return o;
+        const layoutConstraint: LayerLayoutConstraint = {
+          anchorZone: o.zone,
+          horizontal: { kind: 'center' },
+          vertical: { kind: 'center' },
+        };
+        return resolveOrnamentLayerConstraint({ ...o, layoutConstraint }, spec);
+      }),
     });
   };
 
   const handleQuickAlignOrnament = (id: string, verticalSlot: 'upper' | 'center' | 'lower') => {
-    const ratio = verticalSlot === 'upper' ? 0.24 : verticalSlot === 'lower' ? 0.78 : 0.5;
+    const pinKind = verticalSlotToPinKind(verticalSlot);
     onChange({
       ...studio,
       ornaments: (studio.ornaments ?? []).map((o) => {
         if (o.id !== id) return o;
-        const zone = getArtworkRectForZone(o.zone);
-        const rawY = zone.y + zone.height * ratio - o.heightMm / 2;
-        const clampedY =
-          o.heightMm >= zone.height
-            ? zone.y + (zone.height - o.heightMm) / 2
-            : Math.min(zone.y + zone.height - o.heightMm, Math.max(zone.y, rawY));
-        return {
-          ...o,
-          xMm: roundTo(zone.x + (zone.width - o.widthMm) / 2, 2),
-          yMm: roundTo(clampedY, 2),
+        const layoutConstraint: LayerLayoutConstraint = {
+          anchorZone: o.zone,
+          horizontal: { kind: 'center' },
+          vertical: { kind: pinKind },
         };
+        return resolveOrnamentLayerConstraint({ ...o, layoutConstraint }, spec);
       }),
     });
   };
 
   const handleQuickAlignImage = (id: string, verticalSlot: 'upper' | 'center' | 'lower') => {
-    const ratio = verticalSlot === 'upper' ? 0.24 : verticalSlot === 'lower' ? 0.78 : 0.5;
+    const pinKind = verticalSlotToPinKind(verticalSlot);
     updateLayer(id, (layer) => {
       const targetZone: CoverElementZone =
         layer.clipZone === 'back' || layer.clipZone === 'spine' || layer.clipZone === 'front'
           ? layer.clipZone
-          : 'front';
-      const zone = getArtworkRectForZone(targetZone);
-      const vis = getLayerVisualRect(layer);
-      const targetCx = zone.x + zone.width / 2;
-      const rawVisY = zone.y + zone.height * ratio - vis.height / 2;
-      const clampedVisY =
-        vis.height >= zone.height
-          ? zone.y + (zone.height - vis.height) / 2
-          : Math.min(zone.y + zone.height - vis.height, Math.max(zone.y, rawVisY));
-      const targetCy = clampedVisY + vis.height / 2;
-      return {
-        ...layer,
-        xMm: roundTo(targetCx - layer.widthMm / 2, 2),
-        yMm: roundTo(targetCy - layer.heightMm / 2, 2),
+          : inferZoneFromCenterX(layer.xMm + layer.widthMm / 2, spec);
+      const layoutConstraint: LayerLayoutConstraint = {
+        anchorZone: targetZone,
+        horizontal: { kind: 'center' },
+        vertical: { kind: pinKind },
       };
+      return resolveImageLayerConstraint({ ...layer, layoutConstraint }, spec);
     });
+  };
+
+  const handleDetachConstraint = (selection: {
+    readonly kind: 'text' | 'ornament' | 'image';
+    readonly id: string;
+  }) => {
+    if (selection.kind === 'text') {
+      onChange({
+        ...studio,
+        textLayers: (studio.textLayers ?? []).map((t) =>
+          t.id === selection.id ? { ...t, layoutConstraint: undefined } : t,
+        ),
+      });
+    } else if (selection.kind === 'ornament') {
+      onChange({
+        ...studio,
+        ornaments: (studio.ornaments ?? []).map((o) =>
+          o.id === selection.id ? { ...o, layoutConstraint: undefined } : o,
+        ),
+      });
+    } else {
+      updateLayer(selection.id, (layer) => ({ ...layer, layoutConstraint: undefined }));
+    }
+    onStatusMessage('Unpinned element — position preserved');
   };
 
   const handleDeleteOrnament = (id: string) => {
@@ -495,6 +543,12 @@ export function useCoverStudioActions({
     if (!targetLayer) return;
 
     const nextClipZone: LayerClipZone = target === 'fullWrap' ? 'none' : target;
+    const fitConstraint: LayerLayoutConstraint = {
+      anchorZone: target,
+      horizontal: { kind: 'center' },
+      vertical: { kind: 'center' },
+      imageFit: 'cover',
+    };
     const activeStubMode = targetLayer.stubExtensionMode;
 
     // If pasting-stub extension is active on this layer, re-synthesize cleanly for the current book size
@@ -514,6 +568,7 @@ export function useCoverStudioActions({
         originalHeight: undefined,
         stubExtensionMode: 'none',
         stubExtensionSide: undefined,
+        layoutConstraint: fitConstraint,
       };
       const targetRect = resolveQuickFitRect(spec, target);
       updateLayer(id, () => CoverImageLayerModel.fitToRect(sourceLayer, targetRect, nextClipZone));
@@ -521,7 +576,13 @@ export function useCoverStudioActions({
     }
 
     const targetRect = resolveQuickFitRect(spec, target);
-    updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, targetRect, nextClipZone));
+    updateLayer(id, (layer) =>
+      CoverImageLayerModel.fitToRect(
+        { ...layer, layoutConstraint: fitConstraint },
+        targetRect,
+        nextClipZone,
+      ),
+    );
   };
 
   const handleApplyQuickFix = (fix: PreflightQuickFix) => {
@@ -563,7 +624,7 @@ export function useCoverStudioActions({
       case 'apply-pocket-proportions':
         onUpdateParams?.({
           boardThicknessMm: 1.5,
-          spineAllowanceMm: 1.5,
+          spineAllowanceMm: 3.0,
           turnInMm: 14,
           overhangForeEdgeMm: 1.5,
           overhangTopBottomMm: 3,
@@ -732,6 +793,9 @@ export function useCoverStudioActions({
   };
 
   const handleExportPrintPdf = async (options?: {
+    readonly includeCutLines?: boolean;
+    readonly includeFoldLines?: boolean;
+    readonly includeFoldGuideTicks?: boolean;
     readonly includeGuides?: boolean;
     readonly printMediaId?: PrintMediaId;
     readonly dpi?: 300 | 600;
@@ -752,8 +816,9 @@ export function useCoverStudioActions({
       const effectiveLayerMode: CoverPdfLayerMode = options?.exportLayerMode ?? 'full';
       const isBaseOnly = effectiveLayerMode === 'base-only';
       const fileName = isBaseOnly ? 'outer_cover_base_for_htv.pdf' : 'outer_cover_print.pdf';
-      if (options?.includeGuides !== undefined) {
-        const nextCutLineMode = options.includeGuides ? 'full-cut-miter' : 'bleed-registration';
+      const resolvedCutLines = options?.includeCutLines ?? options?.includeGuides;
+      if (resolvedCutLines !== undefined) {
+        const nextCutLineMode = resolvedCutLines ? 'full-cut-miter' : 'bleed-registration';
         if (nextCutLineMode !== studio.cutLineMode) {
           updateStudio({ cutLineMode: nextCutLineMode });
         }
@@ -761,6 +826,9 @@ export function useCoverStudioActions({
       const effectiveCustomRollWidthMm =
         options?.customRollWidthMm ?? effectiveParams.customRollWidthMm;
       const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
+        includeCutLines: options?.includeCutLines,
+        includeFoldLines: options?.includeFoldLines,
+        includeFoldGuideTicks: options?.includeFoldGuideTicks,
         includeGuides: options?.includeGuides,
         exportLayerMode: effectiveLayerMode,
         printMediaId: effectiveMediaId,
@@ -849,6 +917,7 @@ export function useCoverStudioActions({
     handleAddTextPreset,
     handleUpdateTextLayer,
     handleQuickAlignText,
+    handleCenterText,
     handleDeleteTextLayer,
     handleAddOrnament,
     handleUpdateOrnament,
@@ -859,6 +928,7 @@ export function useCoverStudioActions({
     handleCenterOrnament,
     handleQuickAlignOrnament,
     handleQuickAlignImage,
+    handleDetachConstraint,
     handleDeleteOrnament,
     handleSaveDesignPreset,
     handleApplyDesignPreset,

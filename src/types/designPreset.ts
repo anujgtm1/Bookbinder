@@ -1,9 +1,15 @@
 import { parseHexColor } from '@/lib/color';
 import { BUILT_IN_DESIGN_PRESETS } from '@/resources/designPresets';
+import { computeStudioCanvasSpec, getPanelBoardRect } from '@/studio/canvasSpec';
+import {
+  resolveOrnamentLayerConstraint,
+  resolveTextLayerConstraint,
+} from '@/studio/layoutConstraints';
 import {
   CLASSIC_ORNAMENT_IDS,
   COVER_ORNAMENT_BOUNDS,
   COVER_TEXT_BOUNDS,
+  isBoxMappedOrnament,
   type ClassicOrnamentId,
   type CoverElementZone,
   type CoverOrnamentLayer,
@@ -12,6 +18,13 @@ import {
   type TextAlign,
 } from './coverElements';
 import type { CaseGeometry, Rect2D } from './geometry';
+import {
+  cloneLayerLayoutConstraint,
+  sanitizeCoverTextRole,
+  sanitizeLayerLayoutConstraint,
+  type CoverTextSemanticRole,
+  type LayerLayoutConstraint,
+} from './layoutConstraints';
 import {
   CURATED_FONT_IDS,
   STUDIO_BOUNDS,
@@ -53,6 +66,8 @@ export interface NormalizedTextTemplate {
   readonly flipX?: boolean;
   readonly flipY?: boolean;
   readonly rotationDeg?: QuarterTurnDeg;
+  readonly role?: CoverTextSemanticRole;
+  readonly layoutConstraint?: LayerLayoutConstraint;
 }
 
 export interface NormalizedOrnamentTemplate {
@@ -75,6 +90,7 @@ export interface NormalizedOrnamentTemplate {
   readonly customSvgPaths?: readonly string[];
   readonly customSvgViewBox?: { readonly width: number; readonly height: number };
   readonly customSvgRenderMode?: CustomSvgRenderMode;
+  readonly layoutConstraint?: LayerLayoutConstraint;
 }
 
 export interface CoverDesignPreset {
@@ -125,28 +141,13 @@ function parseOrnamentId(value: unknown): ClassicOrnamentId | null {
 }
 
 function getTargetBoardRect(geometry: CaseGeometry, zone: CoverElementZone): Rect2D {
-  const { outerWrap } = geometry;
-  const bleedMm = outerWrap.includeBleed ? outerWrap.bleedMm : 0;
-  const base =
-    zone === 'back'
-      ? outerWrap.backBoardRect
-      : zone === 'spine'
-        ? outerWrap.spineRect
-        : outerWrap.frontBoardRect;
+  const rect = getPanelBoardRect(computeStudioCanvasSpec(geometry), zone);
   return {
-    x: base.x + bleedMm,
-    y: base.y + bleedMm,
-    width: Math.max(1, base.width),
-    height: Math.max(1, base.height),
+    x: rect.x,
+    y: rect.y,
+    width: Math.max(1, rect.width),
+    height: Math.max(1, rect.height),
   };
-}
-
-function isBoxMappedOrnament(presetId: ClassicOrnamentId): boolean {
-  return (
-    presetId.startsWith('frame-') ||
-    presetId.startsWith('corners-') ||
-    presetId.startsWith('spine-')
-  );
 }
 
 function resolveNaturalAspectRatio(template: NormalizedOrnamentTemplate): number {
@@ -169,6 +170,8 @@ function deserializeTextTemplate(raw: unknown): NormalizedTextTemplate | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.text !== 'string') return null;
+  const role = sanitizeCoverTextRole(obj.role);
+  const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
 
   return {
     text: obj.text.slice(0, 600),
@@ -211,6 +214,8 @@ function deserializeTextTemplate(raw: unknown): NormalizedTextTemplate | null {
     ...(normalizeQuarterTurn(obj.rotationDeg)
       ? { rotationDeg: normalizeQuarterTurn(obj.rotationDeg) }
       : {}),
+    ...(role ? { role } : {}),
+    ...(layoutConstraint ? { layoutConstraint } : {}),
   };
 }
 
@@ -252,6 +257,8 @@ function deserializeOrnamentTemplate(raw: unknown): NormalizedOrnamentTemplate |
     return null;
   }
 
+  const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+
   return {
     presetId,
     zone: parseZone(obj.zone),
@@ -280,6 +287,7 @@ function deserializeOrnamentTemplate(raw: unknown): NormalizedOrnamentTemplate |
     ...(customSvgPaths ? { customSvgPaths } : {}),
     ...(customSvgViewBox ? { customSvgViewBox } : {}),
     ...(customSvgRenderMode ? { customSvgRenderMode } : {}),
+    ...(layoutConstraint ? { layoutConstraint } : {}),
   };
 }
 
@@ -352,6 +360,47 @@ function deserializePreset(raw: unknown): CoverDesignPreset | null {
   };
 }
 
+const PLACEHOLDER_COVER_TEXTS = new Set([
+  '',
+  'BOOK TITLE',
+  'AUTHOR NAME',
+  'FIELD JOURNAL',
+  'TEXT',
+  'A HANDCRAFTED EDITION\nBOUND WITH CARE.',
+]);
+
+function isPlaceholderCoverText(text: string): boolean {
+  return PLACEHOLDER_COVER_TEXTS.has(text.trim().replace(/\r\n/g, '\n').toUpperCase());
+}
+
+function resolveTemplateTextContent(
+  tpl: NormalizedTextTemplate,
+  preset: CoverDesignPreset,
+  currentStudio: CoverStudioState,
+): string {
+  if (!tpl.role) {
+    return tpl.text;
+  }
+
+  const matchingLayer = (currentStudio.textLayers ?? []).find(
+    (layer) => layer.role === tpl.role && !isPlaceholderCoverText(layer.text),
+  );
+  if (matchingLayer) {
+    return matchingLayer.text;
+  }
+
+  if (preset.isBuiltIn) {
+    if (tpl.role === 'title' && currentStudio.spineText.title.trim().length > 0) {
+      return currentStudio.spineText.title.trim();
+    }
+    if (tpl.role === 'author' && currentStudio.spineText.author.trim().length > 0) {
+      return currentStudio.spineText.author.trim();
+    }
+  }
+
+  return tpl.text;
+}
+
 export const CoverDesignPresetModel = {
   /**
    * Captures the active cover theme (colors, spine style, text layers, ornaments)
@@ -366,6 +415,7 @@ export const CoverDesignPresetModel = {
 
     const textTemplates: NormalizedTextTemplate[] = (studio.textLayers ?? []).map((layer) => {
       const rect = getTargetBoardRect(geometry, layer.zone);
+      const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
       return {
         text: layer.text,
         zone: layer.zone,
@@ -383,11 +433,14 @@ export const CoverDesignPresetModel = {
         ...(normalizeQuarterTurn(layer.rotationDeg)
           ? { rotationDeg: normalizeQuarterTurn(layer.rotationDeg) }
           : {}),
+        ...(layer.role ? { role: layer.role } : {}),
+        ...(layoutConstraint ? { layoutConstraint } : {}),
       };
     });
 
     const ornamentTemplates: NormalizedOrnamentTemplate[] = (studio.ornaments ?? []).map((orn) => {
       const rect = getTargetBoardRect(geometry, orn.zone);
+      const layoutConstraint = cloneLayerLayoutConstraint(orn.layoutConstraint);
       return {
         presetId: orn.presetId,
         zone: orn.zone,
@@ -406,6 +459,7 @@ export const CoverDesignPresetModel = {
         ...(orn.customSvgPaths ? { customSvgPaths: [...orn.customSvgPaths] } : {}),
         ...(orn.customSvgViewBox ? { customSvgViewBox: { ...orn.customSvgViewBox } } : {}),
         ...(orn.customSvgRenderMode ? { customSvgRenderMode: orn.customSvgRenderMode } : {}),
+        ...(layoutConstraint ? { layoutConstraint } : {}),
       };
     });
 
@@ -439,8 +493,10 @@ export const CoverDesignPresetModel = {
     geometry: CaseGeometry,
     currentStudio: CoverStudioState,
   ): CoverStudioState {
+    const spec = computeStudioCanvasSpec(geometry);
+
     const textLayers: CoverTextLayer[] = preset.textTemplates.map((tpl) => {
-      const rect = getTargetBoardRect(geometry, tpl.zone);
+      const rect = getPanelBoardRect(spec, tpl.zone);
       const fontScale = preset.isBuiltIn ? clampFinite(rect.width / 140, 1, 0.72, 1.2) : 1;
       const fontSizePt = roundTo(
         clampFinite(
@@ -451,10 +507,11 @@ export const CoverDesignPresetModel = {
         ),
         1,
       );
+      const layoutConstraint = cloneLayerLayoutConstraint(tpl.layoutConstraint);
 
-      return {
+      const baseLayer: CoverTextLayer = {
         id: generateId('txt'),
-        text: tpl.text,
+        text: resolveTemplateTextContent(tpl, preset, currentStudio),
         zone: tpl.zone,
         xMm: roundTo(rect.x + tpl.relX * rect.width, 2),
         yMm: roundTo(rect.y + tpl.relY * rect.height, 2),
@@ -470,11 +527,14 @@ export const CoverDesignPresetModel = {
         ...(normalizeQuarterTurn(tpl.rotationDeg)
           ? { rotationDeg: normalizeQuarterTurn(tpl.rotationDeg) }
           : {}),
+        ...(tpl.role ? { role: tpl.role } : {}),
+        ...(layoutConstraint ? { layoutConstraint } : {}),
       };
+      return resolveTextLayerConstraint(baseLayer, spec);
     });
 
     const ornaments: CoverOrnamentLayer[] = preset.ornamentTemplates.map((tpl) => {
-      const rect = getTargetBoardRect(geometry, tpl.zone);
+      const rect = getPanelBoardRect(spec, tpl.zone);
       const mappedX = rect.x + tpl.relX * rect.width;
       const mappedY = rect.y + tpl.relY * rect.height;
       const mappedW = tpl.relW * rect.width;
@@ -534,7 +594,9 @@ export const CoverDesignPresetModel = {
         yMm = cy - heightMm / 2;
       }
 
-      return {
+      const layoutConstraint = cloneLayerLayoutConstraint(tpl.layoutConstraint);
+
+      const baseOrnament: CoverOrnamentLayer = {
         id: generateId(tpl.presetId === 'custom-svg' ? 'svg' : 'orn'),
         presetId: tpl.presetId,
         zone: tpl.zone,
@@ -553,7 +615,9 @@ export const CoverDesignPresetModel = {
         ...(tpl.customSvgPaths ? { customSvgPaths: [...tpl.customSvgPaths] } : {}),
         ...(tpl.customSvgViewBox ? { customSvgViewBox: { ...tpl.customSvgViewBox } } : {}),
         ...(tpl.customSvgRenderMode ? { customSvgRenderMode: tpl.customSvgRenderMode } : {}),
+        ...(layoutConstraint ? { layoutConstraint } : {}),
       };
+      return resolveOrnamentLayerConstraint(baseOrnament, spec);
     });
 
     return {
@@ -583,12 +647,22 @@ export const CoverDesignPresetModel = {
     const clean = presets.map((preset) => ({
       ...preset,
       spineStyle: { ...preset.spineStyle },
-      textTemplates: preset.textTemplates.map((t) => ({ ...t })),
-      ornamentTemplates: preset.ornamentTemplates.map((o) => ({
-        ...o,
-        ...(o.customSvgPaths ? { customSvgPaths: [...o.customSvgPaths] } : {}),
-        ...(o.customSvgViewBox ? { customSvgViewBox: { ...o.customSvgViewBox } } : {}),
-      })),
+      textTemplates: preset.textTemplates.map((t) => {
+        const layoutConstraint = cloneLayerLayoutConstraint(t.layoutConstraint);
+        return {
+          ...t,
+          ...(layoutConstraint ? { layoutConstraint } : {}),
+        };
+      }),
+      ornamentTemplates: preset.ornamentTemplates.map((o) => {
+        const layoutConstraint = cloneLayerLayoutConstraint(o.layoutConstraint);
+        return {
+          ...o,
+          ...(o.customSvgPaths ? { customSvgPaths: [...o.customSvgPaths] } : {}),
+          ...(o.customSvgViewBox ? { customSvgViewBox: { ...o.customSvgViewBox } } : {}),
+          ...(layoutConstraint ? { layoutConstraint } : {}),
+        };
+      }),
     }));
     return JSON.stringify(clean);
   },

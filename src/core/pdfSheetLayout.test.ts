@@ -1,8 +1,14 @@
 import { inflateSync } from 'node:zlib';
 import { PDFDocument, PDFName, PDFRawStream, rgb } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
+import type { Rect2D } from '@/types/geometry';
 import { UnitConverter } from '@/types/units';
 import { layoutPdfToPrintMedia } from './pdfSheetLayout';
+import {
+  SCALE_BAR_BOX_H_MM,
+  SCALE_BAR_BOX_W_MM,
+  rectsIntersectMm,
+} from './scaleBarPlacement';
 
 async function createSamplePdf(widthMm: number, heightMm: number): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -76,6 +82,75 @@ function extractEmbeddedPageTranslationMm(
     xMm: UnitConverter.pointsToMm(Number(match![1])),
     yMm: UnitConverter.pointsToMm(Number(match![2])),
   };
+}
+
+/** Extracts the rendered 50 mm Scale-Check backing rectangle (mm) and orientation from a PDF page stream. */
+function extractScaleBarBackingRectMm(
+  pdfDoc: PDFDocument,
+  pageIndex: number,
+): (Rect2D & { readonly rotated90: boolean }) | null {
+  const raw = extractPageRawStream(pdfDoc, pageIndex);
+  const wPt = UnitConverter.mmToPoints(SCALE_BAR_BOX_W_MM);
+  const hPt = UnitConverter.mmToPoints(SCALE_BAR_BOX_H_MM);
+
+  // pdf-lib drawRectangle emits:
+  //   1 0 0 1 <x> <y> cm ... 0 0 m 0 <h> l <w> <h> l <w> 0 l h
+  const rectRegex =
+    /1\s+0\s+0\s+1\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+cm[\s\S]{0,160}?0\s+0\s+m\s+0\s+(-?\d+(?:\.\d+)?)\s+l\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+l\s+(-?\d+(?:\.\d+)?)\s+0\s+l\s+h/g;
+  for (const match of raw.matchAll(rectRegex)) {
+    const tx = Number(match[1]);
+    const ty = Number(match[2]);
+    const rh = Number(match[3]);
+    const rw = Number(match[4]);
+
+    const isHorizontal = Math.abs(rw - wPt) < 0.2 && Math.abs(rh - hPt) < 0.2;
+    const isVertical = Math.abs(rw - hPt) < 0.2 && Math.abs(rh - wPt) < 0.2;
+    if (isHorizontal || isVertical) {
+      return {
+        x: UnitConverter.pointsToMm(tx),
+        y: UnitConverter.pointsToMm(ty),
+        width: UnitConverter.pointsToMm(rw),
+        height: UnitConverter.pointsToMm(rh),
+        rotated90: isVertical,
+      };
+    }
+  }
+  return null;
+}
+
+/** Verifies an exact 50.0 mm ruler baseline segment exists inside the given bounding box. */
+function hasExact50mmBaselineLine(
+  pdfDoc: PDFDocument,
+  pageIndex: number,
+  barRect: Rect2D & { readonly rotated90: boolean },
+): boolean {
+  const raw = extractPageRawStream(pdfDoc, pageIndex);
+  const lineRegex =
+    /(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+m\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+l\s+S/g;
+  for (const match of raw.matchAll(lineRegex)) {
+    const x1 = UnitConverter.pointsToMm(Number(match[1]));
+    const y1 = UnitConverter.pointsToMm(Number(match[2]));
+    const x2 = UnitConverter.pointsToMm(Number(match[3]));
+    const y2 = UnitConverter.pointsToMm(Number(match[4]));
+    const inBox =
+      x1 >= barRect.x - 0.1 &&
+      x1 <= barRect.x + barRect.width + 0.1 &&
+      x2 >= barRect.x - 0.1 &&
+      x2 <= barRect.x + barRect.width + 0.1 &&
+      y1 >= barRect.y - 0.1 &&
+      y1 <= barRect.y + barRect.height + 0.1 &&
+      y2 >= barRect.y - 0.1 &&
+      y2 <= barRect.y + barRect.height + 0.1;
+    if (!inBox) continue;
+
+    if (!barRect.rotated90 && Math.abs(y2 - y1) < 0.05 && Math.abs(Math.abs(x2 - x1) - 50) < 0.05) {
+      return true;
+    }
+    if (barRect.rotated90 && Math.abs(x2 - x1) < 0.05 && Math.abs(Math.abs(y2 - y1) - 50) < 0.05) {
+      return true;
+    }
+  }
+  return false;
 }
 
 describe('pdfSheetLayout (layoutPdfToPrintMedia)', () => {
@@ -239,5 +314,78 @@ describe('pdfSheetLayout (layoutPdfToPrintMedia)', () => {
       expect(pos.yMm).toBeGreaterThanOrEqual(30);
       expect(pos.yMm + 220).toBeLessThanOrEqual(279.4 - 5 + 0.01);
     }
+  });
+
+  it('auto-rotates the 50 mm scale bar 90° into the side margin on 1-sheet PDF when top/bottom margins are too tight', async () => {
+    // Tall 305 x 198 mm cover on US Legal Landscape (355.6 x 215.9 mm, 5 mm margins -> safeBox 345.6 x 205.9)
+    // Cover sits at x = 25.3..330.3, y = 8.95..206.95 (only 3.95 mm top/bottom gap, 20.3 mm side gap)
+    const source = await createSamplePdf(305, 198);
+    const outBytes = await layoutPdfToPrintMedia(source, 305, 198, {
+      printMediaId: 'legal',
+      includeScaleBar: true,
+    });
+
+    const doc = await PDFDocument.load(outBytes);
+    expect(doc.getPageCount()).toBe(1);
+    expect(extractPageContentText(doc, 0)).toContain('50 mm Scale Check');
+
+    const coverPos = extractEmbeddedPageTranslationMm(doc, 0);
+    const coverRect: Rect2D = { x: coverPos.xMm, y: coverPos.yMm, width: 305, height: 198 };
+    const barRect = extractScaleBarBackingRectMm(doc, 0);
+    expect(barRect).not.toBeNull();
+    expect(barRect!.rotated90).toBe(true);
+    expect(barRect!.width).toBeCloseTo(SCALE_BAR_BOX_H_MM, 2);
+    expect(barRect!.height).toBeCloseTo(SCALE_BAR_BOX_W_MM, 2);
+    // Strictly inside US Legal safeBox [5..350.6] x [5..210.9] and zero collision with cover
+    expect(barRect!.x).toBeGreaterThanOrEqual(5 - 0.05);
+    expect(barRect!.x + barRect!.width).toBeLessThanOrEqual(350.6 + 0.05);
+    expect(barRect!.y).toBeGreaterThanOrEqual(5 - 0.05);
+    expect(barRect!.y + barRect!.height).toBeLessThanOrEqual(210.9 + 0.05);
+    expect(rectsIntersectMm(barRect!, coverRect, 1.4)).toBe(false);
+    expect(hasExact50mmBaselineLine(doc, 0, barRect!)).toBe(true);
+  });
+
+  it('places horizontal 50 mm scale bar collision-free above cover on 1-sheet PDF with ample top margin', async () => {
+    const source = await createSamplePdf(323, 170);
+    const outBytes = await layoutPdfToPrintMedia(source, 323, 170, {
+      printMediaId: 'legal',
+      includeScaleBar: true,
+    });
+
+    const doc = await PDFDocument.load(outBytes);
+    const coverPos = extractEmbeddedPageTranslationMm(doc, 0);
+    const coverRect: Rect2D = { x: coverPos.xMm, y: coverPos.yMm, width: 323, height: 170 };
+    const barRect = extractScaleBarBackingRectMm(doc, 0);
+    expect(barRect).not.toBeNull();
+    expect(barRect!.rotated90).toBe(false);
+    expect(barRect!.width).toBeCloseTo(SCALE_BAR_BOX_W_MM, 2);
+    expect(barRect!.height).toBeCloseTo(SCALE_BAR_BOX_H_MM, 2);
+    expect(rectsIntersectMm(barRect!, coverRect, 1.4)).toBe(false);
+    expect(hasExact50mmBaselineLine(doc, 0, barRect!)).toBe(true);
+  });
+
+  it('auto-rotates the 50 mm scale bar 90° on 2-sheet tiled Sheet 1 when top/bottom margins are tight without hitting cover or seam', async () => {
+    // 340 x 255 mm cover on US Letter Portrait (215.9 x 279.4 mm, 5 mm margins -> safeBox 205.9 x 269.4)
+    // Sheet 1 clipped cover spans x = 20.45..195.45 (15.45 mm left margin), y = 12.2..267.2 (7.2 mm top/bottom gap)
+    const source = await createSamplePdf(340, 255);
+    const outBytes = await layoutPdfToPrintMedia(source, 340, 255, {
+      printMediaId: 'letter',
+      tileOverlapMm: 10,
+      includeScaleBar: true,
+    });
+
+    const doc = await PDFDocument.load(outBytes);
+    expect(doc.getPageCount()).toBe(2);
+    expect(extractPageContentText(doc, 0)).toContain('50 mm Scale Check');
+
+    const barRect = extractScaleBarBackingRectMm(doc, 0);
+    expect(barRect).not.toBeNull();
+    expect(barRect!.rotated90).toBe(true);
+    const clippedCoverRect: Rect2D = { x: 20.45, y: 12.2, width: 175, height: 255 };
+    expect(rectsIntersectMm(barRect!, clippedCoverRect, 1.4)).toBe(false);
+    expect(barRect!.x).toBeGreaterThanOrEqual(5 - 0.05);
+    expect(barRect!.y).toBeGreaterThanOrEqual(5 - 0.05);
+    expect(barRect!.y + barRect!.height).toBeLessThanOrEqual(274.4 + 0.05);
+    expect(hasExact50mmBaselineLine(doc, 0, barRect!)).toBe(true);
   });
 });

@@ -219,13 +219,15 @@ export const CoverStudioModel = {
     const includeImageData = options?.includeImageData ?? true;
     return {
       ...state,
-      layers: includeImageData ? state.layers.map((layer) => ({ ...layer })) : [],
-      textLayers: (state.textLayers ?? []).map((layer) => ({ ...layer })),
-      ornaments: (state.ornaments ?? []).map((orn) => ({ ...orn })),
+      layers: includeImageData ? state.layers.map((layer) => CoverImageLayerModel.serialize(layer)) : [],
+      textLayers: (state.textLayers ?? []).map((layer) => CoverTextLayerModel.serialize(layer)),
+      ornaments: (state.ornaments ?? []).map((orn) => CoverOrnamentLayerModel.serialize(orn)),
       spineText: { ...state.spineText },
       pocketStyle: {
         ...state.pocketStyle,
-        layers: includeImageData ? state.pocketStyle.layers.map((layer) => ({ ...layer })) : [],
+        layers: includeImageData
+          ? state.pocketStyle.layers.map((layer) => CoverImageLayerModel.serialize(layer))
+          : [],
         imageDataUrl: includeImageData ? state.pocketStyle.imageDataUrl : null,
         imageFileName: includeImageData ? state.pocketStyle.imageFileName : null,
       },

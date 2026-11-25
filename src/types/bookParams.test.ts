@@ -24,7 +24,7 @@ describe('BookParametersModel', () => {
     expect(defaults.hingeWidthMm).toBe(9.0);
     expect(defaults.overhangTopBottomMm).toBe(7.0);
     expect(defaults.overhangForeEdgeMm).toBe(3.0);
-    expect(defaults.spineAllowanceMm).toBe(2.0);
+    expect(defaults.spineAllowanceMm).toBe(4.0);
     expect(defaults.turnInMm).toBe(18.0);
     expect(defaults.miterFactor).toBe(1.5);
     expect(defaults.bleedMm).toBe(3.0);
@@ -48,10 +48,17 @@ describe('BookParametersModel', () => {
     expect(BookParametersModel.detectPreset(custom)).toBe('custom');
   });
 
-  it('links spine allowance to board thickness when linked is true', () => {
-    const linked = BookParametersModel.withBoardThickness(DEFAULT_BOOK_PARAMETERS, 3.0);
-    expect(linked.boardThicknessMm).toBe(3.0);
-    expect(linked.spineAllowanceMm).toBe(3.0);
+  it('links spine allowance to 2x board thickness when linked is true and preserves unlinked or legacy explicit values', () => {
+    for (const [boardT, expectedAllowance] of [
+      [1.5, 3.0],
+      [2.0, 4.0],
+      [2.5, 5.0],
+      [3.0, 6.0],
+    ] as const) {
+      const linked = BookParametersModel.withBoardThickness(DEFAULT_BOOK_PARAMETERS, boardT);
+      expect(linked.boardThicknessMm).toBe(boardT);
+      expect(linked.spineAllowanceMm).toBe(expectedAllowance);
+    }
 
     const unlinked = BookParametersModel.withBoardThickness(
       { ...DEFAULT_BOOK_PARAMETERS, spineAllowanceLinked: false, spineAllowanceMm: 4.5 },
@@ -59,6 +66,21 @@ describe('BookParametersModel', () => {
     );
     expect(unlinked.boardThicknessMm).toBe(3.0);
     expect(unlinked.spineAllowanceMm).toBe(4.5);
+
+    // Omitted spineAllowanceMm on deserialize computes 2x boardThicknessMm when linked
+    const derived = BookParametersModel.deserialize({
+      boardThicknessMm: 2.5,
+      spineAllowanceLinked: true,
+    });
+    expect(derived.spineAllowanceMm).toBe(5.0);
+
+    // Explicitly saved legacy spineAllowanceMm (e.g. 2.0 from older project JSON) is respected on deserialize
+    const legacyExplicit = BookParametersModel.deserialize({
+      boardThicknessMm: 2.0,
+      spineAllowanceMm: 2.0,
+      spineAllowanceLinked: true,
+    });
+    expect(legacyExplicit.spineAllowanceMm).toBe(2.0);
   });
 
   it('clamps out-of-range values during deserialization', () => {

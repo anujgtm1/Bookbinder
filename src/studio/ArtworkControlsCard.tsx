@@ -494,9 +494,9 @@ export function ArtworkControlsCard({
 
         <Separator />
 
-        {/* Print Cut & Fold Guides Export Toggle */}
+        {/* Print Cut Outline Export Mode */}
         <div className="space-y-1.5">
-          <Label htmlFor="cut-line-export-mode">Print-Ready PDF Cut &amp; Fold Lines</Label>
+          <Label htmlFor="cut-line-export-mode">Print-Ready PDF Cut Outline</Label>
           <Select
             value={studio.cutLineMode}
             onValueChange={(val) => onUpdateStudio({ cutLineMode: val as CutLineExportMode })}
@@ -506,10 +506,10 @@ export function ArtworkControlsCard({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="full-cut-miter">
-                Cut &amp; Fold Lines On (Outer cut + dashed fold guides)
+                Cut Lines On (Red outer trim outline)
               </SelectItem>
               <SelectItem value="bleed-registration">
-                Crop Marks Only (No lines drawn over artwork)
+                Crop Marks Only (Outer corner marks in bleed)
               </SelectItem>
             </SelectContent>
           </Select>
