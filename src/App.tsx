@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { calculateCaseGeometry } from '@/core/geometry';
+import { resolveMultiBookQueueSources } from '@/core/multiBookExport';
 import { generateInnerTemplatesPdf, generateOuterWrapPdf } from '@/core/pdfExport';
 import {
   bootstrapProjectLibrary,
@@ -105,6 +106,7 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [exportingTarget, setExportingTarget] = useState<'outer-pdf' | 'inner-pdf' | null>(null);
+  const [outerExportProgressLabel, setOuterExportProgressLabel] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
   const repoRef = useRef<ProjectRepository | null>(null);
@@ -828,11 +830,71 @@ export function App() {
     setStatusMessage(`Exported ${filename}`);
   };
 
+  const getActiveProjectRepository = useCallback(async (): Promise<ProjectRepository> => {
+    while (!bootstrapDoneRef.current && bootstrapPromiseRef.current) {
+      const pending = bootstrapPromiseRef.current;
+      await pending;
+      if (pending === bootstrapPromiseRef.current) {
+        break;
+      }
+    }
+    await opQueueRef.current.catch(() => {});
+    let repo = repoRef.current;
+    if (!repo) {
+      repo = await getDefaultProjectRepository();
+      repoRef.current = repo;
+    }
+    return repo;
+  }, []);
+
   const handleDownloadOuterPdf = async (options?: OuterPdfExportOptions) => {
     setExportingTarget('outer-pdf');
     try {
       const effectiveSplitMode = options?.splitMode ?? project.parameters.splitMode;
       const effectiveMediaId = options?.printMediaId ?? project.parameters.printMedia;
+      let resolvedRollNesting = options?.rollNesting;
+      let resolvedSheetNesting = options?.sheetNesting;
+      let skippedCount = 0;
+
+      const queueEntries = options?.multiBookQueueEntries;
+      if (
+        queueEntries &&
+        queueEntries.length > 0 &&
+        (options?.sheetNesting?.enabled || options?.rollNesting?.enabled)
+      ) {
+        await flushActiveSave({ renderThumbnail: false });
+        const repository = await getActiveProjectRepository();
+        setOuterExportProgressLabel(
+          `Rendering 1/${queueEntries.length}: ${queueEntries[0].label}…`,
+        );
+        const resolved = await resolveMultiBookQueueSources(queueEntries, {
+          repository,
+          target: 'outer-blueprint',
+          includeGuides: options.includeCutLines ?? true,
+          onProgress: (done, total) => {
+            const nextEntry = queueEntries[done];
+            setOuterExportProgressLabel(
+              done < total && nextEntry
+                ? `Rendering ${done + 1}/${total}: ${nextEntry.label}…`
+                : 'Composing PDF…',
+            );
+          },
+        });
+        skippedCount = resolved.skippedIds.length;
+        if (resolvedSheetNesting?.enabled) {
+          resolvedSheetNesting = {
+            ...resolvedSheetNesting,
+            extraQueueItems: resolved.items,
+          };
+        }
+        if (resolvedRollNesting?.enabled) {
+          resolvedRollNesting = {
+            ...resolvedRollNesting,
+            extraQueueItems: resolved.items,
+          };
+        }
+      }
+
       const bytes = await generateOuterWrapPdf(geometry, effectiveSplitMode, {
         printMediaId: effectiveMediaId,
         tileOverlapMm: options?.tileOverlapMm,
@@ -844,21 +906,29 @@ export function App() {
         innerPageSizeId: options?.innerPageSizeId ?? project.parameters.pdfPageSize,
         customRollWidthMm: options?.customRollWidthMm ?? project.parameters.customRollWidthMm,
         printerMargins: options?.printerMargins,
-        rollNesting: options?.rollNesting,
+        rollNesting: resolvedRollNesting,
+        sheetNesting: resolvedSheetNesting,
       });
       const filename =
         effectiveSplitMode === 'three-piece'
           ? 'outer_case_wrap_3piece.pdf'
           : 'outer_case_wrap.pdf';
       triggerBytesDownload(bytes, filename, 'application/pdf');
+      const skippedNote =
+        skippedCount > 0
+          ? ` — ${skippedCount} saved ${skippedCount === 1 ? 'book was' : 'books were'} unavailable and skipped`
+          : '';
       setStatusMessage(
-        options?.appendInnerPocketsPage
-          ? `Exported ${filename} + Detached Pockets`
-          : `Exported ${filename}`,
+        `${
+          options?.appendInnerPocketsPage
+            ? `Exported ${filename} + Detached Pockets`
+            : `Exported ${filename}`
+        }${skippedNote}`,
       );
     } catch {
       setStatusMessage('Failed to generate outer wrap PDF.');
     } finally {
+      setOuterExportProgressLabel(null);
       setExportingTarget(null);
     }
   };
@@ -1100,6 +1170,10 @@ export function App() {
                 pageSizeId={project.parameters.pdfPageSize}
                 unit={project.parameters.unit}
                 bookTitle={project.studio.spineText.title || undefined}
+                savedBookSummaries={savedSummaries}
+                activeProjectId={activeProjectId}
+                activeBookName={project.name}
+                exportProgressLabel={outerExportProgressLabel}
                 exportingOuterPdf={exportingTarget === 'outer-pdf'}
                 onChangePrintMedia={(printMedia) => handlePatchParams({ printMedia })}
                 onChangePageSize={(pdfPageSize) => handlePatchParams({ pdfPageSize })}
@@ -1119,6 +1193,12 @@ export function App() {
                 studio={project.studio}
                 customFont={activeCustomFont}
                 onCustomFontChange={handleCustomFontChange}
+                savedBookSummaries={savedSummaries}
+                activeProjectId={activeProjectId}
+                activeBookName={project.name}
+                exportProgressLabel={outerExportProgressLabel}
+                onFlushActiveBook={() => flushActiveSave({ renderThumbnail: false })}
+                getProjectRepository={getActiveProjectRepository}
                 exportingOuterPdf={exportingTarget === 'outer-pdf'}
                 onChange={handleStudioChange}
                 onUpdateParams={handlePatchParams}

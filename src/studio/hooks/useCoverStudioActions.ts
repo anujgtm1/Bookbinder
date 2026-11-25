@@ -1,7 +1,10 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { evaluatePrintMediaFit } from '@/core/geometry';
-import type { RollNestingExportOptions } from '@/core/pdfSheetLayout';
+import type {
+  RollNestingExportOptions,
+  SheetNestingExportOptions,
+} from '@/core/pdfSheetLayout';
 import type { PrinterMargins } from '@/core/printerMargins';
 import {
   exportDesignPresetsJson,
@@ -808,6 +811,8 @@ export function useCoverStudioActions({
     readonly customRollWidthMm?: number;
     readonly printerMargins?: PrinterMargins;
     readonly rollNesting?: RollNestingExportOptions;
+    readonly sheetNesting?: SheetNestingExportOptions;
+    readonly skippedMultiBookCount?: number;
   }) => {
     setExportingKind('pdf');
     try {
@@ -840,6 +845,7 @@ export function useCoverStudioActions({
         customRollWidthMm: effectiveCustomRollWidthMm,
         printerMargins: options?.printerMargins,
         rollNesting: options?.rollNesting,
+        sheetNesting: options?.sheetNesting,
       });
       triggerBytesDownload(bytes, fileName, 'application/pdf');
       const fit = evaluatePrintMediaFit(
@@ -854,14 +860,23 @@ export function useCoverStudioActions({
       );
       const layerTag = isBaseOnly ? ', Base Only for HTV' : '';
       const pocketsTag = options?.appendInnerPocketsPage ? ' + Pockets' : '';
+      const skippedCount = options?.skippedMultiBookCount ?? 0;
+      const skippedNote =
+        skippedCount > 0
+          ? ` — ${skippedCount} saved ${skippedCount === 1 ? 'book was' : 'books were'} unavailable and skipped`
+          : '';
       onStatusMessage(
-        fit.status === 'fits-1-sheet'
-          ? `Exported ${fileName} (centered on 1× ${fit.mediaLabel}${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
-          : fit.status === 'fits-2-sheet-tile'
-            ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
-            : isBaseOnly
-              ? `Exported ${fileName} (${effectiveDpi} DPI, Base Only for HTV${pocketsTag})`
-              : `Exported ${fileName} (${effectiveDpi} DPI + vector spine text${pocketsTag})`,
+        options?.sheetNesting?.enabled
+          ? `Exported ${fileName} (multi-cover ${fit.mediaLabel} sheet layout${pocketsTag}, ${effectiveDpi} DPI${layerTag})${skippedNote}`
+          : options?.rollNesting?.enabled
+            ? `Exported ${fileName} (multi-cover ${fit.mediaLabel} roll layout${pocketsTag}, ${effectiveDpi} DPI${layerTag})${skippedNote}`
+            : fit.status === 'fits-1-sheet'
+              ? `Exported ${fileName} (centered on 1× ${fit.mediaLabel}${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
+              : fit.status === 'fits-2-sheet-tile'
+                ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
+                : isBaseOnly
+                  ? `Exported ${fileName} (${effectiveDpi} DPI, Base Only for HTV${pocketsTag})`
+                  : `Exported ${fileName} (${effectiveDpi} DPI + vector spine text${pocketsTag})`,
       );
     } catch {
       onStatusMessage('Failed to generate Print-Ready Roll PDF.');

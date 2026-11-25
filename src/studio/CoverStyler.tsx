@@ -38,6 +38,8 @@ import {
   type PdfExportSelection,
 } from '@/components/PdfExportDialog';
 import { Badge } from '@/components/ui/badge';
+import { resolveMultiBookQueueSources } from '@/core/multiBookExport';
+import { getDefaultProjectRepository, type ProjectRepository } from '@/core/projectLibrary';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
@@ -53,6 +55,7 @@ import {
 import { rotateOrnament90 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { detachConstraintOnResize } from '@/types/layoutConstraints';
+import type { ProjectId, SavedProjectSummary } from '@/types/projectLibrary';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { CoverImageLayerModel, nextQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
@@ -106,6 +109,12 @@ export interface CoverStylerProps {
   readonly studio: CoverStudioState;
   readonly customFont?: CustomFontAsset | null;
   readonly onCustomFontChange?: (font: CustomFontAsset | null) => void;
+  readonly savedBookSummaries?: readonly SavedProjectSummary[];
+  readonly activeProjectId?: ProjectId | null;
+  readonly activeBookName?: string;
+  readonly exportProgressLabel?: string | null;
+  readonly onFlushActiveBook?: () => Promise<void>;
+  readonly getProjectRepository?: () => Promise<ProjectRepository>;
   readonly exportingOuterPdf?: boolean;
   readonly onChange: (next: CoverStudioState) => void;
   readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
@@ -123,6 +132,12 @@ export function CoverStyler({
   studio,
   customFont: propCustomFont,
   onCustomFontChange,
+  savedBookSummaries,
+  activeProjectId = null,
+  activeBookName,
+  exportProgressLabel = null,
+  onFlushActiveBook,
+  getProjectRepository,
   exportingOuterPdf = false,
   onChange,
   onUpdateParams,
@@ -182,6 +197,7 @@ export function CoverStyler({
   );
   const [pdfExportLayerModeDefault, setPdfExportLayerModeDefault] =
     useState<CoverPdfLayerMode>('full');
+  const [localExportProgressLabel, setLocalExportProgressLabel] = useState<string | null>(null);
   const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(effectiveParams.printMedia);
   const [localPageSize, setLocalPageSize] = useState<PageSizeId>(effectiveParams.pdfPageSize);
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(effectiveParams.splitMode);
@@ -750,26 +766,82 @@ export function CoverStyler({
           customRollWidthMm: selection.customRollWidthMm,
           printerMargins: selection.printerMargins,
           rollNesting: selection.rollNesting,
+          sheetNesting: selection.sheetNesting,
+          multiBookQueueEntries: selection.multiBookQueueEntries,
         });
         return;
       }
     }
-    await actions.handleExportPrintPdf({
-      includeCutLines: selection.includeCutLines,
-      includeFoldLines: selection.includeFoldLines,
-      includeFoldGuideTicks: selection.includeFoldGuideTicks,
-      printMediaId: selection.printMediaId,
-      dpi: selection.dpi,
-      tileOverlapMm: selection.tileOverlapMm,
-      includeScaleBar: selection.includeScaleBar,
-      splitMode: selection.splitMode,
-      exportLayerMode: selection.exportLayerMode,
-      appendInnerPocketsPage: selection.appendInnerPocketsPage,
-      innerPageSizeId: selection.pageSizeId,
-      customRollWidthMm: selection.customRollWidthMm,
-      printerMargins: selection.printerMargins,
-      rollNesting: selection.rollNesting,
-    });
+
+    let resolvedRollNesting = selection.rollNesting;
+    let resolvedSheetNesting = selection.sheetNesting;
+    let skippedMultiBookCount = 0;
+
+    try {
+      const queueEntries = selection.multiBookQueueEntries;
+      if (
+        queueEntries &&
+        queueEntries.length > 0 &&
+        (selection.sheetNesting?.enabled || selection.rollNesting?.enabled)
+      ) {
+        await onFlushActiveBook?.();
+        const repository = await (getProjectRepository
+          ? getProjectRepository()
+          : getDefaultProjectRepository());
+        setLocalExportProgressLabel(
+          `Rendering 1/${queueEntries.length}: ${queueEntries[0].label}…`,
+        );
+        const resolved = await resolveMultiBookQueueSources(queueEntries, {
+          repository,
+          target: 'cover-styled',
+          dpi: selection.dpi,
+          includeGuides: selection.includeGuides,
+          exportLayerMode: selection.exportLayerMode,
+          onProgress: (done, total) => {
+            const nextEntry = queueEntries[done];
+            setLocalExportProgressLabel(
+              done < total && nextEntry
+                ? `Rendering ${done + 1}/${total}: ${nextEntry.label}…`
+                : 'Composing PDF…',
+            );
+          },
+        });
+        skippedMultiBookCount = resolved.skippedIds.length;
+        if (resolvedSheetNesting?.enabled) {
+          resolvedSheetNesting = {
+            ...resolvedSheetNesting,
+            extraQueueItems: resolved.items,
+          };
+        }
+        if (resolvedRollNesting?.enabled) {
+          resolvedRollNesting = {
+            ...resolvedRollNesting,
+            extraQueueItems: resolved.items,
+          };
+        }
+      }
+
+      await actions.handleExportPrintPdf({
+        includeCutLines: selection.includeCutLines,
+        includeFoldLines: selection.includeFoldLines,
+        includeFoldGuideTicks: selection.includeFoldGuideTicks,
+        printMediaId: selection.printMediaId,
+        dpi: selection.dpi,
+        tileOverlapMm: selection.tileOverlapMm,
+        includeScaleBar: selection.includeScaleBar,
+        splitMode: selection.splitMode,
+        exportLayerMode: selection.exportLayerMode,
+        appendInnerPocketsPage: selection.appendInnerPocketsPage,
+        innerPageSizeId: selection.pageSizeId,
+        customRollWidthMm: selection.customRollWidthMm,
+        printerMargins: selection.printerMargins,
+        rollNesting: resolvedRollNesting,
+        sheetNesting: resolvedSheetNesting,
+        skippedMultiBookCount,
+      });
+    } finally {
+      setLocalExportProgressLabel(null);
+    }
   };
 
   return (
@@ -1482,6 +1554,10 @@ export function CoverStyler({
           pdfDialogTarget === 'cover-styled' ? studio.cutLineMode === 'full-cut-miter' : true
         }
         defaultExportLayerMode={pdfExportLayerModeDefault}
+        savedBookSummaries={savedBookSummaries}
+        activeProjectId={activeProjectId}
+        activeBookName={activeBookName}
+        exportProgressLabel={localExportProgressLabel ?? exportProgressLabel}
         exporting={actions.exportingKind === 'pdf' || exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}
         onClose={() => setPdfDialogTarget(null)}
