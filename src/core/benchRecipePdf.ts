@@ -201,11 +201,16 @@ export function buildBenchCutListRows(
   }
 
   if (capabilities.usesInnerPockets) {
+    const pocketInsetNote =
+      frontPocket.boardInsetTopBottomMm !== undefined &&
+      frontPocket.boardInsetForeEdgeMm !== undefined
+        ? ` | Inset ${fmtSingle(frontPocket.boardInsetTopBottomMm, unit)} T/B, ${fmtSingle(frontPocket.boardInsetForeEdgeMm, unit)} fore`
+        : '';
     rows.push({
       item: 'Inner Pockets (Face)',
       qty: '2x',
       dims: fmtDimPair(frontPocket.pocketWidthMm, frontPocket.pocketHeightMm, unit),
-      note: `Cut ${fmtDimPair(frontPocket.totalWidthMm, frontPocket.totalHeightMm, unit)}`,
+      note: `Cut ${fmtDimPair(frontPocket.totalWidthMm, frontPocket.totalHeightMm, unit)}${pocketInsetNote}`,
     });
 
     if (capabilities.usesChipboard) {
@@ -229,7 +234,12 @@ export function buildBenchChecklistSteps(
   unit: UnitSystem,
 ): readonly string[] {
   const { capabilities } = resolveBindingStrategy(geometry);
-  const { cutList, outerWrap } = geometry;
+  const { cutList, outerWrap, frontPocket } = geometry;
+  const pocketGlueStep =
+    frontPocket.boardInsetTopBottomMm !== undefined &&
+    frontPocket.boardInsetForeEdgeMm !== undefined
+      ? `Fold & glue inner pockets inset ${fmtSingle(frontPocket.boardInsetTopBottomMm, unit)} top/bottom & ${fmtSingle(frontPocket.boardInsetForeEdgeMm, unit)} fore-edge (open edge facing spine).`
+      : 'Fold & glue front and back inner pockets with open edges facing spine.';
 
   if (capabilities.usesChipboard && capabilities.hasRigidSpine) {
     return [
@@ -238,7 +248,7 @@ export function buildBenchChecklistSteps(
       `Center spine strip on wrap; glue boards using ${fmtSingle(cutList.hingeSpacerMm, unit)} Hinge Spacer Jig.`,
       `Trim all 4 corners with the 45 deg Miter Jig (${fmtSingle(outerWrap.miterGapMm, unit)} gap) & fold turn-ins.`,
       'Glue spine reinforcement liner across both hinges; bone-folder grooves.',
-      'Fold & glue front and back inner pockets with open edges facing spine.',
+      pocketGlueStep,
       'Press flat under even weight 20-30 min, then slip paperback into pockets.',
     ];
   }
@@ -250,7 +260,7 @@ export function buildBenchChecklistSteps(
       `Glue front & back boards leaving ${fmtSingle(cutList.spineStrip.widthMm, unit)} flexible spine gap.`,
       `Trim all 4 corners with the 45 deg Miter Jig (${fmtSingle(outerWrap.miterGapMm, unit)} gap) & fold turn-ins.`,
       'Glue spine reinforcement liner spanning the cloth spine & both boards.',
-      'Fold & glue front and back inner pockets with open edges facing spine.',
+      pocketGlueStep,
       'Press flat under weight 20-30 min, then slip paperback into pockets.',
     ];
   }

@@ -430,6 +430,19 @@ function renderPocket(
     6.5,
     rgb(0.45, 0.38, 0.3),
   );
+  if (
+    pocket.boardInsetTopBottomMm !== undefined &&
+    pocket.boardInsetForeEdgeMm !== undefined
+  ) {
+    writer.drawText(
+      `Glue inset: ${roundTo(pocket.boardInsetTopBottomMm, 1)} mm T/B · ${roundTo(pocket.boardInsetForeEdgeMm, 1)} mm fore-edge`,
+      center.x - 24,
+      center.y + 21,
+      font,
+      6.4,
+      rgb(0.3, 0.3, 0.3),
+    );
+  }
 }
 
 function renderSpineLiner(

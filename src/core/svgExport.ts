@@ -1,6 +1,11 @@
 import { escapeXml, fmtMm } from '@/lib/svgFormat';
 import type { SplitMode } from '@/types/bookParams';
-import { GeometryPrimitives, type CaseGeometry, type Rect2D } from '@/types/geometry';
+import {
+  GeometryPrimitives,
+  type CaseGeometry,
+  type PocketEnvelopeGeometry,
+  type Rect2D,
+} from '@/types/geometry';
 import {
   PdfGuideOptionsModel,
   type PdfGuideOptions,
@@ -410,6 +415,11 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
     ? 'Solid Red = Cut • Dashed Blue = Center Fold &amp; Score Lines'
     : 'Solid Red = Cut • Dashed Blue = Score &amp; Fold • Shaded = Apply Glue Here';
 
+  const buildPocketInsetNote = (pocket: PocketEnvelopeGeometry, cx: number, cy: number): string =>
+    pocket.boardInsetTopBottomMm !== undefined && pocket.boardInsetForeEdgeMm !== undefined
+      ? `\n    <text x="${fmtMm(cx)}" y="${fmtMm(cy + 16.5)}" font-size="3.3" fill="#555555" text-anchor="middle">${escapeXml(`Glue inset: ${roundTo(pocket.boardInsetTopBottomMm, 1)} mm T/B · ${roundTo(pocket.boardInsetForeEdgeMm, 1)} mm fore-edge`)}</text>`
+      : '';
+
   const backPieceNotes = isFoldedEndpapers
     ? `    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(piecesTopY + 12)}" font-size="4.8" font-weight="600" text-anchor="middle">BACK FOLDED ENDPAPER</text>
     <text x="${fmtMm(backCenter.x)}" y="${fmtMm(piecesTopY + 18)}" font-size="3.6" fill="#555555" text-anchor="middle">${escapeXml(sheetDim)}</text>
@@ -419,7 +429,7 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
     <text x="${fmtMm(backX + backPocket.pocketWidthMm * 1.5)}" y="${fmtMm(backCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(pocketDim)}</text>`
     : `    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">BACK POCKET</text>
     <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
-    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: RIGHT (SPINE)</text>`;
+    <text x="${fmtMm(backCenter.x)}" y="${fmtMm(backCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: RIGHT (SPINE)</text>${buildPocketInsetNote(backPocket, backCenter.x, backCenter.y)}`;
 
   const frontPieceNotes = isFoldedEndpapers
     ? `    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(piecesTopY + 12)}" font-size="4.8" font-weight="600" text-anchor="middle">FRONT FOLDED ENDPAPER</text>
@@ -430,7 +440,7 @@ export function generateInnerTemplatesSvg(geometry: CaseGeometry): string {
     <text x="${fmtMm(frontX + frontPocket.pocketWidthMm * 1.5)}" y="${fmtMm(frontCenter.y + 4)}" font-size="3.8" text-anchor="middle">${escapeXml(pocketDim)}</text>`
     : `    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y - 4)}" font-size="5.2" font-weight="600" text-anchor="middle">FRONT POCKET</text>
     <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 3)}" font-size="4" text-anchor="middle">${escapeXml(pocketDim)}</text>
-    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: LEFT (SPINE)</text>`;
+    <text x="${fmtMm(frontCenter.x)}" y="${fmtMm(frontCenter.y + 10)}" font-size="3.5" fill="#00AA44" text-anchor="middle">OPEN EDGE: LEFT (SPINE)</text>${buildPocketInsetNote(frontPocket, frontCenter.x, frontCenter.y)}`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
