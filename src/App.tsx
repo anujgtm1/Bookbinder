@@ -1,4 +1,4 @@
-import { BookMarked, CheckCircle2, FolderOpen, Ruler } from 'lucide-react';
+import { BookMarked, CheckCircle2, FolderOpen, Library, Ruler } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from '@/components/Header';
 import { MeasureAndCutPanel } from '@/components/MeasureAndCutPanel';
@@ -32,6 +32,7 @@ import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExpor
 import { createSampleBookProject } from '@/resources/sampleProject';
 import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
+import { SeriesSpinesStudio } from '@/studio/SeriesSpinesStudio';
 import { registerCustomFontAsset, type CustomFontAsset } from '@/studio/fonts';
 import { remapStudioForGeometryChange } from '@/studio/studioGeometryRemap';
 import { renderProjectThumbnailDataUrl } from '@/studio/thumbnailRenderer';
@@ -46,7 +47,7 @@ import {
 } from '@/types/projectLibrary';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 
-type WorkspaceTab = 'measure' | 'outer' | 'pockets';
+type WorkspaceTab = 'measure' | 'outer' | 'pockets' | 'series';
 
 const AUTO_SAVE_DEBOUNCE_MS = 350;
 
@@ -1076,6 +1077,22 @@ export function App() {
     setStatusMessage('Reset to default dimensions');
   };
 
+  const handleRefreshLibrary = useCallback(async () => {
+    const repo = await getActiveProjectRepository();
+    const nextSummaries = await repo.listSummaries();
+    if (isMountedRef.current) {
+      savedSummariesRef.current = nextSummaries;
+      setSavedSummaries(nextSummaries);
+    }
+  }, [getActiveProjectRepository]);
+
+  const handleOpenBookInStudio = async (projectId: ProjectId) => {
+    await handleSelectBook(projectId);
+    setActiveTab('outer');
+  };
+
+  const showSidebar = sidebarOpen && activeTab !== 'series';
+
   return (
     <div className="bindery-walnut-desk flex min-h-screen flex-col text-foreground">
       <Header
@@ -1094,10 +1111,10 @@ export function App() {
         id="main-workspace"
         tabIndex={-1}
         className={`mx-auto grid w-full max-w-[1760px] flex-1 grid-cols-1 items-start gap-4 px-3 py-3.5 sm:px-5 ${
-          sidebarOpen ? 'lg:grid-cols-[276px_minmax(0,1fr)]' : 'lg:grid-cols-1'
+          showSidebar ? 'lg:grid-cols-[276px_minmax(0,1fr)]' : 'lg:grid-cols-1'
         }`}
       >
-        {sidebarOpen && (
+        {showSidebar && (
           <SidebarControls
             params={project.parameters}
             onChange={handleParamsChange}
@@ -1108,7 +1125,7 @@ export function App() {
         )}
 
         <div className="flex min-w-0 flex-col">
-          {/* 3-Tab Folio Workbench Navigation sitting cleanly above the active workspace */}
+          {/* 4-Tab Folio Workbench Navigation sitting cleanly above the active workspace */}
           <Tabs
             value={activeTab}
             onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
@@ -1157,6 +1174,14 @@ export function App() {
                       {bindingStrategy.innerPocketsNotice.tabBadge}
                     </Badge>
                   )}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="series"
+                  data-testid="nav-series"
+                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
+                >
+                  <Library className="folio-index-tab-icon h-4 w-4 shrink-0" aria-hidden="true" />
+                  Series Spines
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -1282,6 +1307,17 @@ export function App() {
                   onStatusMessage={setStatusMessage}
                 />
               )}
+            </TabsContent>
+            <TabsContent value="series" className="mt-0">
+              <SeriesSpinesStudio
+                savedSummaries={savedSummaries}
+                getProjectRepository={getActiveProjectRepository}
+                customFont={activeCustomFont}
+                unit={project.parameters.unit}
+                onRefreshLibrary={handleRefreshLibrary}
+                onOpenBookInStudio={handleOpenBookInStudio}
+                onStatusMessage={setStatusMessage}
+              />
             </TabsContent>
           </Tabs>
         </div>
