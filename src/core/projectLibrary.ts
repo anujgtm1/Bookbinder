@@ -683,6 +683,10 @@ export function getDefaultProjectRepository(): Promise<ProjectRepository> {
   return defaultRepositoryPromise;
 }
 
+export function resetDefaultProjectRepository(): void {
+  defaultRepositoryPromise = null;
+}
+
 export async function bootstrapProjectLibrary(
   repo: ProjectRepository,
   legacyStorage?: Storage | null,

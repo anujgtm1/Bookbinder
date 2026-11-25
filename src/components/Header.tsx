@@ -1,4 +1,4 @@
-import { Moon, PanelLeftClose, PanelLeftOpen, Sparkles, Sun } from 'lucide-react';
+import { Library, Moon, PanelLeftClose, PanelLeftOpen, Sparkles, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import atelierColophonImg from '@/assets/atelier/atelier-colophon.jpg';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,9 @@ export interface HeaderProps {
   readonly sidebarOpen?: boolean;
   readonly onToggleSidebar?: () => void;
   readonly onLoadSampleBook?: () => void;
+  readonly activeBookName?: string;
+  readonly savedBookCount?: number;
+  readonly onOpenMyBooks?: () => void;
 }
 
 export function Header({
@@ -26,6 +29,9 @@ export function Header({
   sidebarOpen = true,
   onToggleSidebar,
   onLoadSampleBook,
+  activeBookName,
+  savedBookCount,
+  onOpenMyBooks,
 }: HeaderProps) {
   const [override, setOverride] = useState<ColorSchemeOverride>(() => readStoredColorScheme());
   const [systemScheme, setSystemScheme] = useState<ResolvedColorScheme>(() =>
@@ -120,6 +126,33 @@ export function Header({
 
         {/* Right Editorial Press Controls */}
         <div className="flex shrink-0 items-center gap-2">
+          {onOpenMyBooks && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 max-w-44 gap-1.5 border-brass/50 bg-card/85 px-2.5 text-xs font-medium text-foreground hover:border-brass hover:bg-brass/10 sm:max-w-56"
+              onClick={onOpenMyBooks}
+              data-testid="open-my-books-btn"
+              aria-label={activeBookName ? `My Books — ${activeBookName}` : 'My Books'}
+              title={
+                activeBookName
+                  ? `My Books — Active: ${activeBookName}`
+                  : 'Open saved books library'
+              }
+            >
+              <Library className="h-3.5 w-3.5 shrink-0 text-brass" aria-hidden="true" />
+              <span className="hidden truncate sm:inline">My Books</span>
+              {typeof savedBookCount === 'number' && savedBookCount > 0 && (
+                <span
+                  data-testid="my-books-count-badge"
+                  className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-border/80 bg-secondary px-1 font-mono text-[10px] leading-none text-foreground"
+                >
+                  {savedBookCount}
+                </span>
+              )}
+            </Button>
+          )}
           {onLoadSampleBook && (
             <Button
               type="button"

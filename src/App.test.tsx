@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { resetDefaultProjectRepository } from '@/core/projectLibrary';
 import { App } from './App';
 
 describe('App', () => {
@@ -23,6 +24,7 @@ describe('App', () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    resetDefaultProjectRepository();
   });
 
   it('renders the main Bookbinder Studio shell and toggles the Book Specifications sidebar', async () => {

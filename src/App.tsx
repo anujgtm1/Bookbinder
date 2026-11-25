@@ -1,7 +1,8 @@
 import { BookMarked, CheckCircle2, FolderOpen, Ruler } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Header } from '@/components/Header';
 import { MeasureAndCutPanel } from '@/components/MeasureAndCutPanel';
+import { MyBooksDialog } from '@/components/MyBooksDialog';
 import type {
   InnerPdfExportOptions,
   OuterPdfExportOptions,
@@ -14,6 +15,12 @@ import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { generateInnerTemplatesPdf, generateOuterWrapPdf } from '@/core/pdfExport';
 import {
+  bootstrapProjectLibrary,
+  getDefaultProjectRepository,
+  type ProjectRepository,
+} from '@/core/projectLibrary';
+import {
+  PROJECT_STORAGE_KEY,
   clearProjectStorage,
   loadProjectFromStorage,
   saveProjectToStorage,
@@ -24,26 +31,211 @@ import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExpor
 import { createSampleBookProject } from '@/resources/sampleProject';
 import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
+import { registerCustomFontAsset, type CustomFontAsset } from '@/studio/fonts';
 import { remapStudioForGeometryChange } from '@/studio/studioGeometryRemap';
+import { renderProjectThumbnailDataUrl } from '@/studio/thumbnailRenderer';
 import { BookParametersModel, type BookParameters } from '@/types/bookParams';
 import type { PdfGuideOptionsInput } from '@/types/pdfGuides';
 import { BookbinderProjectModel, type BookbinderProject } from '@/types/project';
+import {
+  ProjectLibraryModel,
+  type ProjectId,
+  type SavedProjectRecord,
+  type SavedProjectSummary,
+} from '@/types/projectLibrary';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 
 type WorkspaceTab = 'measure' | 'outer' | 'pockets';
 
+const AUTO_SAVE_DEBOUNCE_MS = 350;
+
+interface ActiveBookSnapshot {
+  readonly id: ProjectId;
+  readonly createdAt: string;
+  readonly project: BookbinderProject;
+  readonly customFont: CustomFontAsset | null;
+}
+
+function hasStoredLegacyProject(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem(PROJECT_STORAGE_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function nextUntitledBookName(summaries: readonly SavedProjectSummary[]): string {
+  const existingLower = new Set(summaries.map((s) => s.name.trim().toLowerCase()));
+  let index = 1;
+  while (existingLower.has(`untitled book ${index}`)) {
+    index += 1;
+  }
+  return `Untitled Book ${index}`;
+}
+
+function readTextFile(file: File): Promise<string> {
+  if (typeof file.text === 'function') {
+    return file.text();
+  }
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Could not read file text.'));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file.'));
+    reader.readAsText(file);
+  });
+}
+
 export function App() {
+  const initialLocalStorageHitRef = useRef<boolean>(hasStoredLegacyProject());
   const [project, setProject] = useState<BookbinderProject>(() => loadProjectFromStorage());
+  const [activeProjectId, setActiveProjectId] = useState<ProjectId | null>(null);
+  const [activeCreatedAt, setActiveCreatedAt] = useState<string>(() => project.updatedAt);
+  const [savedSummaries, setSavedSummaries] = useState<readonly SavedProjectSummary[]>([]);
+  const [storageKind, setStorageKind] = useState<'indexeddb' | 'fallback'>('indexeddb');
+  const [activeCustomFont, setActiveCustomFont] = useState<CustomFontAsset | null>(null);
+  const [myBooksOpen, setMyBooksOpen] = useState(false);
+
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('outer');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [exportingTarget, setExportingTarget] = useState<'outer-pdf' | 'inner-pdf' | null>(null);
+
+  const isMountedRef = useRef(true);
+  const repoRef = useRef<ProjectRepository | null>(null);
+  const bootstrapPromiseRef = useRef<Promise<ProjectRepository> | null>(null);
+  const opQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const hasUserEditedRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const projectRef = useRef<BookbinderProject>(project);
+  projectRef.current = project;
+  const activeProjectIdRef = useRef<ProjectId | null>(activeProjectId);
+  activeProjectIdRef.current = activeProjectId;
+  const activeCreatedAtRef = useRef<string>(activeCreatedAt);
+  activeCreatedAtRef.current = activeCreatedAt;
+  const activeCustomFontRef = useRef<CustomFontAsset | null>(activeCustomFont);
+  activeCustomFontRef.current = activeCustomFont;
+  const savedSummariesRef = useRef<readonly SavedProjectSummary[]>(savedSummaries);
+  savedSummariesRef.current = savedSummaries;
+  const activeTabRef = useRef<WorkspaceTab>(activeTab);
+  activeTabRef.current = activeTab;
+
+  const lastPersistedProjectRef = useRef<BookbinderProject | null>(null);
+  const lastPersistedFontRef = useRef<CustomFontAsset | null>(null);
 
   const geometry = useMemo(
     () => calculateCaseGeometry(project.parameters),
     [project.parameters],
   );
 
+  const clearPendingAutoSave = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+  }, []);
+
+  const enqueueRepoOp = useCallback((task: (repo: ProjectRepository) => Promise<void>) => {
+    const next = opQueueRef.current
+      .catch(() => {})
+      .then(async () => {
+        let repo = repoRef.current;
+        if (!repo && bootstrapPromiseRef.current) {
+          repo = await bootstrapPromiseRef.current;
+        }
+        if (!repo) {
+          repo = await getDefaultProjectRepository();
+          repoRef.current = repo;
+        }
+        await task(repo);
+      });
+    opQueueRef.current = next;
+    return next;
+  }, []);
+
+  const persistSnapshotToRepo = useCallback(
+    async (
+      repo: ProjectRepository,
+      snapshot: ActiveBookSnapshot,
+      renderThumbnail: boolean,
+    ): Promise<void> => {
+      const existingThumb =
+        savedSummariesRef.current.find((s) => s.id === snapshot.id)?.thumbnailDataUrl ?? null;
+      let thumbnailDataUrl = existingThumb;
+      if (renderThumbnail) {
+        const rendered = await renderProjectThumbnailDataUrl(
+          calculateCaseGeometry(snapshot.project.parameters),
+          snapshot.project.studio,
+          { customFont: snapshot.customFont },
+        );
+        if (rendered) {
+          thumbnailDataUrl = rendered;
+        }
+      }
+
+      await repo.saveProject({
+        id: snapshot.id,
+        createdAt: snapshot.createdAt,
+        updatedAt: snapshot.project.updatedAt,
+        project: snapshot.project,
+        thumbnailDataUrl,
+        customFont: snapshot.customFont,
+      });
+
+      const nextSummaries = await repo.listSummaries();
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+      }
+    },
+    [],
+  );
+
+  const captureActiveSnapshot = useCallback((): ActiveBookSnapshot | null => {
+    const id = activeProjectIdRef.current;
+    if (!id) return null;
+    return {
+      id,
+      createdAt: activeCreatedAtRef.current,
+      project: projectRef.current,
+      customFont: activeCustomFontRef.current,
+    };
+  }, []);
+
+  const flushActiveSave = useCallback(
+    (options?: { readonly renderThumbnail?: boolean; readonly forceThumbnailIfMissing?: boolean }) => {
+      clearPendingAutoSave();
+      const snapshot = captureActiveSnapshot();
+      if (!snapshot) {
+        return Promise.resolve();
+      }
+      const isDirty =
+        snapshot.project !== lastPersistedProjectRef.current ||
+        snapshot.customFont !== lastPersistedFontRef.current;
+      const missingThumbnail =
+        Boolean(options?.forceThumbnailIfMissing) &&
+        (savedSummariesRef.current.find((s) => s.id === snapshot.id)?.thumbnailDataUrl ?? null) ===
+          null;
+
+      if (!isDirty && !missingThumbnail) {
+        return Promise.resolve();
+      }
+
+      lastPersistedProjectRef.current = snapshot.project;
+      lastPersistedFontRef.current = snapshot.customFont;
+      const renderThumb = Boolean(options?.renderThumbnail || missingThumbnail);
+      return enqueueRepoOp((repo) => persistSnapshotToRepo(repo, snapshot, renderThumb));
+    },
+    [captureActiveSnapshot, clearPendingAutoSave, enqueueRepoOp, persistSnapshotToRepo],
+  );
+
+  // Sync active project to localStorage for instant first paint & legacy resilience
   useEffect(() => {
     const result = saveProjectToStorage(project);
     if (result.omittedImageForQuota) {
@@ -51,10 +243,191 @@ export function App() {
     }
   }, [project]);
 
+  // Bootstrap local IndexedDB (or fallback) project library on mount
+  useEffect(() => {
+    isMountedRef.current = true;
+    let cancelled = false;
+    let unsubscribeExternal: (() => void) | null = null;
+
+    const init = async (): Promise<ProjectRepository> => {
+      const repo = await getDefaultProjectRepository();
+      if (cancelled) return repo;
+      repoRef.current = repo;
+      setStorageKind(repo.kind);
+
+      const result = await bootstrapProjectLibrary(repo);
+      if (cancelled) return repo;
+
+      unsubscribeExternal = repo.subscribeExternalChanges(() => {
+        void repo
+          .listSummaries()
+          .then((nextSummaries) => {
+            if (!cancelled && isMountedRef.current) {
+              savedSummariesRef.current = nextSummaries;
+              setSavedSummaries(nextSummaries);
+            }
+          })
+          .catch(() => {});
+      });
+
+      const localUpdatedMs = Date.parse(projectRef.current.updatedAt);
+      const dbUpdatedMs = Date.parse(result.activeRecord.updatedAt);
+      const localIsNewerThanDb =
+        initialLocalStorageHitRef.current &&
+        !Number.isNaN(localUpdatedMs) &&
+        !Number.isNaN(dbUpdatedMs) &&
+        localUpdatedMs > dbUpdatedMs;
+
+      if (hasUserEditedRef.current || localIsNewerThanDb) {
+        const currentProject = projectRef.current;
+        const currentFont = activeCustomFontRef.current;
+        const targetId = activeProjectIdRef.current ?? result.activeRecord.id;
+        const targetCreatedAt = activeProjectIdRef.current
+          ? activeCreatedAtRef.current
+          : result.activeRecord.createdAt;
+
+        activeProjectIdRef.current = targetId;
+        activeCreatedAtRef.current = targetCreatedAt;
+        lastPersistedProjectRef.current = currentProject;
+        lastPersistedFontRef.current = currentFont;
+        setActiveProjectId(targetId);
+        setActiveCreatedAt(targetCreatedAt);
+
+        const thumbnailDataUrl =
+          (await renderProjectThumbnailDataUrl(
+            calculateCaseGeometry(currentProject.parameters),
+            currentProject.studio,
+            { customFont: currentFont },
+          )) ?? result.activeRecord.thumbnailDataUrl;
+
+        await repo.saveProject({
+          id: targetId,
+          createdAt: targetCreatedAt,
+          updatedAt: currentProject.updatedAt,
+          project: currentProject,
+          thumbnailDataUrl,
+          customFont: currentFont,
+        });
+        await repo.setActiveProjectId(targetId);
+        if (cancelled) return repo;
+
+        const nextSummaries = await repo.listSummaries();
+        if (!cancelled && isMountedRef.current) {
+          savedSummariesRef.current = nextSummaries;
+          setSavedSummaries(nextSummaries);
+        }
+      } else {
+        const restoredFont = result.activeRecord.customFont ?? null;
+        activeProjectIdRef.current = result.activeRecord.id;
+        activeCreatedAtRef.current = result.activeRecord.createdAt;
+        activeCustomFontRef.current = restoredFont;
+        lastPersistedProjectRef.current = result.activeRecord.project;
+        lastPersistedFontRef.current = restoredFont;
+        savedSummariesRef.current = result.summaries;
+
+        setActiveProjectId(result.activeRecord.id);
+        setActiveCreatedAt(result.activeRecord.createdAt);
+        setProject(result.activeRecord.project);
+        setActiveCustomFont(restoredFont);
+        setSavedSummaries(result.summaries);
+
+        if (restoredFont) {
+          void registerCustomFontAsset(restoredFont);
+        }
+
+        if (!result.activeRecord.thumbnailDataUrl) {
+          const snapshot: ActiveBookSnapshot = {
+            id: result.activeRecord.id,
+            createdAt: result.activeRecord.createdAt,
+            project: result.activeRecord.project,
+            customFont: restoredFont,
+          };
+          void enqueueRepoOp((r) => persistSnapshotToRepo(r, snapshot, true));
+        }
+      }
+
+      return repo;
+    };
+
+    bootstrapPromiseRef.current = init();
+
+    return () => {
+      cancelled = true;
+      isMountedRef.current = false;
+      clearPendingAutoSave();
+      unsubscribeExternal?.();
+    };
+  }, [clearPendingAutoSave, enqueueRepoOp, persistSnapshotToRepo]);
+
+  // Debounced auto-save of active book edits & custom font into IndexedDB
+  useEffect(() => {
+    if (!activeProjectId) return;
+    if (
+      project === lastPersistedProjectRef.current &&
+      activeCustomFont === lastPersistedFontRef.current
+    ) {
+      return;
+    }
+
+    clearPendingAutoSave();
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void flushActiveSave({ renderThumbnail: true });
+    }, AUTO_SAVE_DEBOUNCE_MS);
+
+    return clearPendingAutoSave;
+  }, [activeProjectId, project, activeCustomFont, clearPendingAutoSave, flushActiveSave]);
+
+  // Flush pending edits when tab becomes hidden or page unloads
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        void flushActiveSave({ renderThumbnail: false });
+      }
+    };
+    const onPageHide = () => {
+      void flushActiveSave({ renderThumbnail: false });
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [flushActiveSave]);
+
+  const applyActiveRecordToState = useCallback((record: SavedProjectRecord) => {
+    const restoredFont = record.customFont ?? null;
+    activeProjectIdRef.current = record.id;
+    activeCreatedAtRef.current = record.createdAt;
+    activeCustomFontRef.current = restoredFont;
+    projectRef.current = record.project;
+    lastPersistedProjectRef.current = record.project;
+    lastPersistedFontRef.current = restoredFont;
+
+    setActiveProjectId(record.id);
+    setActiveCreatedAt(record.createdAt);
+    setProject(record.project);
+    setActiveCustomFont(restoredFont);
+
+    if (
+      activeTabRef.current === 'pockets' &&
+      !resolveBindingStrategy(record.project.parameters).capabilities.usesInnerPockets
+    ) {
+      setActiveTab('outer');
+    }
+
+    if (restoredFont) {
+      void registerCustomFontAsset(restoredFont);
+    }
+  }, []);
+
   const bindingStrategy = resolveBindingStrategy(project.parameters);
   const usesInnerPockets = bindingStrategy.capabilities.usesInnerPockets;
 
   const handleParamsChange = (parameters: BookParameters) => {
+    hasUserEditedRef.current = true;
     const nextStrategy = resolveBindingStrategy(parameters);
     if (
       !nextStrategy.capabilities.usesInnerPockets &&
@@ -77,6 +450,7 @@ export function App() {
   };
 
   const handleStudioChange = (studio: CoverStudioState) => {
+    hasUserEditedRef.current = true;
     setProject((prev) => ({
       ...prev,
       updatedAt: new Date().toISOString(),
@@ -84,10 +458,332 @@ export function App() {
     }));
   };
 
+  const handleCustomFontChange = useCallback((font: CustomFontAsset | null) => {
+    hasUserEditedRef.current = true;
+    activeCustomFontRef.current = font;
+    setActiveCustomFont(font);
+  }, []);
+
   const handlePatchParams = (patch: Partial<BookParameters>) => {
     handleParamsChange(
       BookParametersModel.clampAndNormalize({ ...project.parameters, ...patch }),
     );
+  };
+
+  const handleOpenMyBooks = () => {
+    setMyBooksOpen(true);
+    void flushActiveSave({ renderThumbnail: true, forceThumbnailIfMissing: true });
+  };
+
+  const handleSelectBook = async (id: ProjectId) => {
+    if (id === activeProjectIdRef.current) {
+      setMyBooksOpen(false);
+      return;
+    }
+
+    clearPendingAutoSave();
+    const prevSnapshot = captureActiveSnapshot();
+
+    await enqueueRepoOp(async (repo) => {
+      if (
+        prevSnapshot &&
+        (prevSnapshot.project !== lastPersistedProjectRef.current ||
+          prevSnapshot.customFont !== lastPersistedFontRef.current)
+      ) {
+        await persistSnapshotToRepo(repo, prevSnapshot, true);
+      }
+
+      const record = await repo.getProject(id);
+      if (!record) {
+        const nextSummaries = await repo.listSummaries();
+        if (isMountedRef.current) {
+          savedSummariesRef.current = nextSummaries;
+          setSavedSummaries(nextSummaries);
+          setStatusMessage('Selected book could not be found.');
+        }
+        return;
+      }
+
+      await repo.setActiveProjectId(record.id);
+      const nextSummaries = await repo.listSummaries();
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+        applyActiveRecordToState(record);
+        setMyBooksOpen(false);
+        setStatusMessage(`Opened "${record.project.name}"`);
+      }
+    });
+  };
+
+  const createAndActivateNewBook = (
+    nextProject: BookbinderProject,
+    statusText: string,
+    switchToOuterTab = false,
+  ): Promise<void> => {
+    hasUserEditedRef.current = true;
+    clearPendingAutoSave();
+
+    const prevSnapshot = captureActiveSnapshot();
+    const nextId = ProjectLibraryModel.createProjectId();
+    const nextRecord: SavedProjectRecord = {
+      id: nextId,
+      createdAt: nextProject.updatedAt,
+      updatedAt: nextProject.updatedAt,
+      project: nextProject,
+      thumbnailDataUrl: null,
+      customFont: null,
+    };
+
+    applyActiveRecordToState(nextRecord);
+    if (switchToOuterTab) {
+      setActiveTab('outer');
+    }
+    setMyBooksOpen(false);
+    setStatusMessage(statusText);
+
+    return enqueueRepoOp(async (repo) => {
+      if (prevSnapshot) {
+        await persistSnapshotToRepo(repo, prevSnapshot, true);
+      }
+
+      const thumbnailDataUrl = await renderProjectThumbnailDataUrl(
+        calculateCaseGeometry(nextProject.parameters),
+        nextProject.studio,
+        { customFont: null },
+      );
+
+      await repo.saveProject({
+        ...nextRecord,
+        thumbnailDataUrl,
+      });
+      await repo.setActiveProjectId(nextId);
+
+      const nextSummaries = await repo.listSummaries();
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+      }
+    });
+  };
+
+  const handleNewBook = async () => {
+    const defaultName = nextUntitledBookName(savedSummariesRef.current);
+    const freshProject = BookbinderProjectModel.create(
+      BookParametersModel.createDefault(),
+      CoverStudioModel.createDefault(),
+      defaultName,
+    );
+    await createAndActivateNewBook(freshProject, `Created "${freshProject.name}"`, true);
+  };
+
+  const handleLoadSampleBook = () => {
+    const sampleProject = createSampleBookProject();
+    void createAndActivateNewBook(
+      sampleProject,
+      'Loaded sample book: Twenty Thousand Leagues Under the Seas',
+      true,
+    );
+  };
+
+  const handleRenameBook = async (id: ProjectId, nextName: string) => {
+    const trimmed = nextName.trim();
+    if (!trimmed) return;
+    const now = new Date().toISOString();
+
+    if (id === activeProjectIdRef.current) {
+      hasUserEditedRef.current = true;
+      clearPendingAutoSave();
+      const updatedProject: BookbinderProject = {
+        ...projectRef.current,
+        name: trimmed,
+        updatedAt: now,
+      };
+      projectRef.current = updatedProject;
+      lastPersistedProjectRef.current = updatedProject;
+      lastPersistedFontRef.current = activeCustomFontRef.current;
+      setProject(updatedProject);
+      setStatusMessage(`Renamed to "${trimmed}"`);
+
+      const snapshot: ActiveBookSnapshot = {
+        id,
+        createdAt: activeCreatedAtRef.current,
+        project: updatedProject,
+        customFont: activeCustomFontRef.current,
+      };
+      await enqueueRepoOp((repo) => persistSnapshotToRepo(repo, snapshot, false));
+      return;
+    }
+
+    await enqueueRepoOp(async (repo) => {
+      const existing = await repo.getProject(id);
+      if (!existing) return;
+      const updatedProject: BookbinderProject = {
+        ...existing.project,
+        name: trimmed,
+        updatedAt: now,
+      };
+      await repo.saveProject({
+        ...existing,
+        updatedAt: now,
+        project: updatedProject,
+      });
+      const nextSummaries = await repo.listSummaries();
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+        setStatusMessage(`Renamed to "${trimmed}"`);
+      }
+    });
+  };
+
+  const handleDuplicateBook = async (id: ProjectId) => {
+    hasUserEditedRef.current = true;
+    clearPendingAutoSave();
+    const prevSnapshot = captureActiveSnapshot();
+
+    await enqueueRepoOp(async (repo) => {
+      if (prevSnapshot && prevSnapshot.id === id) {
+        await persistSnapshotToRepo(repo, prevSnapshot, true);
+      }
+
+      const source = await repo.getProject(id);
+      if (!source) return;
+
+      const now = new Date().toISOString();
+      const copyName = `${source.project.name} (Copy)`;
+      const clonedProject: BookbinderProject = {
+        ...BookbinderProjectModel.serialize(source.project),
+        name: copyName,
+        updatedAt: now,
+      };
+      const newId = ProjectLibraryModel.createProjectId();
+      const copyRecord: SavedProjectRecord = {
+        id: newId,
+        createdAt: now,
+        updatedAt: now,
+        project: clonedProject,
+        thumbnailDataUrl: source.thumbnailDataUrl,
+        customFont: source.customFont ?? null,
+      };
+
+      await repo.saveProject(copyRecord);
+      await repo.setActiveProjectId(newId);
+      const nextSummaries = await repo.listSummaries();
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+        applyActiveRecordToState(copyRecord);
+        setStatusMessage(`Duplicated "${source.project.name}"`);
+      }
+    });
+  };
+
+  const handleDeleteBook = async (id: ProjectId) => {
+    hasUserEditedRef.current = true;
+    if (id === activeProjectIdRef.current) {
+      clearPendingAutoSave();
+    }
+
+    await enqueueRepoOp(async (repo) => {
+      await repo.deleteProject(id);
+      let nextSummaries = await repo.listSummaries();
+
+      if (id === activeProjectIdRef.current) {
+        let nextActive: SavedProjectRecord | null = null;
+        for (const summary of nextSummaries) {
+          const candidate = await repo.getProject(summary.id);
+          if (candidate) {
+            nextActive = candidate;
+            break;
+          }
+        }
+
+        if (!nextActive) {
+          const freshProject = BookbinderProjectModel.create(
+            BookParametersModel.createDefault(),
+            CoverStudioModel.createDefault(),
+            nextUntitledBookName([]),
+          );
+          const freshId = ProjectLibraryModel.createProjectId();
+          const freshRecord: SavedProjectRecord = {
+            id: freshId,
+            createdAt: freshProject.updatedAt,
+            updatedAt: freshProject.updatedAt,
+            project: freshProject,
+            thumbnailDataUrl: null,
+            customFont: null,
+          };
+          await repo.saveProject(freshRecord);
+          nextActive = freshRecord;
+          nextSummaries = await repo.listSummaries();
+        }
+
+        await repo.setActiveProjectId(nextActive.id);
+        if (isMountedRef.current) {
+          applyActiveRecordToState(nextActive);
+        }
+      }
+
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+        setStatusMessage('Deleted book from library');
+      }
+    });
+  };
+
+  const handleExportBookJson = async (id: ProjectId) => {
+    if (id === activeProjectIdRef.current) {
+      const current = projectRef.current;
+      const json = BookbinderProjectModel.toJson(current);
+      const fileName = BookbinderProjectModel.suggestFileName(
+        current.name,
+        current.studio.spineText.title,
+      );
+      triggerTextDownload(json, fileName, 'application/json;charset=utf-8');
+      setStatusMessage(`Saved ${fileName}`);
+      return;
+    }
+
+    await enqueueRepoOp(async (repo) => {
+      const record = await repo.getProject(id);
+      if (!record) return;
+      const json = BookbinderProjectModel.toJson(record.project);
+      const fileName = BookbinderProjectModel.suggestFileName(
+        record.project.name,
+        record.project.studio.spineText.title,
+      );
+      triggerTextDownload(json, fileName, 'application/json;charset=utf-8');
+      if (isMountedRef.current) {
+        setStatusMessage(`Saved ${fileName}`);
+      }
+    });
+  };
+
+  const handleExportAllJson = async () => {
+    clearPendingAutoSave();
+    const prevSnapshot = captureActiveSnapshot();
+
+    await enqueueRepoOp(async (repo) => {
+      if (
+        prevSnapshot &&
+        (prevSnapshot.project !== lastPersistedProjectRef.current ||
+          prevSnapshot.customFont !== lastPersistedFontRef.current)
+      ) {
+        await persistSnapshotToRepo(repo, prevSnapshot, false);
+      }
+
+      const bundle = await repo.exportAllProjects();
+      const json = JSON.stringify(bundle, null, 2);
+      triggerTextDownload(json, 'bookbinder-library-backup.json', 'application/json;charset=utf-8');
+      if (isMountedRef.current) {
+        const count = bundle.projects.length;
+        setStatusMessage(
+          `Exported backup of ${count} ${count === 1 ? 'book' : 'books'}`,
+        );
+      }
+    });
   };
 
   const handleDownloadOuterSvg = (options?: PdfGuideOptionsInput) => {
@@ -179,34 +875,102 @@ export function App() {
 
   const handleImportJson = async (file: File) => {
     try {
-      const text = await file.text();
-      const parsed = BookbinderProjectModel.fromJson(text);
+      const text = await readTextFile(file);
+      let raw: unknown;
+      try {
+        raw = JSON.parse(text);
+      } catch {
+        setStatusMessage('Import error: Invalid JSON syntax in project file.');
+        return;
+      }
+
+      if (ProjectLibraryModel.isLibraryBundleCandidate(raw)) {
+        const parsedBundle = ProjectLibraryModel.fromUnknownBundle(raw);
+        if (!parsedBundle.ok) {
+          setStatusMessage(`Import error: ${parsedBundle.error}`);
+          return;
+        }
+
+        hasUserEditedRef.current = true;
+        clearPendingAutoSave();
+        const prevSnapshot = captureActiveSnapshot();
+        const importedProjects = parsedBundle.bundle.projects;
+        const skippedNote =
+          parsedBundle.skippedCount > 0 ? ` (${parsedBundle.skippedCount} skipped)` : '';
+
+        await enqueueRepoOp(async (repo) => {
+          if (prevSnapshot) {
+            await persistSnapshotToRepo(repo, prevSnapshot, true);
+          }
+
+          let firstRecord: SavedProjectRecord | null = null;
+          for (const imported of importedProjects) {
+            const now = new Date().toISOString();
+            const newId = ProjectLibraryModel.createProjectId();
+            const thumb = await renderProjectThumbnailDataUrl(
+              calculateCaseGeometry(imported.parameters),
+              imported.studio,
+              { customFont: null },
+            );
+            const record: SavedProjectRecord = {
+              id: newId,
+              createdAt: now,
+              updatedAt: imported.updatedAt || now,
+              project: imported,
+              thumbnailDataUrl: thumb,
+              customFont: null,
+            };
+            await repo.saveProject(record);
+            if (!firstRecord) {
+              firstRecord = record;
+            }
+          }
+
+          if (firstRecord) {
+            await repo.setActiveProjectId(firstRecord.id);
+          }
+          const nextSummaries = await repo.listSummaries();
+          if (isMountedRef.current) {
+            savedSummariesRef.current = nextSummaries;
+            setSavedSummaries(nextSummaries);
+            if (firstRecord) {
+              applyActiveRecordToState(firstRecord);
+            }
+            setMyBooksOpen(false);
+            const count = importedProjects.length;
+            setStatusMessage(
+              `Imported ${count} ${count === 1 ? 'book' : 'books'}${skippedNote}`,
+            );
+          }
+        });
+        return;
+      }
+
+      const parsed = BookbinderProjectModel.fromUnknown(raw);
       if (!parsed.ok) {
         setStatusMessage(`Import error: ${parsed.error}`);
         return;
       }
-      setProject(parsed.project);
-      setStatusMessage(`Loaded ${file.name}`);
+
+      await createAndActivateNewBook(parsed.project, `Loaded ${file.name}`);
     } catch {
       setStatusMessage('Could not read selected project file.');
     }
   };
 
   const handleResetDefaults = () => {
+    hasUserEditedRef.current = true;
     clearProjectStorage();
-    setProject(
+    activeCustomFontRef.current = null;
+    setActiveCustomFont(null);
+    setProject((prev) =>
       BookbinderProjectModel.create(
         BookParametersModel.createDefault(),
         CoverStudioModel.createDefault(),
+        prev.name,
       ),
     );
     setStatusMessage('Reset to default dimensions');
-  };
-
-  const handleLoadSampleBook = () => {
-    setProject(createSampleBookProject());
-    setActiveTab('outer');
-    setStatusMessage('Loaded sample book: Twenty Thousand Leagues Under the Seas');
   };
 
   return (
@@ -216,6 +980,9 @@ export function App() {
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
         onLoadSampleBook={handleLoadSampleBook}
+        activeBookName={project.name}
+        savedBookCount={savedSummaries.length}
+        onOpenMyBooks={handleOpenMyBooks}
       />
 
       <main
@@ -315,6 +1082,8 @@ export function App() {
                 params={project.parameters}
                 geometry={geometry}
                 studio={project.studio}
+                customFont={activeCustomFont}
+                onCustomFontChange={handleCustomFontChange}
                 exportingOuterPdf={exportingTarget === 'outer-pdf'}
                 onChange={handleStudioChange}
                 onUpdateParams={handlePatchParams}
@@ -402,6 +1171,24 @@ export function App() {
           </Tabs>
         </div>
       </main>
+
+      <MyBooksDialog
+        open={myBooksOpen}
+        summaries={savedSummaries}
+        activeProjectId={activeProjectId}
+        unit={project.parameters.unit}
+        storageKind={storageKind}
+        onSelectBook={handleSelectBook}
+        onNewBook={handleNewBook}
+        onLoadSampleBook={handleLoadSampleBook}
+        onRenameBook={handleRenameBook}
+        onDuplicateBook={handleDuplicateBook}
+        onDeleteBook={handleDeleteBook}
+        onExportBookJson={handleExportBookJson}
+        onExportAllJson={handleExportAllJson}
+        onImportJson={handleImportJson}
+        onClose={() => setMyBooksOpen(false)}
+      />
     </div>
   );
 }

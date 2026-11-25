@@ -16,7 +16,15 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import {
   FloatingHudToolbar,
   HudButton,
@@ -96,6 +104,8 @@ export interface CoverStylerProps {
   readonly params?: BookParameters;
   readonly geometry: CaseGeometry;
   readonly studio: CoverStudioState;
+  readonly customFont?: CustomFontAsset | null;
+  readonly onCustomFontChange?: (font: CustomFontAsset | null) => void;
   readonly exportingOuterPdf?: boolean;
   readonly onChange: (next: CoverStudioState) => void;
   readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
@@ -111,6 +121,8 @@ export function CoverStyler({
   params,
   geometry,
   studio,
+  customFont: propCustomFont,
+  onCustomFontChange,
   exportingOuterPdf = false,
   onChange,
   onUpdateParams,
@@ -137,7 +149,25 @@ export function CoverStyler({
   );
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedOrnamentId, setSelectedOrnamentId] = useState<string | null>(null);
-  const [customFont, setCustomFont] = useState<CustomFontAsset | null>(null);
+  const [localCustomFont, setLocalCustomFont] = useState<CustomFontAsset | null>(null);
+  const isControlledCustomFont = onCustomFontChange !== undefined;
+  const customFont = isControlledCustomFont ? (propCustomFont ?? null) : localCustomFont;
+  const customFontRef = useRef<CustomFontAsset | null>(customFont);
+  useEffect(() => {
+    customFontRef.current = customFont;
+  }, [customFont]);
+  const setCustomFont = useCallback<Dispatch<SetStateAction<CustomFontAsset | null>>>(
+    (next) => {
+      const resolved = typeof next === 'function' ? next(customFontRef.current) : next;
+      customFontRef.current = resolved;
+      if (onCustomFontChange) {
+        onCustomFontChange(resolved);
+      } else {
+        setLocalCustomFont(resolved);
+      }
+    },
+    [onCustomFontChange],
+  );
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
