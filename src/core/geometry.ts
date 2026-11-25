@@ -541,11 +541,33 @@ export function evaluatePrintMediaFit(
   };
 }
 
-export function calculateSpineLiner(cutList: ChipboardCutList): SpineLinerGeometry {
+export function calculateSpineLiner(
+  cutList: ChipboardCutList,
+  params?: Pick<BookParameters, 'pbHeightMm' | 'bindingStyle'>,
+): SpineLinerGeometry {
   const spineW = cutList.spineStrip.widthMm;
   const hingeW = cutList.hingeSpacerMm;
   const widthMm = spineW + hingeW * 2 + LINER_OVERLAP_PER_SIDE_MM * 2;
-  const heightMm = Math.max(10, cutList.coverBoards.heightMm - INNER_VERTICAL_INSET_MM * 2);
+  const usesChipboard = params
+    ? resolveBindingStrategy(params).capabilities.usesChipboard
+    : false;
+
+  let boardInsetTopBottomMm: number | undefined;
+  let heightMm: number;
+  if (usesChipboard && params) {
+    const pocketH = Math.max(
+      10,
+      Math.min(cutList.coverBoards.heightMm - 2.0, params.pbHeightMm + 2.0),
+    );
+    const pocketInset = Math.max(1.0, (cutList.coverBoards.heightMm - pocketH) / 2);
+    boardInsetTopBottomMm = roundTo(
+      Math.min(cutList.coverBoards.heightMm / 4, Math.max(2.0, pocketInset)),
+      2,
+    );
+    heightMm = roundTo(Math.max(10, cutList.coverBoards.heightMm - boardInsetTopBottomMm * 2), 2);
+  } else {
+    heightMm = Math.max(10, cutList.coverBoards.heightMm - INNER_VERTICAL_INSET_MM * 2);
+  }
 
   const xLeftHingeStart = LINER_OVERLAP_PER_SIDE_MM;
   const xSpineStart = xLeftHingeStart + hingeW;
@@ -569,6 +591,7 @@ export function calculateSpineLiner(cutList: ChipboardCutList): SpineLinerGeomet
     widthMm,
     heightMm,
     boardOverlapMm: LINER_OVERLAP_PER_SIDE_MM,
+    ...(boardInsetTopBottomMm !== undefined ? { boardInsetTopBottomMm } : {}),
     scoreLines,
     leftHingeZoneRect: { x: xLeftHingeStart, y: 0, width: hingeW, height: heightMm },
     spineZoneRect: { x: xSpineStart, y: 0, width: spineW, height: heightMm },
@@ -704,12 +727,47 @@ export function calculatePocketEnvelope(
     };
   }
 
-  const pocketWidthMm = cutList.coverBoards.widthMm * (params.pocketDepthPct / 100);
-  const pocketHeightMm = Math.max(10, cutList.coverBoards.heightMm - INNER_VERTICAL_INSET_MM * 2);
+  const isChipboardSlipPocket = resolveBindingStrategy(params).capabilities.usesChipboard;
+  let pocketWidthMm: number;
+  let pocketHeightMm: number;
+  let boardInsetTopBottomMm: number | undefined;
+  let boardInsetForeEdgeMm: number | undefined;
+
+  if (isChipboardSlipPocket) {
+    pocketHeightMm = roundTo(
+      Math.max(10, Math.min(cutList.coverBoards.heightMm - 2.0, params.pbHeightMm + 2.0)),
+      2,
+    );
+    boardInsetTopBottomMm = roundTo(
+      Math.max(1.0, (cutList.coverBoards.heightMm - pocketHeightMm) / 2),
+      2,
+    );
+    boardInsetForeEdgeMm = roundTo(
+      params.overhangForeEdgeMm >= 1.5
+        ? Math.max(1.5, params.overhangForeEdgeMm - 0.5)
+        : Math.max(0, params.overhangForeEdgeMm),
+      2,
+    );
+    const maxPocketW = Math.max(10, cutList.coverBoards.widthMm - boardInsetForeEdgeMm);
+    pocketWidthMm = roundTo(
+      Math.min(maxPocketW, Math.max(10, params.pbWidthMm * (params.pocketDepthPct / 100))),
+      2,
+    );
+  } else {
+    pocketWidthMm = cutList.coverBoards.widthMm * (params.pocketDepthPct / 100);
+    pocketHeightMm = Math.max(10, cutList.coverBoards.heightMm - INNER_VERTICAL_INSET_MM * 2);
+  }
+
   const flap = params.pocketFlapMm;
-  const totalWidthMm = pocketWidthMm + flap;
-  const totalHeightMm = pocketHeightMm + flap * 2;
+  const totalWidthMm = isChipboardSlipPocket ? roundTo(pocketWidthMm + flap, 2) : pocketWidthMm + flap;
+  const totalHeightMm = isChipboardSlipPocket
+    ? roundTo(pocketHeightMm + flap * 2, 2)
+    : pocketHeightMm + flap * 2;
   const miterInset = Math.min(flap, pocketWidthMm / 2, pocketHeightMm / 2);
+  const insetFields =
+    boardInsetTopBottomMm !== undefined && boardInsetForeEdgeMm !== undefined
+      ? { boardInsetTopBottomMm, boardInsetForeEdgeMm }
+      : {};
 
   if (openEdge === 'right') {
     const x0 = flap;
@@ -756,6 +814,7 @@ export function calculatePocketEnvelope(
       flapWidthMm: flap,
       totalWidthMm,
       totalHeightMm,
+      ...insetFields,
       openEdge,
       outerCutPolygon,
       faceRect: { x: x0, y: y0, width: pocketWidthMm, height: pocketHeightMm },
@@ -813,6 +872,7 @@ export function calculatePocketEnvelope(
     flapWidthMm: flap,
     totalWidthMm,
     totalHeightMm,
+    ...insetFields,
     openEdge,
     outerCutPolygon,
     faceRect: { x: x0, y: y0, width: pocketWidthMm, height: pocketHeightMm },
@@ -839,7 +899,7 @@ export function calculateCaseGeometry(params: BookParameters): CaseGeometry {
       ? { customRollWidthMm: params.customRollWidthMm }
       : undefined,
   );
-  const spineLiner = calculateSpineLiner(cutList);
+  const spineLiner = calculateSpineLiner(cutList, params);
   const frontPocket = calculatePocketEnvelope('front', params, cutList);
   const backPocket = calculatePocketEnvelope('back', params, cutList);
 
