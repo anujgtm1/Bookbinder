@@ -1,23 +1,20 @@
 import {
   PDFDocument,
   StandardFonts,
-  clip,
-  degrees,
-  endPath,
-  popGraphicsState,
-  pushGraphicsState,
-  rectangle,
   rgb,
   type PDFEmbeddedPage,
-  type PDFPage,
 } from 'pdf-lib';
 import type { LineSegment2D, Rect2D } from '@/types/geometry';
 import { UnitConverter, roundTo } from '@/types/units';
 import { drawPdfFoldGuideTicks, transformTicks90CW, translateTicks } from './foldGuideTicks';
-import { drawScaleCheckBar } from './pdfSheetLayout';
 import {
   SCALE_BAR_BOX_H_MM,
   SCALE_BAR_BOX_W_MM,
+  drawNestCropMarksAndGutterGuides,
+  drawNestScaleCheckBar,
+  stampEmbeddedPdfRect,
+} from './nestingPdfHelpers';
+import {
   planScaleBarPlacement,
   ticksToPdfAvoidRects,
   type PdfSafeBox,
@@ -432,111 +429,6 @@ function formatRollInches(rollWidthMm: number): string {
   return String(roundTo(inches, 1));
 }
 
-function drawCropMarksAndGutterGuides(
-  page: PDFPage,
-  plan: RollNestPlan,
-  pageHeightMm: number,
-): void {
-  const cropColor = rgb(0.45, 0.45, 0.45);
-  const gutterColor = rgb(0.58, 0.58, 0.58);
-  const markOffsetMm = 0.8;
-  const markLenMm = 2.6;
-
-  // 1. Subtle corner crop ticks around every placed piece
-  for (const rect of plan.placements) {
-    const leftMm = rect.xMm;
-    const rightMm = rect.xMm + rect.widthMm;
-    const pdfBottomMm = pageHeightMm - rect.yMm - rect.heightMm;
-    const pdfTopMm = pageHeightMm - rect.yMm;
-
-    const corners: readonly {
-      x: number;
-      y: number;
-      dx: -1 | 1;
-      dy: -1 | 1;
-    }[] = [
-      { x: leftMm, y: pdfTopMm, dx: -1, dy: 1 },
-      { x: rightMm, y: pdfTopMm, dx: 1, dy: 1 },
-      { x: leftMm, y: pdfBottomMm, dx: -1, dy: -1 },
-      { x: rightMm, y: pdfBottomMm, dx: 1, dy: -1 },
-    ];
-
-    for (const c of corners) {
-      const hx1 = Math.max(0, Math.min(plan.rollWidthMm, c.x + c.dx * markOffsetMm));
-      const hx2 = Math.max(0, Math.min(plan.rollWidthMm, c.x + c.dx * (markOffsetMm + markLenMm)));
-      if (Math.abs(hx2 - hx1) > 0.2) {
-        page.drawLine({
-          start: { x: UnitConverter.mmToPoints(hx1), y: UnitConverter.mmToPoints(c.y) },
-          end: { x: UnitConverter.mmToPoints(hx2), y: UnitConverter.mmToPoints(c.y) },
-          color: cropColor,
-          thickness: 0.35,
-        });
-      }
-
-      const vy1 = Math.max(0, Math.min(pageHeightMm, c.y + c.dy * markOffsetMm));
-      const vy2 = Math.max(0, Math.min(pageHeightMm, c.y + c.dy * (markOffsetMm + markLenMm)));
-      if (Math.abs(vy2 - vy1) > 0.2) {
-        page.drawLine({
-          start: { x: UnitConverter.mmToPoints(c.x), y: UnitConverter.mmToPoints(vy1) },
-          end: { x: UnitConverter.mmToPoints(c.x), y: UnitConverter.mmToPoints(vy2) },
-          color: cropColor,
-          thickness: 0.35,
-        });
-      }
-    }
-  }
-
-  // 2. Hairline dashed cut-gutter guides between nested pieces (vertical & horizontal gutters)
-  const shelfRows = new Map<number, RollPlacedRect[]>();
-  for (const rect of plan.placements) {
-    const key = roundTo(rect.yMm, 2);
-    const list = shelfRows.get(key) ?? [];
-    list.push(rect);
-    shelfRows.set(key, list);
-  }
-
-  const sortedRowYs = [...shelfRows.keys()].sort((a, b) => a - b);
-  for (let rowIdx = 0; rowIdx < sortedRowYs.length; rowIdx += 1) {
-    const rowY = sortedRowYs[rowIdx];
-    const rowRects = (shelfRows.get(rowY) ?? []).slice().sort((a, b) => a.xMm - b.xMm);
-    const rowMaxH = Math.max(...rowRects.map((r) => r.heightMm));
-
-    // Vertical dashed cut lines midway between adjacent items in the same shelf
-    for (let i = 0; i < rowRects.length - 1; i += 1) {
-      const leftRect = rowRects[i];
-      const rightRect = rowRects[i + 1];
-      const midXMm = (leftRect.xMm + leftRect.widthMm + rightRect.xMm) / 2;
-      const topPdfYMm = pageHeightMm - rowY;
-      const bottomPdfYMm = pageHeightMm - (rowY + rowMaxH);
-
-      page.drawLine({
-        start: { x: UnitConverter.mmToPoints(midXMm), y: UnitConverter.mmToPoints(bottomPdfYMm) },
-        end: { x: UnitConverter.mmToPoints(midXMm), y: UnitConverter.mmToPoints(topPdfYMm) },
-        color: gutterColor,
-        thickness: 0.3,
-        dashArray: [2.5, 2.5],
-      });
-    }
-
-    // Horizontal dashed cut line midway between consecutive shelves
-    if (rowIdx < sortedRowYs.length - 1) {
-      const nextRowY = sortedRowYs[rowIdx + 1];
-      const midTopDownYMm = (rowY + rowMaxH + nextRowY) / 2;
-      const midPdfYMm = pageHeightMm - midTopDownYMm;
-      const lineStartXMm = Math.max(0, plan.sideMarginMm);
-      const lineEndXMm = Math.min(plan.rollWidthMm, plan.sideMarginMm + plan.printableWidthMm);
-
-      page.drawLine({
-        start: { x: UnitConverter.mmToPoints(lineStartXMm), y: UnitConverter.mmToPoints(midPdfYMm) },
-        end: { x: UnitConverter.mmToPoints(lineEndXMm), y: UnitConverter.mmToPoints(midPdfYMm) },
-        color: gutterColor,
-        thickness: 0.3,
-        dashArray: [2.5, 2.5],
-      });
-    }
-  }
-}
-
 /**
  * Composes one or more source 1:1 mm PDFs into a single-page wide-format roll PDF
  * sized to `rollWidthMm x plan.usedLengthMm`, embedding each source page once and
@@ -608,7 +500,6 @@ export async function composeNestedRollPdf(
 
     const pdfLeftMm = rect.xMm;
     const pdfBottomMm = pageHeightMm - rect.yMm - rect.heightMm;
-    const pdfTopMm = pageHeightMm - rect.yMm;
     scaleBarAvoidRects.push({
       x: pdfLeftMm,
       y: pdfBottomMm,
@@ -616,38 +507,7 @@ export async function composeNestedRollPdf(
       height: rect.heightMm,
     });
 
-    page.pushOperators(
-      pushGraphicsState(),
-      rectangle(
-        UnitConverter.mmToPoints(pdfLeftMm),
-        UnitConverter.mmToPoints(pdfBottomMm),
-        UnitConverter.mmToPoints(rect.widthMm),
-        UnitConverter.mmToPoints(rect.heightMm),
-      ),
-      clip(),
-      endPath(),
-    );
-
-    if (rect.rotated90) {
-      // 90 deg CW rotation: local [0..origW] x [0..origH] maps to
-      // x in [pdfLeftMm, pdfLeftMm + origH], y in [pdfTopMm - origW, pdfTopMm] = [pdfBottomMm, pdfTopMm]
-      page.drawPage(embedded, {
-        x: UnitConverter.mmToPoints(pdfLeftMm),
-        y: UnitConverter.mmToPoints(pdfTopMm),
-        width: UnitConverter.mmToPoints(loaded.widthMm),
-        height: UnitConverter.mmToPoints(loaded.heightMm),
-        rotate: degrees(-90),
-      });
-    } else {
-      page.drawPage(embedded, {
-        x: UnitConverter.mmToPoints(pdfLeftMm),
-        y: UnitConverter.mmToPoints(pdfBottomMm),
-        width: UnitConverter.mmToPoints(loaded.widthMm),
-        height: UnitConverter.mmToPoints(loaded.heightMm),
-      });
-    }
-
-    page.pushOperators(popGraphicsState());
+    stampEmbeddedPdfRect(page, embedded, loaded.widthMm, loaded.heightMm, rect, pageHeightMm);
 
     if (loaded.source.externalFoldGuideTicks && loaded.source.externalFoldGuideTicks.length > 0) {
       const srcBleedMm = Math.max(0, loaded.source.bleedMm ?? 0);
@@ -677,7 +537,14 @@ export async function composeNestedRollPdf(
   }
 
   if (plan.placements.length > 0) {
-    drawCropMarksAndGutterGuides(page, plan, pageHeightMm);
+    drawNestCropMarksAndGutterGuides(
+      page,
+      plan.placements,
+      plan.rollWidthMm,
+      pageHeightMm,
+      plan.sideMarginMm,
+      plan.sideMarginMm + plan.printableWidthMm,
+    );
   }
 
   // Clean WinAnsi-safe roll footer
@@ -718,7 +585,14 @@ export async function composeNestedRollPdf(
       barHeightMm: SCALE_BAR_BOX_H_MM,
       avoidRects: [...scaleBarAvoidRects, rollFooterStrip],
     });
-    drawScaleCheckBar(page, font, boldFont, placement);
+    drawNestScaleCheckBar(
+      page,
+      font,
+      boldFont,
+      placement.xMm,
+      placement.yMm,
+      placement.rotated90,
+    );
   }
 
   const bytes = await outDoc.save();
