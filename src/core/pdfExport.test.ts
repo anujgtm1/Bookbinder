@@ -106,8 +106,8 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     const singleDoc = await PDFDocument.load(singleBytes);
     expect(singleDoc.getPageCount()).toBe(1);
     const singleSize = singleDoc.getPage(0).getSize();
-    // Default WRAP_W = 366 + 6 bleed = 372 mm, WRAP_H = 259 + 6 bleed = 265 mm
-    expect(UnitConverter.pointsToMm(singleSize.width)).toBeCloseTo(372, 2);
+    // Default WRAP_W = 368 + 6 bleed = 374 mm, WRAP_H = 259 + 6 bleed = 265 mm
+    expect(UnitConverter.pointsToMm(singleSize.width)).toBeCloseTo(374, 2);
     expect(UnitConverter.pointsToMm(singleSize.height)).toBeCloseTo(265, 2);
 
     const splitBytes = await generateOuterWrapPdf(geom, 'three-piece');
@@ -384,4 +384,43 @@ describe('Inner Envelopes & Spine Liner PDF exporter', () => {
     expect(UnitConverter.pointsToMm(sz.width)).toBeCloseTo(PAGE_SIZES.letter.widthMm, 2);
     expect(UnitConverter.pointsToMm(sz.height)).toBeCloseTo(PAGE_SIZES.letter.heightMm, 2);
   });
+
+  it('renders board gluing inset callout text on chipboard slip-in pocket PDF templates and omits it when styled or folded-endpapers', async () => {
+    const slipGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const { bytes: slipBytes } = await generateInnerTemplatesPdf(slipGeom, 'tabloid');
+    const slipStream = getPageStream(await PDFDocument.load(slipBytes), 0);
+    // pdf-lib encodes WinAnsi strings as hex (<...>) or literal text; decode hex tokens to verify exact callout
+    const decodedSlipText = decodePdfTextTokens(slipStream);
+    expect(decodedSlipText).toContain('Glue inset: 2.5 mm T/B');
+    expect(decodedSlipText).toContain('2.5 mm fore-edge');
+
+    const { bytes: styledBytes } = await generateInnerTemplatesPdf(slipGeom, 'tabloid', {
+      hideFaceTextOnStyled: true,
+    });
+    const decodedStyledText = decodePdfTextTokens(
+      getPageStream(await PDFDocument.load(styledBytes), 0),
+    );
+    expect(decodedStyledText).not.toContain('Glue inset:');
+
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      interiorStyle: 'folded-endpapers',
+    });
+    const { bytes: foldedBytes } = await generateInnerTemplatesPdf(foldedGeom, 'tabloid');
+    const decodedFoldedText = decodePdfTextTokens(
+      getPageStream(await PDFDocument.load(foldedBytes), 0),
+    );
+    expect(decodedFoldedText).not.toContain('Glue inset:');
+  });
 });
+
+function decodePdfTextTokens(stream: string): string {
+  const parts: string[] = [];
+  for (const match of stream.matchAll(/<([0-9A-Fa-f]+)>\s*Tj/g)) {
+    parts.push(Buffer.from(match[1], 'hex').toString('latin1'));
+  }
+  for (const match of stream.matchAll(/\(([^)]*)\)\s*Tj/g)) {
+    parts.push(match[1]);
+  }
+  return parts.join('\n');
+}

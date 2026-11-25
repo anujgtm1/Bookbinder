@@ -201,4 +201,50 @@ describe('Bench Recipe & Scrap-Chipboard Cutting Jigs PDF', () => {
       expect(bytes.byteLength).toBeGreaterThan(1200);
     }
   });
+
+  it('includes exact pocket board gluing insets in cut-list notes and assembly steps for chipboard slip-pocket builds only', () => {
+    const rigidGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const rigidRowsMm = buildBenchCutListRows(rigidGeom, 'mm');
+    const rigidPocketRowMm = rigidRowsMm.find((r) => r.item.includes('Inner Pockets'));
+    expect(rigidPocketRowMm?.dims).toBe('100.8 x 218.0 mm');
+    expect(rigidPocketRowMm?.note).toContain('Inset 2.5 mm T/B, 2.5 mm fore');
+
+    const rigidStepsMm = buildBenchChecklistSteps(rigidGeom, 'mm');
+    expect(
+      rigidStepsMm.some((s) => s.includes('inset 2.5 mm top/bottom & 2.5 mm fore-edge')),
+    ).toBe(true);
+
+    const rigidRowsIn = buildBenchCutListRows(rigidGeom, 'in');
+    const rigidPocketRowIn = rigidRowsIn.find((r) => r.item.includes('Inner Pockets'));
+    expect(rigidPocketRowIn?.note).toContain('Inset 0.10 in T/B, 0.10 in fore');
+
+    const flexGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'flexible-spine',
+      overhangTopBottomMm: 10,
+      overhangForeEdgeMm: 4,
+    });
+    const flexSteps = buildBenchChecklistSteps(flexGeom, 'mm');
+    expect(flexSteps.some((s) => s.includes('inset 4.0 mm top/bottom & 3.5 mm fore-edge'))).toBe(
+      true,
+    );
+
+    // Folded endpapers & detached softcover pockets omit slip-pocket board inset callouts
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      interiorStyle: 'folded-endpapers',
+    });
+    expect(
+      buildBenchCutListRows(foldedGeom, 'mm').find((r) => r.item.includes('Inner Pockets'))?.note,
+    ).not.toContain('Inset');
+
+    const separateSoft = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+    });
+    expect(
+      buildBenchCutListRows(separateSoft, 'mm').find((r) => r.item.includes('Inner Pockets'))?.note,
+    ).not.toContain('Inset');
+  });
 });

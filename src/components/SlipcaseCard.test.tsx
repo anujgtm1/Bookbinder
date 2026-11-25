@@ -19,7 +19,7 @@ describe('SlipcaseCard', () => {
 
     expect(screen.getByTestId('slipcase-card')).toBeInTheDocument();
     expect(screen.getByTestId('slipcase-summary-exterior')).toHaveTextContent(
-      '146.5 × 229.0 × 36.0 mm',
+      '146.5 × 229.0 × 38.0 mm',
     );
     expect(screen.getByTestId('toggle-slipcase-calculator')).toHaveAttribute(
       'aria-expanded',
@@ -46,14 +46,14 @@ describe('SlipcaseCard', () => {
     expect(screen.getByTestId('slipcase-note-side-walls')).toHaveTextContent(
       'Thumb-notch R 12.0 mm',
     );
-    expect(screen.getByTestId('slipcase-dim-spine-wall')).toHaveTextContent('32.0 × 225.0 mm');
-    expect(screen.getByTestId('slipcase-dim-head-tail')).toHaveTextContent('146.5 × 32.0 mm');
+    expect(screen.getByTestId('slipcase-dim-spine-wall')).toHaveTextContent('34.0 × 225.0 mm');
+    expect(screen.getByTestId('slipcase-dim-head-tail')).toHaveTextContent('146.5 × 34.0 mm');
 
     // Verify outer box wrap strips & finished exterior size
-    expect(screen.getByTestId('slipcase-dim-main-wrap')).toHaveTextContent('365.0 × 265.0 mm');
-    expect(screen.getByTestId('slipcase-dim-cap-wrap')).toHaveTextContent('182.5 × 72.0 mm');
+    expect(screen.getByTestId('slipcase-dim-main-wrap')).toHaveTextContent('367.0 × 265.0 mm');
+    expect(screen.getByTestId('slipcase-dim-cap-wrap')).toHaveTextContent('182.5 × 74.0 mm');
     expect(screen.getByTestId('slipcase-exterior-size')).toHaveTextContent(
-      '146.5 × 229.0 × 36.0 mm',
+      '146.5 × 229.0 × 38.0 mm',
     );
 
     // Verify live proportional SVG preview includes true semi-circular arc for thumb-notch
@@ -75,10 +75,10 @@ describe('SlipcaseCard', () => {
     fireEvent.change(screen.getByTestId('slipcase-slide-clearance'), { target: { value: '4' } });
     expect(screen.getByTestId('slipcase-slide-clearance-value')).toHaveTextContent('4.0 mm');
     expect(screen.getByTestId('slipcase-dim-side-walls')).toHaveTextContent('148.0 × 231.0 mm');
-    expect(screen.getByTestId('slipcase-dim-spine-wall')).toHaveTextContent('34.0 × 227.0 mm');
-    expect(screen.getByTestId('slipcase-dim-head-tail')).toHaveTextContent('148.0 × 34.0 mm');
+    expect(screen.getByTestId('slipcase-dim-spine-wall')).toHaveTextContent('36.0 × 227.0 mm');
+    expect(screen.getByTestId('slipcase-dim-head-tail')).toHaveTextContent('148.0 × 36.0 mm');
     expect(screen.getByTestId('slipcase-exterior-size')).toHaveTextContent(
-      '148.0 × 231.0 × 38.0 mm',
+      '148.0 × 231.0 × 40.0 mm',
     );
 
     // Disable thumb-notch (0 = None)
@@ -109,9 +109,9 @@ describe('SlipcaseCard', () => {
     await user.click(screen.getByTestId('toggle-slipcase-calculator'));
 
     expect(screen.getByTestId('slipcase-dim-side-walls')).toHaveTextContent('5.77 × 9.02 in');
-    expect(screen.getByTestId('slipcase-dim-spine-wall')).toHaveTextContent('1.26 × 8.86 in');
+    expect(screen.getByTestId('slipcase-dim-spine-wall')).toHaveTextContent('1.34 × 8.86 in');
     expect(screen.getByTestId('slipcase-exterior-size')).toHaveTextContent(
-      '5.77 × 9.02 × 1.42 in',
+      '5.77 × 9.02 × 1.50 in',
     );
   });
 

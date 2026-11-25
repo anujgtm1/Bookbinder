@@ -354,4 +354,83 @@ describe('InnerPocketsStudio', () => {
     expect(foldedBtn).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('Folded Glue-In Endpapers & Spine Liner')).toBeInTheDocument();
   });
+
+  it('displays exact board gluing inset callout in active unit for chipboard slip-in pockets and hides it on folded-endpapers and boardless styles', () => {
+    const slipGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const { rerender } = render(
+      <InnerPocketsStudio
+        geometry={slipGeom}
+        pocketStyle={DEFAULT_POCKET_STYLE}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pocket-board-inset-callout')).toHaveTextContent(
+      'Board glue inset: 2.5 mm top/bottom · 2.5 mm fore-edge',
+    );
+
+    rerender(
+      <InnerPocketsStudio
+        geometry={slipGeom}
+        pocketStyle={DEFAULT_POCKET_STYLE}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        unit="in"
+        onChangePocketStyle={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pocket-board-inset-callout')).toHaveTextContent(
+      'Board glue inset: 0.10 in top/bottom · 0.10 in fore-edge',
+    );
+
+    const foldedGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      interiorStyle: 'folded-endpapers',
+    });
+    rerender(
+      <InnerPocketsStudio
+        geometry={foldedGeom}
+        pocketStyle={DEFAULT_POCKET_STYLE}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        interiorStyle="folded-endpapers"
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('pocket-board-inset-callout')).not.toBeInTheDocument();
+
+    const separateSoft = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'softcover-jacket',
+      softcoverPocketMode: 'separate',
+    });
+    rerender(
+      <InnerPocketsStudio
+        geometry={separateSoft}
+        pocketStyle={DEFAULT_POCKET_STYLE}
+        coverMatchColor="#08343f"
+        pdfPageSize="tabloid"
+        unit="mm"
+        onChangePocketStyle={vi.fn()}
+        onDownloadInnerSvg={vi.fn()}
+        onDownloadInnerPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('pocket-board-inset-callout')).not.toBeInTheDocument();
+  });
 });

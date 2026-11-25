@@ -23,10 +23,10 @@ describe('studio renderEngine', () => {
     const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const spec = computeStudioCanvasSpec(geom, 300);
 
-    // 366 + 6 = 372 mm, 259 + 6 = 265 mm
-    expect(spec.totalWidthMm).toBeCloseTo(372, 4);
+    // 368 + 6 = 374 mm, 259 + 6 = 265 mm
+    expect(spec.totalWidthMm).toBeCloseTo(374, 4);
     expect(spec.totalHeightMm).toBeCloseTo(265, 4);
-    expect(spec.pixelWidth).toBe(UnitConverter.mmToPixels(372, 300));
+    expect(spec.pixelWidth).toBe(UnitConverter.mmToPixels(374, 300));
     expect(spec.pixelHeight).toBe(UnitConverter.mmToPixels(265, 300));
 
     expect(
@@ -182,7 +182,7 @@ describe('studio renderEngine', () => {
     const loadedReg = await PDFDocument.load(bytesReg);
     expect(loadedReg.getPageCount()).toBe(1);
     const size = loadedReg.getPage(0).getSize();
-    expect(UnitConverter.pointsToMm(size.width)).toBeCloseTo(372, 2);
+    expect(UnitConverter.pointsToMm(size.width)).toBeCloseTo(374, 2);
     expect(UnitConverter.pointsToMm(size.height)).toBeCloseTo(265, 2);
 
     const bytesCut = await generatePrintReadyRollPdf(
@@ -209,7 +209,7 @@ describe('studio renderEngine', () => {
     };
 
     const svg = generateAffinityCoverSvg(geom, studio, null, 'data:image/png;base64,AAA');
-    expect(svg).toContain('width="372mm"');
+    expect(svg).toContain('width="374mm"');
     expect(svg).toContain('height="265mm"');
     expect(svg).toContain('<g id="artwork-layer">');
     expect(svg).toContain('<g id="spine-typography">');
@@ -498,7 +498,7 @@ describe('studio renderEngine', () => {
 
     expect(basePdf.getPageCount()).toBe(1);
     const baseSize = basePdf.getPage(0).getSize();
-    expect(UnitConverter.pointsToMm(baseSize.width)).toBeCloseTo(372, 2);
+    expect(UnitConverter.pointsToMm(baseSize.width)).toBeCloseTo(374, 2);
     expect(UnitConverter.pointsToMm(baseSize.height)).toBeCloseTo(265, 2);
     expect(basePdf.getTitle()).toContain('For HTV');
 

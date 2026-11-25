@@ -97,27 +97,27 @@ describe('calculateSlipcaseGeometry', () => {
     const caseGeom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
     const slipcase = calculateSlipcaseGeometry(caseGeom);
 
-    // Default rigid-case: coverBoards 143 × 223, spineStrip 26, boardT 2 => book outer 143 × 223 × 30
+    // Default rigid-case: coverBoards 143 × 223, spineStrip 28, boardT 2 => book outer 143 × 223 × 32
     expect(slipcase.bookOuterWidthMm).toBe(143);
     expect(slipcase.bookOuterHeightMm).toBe(223);
-    expect(slipcase.bookOuterThicknessMm).toBe(30);
+    expect(slipcase.bookOuterThicknessMm).toBe(32);
 
     // Default clearance 2.0 mm => fore-edge ease max(1.0, 1.5) = 1.5 mm
     expect(slipcase.cavityWidthMm).toBe(144.5);
     expect(slipcase.cavityHeightMm).toBe(225);
-    expect(slipcase.cavityThicknessMm).toBe(32);
+    expect(slipcase.cavityThicknessMm).toBe(34);
 
     // Default wall board 2.0 mm
-    expect(slipcase.spineWall.widthMm).toBe(32);
+    expect(slipcase.spineWall.widthMm).toBe(34);
     expect(slipcase.spineWall.heightMm).toBe(225);
     expect(slipcase.headTailWalls.widthMm).toBe(146.5);
-    expect(slipcase.headTailWalls.heightMm).toBe(32);
+    expect(slipcase.headTailWalls.heightMm).toBe(34);
     expect(slipcase.sideWalls.widthMm).toBe(146.5);
     expect(slipcase.sideWalls.heightMm).toBe(229);
 
     expect(slipcase.outerWidthMm).toBe(146.5);
     expect(slipcase.outerHeightMm).toBe(229);
-    expect(slipcase.outerThicknessMm).toBe(36);
+    expect(slipcase.outerThicknessMm).toBe(38);
     expect(slipcase.effectiveThumbNotchRadiusMm).toBe(12);
     expect(slipcase.sideWalls.hasThumbNotch).toBe(true);
 

@@ -109,7 +109,7 @@ describe('cricutExport — Cricut / Silhouette / ScanNCut HTV Vector SVG', () =>
       REAL_WOFF_BYTES,
     );
 
-    expect(unmirrored.widthMm).toBeCloseTo(366, 1);
+    expect(unmirrored.widthMm).toBeCloseTo(368, 1);
     expect(unmirrored.heightMm).toBeCloseTo(259, 1);
     expect(unmirrored.fitsCricutJoy).toBe(false);
     expect(unmirrored.fitsLarge12x24).toBe(true);
