@@ -61,11 +61,11 @@ src/
 - `HINGE_W` — Hinge Spacer Width (default: `9.0 mm`)
 - `OVERHANG_TB` — Top & Bottom Board Overhang total (default: `7.0 mm`, i.e., `3.5 mm` top + `3.5 mm` bottom)
 - `OVERHANG_FORE` — Fore-edge Board Overhang (default: `3.0 mm`)
-- `SPINE_ALLOWANCE` — Extra Spine Width Allowance for removable pocket clearance (default: `1.0 × BOARD_T`, adjustable)
+- `SPINE_ALLOWANCE` — Extra Spine Width Allowance for board thickness & removable pocket clearance (default: `2.0 × BOARD_T`, i.e. `4.0 mm` on `2.0 mm` chipboard; auto-linked to `2 × BOARD_T`, adjustable)
 - `TURN_IN` — Outer Wrap Turn-In Margin (default: `18.0 mm`)
 - `MITER_FACTOR` — Corner Miter Gap Multiplier (default: `1.5 × BOARD_T` clearance from board corner)
 - `BLEED` — Outer Artwork Bleed Margin (default: `3.0 mm`, toggleable on/off)
-- `POCKET_DEPTH_PCT` — Inner Pocket Width Ratio (default: `72%` of `BOARD_W`, slider `65%–80%`)
+- `POCKET_DEPTH_PCT` — Inner Pocket Width Ratio (default: `72%` of `PB_W` on chipboard hardcovers, slider `65%–80%`)
 - `POCKET_FLAP` — Pocket Glue Flap Width (default: `12.0 mm`)
 - `SPLIT_MODE` — Default: `Single-Piece Continuous Wrap` (optimized for large-format roll printers). Secondary toggle: `3-Piece / Quarter-Bound Split` (separate Front, Back, and Spine wraps for standard desktop sheet printers).
 - `PRINT_MEDIA` — User's target printer media / paper size (`exact-auto` default, or desktop sheets `letter` `8.5×11"`, `a4` `210×297 mm`, `legal` `8.5×14"`, `tabloid` `11×17"`, or large-format rolls `roll-13`, `roll-17`, `roll-24`, `roll-36`, `roll-44`):
@@ -81,7 +81,7 @@ src/
   - `BOARD_W = PB_W + OVERHANG_FORE`
   - `BOARD_H = PB_H + OVERHANG_TB`
 - **Spine Strip (Qty: 1):**
-  - `SPINE_W = PB_THICK + SPINE_ALLOWANCE`
+  - `SPINE_W = PB_THICK + SPINE_ALLOWANCE` (linked default `SPINE_ALLOWANCE = 2.0 × BOARD_T`, so `SPINE_W = PB_THICK + 2 × BOARD_T`)
   - `SPINE_H = BOARD_H`
 
 ### 4.2 Outer Case Wrap Geometry
@@ -101,12 +101,15 @@ src/
 
 ### 4.3 Inner Spine Reinforcement Liner
 - `LINER_W = SPINE_W + (HINGE_W * 2) + 30.0` (spans spine + both hinges + `15.0 mm` overlap onto each inner board)
-- `LINER_H = BOARD_H - 2.0` (`1.0 mm` inset top & bottom)
+- `LINER_INSET_TB = min(BOARD_H / 4, max(2.0, (BOARD_H - POCKET_H) / 2))`
+- `LINER_H = max(10, BOARD_H - LINER_INSET_TB * 2)` (`2.5 mm` inset top & bottom on defaults → `218.0 mm`, aligned flush with both inner pockets)
 - Includes dashed vertical score lines marking the spine and hinge boundaries.
 
 ### 4.4 Slip-In Pocket Envelopes (Qty: 2 — Front & Back)
-- `POCKET_W = BOARD_W * (POCKET_DEPTH_PCT / 100)`
-- `POCKET_H = BOARD_H - 2.0` (`1.0 mm` inset top & bottom)
+- `POCKET_H = max(10, min(BOARD_H - 2.0, PB_H + 2.0))` (`218.0 mm` on defaults, matching text-block height plus `2.0 mm` ease without spanning the outer board squares)
+- `BOARD_INSET_TB = max(1.0, (BOARD_H - POCKET_H) / 2)` (`2.5 mm` gluing inset at both head and tail on defaults)
+- `BOARD_INSET_FORE = OVERHANG_FORE >= 1.5 ? max(1.5, OVERHANG_FORE - 0.5) : max(0, OVERHANG_FORE)` (`2.5 mm` fore-edge gluing inset on defaults)
+- `POCKET_W = min(BOARD_W - BOARD_INSET_FORE, max(10, PB_W * (POCKET_DEPTH_PCT / 100)))` (`100.8 mm` on defaults, sized to `PB_W` rather than `BOARD_W`)
 - Glue flaps (`POCKET_FLAP = 12.0 mm`) on top, bottom, and outer fore-edge only; spine-facing vertical edge remains open (no flap).
 - Outer corners of top/bottom/fore-edge flaps mitered at 45° to prevent double-layer bulk when folded behind the pocket face.
 
