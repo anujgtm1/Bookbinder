@@ -1268,6 +1268,7 @@ export function App() {
                   interiorStyle={project.parameters.interiorStyle}
                   pocketStyle={project.studio.pocketStyle}
                   coverMatchColor={project.studio.spineBgColor}
+                  accentColor={project.studio.spineText.textColor}
                   pdfPageSize={project.parameters.pdfPageSize}
                   printMediaId={project.parameters.printMedia}
                   unit={project.parameters.unit}

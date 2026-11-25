@@ -11,6 +11,7 @@ import {
 import { PRINT_DPI, UnitConverter, roundTo } from '@/types/units';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { loadCuratedFontBytes, type CustomFontAsset } from './fonts';
+import { isProceduralArtworkFileName } from './proceduralArtwork';
 import {
   computeCoverTextLinePlacements,
   computeSpineTextPlacements,
@@ -158,8 +159,13 @@ export interface CricutScopePresence {
 
 const SVG_DATA_URL_RE = /^data:image\/svg\+xml([^,]*),(.*)$/is;
 
-/** Returns true when a CoverImageLayer holds inline SVG vector markup (`data:image/svg+xml`). */
-export function isSvgArtworkLayer(layer: Pick<CoverImageLayer, 'dataUrl'>): boolean {
+/** Returns true when a CoverImageLayer holds cuttable uploaded SVG vector markup (`data:image/svg+xml`). */
+export function isSvgArtworkLayer(
+  layer: Pick<CoverImageLayer, 'dataUrl'> & { readonly fileName?: string },
+): boolean {
+  if (layer.fileName && isProceduralArtworkFileName(layer.fileName)) {
+    return false;
+  }
   return SVG_DATA_URL_RE.test(layer.dataUrl.trim());
 }
 

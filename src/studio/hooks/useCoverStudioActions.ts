@@ -51,7 +51,8 @@ import {
   type StubExtensionMode,
 } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
-import type { EyedropperTarget } from '../ArtworkControlsCard';
+import { getProceduralArtworkSpec } from '@/resources/proceduralArtworks';
+import type { ApplyProceduralArtworkRequest, EyedropperTarget } from '../ArtworkControlsCard';
 import { getClassicOrnamentSpec } from '../classicOrnaments';
 import {
   applyStubExtensionToLayer,
@@ -66,6 +67,10 @@ import {
   verticalSlotToPinKind,
 } from '../layoutConstraints';
 import type { PreflightQuickFix } from '../preflight';
+import {
+  createProceduralArtworkAsset,
+  isProceduralArtworkFileName,
+} from '../proceduralArtwork';
 import {
   exportCoverPng300Dpi,
   generateAffinityCoverSvg,
@@ -726,6 +731,71 @@ export function useCoverStudioActions({
     }
   };
 
+  const handleApplyProceduralArtwork = ({
+    patternId,
+    target,
+    intensity,
+    seed,
+  }: ApplyProceduralArtworkRequest) => {
+    const targetRect = resolveQuickFitRect(spec, target);
+    const clipZone: LayerClipZone = target === 'fullWrap' ? 'none' : target;
+    const baseColor =
+      target === 'back'
+        ? studio.backBgColor
+        : target === 'spine'
+          ? studio.spineBgColor
+          : studio.frontBgColor;
+    const asset = createProceduralArtworkAsset({
+      patternId,
+      widthMm: targetRect.width,
+      heightMm: targetRect.height,
+      baseColor,
+      accentColor: studio.spineText.textColor,
+      seed,
+      intensity,
+    });
+    const layoutConstraint: LayerLayoutConstraint = {
+      anchorZone: target,
+      horizontal: { kind: 'center' },
+      vertical: { kind: 'center' },
+      imageFit: 'cover',
+    };
+    const created: CoverImageLayer = {
+      ...CoverImageLayerModel.createInRect({
+        dataUrl: asset.dataUrl,
+        fileName: asset.fileName,
+        naturalWidth: asset.naturalWidth,
+        naturalHeight: asset.naturalHeight,
+        targetRect,
+        clipZone,
+        mode: 'cover',
+      }),
+      layoutConstraint,
+    };
+
+    const existingIdx = studio.layers.findIndex(
+      (layer) => isProceduralArtworkFileName(layer.fileName) && layer.clipZone === clipZone,
+    );
+    const nextLayers =
+      existingIdx >= 0
+        ? studio.layers.map((layer, idx) => (idx === existingIdx ? created : layer))
+        : [created, ...studio.layers];
+
+    onChange({ ...studio, layers: nextLayers });
+    onSelectImageLayer(created.id);
+    onSwitchTo2D();
+    const label = getProceduralArtworkSpec(patternId).label;
+    const targetLabel =
+      target === 'fullWrap'
+        ? 'Full Cover'
+        : target === 'front'
+          ? 'Front Cover'
+          : target === 'back'
+            ? 'Back Cover'
+            : 'Spine';
+    onStatusMessage(`Applied ${label} (${intensity}) to ${targetLabel}`);
+  };
+
   const handleCustomFontUpload = async (file: File, targetTextLayerId?: string) => {
     try {
       const asset = await loadCustomFontFromFile(file);
@@ -954,6 +1024,7 @@ export function useCoverStudioActions({
     handleQuickFitLayer,
     handleApplyQuickFix,
     handleAddImageFiles,
+    handleApplyProceduralArtwork,
     handleCustomFontUpload,
     sampleColorAtSvgClick,
     handleExportPrintPdf,

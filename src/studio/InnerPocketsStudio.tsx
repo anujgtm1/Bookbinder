@@ -65,6 +65,14 @@ import {
   type PocketViewMode,
 } from './pockets/PocketPieceSvg';
 import { PocketStyleControls, type PocketQuickFitTarget } from './pockets/PocketStyleControls';
+import {
+  getProceduralArtworkSpec,
+  type ProceduralArtworkId,
+} from '@/resources/proceduralArtworks';
+import {
+  createProceduralArtworkAsset,
+  isProceduralArtworkFileName,
+} from './proceduralArtwork';
 import { buildLayerFlipTransform } from './renderEngine';
 import { buildInnerPocketSnapTargets } from './snapGuides';
 import {
@@ -77,6 +85,7 @@ export interface InnerPocketsStudioProps {
   readonly geometry: CaseGeometry;
   readonly pocketStyle: PocketStyleConfig;
   readonly coverMatchColor: string;
+  readonly accentColor?: string;
   readonly pdfPageSize: PageSizeId;
   readonly printMediaId?: PrintMediaId;
   readonly interiorStyle?: InteriorStyle;
@@ -98,6 +107,7 @@ export function InnerPocketsStudio({
   geometry,
   pocketStyle,
   coverMatchColor,
+  accentColor = '#d9b566',
   pdfPageSize,
   printMediaId = 'exact-auto',
   interiorStyle,
@@ -312,6 +322,40 @@ export function InnerPocketsStudio({
   const handleQuickFitPocketLayer = (id: string, target: PocketQuickFitTarget) => {
     const rect = targetRectForScope(target);
     updateLayer(id, (layer) => CoverImageLayerModel.fitToRect(layer, rect, 'none'));
+  };
+
+  const handleApplyEndpaperPattern = (patternId: ProceduralArtworkId, seed: number) => {
+    const targetRect = targetRectForScope('all');
+    const asset = createProceduralArtworkAsset({
+      patternId,
+      widthMm: targetRect.width,
+      heightMm: targetRect.height,
+      baseColor: pocketStyle.backgroundColor,
+      accentColor,
+      seed,
+      intensity: 'subtle',
+    });
+    const created = CoverImageLayerModel.createInRect({
+      dataUrl: asset.dataUrl,
+      fileName: asset.fileName,
+      naturalWidth: asset.naturalWidth,
+      naturalHeight: asset.naturalHeight,
+      targetRect,
+      clipZone: 'none',
+      mode: 'cover',
+    });
+    const existingIdx = layers.findIndex((l) => isProceduralArtworkFileName(l.fileName));
+    const nextLayers =
+      existingIdx >= 0
+        ? layers.map((layer, idx) => (idx === existingIdx ? created : layer))
+        : [created, ...layers];
+    updateStyle({ layers: nextLayers });
+    setSelectedLayerId(created.id);
+    setViewMode('styled');
+    const label = getProceduralArtworkSpec(patternId).label;
+    onStatusMessage(
+      `Applied ${label} pattern to ${isFoldedEndpapers ? 'folded endpapers' : 'inner pockets'}`,
+    );
   };
 
   const handleToggleLayerTile = (layer: CoverImageLayer) => {
@@ -1155,6 +1199,7 @@ export function InnerPocketsStudio({
       <PocketStyleControls
         pocketStyle={pocketStyle}
         coverMatchColor={coverMatchColor}
+        accentColor={accentColor}
         isFoldedEndpapers={isFoldedEndpapers}
         layers={layers}
         selectedLayerId={selectedLayerId}
@@ -1163,6 +1208,7 @@ export function InnerPocketsStudio({
         onUpdateLayer={updateLayer}
         onSelectLayer={setSelectedLayerId}
         onAddImageFiles={handleAddImageFiles}
+        onApplyEndpaperPattern={handleApplyEndpaperPattern}
         onQuickFitLayer={handleQuickFitPocketLayer}
         onToggleLayerTile={handleToggleLayerTile}
         onCopyToOtherPocket={handleCopyToOtherPocket}

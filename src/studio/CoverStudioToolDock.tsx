@@ -24,7 +24,11 @@ import type {
   QuickFitTarget,
   StubExtensionMode,
 } from '@/types/studioLayer';
-import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
+import {
+  ArtworkControlsCard,
+  type ApplyProceduralArtworkRequest,
+  type EyedropperTarget,
+} from './ArtworkControlsCard';
 import { ClassicDesignsCard } from './ClassicDesignsCard';
 import { CoverTextCard } from './CoverTextCard';
 import { DesignPresetsCard } from './DesignPresetsCard';
@@ -56,6 +60,7 @@ export interface CoverStudioToolDockProps {
   // Artwork actions
   readonly onSelectImageLayer: (id: string | null) => void;
   readonly onAddImageFiles: (files: readonly File[]) => void;
+  readonly onApplyProceduralArtwork?: (request: ApplyProceduralArtworkRequest) => void;
   readonly onQuickFitLayer: (id: string, target: QuickFitTarget) => void;
   readonly onExtendLayerStub: (id: string, mode: StubExtensionMode) => void;
   readonly onMatchSpineBackToEdge: (hex: string) => void;
@@ -129,6 +134,7 @@ export function CoverStudioToolDock({
   activeIssueId,
   onSelectImageLayer,
   onAddImageFiles,
+  onApplyProceduralArtwork,
   onQuickFitLayer,
   onExtendLayerStub,
   onMatchSpineBackToEdge,
@@ -319,6 +325,7 @@ export function CoverStudioToolDock({
             sampledEdgeHex={sampledEdgeHex}
             onSelectLayer={onSelectImageLayer}
             onAddImageFiles={onAddImageFiles}
+            onApplyProceduralArtwork={onApplyProceduralArtwork}
             onQuickFitLayer={onQuickFitLayer}
             onExtendLayerStub={onExtendLayerStub}
             onMatchSpineBackToEdge={onMatchSpineBackToEdge}

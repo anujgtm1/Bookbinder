@@ -1400,6 +1400,7 @@ export function CoverStyler({
         activeIssueId={activeIssueId}
         onSelectImageLayer={handleSelectImageLayer}
         onAddImageFiles={(files) => void actions.handleAddImageFiles(files)}
+        onApplyProceduralArtwork={actions.handleApplyProceduralArtwork}
         onQuickFitLayer={actions.handleQuickFitLayer}
         onExtendLayerStub={(id, mode) => void actions.handleExtendLayerStub(id, mode)}
         onMatchSpineBackToEdge={(hex) => {
