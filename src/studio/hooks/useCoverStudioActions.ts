@@ -624,7 +624,7 @@ export function useCoverStudioActions({
       case 'apply-pocket-proportions':
         onUpdateParams?.({
           boardThicknessMm: 1.5,
-          spineAllowanceMm: 1.5,
+          spineAllowanceMm: 3.0,
           turnInMm: 14,
           overhangForeEdgeMm: 1.5,
           overhangTopBottomMm: 3,

@@ -49,7 +49,7 @@ import {
   normalizeQuarterTurn,
   type CoverImageLayer,
 } from '@/types/studioLayer';
-import { roundTo, type UnitSystem } from '@/types/units';
+import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import {
   computeInnerPocketsLayout,
@@ -1131,6 +1131,17 @@ export function InnerPocketsStudio({
                 Green: Open Slip-In Edge
               </span>
             )}
+            {frontPocket.boardInsetTopBottomMm !== undefined &&
+              frontPocket.boardInsetForeEdgeMm !== undefined && (
+                <span
+                  data-testid="pocket-board-inset-callout"
+                  className="font-mono text-[11px] text-foreground"
+                >
+                  Board glue inset: {UnitConverter.format(frontPocket.boardInsetTopBottomMm, unit)}{' '}
+                  top/bottom · {UnitConverter.format(frontPocket.boardInsetForeEdgeMm, unit)}{' '}
+                  fore-edge
+                </span>
+              )}
           </div>
           <span className="font-mono text-[11px] text-brass">
             {selectedLayer
