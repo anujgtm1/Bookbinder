@@ -40,24 +40,35 @@ export interface PocketStyleConfig {
   styleScope: PocketStyleScope;
 }
 
-export type CuratedFontId =
-  | 'eb-garamond'
-  | 'libre-baskerville'
-  | 'cormorant-garamond'
-  | 'lora'
-  | 'inter'
-  | 'montserrat';
-
-export type StudioFontId = CuratedFontId | 'custom';
-
-export const CURATED_FONT_IDS: readonly CuratedFontId[] = [
+export const CURATED_FONT_IDS = [
   'eb-garamond',
   'libre-baskerville',
   'cormorant-garamond',
   'lora',
+  'playfair-display',
+  'fraunces',
   'inter',
   'montserrat',
+  'bricolage-grotesque',
+  'cinzel-decorative',
+  'almendra-display',
+  'uncial-antiqua',
+  'orbitron',
+  'audiowide',
+  'syne',
+  'unifrakturmaguntia',
+  'pirata-one',
+  'great-vibes',
+  'pinyon-script',
+  'bebas-neue',
+  'special-elite',
+  'poiret-one',
+  'limelight',
 ] as const;
+
+export type CuratedFontId = (typeof CURATED_FONT_IDS)[number];
+
+export type StudioFontId = CuratedFontId | 'custom';
 
 export interface SpineTypographyConfig {
   title: string;

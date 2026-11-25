@@ -7,7 +7,7 @@ import {
   type CoverTextSemanticRole,
   type LayerLayoutConstraint,
 } from './layoutConstraints';
-import type { CuratedFontId, StudioFontId } from './studio';
+import { CURATED_FONT_IDS, type CuratedFontId, type StudioFontId } from './studio';
 import {
   nextQuarterTurn,
   normalizeQuarterTurn,
@@ -18,61 +18,59 @@ import { UnitConverter, clampFinite, roundTo } from './units';
 
 export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
 
-const VALID_CURATED_FONT_IDS: readonly CuratedFontId[] = [
-  'eb-garamond',
-  'libre-baskerville',
-  'cormorant-garamond',
-  'lora',
-  'inter',
-  'montserrat',
-];
-
 export type CoverElementZone = 'front' | 'back' | 'spine';
 export type TextAlign = 'left' | 'center' | 'right';
 export type CoverTextPresetKind = 'text' | 'front-title' | 'front-author' | 'back-blurb';
 
 export type ClassicOrnamentCategory = 'frames' | 'corners' | 'dividers' | 'emblems' | 'spine';
 
-export type ClassicOrnamentId =
-  | 'frame-single-rule'
-  | 'frame-double-rule'
-  | 'frame-art-deco'
-  | 'frame-notched-corner'
-  | 'corners-classic-scroll'
-  | 'corners-deco-chevron'
-  | 'divider-diamond-rule'
-  | 'divider-fleuron-leaf'
-  | 'divider-celestial-stars'
-  | 'emblem-compass-rose'
-  | 'emblem-botanical-sprig'
-  | 'spine-classic-bands'
-  | 'spine-title-cartouche'
-  | 'spine-head-tail-bands'
-  | 'spine-botanical-vine'
-  | 'spine-celestial-column'
-  | 'spine-diamond-lattice'
-  | 'custom-svg';
+export type OrnamentStyleTag = 'classic' | 'fantasy' | 'art-deco' | 'botanical' | 'scifi-modern';
 
-export const CLASSIC_ORNAMENT_IDS: readonly ClassicOrnamentId[] = [
+export const CLASSIC_ORNAMENT_IDS = [
   'frame-single-rule',
   'frame-double-rule',
   'frame-art-deco',
   'frame-notched-corner',
+  'frame-gothic-arch',
+  'frame-deco-archway',
+  'frame-modern-editorial',
   'corners-classic-scroll',
   'corners-deco-chevron',
+  'corners-deco-fan',
+  'corners-botanical-vine',
   'divider-diamond-rule',
   'divider-fleuron-leaf',
   'divider-celestial-stars',
+  'divider-sword-rule',
+  'divider-deco-fan',
+  'divider-vine-flourish',
+  'divider-geometric-dots',
   'emblem-compass-rose',
   'emblem-botanical-sprig',
+  'emblem-crescent-stars',
+  'emblem-dagger-vines',
+  'emblem-coiled-serpent',
+  'emblem-filigree-crown',
+  'emblem-tarot-sun',
+  'emblem-deco-sunburst',
+  'emblem-lunar-moth',
+  'emblem-olive-wreath',
+  'emblem-rose-bloom',
+  'emblem-orbital-rings',
+  'emblem-bauhaus-arches',
   'spine-classic-bands',
   'spine-title-cartouche',
   'spine-head-tail-bands',
   'spine-botanical-vine',
   'spine-celestial-column',
   'spine-diamond-lattice',
+  'spine-moon-phases',
+  'spine-deco-sunburst',
+  'spine-orbital-axis',
   'custom-svg',
 ] as const;
+
+export type ClassicOrnamentId = (typeof CLASSIC_ORNAMENT_IDS)[number];
 
 export interface CoverTextLayer {
   readonly id: string;
@@ -200,7 +198,7 @@ function parseAlign(value: unknown): TextAlign {
 
 function parseFontId(value: unknown): StudioFontId {
   if (value === 'custom') return 'custom';
-  if (typeof value === 'string' && (VALID_CURATED_FONT_IDS as readonly string[]).includes(value)) {
+  if (typeof value === 'string' && (CURATED_FONT_IDS as readonly string[]).includes(value)) {
     return value as CuratedFontId;
   }
   return 'eb-garamond';
