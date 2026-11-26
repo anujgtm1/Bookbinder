@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { BUILT_IN_DESIGN_PRESETS, type CoverDesignPreset } from '@/types/designPreset';
+import { DesignMuseCard, type DesignMuseCardProps } from './DesignMuseCard';
 
 export interface DesignPresetsCardProps {
   readonly savedPresets: readonly CoverDesignPreset[];
   readonly builtInPresets?: readonly CoverDesignPreset[];
+  readonly designMuse?: DesignMuseCardProps;
   readonly onSaveCurrent: (name: string) => void;
   readonly onApplyPreset: (preset: CoverDesignPreset) => void;
   readonly onDeletePreset: (id: string) => void;
@@ -29,6 +31,7 @@ function summarizePresetElements(preset: CoverDesignPreset): string {
 export function DesignPresetsCard({
   savedPresets,
   builtInPresets = BUILT_IN_DESIGN_PRESETS,
+  designMuse,
   onSaveCurrent,
   onApplyPreset,
   onDeletePreset,
@@ -46,7 +49,7 @@ export function DesignPresetsCard({
     setPresetName('');
   };
 
-  return (
+  const presetsCard = (
     <Card data-testid="design-presets-card">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -302,5 +305,16 @@ export function DesignPresetsCard({
         </div>
       </CardContent>
     </Card>
+  );
+
+  if (!designMuse) {
+    return presetsCard;
+  }
+
+  return (
+    <div className="space-y-3">
+      <DesignMuseCard {...designMuse} />
+      {presetsCard}
+    </div>
   );
 }

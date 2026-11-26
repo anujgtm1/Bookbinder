@@ -157,5 +157,17 @@ describe('CoverElementsCard', () => {
       heightMm: frame.widthMm,
       rotationDeg: 90,
     });
+
+    // Style filter pills narrow gallery cleanly by style & reset cleanly
+    fireEvent.click(screen.getByTestId('ornament-style-fantasy'));
+    expect(screen.getByTestId('add-ornament-frame-gothic-arch')).toBeInTheDocument();
+    expect(screen.queryByTestId('add-ornament-frame-art-deco')).not.toBeInTheDocument();
+
+    // Combining Sci-Fi & Modern with Corners shows empty reset state cleanly
+    fireEvent.click(screen.getByTestId('ornament-style-scifi-modern'));
+    fireEvent.click(screen.getByTestId('ornament-cat-corners'));
+    expect(screen.getByTestId('classic-ornament-empty')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show All' }));
+    expect(screen.getByTestId('add-ornament-emblem-orbital-rings')).toBeInTheDocument();
   });
 });

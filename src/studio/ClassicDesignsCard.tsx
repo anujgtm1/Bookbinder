@@ -24,11 +24,13 @@ import {
   type CoverElementZone,
   type CoverOrnamentLayer,
   type CustomSvgRenderMode,
+  type OrnamentStyleTag,
 } from '@/types/coverElements';
 import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 import {
   CLASSIC_ORNAMENTS,
+  ORNAMENT_STYLE_FILTERS,
   buildOrnamentCompoundPath,
   getClassicOrnamentSpec,
 } from './classicOrnaments';
@@ -57,6 +59,8 @@ export interface ClassicDesignsCardProps {
   readonly embedded?: boolean;
 }
 
+const SPINE_ORNAMENT_COUNT = CLASSIC_ORNAMENTS.filter((o) => o.category === 'spine').length;
+
 const ORNAMENT_CATEGORY_TABS: readonly {
   readonly id: 'all' | ClassicOrnamentCategory;
   readonly label: string;
@@ -66,7 +70,7 @@ const ORNAMENT_CATEGORY_TABS: readonly {
   { id: 'corners', label: 'Corners' },
   { id: 'dividers', label: 'Dividers' },
   { id: 'emblems', label: 'Emblems' },
-  { id: 'spine', label: 'Spine (6)' },
+  { id: 'spine', label: `Spine (${SPINE_ORNAMENT_COUNT})` },
 ];
 
 function OrnamentThumb({ presetId }: { readonly presetId: ClassicOrnamentId }) {
@@ -106,12 +110,18 @@ export function ClassicDesignsCard({
   onDeleteOrnament,
   embedded = false,
 }: ClassicDesignsCardProps) {
+  const [ornamentStyle, setOrnamentStyle] = useState<'all' | OrnamentStyleTag>('all');
   const [ornamentCategory, setOrnamentCategory] = useState<'all' | ClassicOrnamentCategory>('all');
   const [ornamentZone, setOrnamentZone] = useState<CoverElementZone>('front');
   const [defaultFoilColor, setDefaultFoilColor] = useState<string>('#d9b566');
   const svgStampInputRef = useRef<HTMLInputElement>(null);
 
   const selectedOrnament = ornaments.find((o) => o.id === selectedOrnamentId) ?? null;
+  const filteredOrnaments = CLASSIC_ORNAMENTS.filter(
+    (spec) =>
+      (ornamentStyle === 'all' || spec.styleTag === ornamentStyle) &&
+      (ornamentCategory === 'all' || spec.category === ornamentCategory),
+  );
 
   const content = (
     <>
@@ -187,6 +197,29 @@ export function ClassicDesignsCard({
         </div>
       </div>
 
+      {/* Style / Genre Filter Pills (All / Classic / Fantasy / Art Deco / Botanical / Sci-Fi & Modern) */}
+      <div
+        className="flex flex-wrap items-center gap-1"
+        role="group"
+        aria-label="Filter classic designs by style"
+        data-testid="ornament-style-filter-bar"
+      >
+        {ORNAMENT_STYLE_FILTERS.map((style) => (
+          <Button
+            key={style.id}
+            type="button"
+            size="sm"
+            variant={ornamentStyle === style.id ? 'default' : 'outline'}
+            aria-pressed={ornamentStyle === style.id}
+            className="h-6 px-2 text-[11px]"
+            data-testid={`ornament-style-${style.id}`}
+            onClick={() => setOrnamentStyle(style.id)}
+          >
+            {style.label}
+          </Button>
+        ))}
+      </div>
+
       {/* Category Filter Pills (All / Frames / Corners / Dividers / Emblems / Spine) */}
       <div
         className="flex flex-wrap items-center gap-1"
@@ -213,31 +246,53 @@ export function ClassicDesignsCard({
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" data-testid="classic-ornament-gallery">
-        {CLASSIC_ORNAMENTS.filter(
-          (spec) => ornamentCategory === 'all' || spec.category === ornamentCategory,
-        ).map((spec) => (
-          <button
-            key={spec.id}
+      {filteredOrnaments.length > 0 ? (
+        <div
+          className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto pr-0.5"
+          data-testid="classic-ornament-gallery"
+        >
+          {filteredOrnaments.map((spec) => (
+            <button
+              key={spec.id}
+              type="button"
+              data-testid={`add-ornament-${spec.id}`}
+              title={spec.description}
+              onClick={() =>
+                onAddOrnament(
+                  spec.id,
+                  spec.category === 'spine' ? 'spine' : ornamentZone,
+                  defaultFoilColor,
+                )
+              }
+              className="flex min-w-0 w-full items-center gap-2 rounded-md border border-border bg-secondary/25 px-2 py-1.5 text-left transition-colors hover:border-brass/70 hover:bg-accent/50 cursor-pointer"
+            >
+              <OrnamentThumb presetId={spec.id} />
+              <span className="min-w-0 flex-1 break-words text-balance text-[11px] leading-tight font-medium text-foreground">
+                {spec.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div
+          className="flex items-center justify-between gap-2 rounded-md border border-dashed border-border bg-secondary/20 px-3 py-2.5 text-xs text-muted-foreground"
+          data-testid="classic-ornament-empty"
+        >
+          <span>No motifs match this style and category combination.</span>
+          <Button
             type="button"
-            data-testid={`add-ornament-${spec.id}`}
-            title={spec.description}
-            onClick={() =>
-              onAddOrnament(
-                spec.id,
-                spec.category === 'spine' ? 'spine' : ornamentZone,
-                defaultFoilColor,
-              )
-            }
-            className="flex items-center gap-2 rounded-md border border-border bg-secondary/25 px-2 py-1.5 text-left transition-colors hover:border-brass/70 hover:bg-accent/50 cursor-pointer"
+            size="sm"
+            variant="outline"
+            className="h-6 shrink-0 px-2 text-[11px]"
+            onClick={() => {
+              setOrnamentStyle('all');
+              setOrnamentCategory('all');
+            }}
           >
-            <OrnamentThumb presetId={spec.id} />
-            <span className="min-w-0 text-[11px] leading-tight font-medium text-foreground">
-              {spec.label}
-            </span>
-          </button>
-        ))}
-      </div>
+            Show All
+          </Button>
+        </div>
+      )}
 
       {/* Placed Ornaments List */}
       {ornaments.length > 0 && (

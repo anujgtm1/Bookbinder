@@ -1,5 +1,6 @@
 import {
   Copy,
+  Dices,
   FileCode2,
   FileImage,
   FileText,
@@ -25,6 +26,7 @@ export interface CoverWorkbenchHeaderProps {
   readonly onUndo?: () => void;
   readonly onRedo?: () => void;
   readonly onDuplicate?: () => void;
+  readonly onShuffleDesign?: () => void;
   readonly onOpenMeasureAndCut?: () => void;
   readonly onExportPrintPdf: () => void;
   readonly onExportAffinityPng: () => void;
@@ -46,6 +48,7 @@ export function CoverWorkbenchHeader({
   onUndo,
   onRedo,
   onDuplicate,
+  onShuffleDesign,
   onOpenMeasureAndCut,
   onExportPrintPdf,
   onExportAffinityPng,
@@ -158,6 +161,21 @@ export function CoverWorkbenchHeader({
               </Button>
             )}
           </div>
+        )}
+
+        {onShuffleDesign && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 border-brass/70 bg-brass/10 px-2.5 text-xs text-foreground hover:border-brass hover:bg-brass/20"
+            onClick={onShuffleDesign}
+            title="Design Muse: generate a fresh cover & spine pairing in 1 click (keeps your current text; Undo anytime)"
+            data-testid="studio-shuffle-design-btn"
+          >
+            <Dices className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+            Shuffle Design
+          </Button>
         )}
       </div>
 

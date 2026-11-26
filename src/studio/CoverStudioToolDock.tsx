@@ -24,9 +24,14 @@ import type {
   QuickFitTarget,
   StubExtensionMode,
 } from '@/types/studioLayer';
-import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
+import {
+  ArtworkControlsCard,
+  type ApplyProceduralArtworkRequest,
+  type EyedropperTarget,
+} from './ArtworkControlsCard';
 import { ClassicDesignsCard } from './ClassicDesignsCard';
 import { CoverTextCard } from './CoverTextCard';
+import type { DesignMuseCardProps } from './DesignMuseCard';
 import { DesignPresetsCard } from './DesignPresetsCard';
 import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
@@ -56,6 +61,7 @@ export interface CoverStudioToolDockProps {
   // Artwork actions
   readonly onSelectImageLayer: (id: string | null) => void;
   readonly onAddImageFiles: (files: readonly File[]) => void;
+  readonly onApplyProceduralArtwork?: (request: ApplyProceduralArtworkRequest) => void;
   readonly onQuickFitLayer: (id: string, target: QuickFitTarget) => void;
   readonly onExtendLayerStub: (id: string, mode: StubExtensionMode) => void;
   readonly onMatchSpineBackToEdge: (hex: string) => void;
@@ -94,7 +100,8 @@ export interface CoverStudioToolDockProps {
   readonly onDeleteOrnament: (id: string) => void;
   // Spine actions
   readonly onUpdateSpineText: (patch: Partial<SpineTypographyConfig>) => void;
-  // Presets actions
+  // Presets & Design Muse actions
+  readonly designMuse?: DesignMuseCardProps;
   readonly onSavePreset: (name: string) => void;
   readonly onApplyPreset: (preset: CoverDesignPreset) => void;
   readonly onDeletePreset: (id: string) => void;
@@ -129,6 +136,7 @@ export function CoverStudioToolDock({
   activeIssueId,
   onSelectImageLayer,
   onAddImageFiles,
+  onApplyProceduralArtwork,
   onQuickFitLayer,
   onExtendLayerStub,
   onMatchSpineBackToEdge,
@@ -157,6 +165,7 @@ export function CoverStudioToolDock({
   onQuickAlignOrnament,
   onDeleteOrnament,
   onUpdateSpineText,
+  designMuse,
   onSavePreset,
   onApplyPreset,
   onDeletePreset,
@@ -319,6 +328,7 @@ export function CoverStudioToolDock({
             sampledEdgeHex={sampledEdgeHex}
             onSelectLayer={onSelectImageLayer}
             onAddImageFiles={onAddImageFiles}
+            onApplyProceduralArtwork={onApplyProceduralArtwork}
             onQuickFitLayer={onQuickFitLayer}
             onExtendLayerStub={onExtendLayerStub}
             onMatchSpineBackToEdge={onMatchSpineBackToEdge}
@@ -379,6 +389,7 @@ export function CoverStudioToolDock({
           <DesignPresetsCard
             savedPresets={savedPresets}
             builtInPresets={BUILT_IN_DESIGN_PRESETS}
+            designMuse={designMuse}
             onSaveCurrent={onSavePreset}
             onApplyPreset={onApplyPreset}
             onDeletePreset={onDeletePreset}

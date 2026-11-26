@@ -45,6 +45,7 @@ import {
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
+import type { DesignGenreId } from '@/resources/generatorProfiles';
 import {
   BookParametersModel,
   type BookParameters,
@@ -76,7 +77,18 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
-import type { CustomFontAsset } from './fonts';
+import {
+  DEFAULT_DESIGN_GENERATOR_LOCKS,
+  generateBookCoverDesign,
+  type DesignGeneratorLocks,
+  type GeneratedDesignSummary,
+} from './designGenerator';
+import {
+  collectStudioCuratedFontIds,
+  ensureCuratedFontsLoaded,
+  getCuratedFont,
+  type CustomFontAsset,
+} from './fonts';
 import { useCoverElementsInteraction } from './hooks/useCoverElementsInteraction';
 import { useCoverStudioActions } from './hooks/useCoverStudioActions';
 import { useStudioHistory, type StudioHistoryPushOptions } from './hooks/useStudioHistory';
@@ -201,6 +213,11 @@ export function CoverStyler({
   const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(effectiveParams.printMedia);
   const [localPageSize, setLocalPageSize] = useState<PageSizeId>(effectiveParams.pdfPageSize);
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(effectiveParams.splitMode);
+  const [museGenre, setMuseGenre] = useState<DesignGenreId>('surprise');
+  const [museIncludeArt, setMuseIncludeArt] = useState<boolean>(true);
+  const [museLocks, setMuseLocks] = useState<DesignGeneratorLocks>(DEFAULT_DESIGN_GENERATOR_LOCKS);
+  const [museLastSummary, setMuseLastSummary] = useState<GeneratedDesignSummary | null>(null);
+  const museSeedRef = useRef<number>(4217);
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const activePrintMedia = onUpdateParams ? effectiveParams.printMedia : localPrintMedia;
@@ -218,6 +235,17 @@ export function CoverStyler({
     onChangeRef.current = onChange;
     onStatusMessageRef.current = onStatusMessage;
   }, [studio, onChange, onStatusMessage]);
+
+  const activeStudioFontKey = useMemo(
+    () => [...collectStudioCuratedFontIds(studio)].sort().join(','),
+    [studio],
+  );
+  useEffect(() => {
+    const ids = collectStudioCuratedFontIds(studioRef.current);
+    if (ids.length > 0) {
+      void ensureCuratedFontsLoaded(ids);
+    }
+  }, [activeStudioFontKey]);
 
   const handleApplyFromHistory = useCallback((next: CoverStudioState) => {
     studioRef.current = next;
@@ -301,6 +329,39 @@ export function CoverStyler({
     setSelectedTextId(null);
     setSelectedOrnamentId(null);
   }, []);
+
+  const handleToggleMuseLock = useCallback((key: keyof DesignGeneratorLocks) => {
+    setMuseLocks((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const handleGenerateMuseDesign = useCallback(
+    (quickShuffle = false) => {
+      museSeedRef.current = (((museSeedRef.current * 1664525 + 1013904223) >>> 0) % 999983) + 1;
+      const effectiveLocks: DesignGeneratorLocks = quickShuffle
+        ? { ...museLocks, lockTextContent: true }
+        : museLocks;
+      const result = generateBookCoverDesign(geometry, studioRef.current, {
+        genre: museGenre,
+        seed: museSeedRef.current,
+        includeBackgroundArt: museIncludeArt,
+        locks: effectiveLocks,
+      });
+      void ensureCuratedFontsLoaded([
+        result.summary.titleFontId,
+        result.summary.authorFontId,
+        result.summary.spineFontId,
+      ]);
+      applyStudioChange(result.studio);
+      handleClearSelection();
+      setMuseLastSummary(result.summary);
+      const titleLabel = getCuratedFont(result.summary.titleFontId).label;
+      const authorLabel = getCuratedFont(result.summary.authorFontId).label;
+      onStatusMessageRef.current(
+        `Design Muse: ${result.summary.genreLabel} · ${result.summary.archetypeLabel} (${titleLabel} + ${authorLabel})`,
+      );
+    },
+    [geometry, museGenre, museIncludeArt, museLocks, applyStudioChange, handleClearSelection],
+  );
 
   const selectPastedResult = useCallback(
     (result: StudioPasteResult) => {
@@ -869,6 +930,7 @@ export function CoverStyler({
           onDuplicate={() => {
             handleDuplicateSelected();
           }}
+          onShuffleDesign={() => handleGenerateMuseDesign(true)}
           onOpenMeasureAndCut={onOpenMeasureAndCut}
           onExportPrintPdf={() => {
             setPdfExportLayerModeDefault('full');
@@ -1385,6 +1447,7 @@ export function CoverStyler({
         activeIssueId={activeIssueId}
         onSelectImageLayer={handleSelectImageLayer}
         onAddImageFiles={(files) => void actions.handleAddImageFiles(files)}
+        onApplyProceduralArtwork={actions.handleApplyProceduralArtwork}
         onQuickFitLayer={actions.handleQuickFitLayer}
         onExtendLayerStub={(id, mode) => void actions.handleExtendLayerStub(id, mode)}
         onMatchSpineBackToEdge={(hex) => {
@@ -1474,6 +1537,16 @@ export function CoverStyler({
         onQuickAlignOrnament={actions.handleQuickAlignOrnament}
         onDeleteOrnament={actions.handleDeleteOrnament}
         onUpdateSpineText={actions.updateSpineText}
+        designMuse={{
+          genre: museGenre,
+          includeBackgroundArt: museIncludeArt,
+          locks: museLocks,
+          lastSummary: museLastSummary,
+          onGenreChange: setMuseGenre,
+          onIncludeBackgroundArtChange: setMuseIncludeArt,
+          onToggleLock: handleToggleMuseLock,
+          onGenerate: () => handleGenerateMuseDesign(false),
+        }}
         onSavePreset={actions.handleSaveDesignPreset}
         onApplyPreset={actions.handleApplyDesignPreset}
         onDeletePreset={actions.handleDeleteDesignPreset}

@@ -11,7 +11,13 @@ import {
   type StudioCanvasSpec,
 } from '../canvasSpec';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from '../classicOrnaments';
-import { resolveFontCssFamily, type CustomFontAsset } from '../fonts';
+import {
+  awaitFontFaceLoaded,
+  collectStudioCuratedFontIds,
+  ensureCuratedFontsLoaded,
+  resolveFontCssFamily,
+  type CustomFontAsset,
+} from '../fonts';
 
 /** Draws the solid Back, Spine, and Front cover base fills onto a 2D canvas in studio mm space. */
 export function drawCoverBaseFills(
@@ -230,6 +236,10 @@ export async function renderCoverArtworkCanvas(
   // 3. Optional rasterized classic ornaments, cover text layers & spine typography (used for 300 DPI PNG export)
   const includeTextAndOrnaments = options.includeTextAndOrnaments ?? true;
   if (options.includeSpineText && includeTextAndOrnaments) {
+    await ensureCuratedFontsLoaded(collectStudioCuratedFontIds(studio));
+    if (customFont) {
+      await awaitFontFaceLoaded(`400 16px '${customFont.familyName}'`);
+    }
     drawCoverOrnaments(ctx, studio, pxPerMm);
     drawCoverLettering(ctx, geometry, studio, customFont, dpi, pxPerMm);
   }
