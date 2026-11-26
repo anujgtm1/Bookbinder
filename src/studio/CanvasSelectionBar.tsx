@@ -1,4 +1,8 @@
 import {
+  ArrowDown,
+  ArrowDownToLine,
+  ArrowUp,
+  ArrowUpToLine,
   Copy,
   FlipHorizontal2,
   FlipVertical2,
@@ -29,6 +33,7 @@ import {
   type CoverImageLayer,
 } from '@/types/studioLayer';
 import { getClassicOrnamentSpec } from './classicOrnaments';
+import type { ElementStackPosition, LayerReorderDirection } from './layerStack';
 import { verticalSlotToPinKind } from './layoutConstraints';
 
 export type VerticalAlignSlot = 'upper' | 'center' | 'lower';
@@ -41,9 +46,11 @@ export type CanvasSelectionTarget =
 export interface CanvasSelectionBarProps {
   readonly selection: CanvasSelectionTarget | null;
   readonly controlsId?: string;
+  readonly stackPosition?: ElementStackPosition | null;
   readonly onFlipH: () => void;
   readonly onFlipV: () => void;
   readonly onRotate90: () => void;
+  readonly onReorder?: (direction: LayerReorderDirection) => void;
   readonly onQuickAlign: (slot: VerticalAlignSlot) => void;
   readonly onFitMargin?: (marginMm: number) => void;
   readonly onDetachConstraint?: () => void;
@@ -103,7 +110,7 @@ function isAlignSlotPinned(
 }
 
 const ACTION_BTN_CLASS =
-  'inline-flex min-h-6.5 min-w-6.5 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] font-medium leading-none whitespace-nowrap text-[#f6efe2]/90 motion-safe:transition-colors hover:bg-[#f6efe2]/12 hover:text-white aria-pressed:border-brass-bright/70 aria-pressed:bg-brass-bright aria-pressed:font-semibold aria-pressed:text-[#19140a] aria-pressed:hover:bg-brass-bright aria-pressed:hover:text-[#19140a] [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10';
+  'inline-flex min-h-6.5 min-w-6.5 cursor-pointer items-center justify-center gap-1 rounded-md border border-transparent px-2 py-1 text-[11px] font-medium leading-none whitespace-nowrap text-[#f6efe2]/90 motion-safe:transition-colors hover:bg-[#f6efe2]/12 hover:text-white disabled:pointer-events-none disabled:opacity-35 aria-pressed:border-brass-bright/70 aria-pressed:bg-brass-bright aria-pressed:font-semibold aria-pressed:text-[#19140a] aria-pressed:hover:bg-brass-bright aria-pressed:hover:text-[#19140a] [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10';
 
 const SEPARATOR_CLASS = 'inline-block h-4 w-px border-s border-[#f6efe2]/22';
 
@@ -136,9 +143,11 @@ function describeSelection(selection: CanvasSelectionTarget): {
 export function CanvasSelectionBar({
   selection,
   controlsId,
+  stackPosition,
   onFlipH,
   onFlipV,
   onRotate90,
+  onReorder,
   onQuickAlign,
   onFitMargin,
   onDetachConstraint,
@@ -156,6 +165,9 @@ export function CanvasSelectionBar({
   const showUnpin = Boolean(isPinned && onDetachConstraint);
   const fromSeries = selection ? isSeriesOriginLayer(selection.layer) : false;
   const showDetachSeries = Boolean(fromSeries && onDetachSeriesLayer);
+  const hasReorder = Boolean(onReorder);
+  const canBringForward = stackPosition ? stackPosition.canBringForward : true;
+  const canSendBackward = stackPosition ? stackPosition.canSendBackward : true;
 
   useEffect(() => {
     const bar = barRef.current;
@@ -223,7 +235,15 @@ export function CanvasSelectionBar({
       bar.removeEventListener('focusin', onFocusIn);
       bar.removeEventListener('keydown', onKeyDown);
     };
-  }, [selectionKind, selectionId, showUnpin, showDetachSeries]);
+  }, [
+    selectionKind,
+    selectionId,
+    showUnpin,
+    showDetachSeries,
+    hasReorder,
+    canBringForward,
+    canSendBackward,
+  ]);
 
   if (!selection) {
     return null;
@@ -418,6 +438,63 @@ export function CanvasSelectionBar({
             90°
           </button>
         </div>
+
+        {/* Unified Front-to-Back Layer Order Group (all element kinds) */}
+        {onReorder && (
+          <>
+            <span role="separator" aria-orientation="vertical" className={SEPARATOR_CLASS} />
+            <div
+              role="group"
+              aria-label="Layer order"
+              className="inline-flex items-center gap-0.5"
+            >
+              <button
+                type="button"
+                aria-label="Bring forward"
+                title="Bring forward (])"
+                data-testid="selection-bring-forward-btn"
+                disabled={!canBringForward}
+                onClick={() => onReorder('forward')}
+                className={ACTION_BTN_CLASS}
+              >
+                <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="Send backward"
+                title="Send backward ([)"
+                data-testid="selection-send-backward-btn"
+                disabled={!canSendBackward}
+                onClick={() => onReorder('backward')}
+                className={ACTION_BTN_CLASS}
+              >
+                <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="Bring to front"
+                title="Bring to front (Shift+])"
+                data-testid="selection-bring-front-btn"
+                disabled={!canBringForward}
+                onClick={() => onReorder('front')}
+                className={ACTION_BTN_CLASS}
+              >
+                <ArrowUpToLine className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="Send to back"
+                title="Send to back (Shift+[)"
+                data-testid="selection-send-back-btn"
+                disabled={!canSendBackward}
+                onClick={() => onReorder('back')}
+                className={ACTION_BTN_CLASS}
+              >
+                <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          </>
+        )}
 
         {/* Foil & Ink Color Group (Text & Ornaments only) */}
         {activeColor !== null && onChangeColor && (

@@ -47,6 +47,7 @@ import {
   type StubExtensionMode,
 } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
+import { getElementStackPosition } from './layerStack';
 import {
   generateProceduralArtworkSvg,
   isProceduralArtworkFileName,
@@ -243,6 +244,7 @@ export function ArtworkControlsCard({
               const actualIdx = studio.layers.length - 1 - revIdx;
               const isSelected = layer.id === selectedLayerId;
               const fromSeries = isSeriesOriginLayer(layer);
+              const stackPos = getElementStackPosition(studio, layer.id);
               return (
                 <li
                   key={layer.id}
@@ -280,7 +282,7 @@ export function ArtworkControlsCard({
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      disabled={actualIdx === studio.layers.length - 1}
+                      disabled={!stackPos.canBringForward}
                       aria-label={`Bring ${layer.fileName} forward`}
                       onClick={() => onReorderLayer(layer.id, 'forward')}
                     >
@@ -290,7 +292,7 @@ export function ArtworkControlsCard({
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      disabled={actualIdx === 0}
+                      disabled={!stackPos.canSendBackward}
                       aria-label={`Send ${layer.fileName} backward`}
                       onClick={() => onReorderLayer(layer.id, 'backward')}
                     >

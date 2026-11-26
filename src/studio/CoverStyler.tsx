@@ -93,6 +93,12 @@ import { useCoverElementsInteraction } from './hooks/useCoverElementsInteraction
 import { useCoverStudioActions } from './hooks/useCoverStudioActions';
 import { useStudioHistory, type StudioHistoryPushOptions } from './hooks/useStudioHistory';
 import {
+  getElementStackPosition,
+  pruneLayerOrder,
+  reorderStudioElement,
+  type LayerReorderDirection,
+} from './layerStack';
+import {
   FOIL_FINISHES,
   SURFACE_MATERIALS,
   type FoilFinishId,
@@ -402,6 +408,16 @@ export function CoverStyler({
     return true;
   }, [redo, reconcileSelectionWithStudio]);
 
+  const handleReorderElement = useCallback(
+    (id: string, direction: LayerReorderDirection) => {
+      const cur = studioRef.current;
+      const next = reorderStudioElement(cur, id, direction);
+      if (next === cur) return;
+      applyStudioChange(next);
+    },
+    [applyStudioChange],
+  );
+
   const handleDuplicateSelected = useCallback(() => {
     const selection: StudioElementSelection = {
       imageId: selectedLayerId,
@@ -442,8 +458,11 @@ export function CoverStyler({
     onChangeLayers: (nextLayers) => {
       const cur = studioRef.current;
       const isStructuralDelete = nextLayers.length !== cur.layers.length;
+      const nextStudio = isStructuralDelete
+        ? pruneLayerOrder({ ...cur, layers: nextLayers })
+        : { ...cur, layers: nextLayers };
       applyStudioChange(
-        { ...cur, layers: nextLayers },
+        nextStudio,
         isStructuralDelete ? undefined : { coalesceKey: 'drag' },
       );
     },
@@ -567,6 +586,26 @@ export function CoverStyler({
         }
       }
 
+      if (viewMode === '2d' && !e.altKey) {
+        const activeElementId = selectedTextId ?? selectedOrnamentId ?? selectedLayerId;
+        if (activeElementId) {
+          const isBracketRight = e.code === 'BracketRight' || e.key === ']' || e.key === '}';
+          const isBracketLeft = e.code === 'BracketLeft' || e.key === '[' || e.key === '{';
+          if (isBracketRight) {
+            e.preventDefault();
+            const dir: LayerReorderDirection = e.shiftKey || e.key === '}' ? 'front' : 'forward';
+            handleReorderElement(activeElementId, dir);
+            return;
+          }
+          if (isBracketLeft) {
+            e.preventDefault();
+            const dir: LayerReorderDirection = e.shiftKey || e.key === '{' ? 'back' : 'backward';
+            handleReorderElement(activeElementId, dir);
+            return;
+          }
+        }
+      }
+
       if (
         viewMode === '2d' &&
         !mod &&
@@ -610,6 +649,7 @@ export function CoverStyler({
     handleUndo,
     handleRedo,
     handleDuplicateSelected,
+    handleReorderElement,
     applyStudioChange,
     selectPastedResult,
   ]);
@@ -684,6 +724,10 @@ export function CoverStyler({
     if (selectedLayer) return { kind: 'image', layer: selectedLayer };
     return null;
   }, [selectedTextLayer, selectedOrnamentLayer, selectedLayer]);
+  const activeSelectionStackPosition = useMemo(
+    () => (activeSelection ? getElementStackPosition(studio, activeSelection.layer.id) : null),
+    [studio, activeSelection],
+  );
   const hasSelectedElement = activeSelection !== null;
 
   const handleSelectionFlipH = () => {
@@ -791,7 +835,7 @@ export function CoverStyler({
       actions.handleDeleteOrnament(activeSelection.layer.id);
     } else {
       const remaining = studio.layers.filter((l) => l.id !== activeSelection.layer.id);
-      applyStudioChange({ ...studio, layers: remaining });
+      applyStudioChange(pruneLayerOrder({ ...studio, layers: remaining }));
       setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
     }
   };
@@ -1007,11 +1051,17 @@ export function CoverStyler({
             {viewMode === '2d' && (
               <CanvasSelectionBar
                 selection={activeSelection}
-              controlsId="studio-mat-viewport"
-              onFlipH={handleSelectionFlipH}
-              onFlipV={handleSelectionFlipV}
-              onRotate90={handleSelectionRotate90}
-              onQuickAlign={handleSelectionQuickAlign}
+                controlsId="studio-mat-viewport"
+                stackPosition={activeSelectionStackPosition}
+                onFlipH={handleSelectionFlipH}
+                onFlipV={handleSelectionFlipV}
+                onRotate90={handleSelectionRotate90}
+                onReorder={(direction) => {
+                  if (activeSelection) {
+                    handleReorderElement(activeSelection.layer.id, direction);
+                  }
+                }}
+                onQuickAlign={handleSelectionQuickAlign}
               onFitMargin={
                 activeSelection?.kind === 'ornament'
                   ? (marginMm) =>
@@ -1500,16 +1550,12 @@ export function CoverStyler({
             return next;
           })
         }
-        onReorderLayer={(id, direction) =>
-          applyStudioChange({
-            ...studio,
-            layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
-          })
-        }
+        onReorderLayer={(id, direction) => handleReorderElement(id, direction)}
+        onReorderElement={handleReorderElement}
         onDetachSeriesLayer={actions.handleDetachSeriesLayer}
         onDeleteLayer={(id) => {
           const remaining = studio.layers.filter((l) => l.id !== id);
-          applyStudioChange({ ...studio, layers: remaining });
+          applyStudioChange(pruneLayerOrder({ ...studio, layers: remaining }));
           if (selectedLayerId === id) {
             setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
           }

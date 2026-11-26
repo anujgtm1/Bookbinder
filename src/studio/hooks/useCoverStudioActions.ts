@@ -60,7 +60,12 @@ import {
   type StubExtensionSide,
 } from '../edgeExtend';
 import { loadCustomFontFromFile, type CustomFontAsset } from '../fonts';
-import { hasImageAboveVectorElements } from '../layerStack';
+import {
+  hasImageAboveVectorElements,
+  pruneLayerOrder,
+  replaceLayerIdInOrder,
+  syncLayerOrderAfterAdd,
+} from '../layerStack';
 import {
   resolveImageLayerConstraint,
   resolveOrnamentLayerConstraint,
@@ -165,7 +170,13 @@ export function useCoverStudioActions({
       fontId: studio.spineText.fontId,
       color: studio.spineText.textColor,
     });
-    onChange({ ...studio, textLayers: [...(studio.textLayers ?? []), created] });
+    onChange(
+      syncLayerOrderAfterAdd(
+        { ...studio, textLayers: [...(studio.textLayers ?? []), created] },
+        [created.id],
+        'text',
+      ),
+    );
     onSelectText(created.id);
     onSwitchTo2D();
     onStatusMessage(`Added "${created.text.split('\n')[0]}" on ${zone} cover — drag to position`);
@@ -228,7 +239,7 @@ export function useCoverStudioActions({
 
   const handleDeleteTextLayer = (id: string) => {
     const remaining = (studio.textLayers ?? []).filter((t) => t.id !== id);
-    onChange({ ...studio, textLayers: remaining });
+    onChange(pruneLayerOrder({ ...studio, textLayers: remaining }));
     if (selectedTextId === id) {
       setSelectedTextId(remaining[remaining.length - 1]?.id ?? null);
     }
@@ -245,7 +256,13 @@ export function useCoverStudioActions({
       zone,
       color,
     );
-    onChange({ ...studio, ornaments: [...(studio.ornaments ?? []), created] });
+    onChange(
+      syncLayerOrderAfterAdd(
+        { ...studio, ornaments: [...(studio.ornaments ?? []), created] },
+        [created.id],
+        'ornament',
+      ),
+    );
     onSelectOrnament(created.id);
     onSwitchTo2D();
     onStatusMessage(`Added ${getClassicOrnamentSpec(presetId).label} on ${zone} cover`);
@@ -305,7 +322,13 @@ export function useCoverStudioActions({
         zone,
         color,
       });
-      onChange({ ...studio, ornaments: [...(studio.ornaments ?? []), created] });
+      onChange(
+        syncLayerOrderAfterAdd(
+          { ...studio, ornaments: [...(studio.ornaments ?? []), created] },
+          [created.id],
+          'ornament',
+        ),
+      );
       onSelectOrnament(created.id);
       onSwitchTo2D();
       onStatusMessage(
@@ -450,41 +473,59 @@ export function useCoverStudioActions({
     if (kind === 'image') {
       if (!latest.layers.some((l) => l.id === id)) return;
       const freshId = createDetachedLayerId('layer');
-      onChange({
-        ...latest,
-        layers: latest.layers.map((layer) => {
-          if (layer.id !== id) return layer;
-          const { origin: _origin, ...rest } = layer;
-          void _origin;
-          return { ...rest, id: freshId };
-        }),
-      });
+      onChange(
+        replaceLayerIdInOrder(
+          {
+            ...latest,
+            layers: latest.layers.map((layer) => {
+              if (layer.id !== id) return layer;
+              const { origin: _origin, ...rest } = layer;
+              void _origin;
+              return { ...rest, id: freshId };
+            }),
+          },
+          id,
+          freshId,
+        ),
+      );
       setSelectedLayerId((prev) => (prev === id ? freshId : prev));
     } else if (kind === 'text') {
       if (!(latest.textLayers ?? []).some((t) => t.id === id)) return;
       const freshId = createDetachedLayerId('txt');
-      onChange({
-        ...latest,
-        textLayers: (latest.textLayers ?? []).map((layer) => {
-          if (layer.id !== id) return layer;
-          const { origin: _origin, ...rest } = layer;
-          void _origin;
-          return { ...rest, id: freshId };
-        }),
-      });
+      onChange(
+        replaceLayerIdInOrder(
+          {
+            ...latest,
+            textLayers: (latest.textLayers ?? []).map((layer) => {
+              if (layer.id !== id) return layer;
+              const { origin: _origin, ...rest } = layer;
+              void _origin;
+              return { ...rest, id: freshId };
+            }),
+          },
+          id,
+          freshId,
+        ),
+      );
       setSelectedTextId((prev) => (prev === id ? freshId : prev));
     } else {
       if (!(latest.ornaments ?? []).some((o) => o.id === id)) return;
       const freshId = createDetachedLayerId('orn');
-      onChange({
-        ...latest,
-        ornaments: (latest.ornaments ?? []).map((layer) => {
-          if (layer.id !== id) return layer;
-          const { origin: _origin, ...rest } = layer;
-          void _origin;
-          return { ...rest, id: freshId };
-        }),
-      });
+      onChange(
+        replaceLayerIdInOrder(
+          {
+            ...latest,
+            ornaments: (latest.ornaments ?? []).map((layer) => {
+              if (layer.id !== id) return layer;
+              const { origin: _origin, ...rest } = layer;
+              void _origin;
+              return { ...rest, id: freshId };
+            }),
+          },
+          id,
+          freshId,
+        ),
+      );
       setSelectedOrnamentId((prev) => (prev === id ? freshId : prev));
     }
     onStatusMessage(
@@ -494,7 +535,7 @@ export function useCoverStudioActions({
 
   const handleDeleteOrnament = (id: string) => {
     const remaining = (studio.ornaments ?? []).filter((o) => o.id !== id);
-    onChange({ ...studio, ornaments: remaining });
+    onChange(pruneLayerOrder({ ...studio, ornaments: remaining }));
     if (selectedOrnamentId === id) {
       setSelectedOrnamentId(remaining[remaining.length - 1]?.id ?? null);
     }
@@ -777,7 +818,13 @@ export function useCoverStudioActions({
     }
 
     if (addedLayers.length > 0) {
-      onChange({ ...studio, layers: [...studio.layers, ...addedLayers] });
+      onChange(
+        syncLayerOrderAfterAdd(
+          { ...studio, layers: [...studio.layers, ...addedLayers] },
+          addedLayers.map((l) => l.id),
+          'image',
+        ),
+      );
       onSelectImageLayer(addedLayers[addedLayers.length - 1].id);
       onStatusMessage(
         addedLayers.length === 1
@@ -829,6 +876,12 @@ export function useCoverStudioActions({
       layoutConstraint,
     };
 
+    const replacedLayers =
+      target === 'fullWrap'
+        ? studio.layers.filter((layer) => isProceduralArtworkFileName(layer.fileName))
+        : studio.layers.filter(
+            (layer) => isProceduralArtworkFileName(layer.fileName) && layer.clipZone === clipZone,
+          );
     const otherLayers =
       target === 'fullWrap'
         ? studio.layers.filter((layer) => !isProceduralArtworkFileName(layer.fileName))
@@ -837,8 +890,16 @@ export function useCoverStudioActions({
               !(isProceduralArtworkFileName(layer.fileName) && layer.clipZone === clipZone),
           );
     const nextLayers = [...otherLayers, created];
+    let nextStudio: CoverStudioState = { ...studio, layers: nextLayers };
+    if (replacedLayers.length > 0 && studio.layerOrder?.includes(replacedLayers[0].id)) {
+      nextStudio = pruneLayerOrder(
+        replaceLayerIdInOrder(nextStudio, replacedLayers[0].id, created.id),
+      );
+    } else {
+      nextStudio = syncLayerOrderAfterAdd(pruneLayerOrder(nextStudio), [created.id], 'image');
+    }
 
-    onChange({ ...studio, layers: nextLayers });
+    onChange(nextStudio);
     onSelectImageLayer(created.id);
     onSwitchTo2D();
     const label = getProceduralArtworkSpec(patternId).label;

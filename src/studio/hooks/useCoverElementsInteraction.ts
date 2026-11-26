@@ -19,6 +19,7 @@ import {
   inferZoneFromCenterX,
   type StudioCanvasSpec,
 } from '../canvasSpec';
+import { pruneLayerOrder } from '../layerStack';
 import {
   snapBoxToTargets,
   snapPointToTargets,
@@ -261,16 +262,20 @@ export function useCoverElementsInteraction({
       e.preventDefault();
       const cur = studioRef.current;
       if (selectedTextId) {
-        onChangeRef.current({
-          ...cur,
-          textLayers: (cur.textLayers ?? []).filter((t) => t.id !== selectedTextId),
-        });
+        onChangeRef.current(
+          pruneLayerOrder({
+            ...cur,
+            textLayers: (cur.textLayers ?? []).filter((t) => t.id !== selectedTextId),
+          }),
+        );
         onSelectText(null);
       } else if (selectedOrnamentId) {
-        onChangeRef.current({
-          ...cur,
-          ornaments: (cur.ornaments ?? []).filter((o) => o.id !== selectedOrnamentId),
-        });
+        onChangeRef.current(
+          pruneLayerOrder({
+            ...cur,
+            ornaments: (cur.ornaments ?? []).filter((o) => o.id !== selectedOrnamentId),
+          }),
+        );
         onSelectOrnament(null);
       }
     };
