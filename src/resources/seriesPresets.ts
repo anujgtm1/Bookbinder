@@ -280,6 +280,7 @@ export const SERIES_STARTER_TEMPLATES: readonly SeriesStarterTemplate[] = [
             parameters: { ...base, pbHeightMm: 216, pbWidthMm: 140, pbThicknessMm: 44 },
           }),
         ],
+        sequences: [],
         shared: {
           ...DEFAULT_SERIES_SHARED_DESIGN,
           fontId: 'eb-garamond',
@@ -330,6 +331,7 @@ export const SERIES_STARTER_TEMPLATES: readonly SeriesStarterTemplate[] = [
             spineBgColorOverride: colors[idx] ?? tonal.defaultBgColor,
           }),
         ),
+        sequences: [],
         shared: {
           ...DEFAULT_SERIES_SHARED_DESIGN,
           fontId: 'libre-baskerville',
@@ -400,6 +402,7 @@ export const SERIES_STARTER_TEMPLATES: readonly SeriesStarterTemplate[] = [
             spineBgColorOverride: '#5c262b',
           }),
         ],
+        sequences: [],
         shared: {
           ...DEFAULT_SERIES_SHARED_DESIGN,
           fontId: 'cormorant-garamond',

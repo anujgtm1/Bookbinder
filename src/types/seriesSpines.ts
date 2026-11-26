@@ -17,6 +17,7 @@ export const SERIES_SCHEMA_VERSION = 1 as const;
 
 export type SeriesId = string & { readonly __brand: 'SeriesId' };
 export type SeriesBookId = string & { readonly __brand: 'SeriesBookId' };
+export type SeriesSequenceId = string & { readonly __brand: 'SeriesSequenceId' };
 
 export type SpineTextOrientation = SpineOrientation;
 export type SpineAuthorOrientation = AuthorOrientation;
@@ -90,9 +91,21 @@ export interface SeriesSharedDesign {
   readonly panorama: SeriesPanoramaConfig;
 }
 
+export interface SeriesSequenceGroup {
+  readonly id: SeriesSequenceId;
+  readonly name: string;
+  /** Numbering style for volumes in this sequence (e.g., 'roman' -> I, II, III, 'arabic', 'vol-arabic', 'book-arabic', 'custom', 'none') */
+  readonly volumeNumberStyle: SeriesVolumeNumberStyle;
+  /** Optional starting volume number (default 1, e.g., 1..99) */
+  readonly startNumber: number;
+  /** Optional shared author label for the sequence (empty string / null = let each book keep its own author!) */
+  readonly sharedAuthor: string | null;
+}
+
 export interface SeriesBookEntry {
   readonly id: SeriesBookId;
   readonly linkedProjectId: ProjectId | null;
+  readonly sequenceId?: SeriesSequenceId | null;
   readonly title: string;
   readonly author: string;
   readonly volumeLabelOverride: string;
@@ -111,6 +124,7 @@ export interface SeriesProject {
   readonly mode: SeriesCollectionMode;
   readonly updatedAt: string;
   readonly books: readonly SeriesBookEntry[];
+  readonly sequences: readonly SeriesSequenceGroup[];
   readonly shared: SeriesSharedDesign;
 }
 
@@ -138,6 +152,8 @@ export const SERIES_BOUNDS = {
   shelfGapMm: { min: 0, max: 8 },
   dimOpacity: { min: 0, max: 0.75 },
   opticalNudgeMm: STUDIO_BOUNDS.opticalNudgeMm,
+  sequenceStartNumber: { min: 1, max: 99 },
+  maxSequences: 12,
   maxBooks: 24,
 } as const;
 
@@ -221,6 +237,30 @@ export function createSeriesBookId(): SeriesBookId {
     return asSeriesBookId(`sbook-${globalThis.crypto.randomUUID()}`);
   }
   return asSeriesBookId(`sbook-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+}
+
+export function isSeriesSequenceId(value: unknown): value is SeriesSequenceId {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export function asSeriesSequenceId(raw: string): SeriesSequenceId {
+  const trimmed = raw.trim();
+  if (!isSeriesSequenceId(trimmed)) {
+    throw new Error('SeriesSequenceId must be a non-empty string.');
+  }
+  return trimmed;
+}
+
+export function createSeriesSequenceId(): SeriesSequenceId {
+  if (
+    typeof globalThis.crypto !== 'undefined' &&
+    typeof globalThis.crypto.randomUUID === 'function'
+  ) {
+    return asSeriesSequenceId(`sseq-${globalThis.crypto.randomUUID()}`);
+  }
+  return asSeriesSequenceId(
+    `sseq-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+  );
 }
 
 const ROMAN_NUMERAL_TABLE: readonly (readonly [number, string])[] = [
@@ -515,12 +555,52 @@ function parseSharedDesign(raw: unknown): SeriesSharedDesign {
   };
 }
 
-function parseBookEntry(raw: unknown, fallbackIndex: number): SeriesBookEntry | null {
+function parseSequenceGroup(raw: unknown, fallbackIndex: number): SeriesSequenceGroup | null {
+  if (!isRecord(raw)) return null;
+  const id = isSeriesSequenceId(raw.id) ? asSeriesSequenceId(raw.id) : createSeriesSequenceId();
+  const name =
+    typeof raw.name === 'string' && raw.name.trim().length > 0
+      ? raw.name.trim().slice(0, 120)
+      : `Series ${fallbackIndex + 1}`;
+  const startNumber = Math.round(
+    clampFinite(
+      raw.startNumber,
+      1,
+      SERIES_BOUNDS.sequenceStartNumber.min,
+      SERIES_BOUNDS.sequenceStartNumber.max,
+    ),
+  );
+  const sharedAuthor =
+    typeof raw.sharedAuthor === 'string' && raw.sharedAuthor.trim().length > 0
+      ? raw.sharedAuthor.trim().slice(0, 100)
+      : null;
+
+  return {
+    id,
+    name,
+    volumeNumberStyle: parseVolumeStyle(raw.volumeNumberStyle),
+    startNumber,
+    sharedAuthor,
+  };
+}
+
+function parseBookEntry(
+  raw: unknown,
+  fallbackIndex: number,
+  validSequenceIds?: ReadonlySet<SeriesSequenceId>,
+): SeriesBookEntry | null {
   if (!isRecord(raw)) return null;
   const id = isSeriesBookId(raw.id) ? asSeriesBookId(raw.id) : createSeriesBookId();
   const linkedProjectId = isProjectId(raw.linkedProjectId)
     ? asProjectId(raw.linkedProjectId)
     : null;
+  const rawSequenceId = isSeriesSequenceId(raw.sequenceId)
+    ? asSeriesSequenceId(raw.sequenceId)
+    : null;
+  const sequenceId =
+    rawSequenceId && (!validSequenceIds || validSequenceIds.has(rawSequenceId))
+      ? rawSequenceId
+      : null;
   const title =
     typeof raw.title === 'string' && raw.title.trim().length > 0
       ? raw.title.slice(0, 140)
@@ -554,6 +634,7 @@ function parseBookEntry(raw: unknown, fallbackIndex: number): SeriesBookEntry | 
   return {
     id,
     linkedProjectId,
+    sequenceId,
     title,
     author,
     volumeLabelOverride,
@@ -569,13 +650,38 @@ function parseBookEntry(raw: unknown, fallbackIndex: number): SeriesBookEntry | 
 export const SeriesProjectModel = {
   createSeriesId,
   createSeriesBookId,
+  createSeriesSequenceId,
   toRomanNumeral,
   formatVolumeLabel,
+
+  createSequenceGroup(partial?: Partial<SeriesSequenceGroup>): SeriesSequenceGroup {
+    const startNumber = Math.round(
+      clampFinite(
+        partial?.startNumber,
+        1,
+        SERIES_BOUNDS.sequenceStartNumber.min,
+        SERIES_BOUNDS.sequenceStartNumber.max,
+      ),
+    );
+    const sharedAuthor =
+      typeof partial?.sharedAuthor === 'string' && partial.sharedAuthor.trim().length > 0
+        ? partial.sharedAuthor.trim().slice(0, 100)
+        : null;
+
+    return {
+      id: partial?.id ?? createSeriesSequenceId(),
+      name: partial?.name?.trim() ? partial.name.trim().slice(0, 120) : 'Untitled Series',
+      volumeNumberStyle: partial?.volumeNumberStyle ?? 'roman',
+      startNumber,
+      sharedAuthor,
+    };
+  },
 
   createBookEntry(partial?: Partial<SeriesBookEntry>): SeriesBookEntry {
     return {
       id: partial?.id ?? createSeriesBookId(),
       linkedProjectId: partial?.linkedProjectId ?? null,
+      sequenceId: partial?.sequenceId ?? null,
       title: partial?.title ?? 'Untitled Volume',
       author: partial?.author ?? '',
       volumeLabelOverride: partial?.volumeLabelOverride ?? '',
@@ -635,6 +741,7 @@ export const SeriesProjectModel = {
           parameters: { ...baseParams, pbThicknessMm: 44 },
         }),
       ],
+      sequences: [],
       shared: {
         ...DEFAULT_SERIES_SHARED_DESIGN,
         panorama: { ...DEFAULT_SERIES_PANORAMA },
@@ -656,6 +763,18 @@ export const SeriesProjectModel = {
       errors.push(`A shelf may contain at most ${SERIES_BOUNDS.maxBooks} books.`);
     }
 
+    const seenSequenceIds = new Set<SeriesSequenceId>();
+    for (let i = 0; i < series.sequences.length; i++) {
+      const seq = series.sequences[i];
+      if (seenSequenceIds.has(seq.id)) {
+        errors.push(`Duplicate sequence ID at position ${i + 1}.`);
+      }
+      seenSequenceIds.add(seq.id);
+      if (!seq.name.trim()) {
+        errors.push(`Sequence ${i + 1} name cannot be empty.`);
+      }
+    }
+
     const seenIds = new Set<string>();
     for (let i = 0; i < series.books.length; i++) {
       const book = series.books[i];
@@ -663,6 +782,12 @@ export const SeriesProjectModel = {
         errors.push(`Duplicate book ID at position ${i + 1}.`);
       }
       seenIds.add(book.id);
+
+      if (book.sequenceId && !seenSequenceIds.has(book.sequenceId)) {
+        warnings.push(
+          `Book ${i + 1} (${book.title || 'Untitled'}) references an unknown sequence ID.`,
+        );
+      }
 
       const paramValidation = BookParametersModel.validate(book.parameters);
       if (!paramValidation.isValid) {
@@ -691,6 +816,31 @@ export const SeriesProjectModel = {
     options?: { readonly includePanoramaData?: boolean },
   ): SeriesProject {
     const includePanoramaData = options?.includePanoramaData ?? true;
+
+    const validSequences: SeriesSequenceGroup[] = [];
+    const validSequenceIds = new Set<SeriesSequenceId>();
+    for (const seq of series.sequences ?? []) {
+      if (validSequenceIds.has(seq.id)) continue;
+      validSequenceIds.add(seq.id);
+      validSequences.push({
+        id: seq.id,
+        name: seq.name.trim().slice(0, 120) || 'Untitled Series',
+        volumeNumberStyle: seq.volumeNumberStyle,
+        startNumber: Math.round(
+          clampFinite(
+            seq.startNumber,
+            1,
+            SERIES_BOUNDS.sequenceStartNumber.min,
+            SERIES_BOUNDS.sequenceStartNumber.max,
+          ),
+        ),
+        sharedAuthor:
+          typeof seq.sharedAuthor === 'string' && seq.sharedAuthor.trim().length > 0
+            ? seq.sharedAuthor.trim().slice(0, 100)
+            : null,
+      });
+    }
+
     return {
       schemaVersion: SERIES_SCHEMA_VERSION,
       id: series.id,
@@ -699,8 +849,11 @@ export const SeriesProjectModel = {
       updatedAt: series.updatedAt || new Date().toISOString(),
       books: series.books.map((book) => ({
         ...book,
+        sequenceId:
+          book.sequenceId && validSequenceIds.has(book.sequenceId) ? book.sequenceId : null,
         parameters: BookParametersModel.serialize(book.parameters),
       })),
+      sequences: validSequences,
       shared: {
         ...series.shared,
         panorama: {
@@ -736,9 +889,21 @@ export const SeriesProjectModel = {
       return { ok: false, error: 'Series file must include a non-empty "books" array.' };
     }
 
+    const parsedSequences: SeriesSequenceGroup[] = [];
+    const validSequenceIds = new Set<SeriesSequenceId>();
+    if (Array.isArray(raw.sequences)) {
+      for (let i = 0; i < Math.min(raw.sequences.length, SERIES_BOUNDS.maxSequences); i++) {
+        const seq = parseSequenceGroup(raw.sequences[i], i);
+        if (seq && !validSequenceIds.has(seq.id)) {
+          validSequenceIds.add(seq.id);
+          parsedSequences.push(seq);
+        }
+      }
+    }
+
     const parsedBooks: SeriesBookEntry[] = [];
     for (let i = 0; i < Math.min(raw.books.length, SERIES_BOUNDS.maxBooks); i++) {
-      const entry = parseBookEntry(raw.books[i], i);
+      const entry = parseBookEntry(raw.books[i], i, validSequenceIds);
       if (entry) {
         parsedBooks.push(entry);
       }
@@ -767,6 +932,7 @@ export const SeriesProjectModel = {
         mode: parseCollectionMode(raw.mode),
         updatedAt,
         books: parsedBooks,
+        sequences: parsedSequences,
         shared: parseSharedDesign(raw.shared),
       },
     };
