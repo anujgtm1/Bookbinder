@@ -56,7 +56,8 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
   test('downloads all four 1:1 mm structural templates across Outer Case Wrap and Inner Pockets tabs', async ({
     page,
   }) => {
-    // 1. Outer Case Wrap Cut-Only SVG
+    // 1. Outer Case Wrap Cut-Only SVG (inside More popover in Clean Mode)
+    await page.getByTestId('studio-more-exports-btn').click();
     const outerSvgPromise = page.waitForEvent('download');
     await page.getByTestId('download-outer-svg-btn').click();
     const outerSvgDownload = await outerSvgPromise;
@@ -68,6 +69,7 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
     expect(outerSvgContent).toContain('id="board-guides"');
 
     // 2. Outer Case Wrap Cut-Only PDF (via unified Print & Export PDF dialog)
+    await page.getByTestId('studio-more-exports-btn').click();
     await page.getByTestId('download-outer-pdf-btn').click();
     await expect(page.getByTestId('pdf-export-dialog')).toBeVisible();
     const outerPdfPromise = page.waitForEvent('download');
@@ -144,6 +146,7 @@ test.describe('Phase 1 — Structural Templates & Exports', () => {
   }) => {
     // 105 × 140 mm, 46 mm spine on US Letter requires L-shaped 2D packing
     // (1 horizontal pocket + 1 vertical pocket + spine liner in the L-corner) to fit on 1 page.
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('input-pb-width').fill('105');
     await page.getByTestId('input-pb-width').blur();
     await page.getByTestId('input-pb-height').fill('140');

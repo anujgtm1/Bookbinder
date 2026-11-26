@@ -38,6 +38,9 @@ test.describe('Multi-Book Cut-Sheet Printing from My Books', () => {
   test('combines two saved A6 books onto one Tabloid PDF, paginates on US Letter, and warns on oversized books', async ({
     page,
   }) => {
+    // Expand Book Specifications sidebar to configure multiple saved books
+    await page.getByTestId('toggle-sidebar-btn').click();
+
     // 1. Configure Book 1: A6 Replacement Paperback Cover with spine title "Volume One"
     await page.getByTestId('binding-style-select').click();
     await page.getByRole('option', { name: /Replacement Paperback Cover/i }).click();
