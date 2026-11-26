@@ -177,7 +177,8 @@ export function pasteClipboardItemToStudio(
   const offsetMm = resolvePasteOffsetMm(pasteIndex);
 
   if (item.kind === 'cover-image') {
-    const cloned = cloneSnapshot(item.layer);
+    const { origin: _origin, ...cloned } = cloneSnapshot(item.layer);
+    void _origin;
     const existingIds = new Set(studio.layers.map((layer) => layer.id));
     const pastedId = generateUniqueId('layer', existingIds);
     const pos = clampImagePosition(cloned, offsetMm, offsetMm, canvasBounds);
@@ -201,7 +202,8 @@ export function pasteClipboardItemToStudio(
   }
 
   if (item.kind === 'cover-text') {
-    const cloned = cloneSnapshot(item.layer);
+    const { origin: _origin, ...cloned } = cloneSnapshot(item.layer);
+    void _origin;
     const existingIds = new Set(studio.textLayers.map((layer) => layer.id));
     const pastedId = generateUniqueId('txt', existingIds);
     const pos = clampTextPosition(cloned, offsetMm, offsetMm, canvasBounds);
@@ -237,7 +239,8 @@ export function pasteClipboardItemToStudio(
   }
 
   if (item.kind === 'cover-ornament') {
-    const cloned = cloneSnapshot(item.layer);
+    const { origin: _origin, ...cloned } = cloneSnapshot(item.layer);
+    void _origin;
     const existingIds = new Set(studio.ornaments.map((layer) => layer.id));
     const prefix = cloned.presetId === 'custom-svg' ? 'svg' : 'orn';
     const pastedId = generateUniqueId(prefix, existingIds);

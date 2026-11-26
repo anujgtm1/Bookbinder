@@ -195,16 +195,88 @@ describe('seriesSpines core layout, compilation, and storage', () => {
     expect(compiled.textLayers.some((t) => t.id === userFrontText.id)).toBe(true);
     expect(compiled.ornaments.some((o) => o.id === userFrontOrnament.id)).toBe(true);
 
-    // Adds deterministic series-* managed elements cleanly on the spine
-    expect(compiled.layers.some((l) => l.id === SERIES_PANORAMA_LAYER_ID && l.clipZone === 'spine')).toBe(true);
-    expect(compiled.textLayers.some((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID && t.text === 'I')).toBe(true);
-    expect(compiled.ornaments.some((o) => o.id === SERIES_BANDS_ORNAMENT_ID)).toBe(true);
+    // Adds deterministic series-* managed elements cleanly on the spine, all tagged origin: 'series-spine'
+    const compiledPano = compiled.layers.find((l) => l.id === SERIES_PANORAMA_LAYER_ID);
+    const compiledBadge = compiled.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID);
+    const compiledBands = compiled.ornaments.find((o) => o.id === SERIES_BANDS_ORNAMENT_ID);
+    expect(compiledPano?.clipZone).toBe('spine');
+    expect(compiledPano?.origin).toBe('series-spine');
+    expect(compiledBadge?.text).toBe('I');
+    expect(compiledBadge?.origin).toBe('series-spine');
+    expect(compiledBands?.origin).toBe('series-spine');
 
     // Re-compiling a second time must not duplicate managed series-* layers
     const recompiled = compileSeriesBookToCoverStudio(series, 0, compiled);
     expect(recompiled.layers.filter((l) => l.id === SERIES_PANORAMA_LAYER_ID)).toHaveLength(1);
     expect(recompiled.textLayers.filter((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID)).toHaveLength(1);
     expect(recompiled.ornaments.filter((o) => o.id === SERIES_BANDS_ORNAMENT_ID)).toHaveLength(1);
+  });
+
+  it('tags all compiled spine layers with origin: series-spine and preserves detached layers on re-sync', () => {
+    const baseSeries = SeriesProjectModel.createDefault();
+    const series = {
+      ...baseSeries,
+      shared: {
+        ...baseSeries.shared,
+        bandStyle: 'classic-rules' as const,
+        volumeNumberStyle: 'roman' as const,
+        ornamentId: 'emblem-compass-rose' as const,
+        panorama: {
+          ...baseSeries.shared.panorama,
+          enabled: true,
+          dataUrl: createSamplePanoramaDataUrl(),
+          fileName: 'peaks.svg',
+          naturalWidth: SAMPLE_PANORAMA_NATURAL_WIDTH,
+          naturalHeight: SAMPLE_PANORAMA_NATURAL_HEIGHT,
+        },
+      },
+    };
+
+    const compiled = compileSeriesBookToCoverStudio(series, 0, null);
+    expect(compiled.layers.every((l) => l.origin === 'series-spine')).toBe(true);
+    expect(compiled.textLayers.every((t) => t.origin === 'series-spine')).toBe(true);
+    expect(compiled.ornaments.every((o) => o.origin === 'series-spine')).toBe(true);
+    expect(compiled.ornaments.find((o) => o.id === SERIES_SHARED_ORNAMENT_ID)?.origin).toBe(
+      'series-spine',
+    );
+
+    // Simulate user detaching the panorama, volume badge, and shared ornament in Cover Studio
+    const { origin: _o1, ...detachedPanoBase } = compiled.layers[0];
+    const { origin: _o2, ...detachedBadgeBase } = compiled.textLayers[0];
+    const sharedOrn = compiled.ornaments.find((o) => o.id === SERIES_SHARED_ORNAMENT_ID)!;
+    const { origin: _o3, ...detachedOrnBase } = sharedOrn;
+    void _o1;
+    void _o2;
+    void _o3;
+
+    const studioWithDetached = {
+      ...compiled,
+      layers: [{ ...detachedPanoBase, id: 'layer-detached-pano' }],
+      textLayers: [{ ...detachedBadgeBase, id: 'txt-detached-badge', text: 'PROLOGUE' }],
+      ornaments: [
+        ...compiled.ornaments.filter((o) => o.id !== SERIES_SHARED_ORNAMENT_ID),
+        { ...detachedOrnBase, id: 'orn-detached-crest', color: '#ffffff' },
+      ],
+    };
+
+    // Re-syncing from Series Spines (even with panorama disabled and updated ornament) preserves all detached layers
+    const updatedSeries = {
+      ...series,
+      shared: {
+        ...series.shared,
+        volumeNumberStyle: 'arabic' as const,
+        ornamentId: 'emblem-botanical-sprig' as const,
+        panorama: { ...series.shared.panorama, enabled: false },
+      },
+    };
+    const resynced = compileSeriesBookToCoverStudio(updatedSeries, 0, studioWithDetached);
+
+    expect(resynced.layers.some((l) => l.id === 'layer-detached-pano' && l.origin === undefined)).toBe(true);
+    expect(resynced.layers.some((l) => l.id === SERIES_PANORAMA_LAYER_ID)).toBe(false);
+    expect(resynced.textLayers.some((t) => t.id === 'txt-detached-badge' && t.text === 'PROLOGUE')).toBe(true);
+    expect(resynced.textLayers.some((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID && t.text === '1')).toBe(true);
+    expect(resynced.ornaments.some((o) => o.id === 'orn-detached-crest' && o.color === '#ffffff')).toBe(true);
+    expect(resynced.ornaments.some((o) => o.id === SERIES_SHARED_ORNAMENT_ID && o.presetId === 'emblem-botanical-sprig')).toBe(true);
   });
 
   it('faithfully transfers panoramic slice coordinates, dimOpacity, ornament, bands, volume badge, and clamped typography to Cover Studio', () => {

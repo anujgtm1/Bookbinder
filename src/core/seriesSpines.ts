@@ -16,7 +16,7 @@ import {
   type SeriesProject,
 } from '@/types/seriesSpines';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
-import type { CoverImageLayer } from '@/types/studioLayer';
+import { isSeriesOriginLayer, type CoverImageLayer } from '@/types/studioLayer';
 import { UnitConverter, roundTo } from '@/types/units';
 
 export const SERIES_MANAGED_ID_PREFIX = 'series-' as const;
@@ -493,10 +493,6 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
   };
 }
 
-function isSeriesManagedId(id: string): boolean {
-  return id.startsWith(SERIES_MANAGED_ID_PREFIX);
-}
-
 function buildBandsCustomSvgOrnament(
   bookLayout: SeriesBookLayout,
 ): CoverOrnamentLayer | null {
@@ -551,6 +547,7 @@ function buildBandsCustomSvgOrnament(
     customSvgPaths: paths,
     customSvgViewBox: { width: widthMm, height: heightMm },
     customSvgRenderMode: 'fill',
+    origin: 'series-spine',
   };
 }
 
@@ -558,9 +555,9 @@ function buildBandsCustomSvgOrnament(
  * Compiles one book in a SeriesProject into a full CoverStudioState.
  *
  * When `existingStudio` is provided (e.g., updating a book already linked to My Books),
- * all user-authored front/back/non-series layers, text layers, ornaments, front/back
- * background colors, and pocket styles are preserved intact while deterministic `series-*`
- * spine elements are cleanly synchronized.
+ * all user-authored or detached front/back/spine layers, text layers, ornaments, front/back
+ * background colors, and pocket styles are preserved intact while `series-spine` origin
+ * elements are cleanly synchronized.
  */
 export function compileSeriesBookToCoverStudio(
   series: SeriesProject,
@@ -584,8 +581,8 @@ export function compileSeriesBookToCoverStudio(
   const toStudioX = (shelfX: number) => roundTo(spec.spineBoardRect.x + (shelfX - shelfXMm), 2);
   const toStudioY = (shelfY: number) => roundTo(spec.spineBoardRect.y + (shelfY - shelfYMm), 2);
 
-  // 1. Preserve non-series image layers; prepend deterministic series panorama layer if active
-  const preservedImageLayers = base.layers.filter((l) => !isSeriesManagedId(l.id));
+  // 1. Preserve non-series & detached image layers; prepend deterministic series panorama layer if active
+  const preservedImageLayers = base.layers.filter((l) => !isSeriesOriginLayer(l));
   const nextLayers: CoverImageLayer[] = [];
   if (
     shared.panorama.enabled &&
@@ -604,12 +601,13 @@ export function compileSeriesBookToCoverStudio(
       heightMm: bookLayout.panoramaLayerPlacement.heightMm,
       clipZone: 'spine',
       ...(shared.panorama.dimOpacity > 0 ? { dimOpacity: shared.panorama.dimOpacity } : {}),
+      origin: 'series-spine',
     });
   }
   nextLayers.push(...preservedImageLayers);
 
-  // 2. Preserve non-series text layers; add deterministic volume badge text layer when active
-  const preservedTextLayers = base.textLayers.filter((l) => !isSeriesManagedId(l.id));
+  // 2. Preserve non-series & detached text layers; add deterministic volume badge text layer when active
+  const preservedTextLayers = base.textLayers.filter((l) => !isSeriesOriginLayer(l));
   const nextTextLayers: CoverTextLayer[] = [...preservedTextLayers];
   if (bookLayout.volumeLabel) {
     nextTextLayers.push({
@@ -625,11 +623,12 @@ export function compileSeriesBookToCoverStudio(
       align: 'center',
       color: bookLayout.accentColor,
       uppercase: shared.volumeNumberStyle === 'roman',
+      origin: 'series-spine',
     });
   }
 
-  // 3. Preserve non-series ornaments; add deterministic series bands + shared ornament
-  const preservedOrnaments = base.ornaments.filter((o) => !isSeriesManagedId(o.id));
+  // 3. Preserve non-series & detached ornaments; add deterministic series bands + shared ornament
+  const preservedOrnaments = base.ornaments.filter((o) => !isSeriesOriginLayer(o));
   const nextOrnaments: CoverOrnamentLayer[] = [...preservedOrnaments];
 
   const bandsOrnament = buildBandsCustomSvgOrnament(bookLayout);
@@ -653,6 +652,7 @@ export function compileSeriesBookToCoverStudio(
       heightMm,
       color: bookLayout.accentColor,
       strokeWidthMm: 0.65,
+      origin: 'series-spine',
     });
   }
 

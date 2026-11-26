@@ -11,6 +11,22 @@ export type QuickFitTarget = 'front' | 'spine' | 'back' | 'fullWrap';
 export type ResizeCorner = 'nw' | 'ne' | 'se' | 'sw';
 export type StubExtensionMode = 'none' | 'edge-smear' | 'soft-mirror' | 'mirror';
 export type QuarterTurnDeg = 0 | 90 | 180 | 270;
+export type LayerOrigin = 'series-spine';
+
+export function parseLayerOrigin(value: unknown): LayerOrigin | undefined {
+  return value === 'series-spine' ? 'series-spine' : undefined;
+}
+
+/**
+ * Returns true when a Cover Studio layer originated from Series Spines
+ * (either explicitly tagged via `origin: 'series-spine'` or legacy `series-*` IDs).
+ */
+export function isSeriesOriginLayer(layer: {
+  readonly id: string;
+  readonly origin?: LayerOrigin;
+}): boolean {
+  return layer.origin === 'series-spine' || layer.id.startsWith('series-');
+}
 
 /** Normalizes any numeric angle to a quarter-turn clockwise angle (0, 90, 180, or 270). */
 export function normalizeQuarterTurn(deg: unknown): QuarterTurnDeg {
@@ -54,6 +70,8 @@ export interface CoverImageLayer {
   readonly dimOpacity?: number;
   /** Optional declarative layout pin/fit condition */
   readonly layoutConstraint?: LayerLayoutConstraint;
+  /** Optional provenance marker when layer was compiled from Series Spines */
+  readonly origin?: LayerOrigin;
 }
 
 /**
@@ -211,6 +229,7 @@ export const CoverImageLayerModel = {
       rotationDeg: rot !== 0 ? rot : undefined,
       ...(layer.dimOpacity && layer.dimOpacity > 0 ? { dimOpacity: layer.dimOpacity } : {}),
       ...(layer.layoutConstraint ? { layoutConstraint: layer.layoutConstraint } : {}),
+      ...(layer.origin === 'series-spine' ? { origin: 'series-spine' as const } : {}),
     };
   },
 
@@ -337,11 +356,14 @@ export const CoverImageLayerModel = {
 
   serialize(layer: CoverImageLayer): CoverImageLayer {
     const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
-    const { layoutConstraint: _c, ...rest } = layer;
+    const origin = parseLayerOrigin(layer.origin);
+    const { layoutConstraint: _c, origin: _o, ...rest } = layer;
     void _c;
+    void _o;
     return {
       ...rest,
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 
@@ -361,6 +383,7 @@ export const CoverImageLayerModel = {
         ? obj.originalDataUrl
         : undefined;
     const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+    const origin = parseLayerOrigin(obj.origin);
     const parsedDimOpacity =
       typeof obj.dimOpacity === 'number' && Number.isFinite(obj.dimOpacity)
         ? roundTo(clampFinite(obj.dimOpacity, 0, 0, 0.75), 3)
@@ -397,6 +420,7 @@ export const CoverImageLayerModel = {
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
       ...(parsedDimOpacity > 0 ? { dimOpacity: parsedDimOpacity } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 } as const;
