@@ -484,4 +484,156 @@ describe('seriesSpines core layout, compilation, and storage', () => {
     expect(loaded.seriesList[0].books).toHaveLength(3);
     expect(loaded.seriesList[0].shared.panorama.dataUrl).toBeNull();
   });
+
+  it('numbers marked sequences independently, leaves standalone books unnumbered, resolves multi-author overrides, and computes exact sequenceSpans', () => {
+    const base = BookParametersModel.createDefault();
+    const seqTrilogy = SeriesProjectModel.createSequenceGroup({
+      name: 'Obsidian Trilogy',
+      volumeNumberStyle: 'roman',
+      startNumber: 1,
+      sharedAuthor: 'E. V. Hawthorne',
+    });
+    const seqAnthology = SeriesProjectModel.createSequenceGroup({
+      name: 'Starlight Chronicles',
+      volumeNumberStyle: 'vol-arabic',
+      startNumber: 1,
+      sharedAuthor: 'House Anthology',
+    });
+
+    const baseSeries = SeriesProjectModel.createDefault();
+    const mixedSeries = {
+      ...baseSeries,
+      sequences: [seqTrilogy, seqAnthology],
+      books: [
+        SeriesProjectModel.createBookEntry({
+          title: 'Shadow Archive',
+          author: '', // inherits seqTrilogy.sharedAuthor
+          sequenceId: seqTrilogy.id,
+          parameters: { ...base, pbHeightMm: 210, pbThicknessMm: 22 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Gilded Labyrinth',
+          author: 'Guest Co-Author', // explicit per-book author wins over sharedAuthor
+          sequenceId: seqTrilogy.id,
+          parameters: { ...base, pbHeightMm: 216, pbThicknessMm: 30 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Crown of Ash',
+          author: '  ', // blank -> inherits seqTrilogy.sharedAuthor
+          sequenceId: seqTrilogy.id,
+          parameters: { ...base, pbHeightMm: 216, pbThicknessMm: 38 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Standalone Essay',
+          author: 'C. Sato',
+          sequenceId: null, // outside any sequence -> no automatic volume badge
+          parameters: { ...base, pbHeightMm: 198, pbThicknessMm: 18 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Orbit One',
+          author: 'A. Lin',
+          sequenceId: seqAnthology.id,
+          parameters: { ...base, pbHeightMm: 228, pbThicknessMm: 26 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Orbit Two',
+          author: '', // inherits seqAnthology.sharedAuthor
+          sequenceId: seqAnthology.id,
+          parameters: { ...base, pbHeightMm: 228, pbThicknessMm: 34 },
+        }),
+      ],
+      shared: {
+        ...baseSeries.shared,
+        volumeNumberStyle: 'arabic' as const,
+        panorama: { ...baseSeries.shared.panorama, shelfGapMm: 2 },
+      },
+    };
+
+    const layout = computeSeriesShelfLayout(mixedSeries);
+    expect(layout.books).toHaveLength(6);
+
+    // Per-sequence volume labels + unnumbered standalone book
+    expect(layout.books.map((b) => b.volumeLabel)).toEqual([
+      'I',
+      'II',
+      'III',
+      '',
+      'Vol. 1',
+      'Vol. 2',
+    ]);
+
+    // Author resolution: explicit book author preserved, blank book inherits sequence sharedAuthor
+    expect(layout.books.map((b) => b.resolvedAuthor)).toEqual([
+      'E. V. Hawthorne',
+      'Guest Co-Author',
+      'E. V. Hawthorne',
+      'C. Sato',
+      'A. Lin',
+      'House Anthology',
+    ]);
+
+    // Exact millimeter sequenceSpans for both contiguous runs
+    expect(layout.sequenceSpans).toHaveLength(2);
+    const [span1, span2] = layout.sequenceSpans;
+
+    expect(span1.sequence.id).toBe(seqTrilogy.id);
+    expect(span1.startBookIndex).toBe(0);
+    expect(span1.endBookIndex).toBe(2);
+    expect(span1.bookCount).toBe(3);
+    expect(span1.volumeRangeLabel).toBe('I–III');
+    expect(span1.startXMm).toBeCloseTo(layout.books[0].shelfXMm, 3);
+    expect(span1.endXMm).toBeCloseTo(
+      layout.books[2].shelfXMm + layout.books[2].spineWidthMm,
+      3,
+    );
+
+    expect(span2.sequence.id).toBe(seqAnthology.id);
+    expect(span2.startBookIndex).toBe(4);
+    expect(span2.endBookIndex).toBe(5);
+    expect(span2.bookCount).toBe(2);
+    expect(span2.volumeRangeLabel).toBe('Vol. 1–Vol. 2');
+    expect(span2.startXMm).toBeCloseTo(layout.books[4].shelfXMm, 3);
+    expect(span2.endXMm).toBeCloseTo(
+      layout.books[5].shelfXMm + layout.books[5].spineWidthMm,
+      3,
+    );
+
+    // Custom startNumber (4 -> 4, 5)
+    const offsetSeq = {
+      ...seqAnthology,
+      volumeNumberStyle: 'arabic' as const,
+      startNumber: 4,
+    };
+    const offsetLayout = computeSeriesShelfLayout({
+      ...mixedSeries,
+      sequences: [seqTrilogy, offsetSeq],
+    });
+    expect(offsetLayout.books[4].volumeLabel).toBe('4');
+    expect(offsetLayout.books[5].volumeLabel).toBe('5');
+    expect(offsetLayout.sequenceSpans[1].volumeRangeLabel).toBe('4–5');
+
+    // compileSeriesBookToCoverStudio compiles sequence volume badge & resolved author faithfully
+    const compiledInherited = compileSeriesBookToCoverStudio(mixedSeries, 0, null);
+    expect(compiledInherited.spineText.author).toBe('E. V. Hawthorne');
+    const badge0 = compiledInherited.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID);
+    expect(badge0?.text).toBe('I');
+    expect(badge0?.uppercase).toBe(true);
+
+    const compiledExplicitAuthor = compileSeriesBookToCoverStudio(mixedSeries, 1, null);
+    expect(compiledExplicitAuthor.spineText.author).toBe('Guest Co-Author');
+
+    const compiledStandalone = compileSeriesBookToCoverStudio(mixedSeries, 3, null);
+    expect(compiledStandalone.spineText.author).toBe('C. Sato');
+    expect(
+      compiledStandalone.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID),
+    ).toBeUndefined();
+
+    const compiledAnthologyVol2 = compileSeriesBookToCoverStudio(mixedSeries, 5, null);
+    expect(compiledAnthologyVol2.spineText.author).toBe('House Anthology');
+    const badge5 = compiledAnthologyVol2.textLayers.find(
+      (t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID,
+    );
+    expect(badge5?.text).toBe('Vol. 2');
+    expect(badge5?.uppercase).toBe(false);
+  });
 });

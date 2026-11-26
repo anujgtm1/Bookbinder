@@ -4,6 +4,7 @@ import {
   SERIES_BOUNDS,
   SERIES_SCHEMA_VERSION,
   SeriesProjectModel,
+  asSeriesSequenceId,
   formatVolumeLabel,
   toRomanNumeral,
 } from './seriesSpines';
@@ -161,6 +162,90 @@ describe('SeriesProjectModel & seriesSpines domain types', () => {
       expect(res.series.shared.panorama.shelfGapMm).toBe(0);
       expect(res.series.books[0].opticalNudgeMm).toBe(SERIES_BOUNDS.opticalNudgeMm.max);
       expect(res.series.books[0].spineBgColorOverride).toBeNull();
+      expect(res.series.sequences).toEqual([]);
+      expect(res.series.books[0].sequenceId).toBeNull();
+    }
+  });
+
+  it('serializes and deserializes SeriesSequenceGroup records and clears dangling sequenceId references', () => {
+    const seq1 = SeriesProjectModel.createSequenceGroup({
+      name: '  The Obsidian Trilogy  ',
+      volumeNumberStyle: 'roman',
+      startNumber: 1,
+      sharedAuthor: '  E. V. Hawthorne  ',
+    });
+    const seq2 = SeriesProjectModel.createSequenceGroup({
+      name: 'Short Stories',
+      volumeNumberStyle: 'vol-arabic',
+      startNumber: 4,
+      sharedAuthor: '   ',
+    });
+
+    const base = SeriesProjectModel.createDefault();
+    const withSequences = {
+      ...base,
+      sequences: [seq1, seq2],
+      books: [
+        { ...base.books[0], sequenceId: seq1.id },
+        { ...base.books[1], sequenceId: asSeriesSequenceId('sseq-dangling-missing') },
+        { ...base.books[2], sequenceId: seq2.id },
+      ],
+    };
+
+    // Validation warns on dangling sequence reference
+    const validation = SeriesProjectModel.validate(withSequences);
+    expect(validation.isValid).toBe(true);
+    expect(validation.warnings.some((w) => w.includes('unknown sequence ID'))).toBe(true);
+
+    // serialize() trims fields, converts blank sharedAuthor -> null, and clears dangling sequenceId
+    const serialized = SeriesProjectModel.serialize(withSequences);
+    expect(serialized.sequences).toHaveLength(2);
+    expect(serialized.sequences[0].name).toBe('The Obsidian Trilogy');
+    expect(serialized.sequences[0].sharedAuthor).toBe('E. V. Hawthorne');
+    expect(serialized.sequences[1].sharedAuthor).toBeNull();
+    expect(serialized.books[0].sequenceId).toBe(seq1.id);
+    expect(serialized.books[1].sequenceId).toBeNull();
+    expect(serialized.books[2].sequenceId).toBe(seq2.id);
+
+    // JSON round-trip preserves valid sequences and drops dangling sequenceId on fromUnknown()
+    const rawWithDangling = {
+      ...serialized,
+      sequences: [
+        {
+          id: seq1.id,
+          name: 'The Obsidian Trilogy',
+          volumeNumberStyle: 'roman',
+          startNumber: 150, // out of range -> clamps to 99
+          sharedAuthor: 'E. V. Hawthorne',
+        },
+        {
+          id: seq2.id,
+          name: 'Short Stories',
+          volumeNumberStyle: 'invalid-style',
+          startNumber: -5, // out of range -> clamps to 1
+          sharedAuthor: '',
+        },
+      ],
+      books: [
+        { ...serialized.books[0], sequenceId: seq1.id },
+        { ...serialized.books[1], sequenceId: 'sseq-deleted-id' },
+        { ...serialized.books[2], sequenceId: seq2.id },
+      ],
+    };
+
+    const parsed = SeriesProjectModel.fromUnknown(rawWithDangling);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.series.sequences).toHaveLength(2);
+      expect(parsed.series.sequences[0].startNumber).toBe(SERIES_BOUNDS.sequenceStartNumber.max);
+      expect(parsed.series.sequences[1].startNumber).toBe(SERIES_BOUNDS.sequenceStartNumber.min);
+      expect(parsed.series.sequences[1].volumeNumberStyle).toBe(
+        DEFAULT_SERIES_SHARED_DESIGN.volumeNumberStyle,
+      );
+      expect(parsed.series.sequences[1].sharedAuthor).toBeNull();
+      expect(parsed.series.books[0].sequenceId).toBe(seq1.id);
+      expect(parsed.series.books[1].sequenceId).toBeNull();
+      expect(parsed.series.books[2].sequenceId).toBe(seq2.id);
     }
   });
 });
