@@ -1,6 +1,5 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
-import { evaluatePrintMediaFit } from '@/core/geometry';
 import type {
   RollNestingExportOptions,
   SheetNestingExportOptions,
@@ -12,11 +11,7 @@ import {
   loadSavedDesignPresets,
   saveDesignPresets,
 } from '@/core/presetStorage';
-import {
-  triggerBlobDownload,
-  triggerBytesDownload,
-  triggerTextDownload,
-} from '@/core/storage';
+import { triggerTextDownload } from '@/core/storage';
 import { rgbToHex } from '@/lib/color';
 import {
   getPrintMediaSpec,
@@ -50,7 +45,7 @@ import {
   type QuickFitTarget,
   type StubExtensionMode,
 } from '@/types/studioLayer';
-import { PRINT_DPI, roundTo } from '@/types/units';
+import { roundTo } from '@/types/units';
 import { getProceduralArtworkSpec } from '@/resources/proceduralArtworks';
 import type { ApplyProceduralArtworkRequest, EyedropperTarget } from '../ArtworkControlsCard';
 import { getClassicOrnamentSpec } from '../classicOrnaments';
@@ -59,6 +54,11 @@ import {
   detectLayerCoverSide,
   type StubExtensionSide,
 } from '../edgeExtend';
+import {
+  runStyledCoverPdfExport,
+  runStyledCoverPngExport,
+  runStyledCoverSvgExport,
+} from '../exporters/coverExportRunner';
 import { loadCustomFontFromFile, type CustomFontAsset } from '../fonts';
 import {
   resolveImageLayerConstraint,
@@ -72,9 +72,6 @@ import {
   isProceduralArtworkFileName,
 } from '../proceduralArtwork';
 import {
-  exportCoverPng300Dpi,
-  generateAffinityCoverSvg,
-  generatePrintReadyRollPdf,
   getPanelBoardRect,
   inferZoneFromCenterX,
   renderCoverArtworkCanvas,
@@ -887,11 +884,6 @@ export function useCoverStudioActions({
   }) => {
     setExportingKind('pdf');
     try {
-      const effectiveMediaId = options?.printMediaId ?? effectiveParams.printMedia;
-      const effectiveDpi = options?.dpi ?? 300;
-      const effectiveLayerMode: CoverPdfLayerMode = options?.exportLayerMode ?? 'full';
-      const isBaseOnly = effectiveLayerMode === 'base-only';
-      const fileName = isBaseOnly ? 'outer_cover_base_for_htv.pdf' : 'outer_cover_print.pdf';
       const resolvedCutLines = options?.includeCutLines ?? options?.includeGuides;
       if (resolvedCutLines !== undefined) {
         const nextCutLineMode = resolvedCutLines ? 'full-cut-miter' : 'bleed-registration';
@@ -899,56 +891,30 @@ export function useCoverStudioActions({
           updateStudio({ cutLineMode: nextCutLineMode });
         }
       }
-      const effectiveCustomRollWidthMm =
-        options?.customRollWidthMm ?? effectiveParams.customRollWidthMm;
-      const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
+      const { statusMessage } = await runStyledCoverPdfExport({
+        geometry,
+        studio,
+        customFont,
+        params: effectiveParams,
         includeCutLines: options?.includeCutLines,
         includeFoldLines: options?.includeFoldLines,
         includeFoldGuideTicks: options?.includeFoldGuideTicks,
         includeGuides: options?.includeGuides,
-        exportLayerMode: effectiveLayerMode,
-        printMediaId: effectiveMediaId,
-        dpi: effectiveDpi,
+        exportLayerMode: options?.exportLayerMode,
+        printMediaId: options?.printMediaId,
+        dpi: options?.dpi,
         tileOverlapMm: options?.tileOverlapMm,
         includeScaleBar: options?.includeScaleBar,
+        splitMode: options?.splitMode,
         appendInnerPocketsPage: options?.appendInnerPocketsPage,
         innerPageSizeId: options?.innerPageSizeId,
-        customRollWidthMm: effectiveCustomRollWidthMm,
+        customRollWidthMm: options?.customRollWidthMm,
         printerMargins: options?.printerMargins,
         rollNesting: options?.rollNesting,
         sheetNesting: options?.sheetNesting,
+        skippedMultiBookCount: options?.skippedMultiBookCount,
       });
-      triggerBytesDownload(bytes, fileName, 'application/pdf');
-      const fit = evaluatePrintMediaFit(
-        effectiveMediaId,
-        geometry.outerWrap.widthMm,
-        geometry.outerWrap.heightMm,
-        options?.tileOverlapMm,
-        {
-          customRollWidthMm: effectiveCustomRollWidthMm,
-          margins: options?.printerMargins,
-        },
-      );
-      const layerTag = isBaseOnly ? ', Base Only for HTV' : '';
-      const pocketsTag = options?.appendInnerPocketsPage ? ' + Pockets' : '';
-      const skippedCount = options?.skippedMultiBookCount ?? 0;
-      const skippedNote =
-        skippedCount > 0
-          ? ` — ${skippedCount} saved ${skippedCount === 1 ? 'book was' : 'books were'} unavailable and skipped`
-          : '';
-      onStatusMessage(
-        options?.sheetNesting?.enabled
-          ? `Exported ${fileName} (multi-cover ${fit.mediaLabel} sheet layout${pocketsTag}, ${effectiveDpi} DPI${layerTag})${skippedNote}`
-          : options?.rollNesting?.enabled
-            ? `Exported ${fileName} (multi-cover ${fit.mediaLabel} roll layout${pocketsTag}, ${effectiveDpi} DPI${layerTag})${skippedNote}`
-            : fit.status === 'fits-1-sheet'
-              ? `Exported ${fileName} (centered on 1× ${fit.mediaLabel}${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
-              : fit.status === 'fits-2-sheet-tile'
-                ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
-                : isBaseOnly
-                  ? `Exported ${fileName} (${effectiveDpi} DPI, Base Only for HTV${pocketsTag})`
-                  : `Exported ${fileName} (${effectiveDpi} DPI + vector spine text${pocketsTag})`,
-      );
+      onStatusMessage(statusMessage);
     } catch {
       onStatusMessage('Failed to generate Print-Ready Roll PDF.');
     } finally {
@@ -959,11 +925,8 @@ export function useCoverStudioActions({
   const handleExportAffinityPng = async () => {
     setExportingKind('png');
     try {
-      const blob = await exportCoverPng300Dpi(geometry, studio, customFont);
-      triggerBlobDownload(blob, 'outer_cover_300dpi.png');
-      onStatusMessage(
-        `Exported outer_cover_300dpi.png (${spec.pixelWidth}×${spec.pixelHeight}px @ 300 DPI)`,
-      );
+      const { statusMessage } = await runStyledCoverPngExport(geometry, studio, customFont);
+      onStatusMessage(statusMessage);
     } catch {
       onStatusMessage('Failed to export 300 DPI PNG.');
     } finally {
@@ -974,17 +937,8 @@ export function useCoverStudioActions({
   const handleExportAffinitySvg = async () => {
     setExportingKind('svg');
     try {
-      let artworkDataUrl: string | undefined;
-      if (studio.layers.length > 0) {
-        const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
-          includeSpineText: false,
-          dpi: PRINT_DPI,
-        });
-        artworkDataUrl = canvas.toDataURL('image/png');
-      }
-      const svg = generateAffinityCoverSvg(geometry, studio, customFont, artworkDataUrl);
-      triggerTextDownload(svg, 'outer_cover_300dpi.svg', 'image/svg+xml;charset=utf-8');
-      onStatusMessage('Exported outer_cover_300dpi.svg (Affinity round-trip)');
+      const { statusMessage } = await runStyledCoverSvgExport(geometry, studio, customFont);
+      onStatusMessage(statusMessage);
     } catch {
       onStatusMessage('Failed to export Affinity SVG.');
     } finally {
