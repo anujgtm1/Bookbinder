@@ -8,6 +8,7 @@ import {
   Sparkles,
   Trash2,
   Type,
+  Unlink,
   X,
 } from 'lucide-react';
 import { useEffect, useRef } from 'react';
@@ -22,7 +23,11 @@ import {
   hasActiveLayoutConstraint,
   type LayerLayoutConstraint,
 } from '@/types/layoutConstraints';
-import { normalizeQuarterTurn, type CoverImageLayer } from '@/types/studioLayer';
+import {
+  isSeriesOriginLayer,
+  normalizeQuarterTurn,
+  type CoverImageLayer,
+} from '@/types/studioLayer';
 import { getClassicOrnamentSpec } from './classicOrnaments';
 import { verticalSlotToPinKind } from './layoutConstraints';
 
@@ -42,6 +47,7 @@ export interface CanvasSelectionBarProps {
   readonly onQuickAlign: (slot: VerticalAlignSlot) => void;
   readonly onFitMargin?: (marginMm: number) => void;
   readonly onDetachConstraint?: () => void;
+  readonly onDetachSeriesLayer?: () => void;
   readonly onChangeColor?: (hex: string) => void;
   readonly onDuplicate: () => void;
   readonly onDelete: () => void;
@@ -136,6 +142,7 @@ export function CanvasSelectionBar({
   onQuickAlign,
   onFitMargin,
   onDetachConstraint,
+  onDetachSeriesLayer,
   onChangeColor,
   onDuplicate,
   onDelete,
@@ -147,6 +154,8 @@ export function CanvasSelectionBar({
   const constraint = selection?.layer.layoutConstraint;
   const isPinned = hasActiveLayoutConstraint(constraint);
   const showUnpin = Boolean(isPinned && onDetachConstraint);
+  const fromSeries = selection ? isSeriesOriginLayer(selection.layer) : false;
+  const showDetachSeries = Boolean(fromSeries && onDetachSeriesLayer);
 
   useEffect(() => {
     const bar = barRef.current;
@@ -214,7 +223,7 @@ export function CanvasSelectionBar({
       bar.removeEventListener('focusin', onFocusIn);
       bar.removeEventListener('keydown', onKeyDown);
     };
-  }, [selectionKind, selectionId, showUnpin]);
+  }, [selectionKind, selectionId, showUnpin, showDetachSeries]);
 
   if (!selection) {
     return null;
@@ -260,6 +269,14 @@ export function CanvasSelectionBar({
         >
           {snippet}
         </span>
+        {fromSeries && (
+          <span
+            data-testid="layer-from-series-badge"
+            className="inline-flex shrink-0 items-center rounded-full border border-brass-bright/55 bg-brass-bright/20 px-2 py-0.5 text-[10px] font-semibold text-brass-bright"
+          >
+            From Series
+          </span>
+        )}
       </div>
 
       {/* Contextual Controls Row */}
@@ -462,6 +479,19 @@ export function CanvasSelectionBar({
             <Copy className="h-3.5 w-3.5" aria-hidden="true" />
             Duplicate
           </button>
+          {showDetachSeries && onDetachSeriesLayer && (
+            <button
+              type="button"
+              title="Detach from Series Spines so future series syncs keep your tweaks"
+              aria-label="Detach layer from Series Spines"
+              data-testid="selection-detach-series-btn"
+              onClick={onDetachSeriesLayer}
+              className="inline-flex min-h-6.5 min-w-6.5 cursor-pointer items-center justify-center gap-1 rounded-md border border-brass-bright/45 bg-brass-bright/12 px-2 py-1 text-[11px] font-medium leading-none whitespace-nowrap text-brass-bright motion-safe:transition-colors hover:bg-brass-bright/22 hover:text-white [@media(pointer:coarse)]:min-h-10 [@media(pointer:coarse)]:min-w-10"
+            >
+              <Unlink className="h-3.5 w-3.5" aria-hidden="true" />
+              Detach
+            </button>
+          )}
           <button
             type="button"
             title="Delete selected element"

@@ -345,6 +345,7 @@ export function useCoverStudioActions({
           flipX: o.flipX,
           flipY: o.flipY,
           rotationDeg: o.rotationDeg,
+          ...(o.origin ? { origin: o.origin } : {}),
         };
       }),
     });
@@ -434,6 +435,60 @@ export function useCoverStudioActions({
       updateLayer(selection.id, (layer) => ({ ...layer, layoutConstraint: undefined }));
     }
     onStatusMessage('Unpinned element — position preserved');
+  };
+
+  const createDetachedLayerId = (prefix: 'layer' | 'txt' | 'orn'): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  };
+
+  const handleDetachSeriesLayer = (kind: 'image' | 'text' | 'ornament', id: string) => {
+    const latest = studioRef.current;
+    if (kind === 'image') {
+      if (!latest.layers.some((l) => l.id === id)) return;
+      const freshId = createDetachedLayerId('layer');
+      onChange({
+        ...latest,
+        layers: latest.layers.map((layer) => {
+          if (layer.id !== id) return layer;
+          const { origin: _origin, ...rest } = layer;
+          void _origin;
+          return { ...rest, id: freshId };
+        }),
+      });
+      setSelectedLayerId((prev) => (prev === id ? freshId : prev));
+    } else if (kind === 'text') {
+      if (!(latest.textLayers ?? []).some((t) => t.id === id)) return;
+      const freshId = createDetachedLayerId('txt');
+      onChange({
+        ...latest,
+        textLayers: (latest.textLayers ?? []).map((layer) => {
+          if (layer.id !== id) return layer;
+          const { origin: _origin, ...rest } = layer;
+          void _origin;
+          return { ...rest, id: freshId };
+        }),
+      });
+      setSelectedTextId((prev) => (prev === id ? freshId : prev));
+    } else {
+      if (!(latest.ornaments ?? []).some((o) => o.id === id)) return;
+      const freshId = createDetachedLayerId('orn');
+      onChange({
+        ...latest,
+        ornaments: (latest.ornaments ?? []).map((layer) => {
+          if (layer.id !== id) return layer;
+          const { origin: _origin, ...rest } = layer;
+          void _origin;
+          return { ...rest, id: freshId };
+        }),
+      });
+      setSelectedOrnamentId((prev) => (prev === id ? freshId : prev));
+    }
+    onStatusMessage(
+      'Detached layer from Series Spines — future series syncs will keep your tweaks',
+    );
   };
 
   const handleDeleteOrnament = (id: string) => {
@@ -1015,6 +1070,7 @@ export function useCoverStudioActions({
     handleQuickAlignOrnament,
     handleQuickAlignImage,
     handleDetachConstraint,
+    handleDetachSeriesLayer,
     handleDeleteOrnament,
     handleSaveDesignPreset,
     handleApplyDesignPreset,

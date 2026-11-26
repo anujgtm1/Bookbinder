@@ -1027,6 +1027,15 @@ export function CoverStyler({
                       })
                   : undefined
               }
+              onDetachSeriesLayer={
+                activeSelection
+                  ? () =>
+                      actions.handleDetachSeriesLayer(
+                        activeSelection.kind,
+                        activeSelection.layer.id,
+                      )
+                  : undefined
+              }
               onChangeColor={handleSelectionChangeColor}
               onDuplicate={() => {
                 handleDuplicateSelected();
@@ -1497,6 +1506,7 @@ export function CoverStyler({
             layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
           })
         }
+        onDetachSeriesLayer={actions.handleDetachSeriesLayer}
         onDeleteLayer={(id) => {
           const remaining = studio.layers.filter((l) => l.id !== id);
           applyStudioChange({ ...studio, layers: remaining });
