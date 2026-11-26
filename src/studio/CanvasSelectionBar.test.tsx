@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -715,5 +715,78 @@ describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · B
     expect(latestState.ornaments![0].origin).toBeUndefined();
     expect(latestState.ornaments![0].id.startsWith('series-')).toBe(false);
     expect(screen.queryByTestId('layer-from-series-badge')).not.toBeInTheDocument();
+  }, 15_000);
+
+  it('wires CanvasSelectionBar front/back reorder buttons, bracket shortcuts, and LayerStackPanel with Undo', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const initialStudio: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      layers: [makeImageLayer({ id: 'img-1' })],
+      ornaments: [makeOrnamentLayer({ id: 'orn-1' })],
+      textLayers: [makeTextLayer({ id: 'txt-1' })],
+    };
+
+    function Harness() {
+      const [studio, setStudio] = useState<CoverStudioState>(initialStudio);
+      return (
+        <CoverStyler
+          params={DEFAULT_BOOK_PARAMETERS}
+          geometry={geom}
+          studio={studio}
+          onChange={setStudio}
+          onStatusMessage={vi.fn()}
+        />
+      );
+    }
+
+    render(<Harness />);
+
+    const getCanvasOrder = () => {
+      const svg = screen.getByTestId('studio-preview-svg');
+      const nodes = svg.querySelectorAll('[data-layer-id], [data-ornament-id], [data-text-id]');
+      return Array.from(nodes).map(
+        (el) =>
+          el.getAttribute('data-layer-id') ??
+          el.getAttribute('data-ornament-id') ??
+          el.getAttribute('data-text-id'),
+      );
+    };
+
+    expect(getCanvasOrder()).toEqual(['img-1', 'orn-1', 'txt-1']);
+
+    await user.click(screen.getByTestId('layer-stack-toggle-btn'));
+    const list = screen.getByTestId('layer-stack-list');
+    const getPanelOrder = () =>
+      within(list)
+        .getAllByRole('listitem')
+        .map((li) => li.getAttribute('data-testid'));
+
+    expect(getPanelOrder()).toEqual([
+      'layer-stack-row-txt-1',
+      'layer-stack-row-orn-1',
+      'layer-stack-row-img-1',
+    ]);
+
+    // Image is selected initially -> at bottom of stack
+    expect(screen.getByTestId('selection-send-back-btn')).toBeDisabled();
+    expect(screen.getByTestId('selection-bring-front-btn')).toBeEnabled();
+
+    await user.click(screen.getByTestId('selection-bring-front-btn'));
+    expect(getCanvasOrder()).toEqual(['orn-1', 'txt-1', 'img-1']);
+    expect(getPanelOrder()).toEqual([
+      'layer-stack-row-img-1',
+      'layer-stack-row-txt-1',
+      'layer-stack-row-orn-1',
+    ]);
+    expect(screen.getByTestId('selection-bring-front-btn')).toBeDisabled();
+
+    // Keyboard shortcut `[` sends selected img-1 backward by 1 step
+    fireEvent.keyDown(window, { key: '[', code: 'BracketLeft' });
+    expect(getCanvasOrder()).toEqual(['orn-1', 'img-1', 'txt-1']);
+
+    // Undo restores img-1 at top
+    fireEvent.keyDown(window, { key: 'z', metaKey: true });
+    expect(getCanvasOrder()).toEqual(['orn-1', 'txt-1', 'img-1']);
   }, 15_000);
 });
