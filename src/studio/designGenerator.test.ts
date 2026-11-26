@@ -30,7 +30,12 @@ const MIXED_CASE_ONLY_FONTS = new Set<string>([
 const TEXT_SAFE_SPINE_ORNAMENT_IDS = new Set<string>([
   'spine-head-tail-bands',
   'spine-classic-bands',
+  'spine-title-cartouche',
 ]);
+
+function isTextSafeSpineOrnamentPreset(presetId: string): boolean {
+  return TEXT_SAFE_SPINE_ORNAMENT_IDS.has(presetId) || presetId.startsWith('emblem-');
+}
 
 function makeParamsAndGeometry(
   overrides: Partial<Parameters<typeof BookParametersModel.clampAndNormalize>[0]> = {},
@@ -177,7 +182,7 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
         maxSpinePt,
       );
       expect(studio.spineText.fontSizePt, `seed ${seed} spine editorial cap`).toBeLessThanOrEqual(
-        18,
+        17,
       );
       const spineOrnaments = studio.ornaments.filter((o) => o.zone === 'spine');
       if (isThinSpine) {
@@ -187,9 +192,21 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
       } else {
         for (const orn of spineOrnaments) {
           expect(
-            TEXT_SAFE_SPINE_ORNAMENT_IDS.has(orn.presetId),
+            isTextSafeSpineOrnamentPreset(orn.presetId),
             `seed ${seed} spine ornament ${orn.presetId} must not clash with spine text`,
           ).toBe(true);
+          expect(orn.xMm, `seed ${seed} spine orn left`).toBeGreaterThanOrEqual(
+            spec.spineBoardRect.x - 0.1,
+          );
+          expect(orn.xMm + orn.widthMm, `seed ${seed} spine orn right`).toBeLessThanOrEqual(
+            spec.spineBoardRect.x + spec.spineBoardRect.width + 0.1,
+          );
+          expect(orn.yMm, `seed ${seed} spine orn top`).toBeGreaterThanOrEqual(
+            spec.spineBoardRect.y - 0.1,
+          );
+          expect(orn.yMm + orn.heightMm, `seed ${seed} spine orn bottom`).toBeLessThanOrEqual(
+            spec.spineBoardRect.y + spec.spineBoardRect.height + 0.1,
+          );
         }
       }
 
@@ -200,9 +217,15 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
         `seed ${seed} (${summary.genreId}/${summary.archetypeId}) unexpected Preflight typography issues`,
       ).toEqual([]);
 
-      // 6. Background art inclusion matches option
+      // 6. Background art inclusion matches option (1 full-wrap or 2 coordinated front + spine on quarter-bound)
       if (includeBackgroundArt) {
-        expect(studio.layers).toHaveLength(1);
+        const isQuarterBound =
+          studio.frontBgColor.toLowerCase() !== studio.spineBgColor.toLowerCase();
+        expect(studio.layers).toHaveLength(isQuarterBound ? 2 : 1);
+        if (isQuarterBound) {
+          expect(studio.layers.some((l) => l.clipZone === 'front')).toBe(true);
+          expect(studio.layers.some((l) => l.clipZone === 'spine')).toBe(true);
+        }
         expect(summary.artworkId).not.toBeNull();
       } else {
         expect(studio.layers).toHaveLength(0);
@@ -211,7 +234,7 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
     }
   });
 
-  it('clips procedural background artwork strictly to frontArtworkRect on flap/glue-tab styles (dust-jacket & softcover-jacket)', () => {
+  it('clips procedural background artwork strictly to frontArtworkRect and spineArtworkRect on flap/glue-tab styles (dust-jacket & softcover-jacket)', () => {
     const dustJacketGeom = makeGeometry({ bindingStyle: 'dust-jacket', jacketFlapWidthMm: 75 });
     const slipJacketGeom = makeGeometry({ bindingStyle: 'softcover-jacket', jacketFlapWidthMm: 65 });
     const baseStudio = CoverStudioModel.createDefault();
@@ -226,14 +249,22 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
           includeBackgroundArt: true,
           locks: { ...DEFAULT_DESIGN_GENERATOR_LOCKS, lockTextContent: false },
         });
-        expect(studio.layers).toHaveLength(1);
-        const layer = studio.layers[0];
-        expect(layer.clipZone).toBe('front');
-        const vis = getLayerVisualRect(layer);
-        expect(Math.abs(vis.x - spec.frontArtworkRect.x)).toBeLessThan(0.25);
-        expect(Math.abs(vis.y - spec.frontArtworkRect.y)).toBeLessThan(0.25);
-        expect(Math.abs(vis.width - spec.frontArtworkRect.width)).toBeLessThan(0.25);
-        expect(Math.abs(vis.height - spec.frontArtworkRect.height)).toBeLessThan(0.25);
+        expect(studio.layers).toHaveLength(2);
+        const frontLayer = studio.layers.find((l) => l.clipZone === 'front');
+        const spineLayer = studio.layers.find((l) => l.clipZone === 'spine');
+        expect(frontLayer).toBeDefined();
+        expect(spineLayer).toBeDefined();
+        const frontVis = getLayerVisualRect(frontLayer!);
+        expect(Math.abs(frontVis.x - spec.frontArtworkRect.x)).toBeLessThan(0.25);
+        expect(Math.abs(frontVis.y - spec.frontArtworkRect.y)).toBeLessThan(0.25);
+        expect(Math.abs(frontVis.width - spec.frontArtworkRect.width)).toBeLessThan(0.25);
+        expect(Math.abs(frontVis.height - spec.frontArtworkRect.height)).toBeLessThan(0.25);
+
+        const spineVis = getLayerVisualRect(spineLayer!);
+        expect(Math.abs(spineVis.x - spec.spineArtworkRect.x)).toBeLessThan(0.25);
+        expect(Math.abs(spineVis.y - spec.spineArtworkRect.y)).toBeLessThan(0.25);
+        expect(Math.abs(spineVis.width - spec.spineArtworkRect.width)).toBeLessThan(0.25);
+        expect(Math.abs(spineVis.height - spec.spineArtworkRect.height)).toBeLessThan(0.25);
       }
     }
   });
@@ -466,11 +497,11 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
         });
 
         expect(studio.spineText.fontSizePt, `${testCase.name} seed ${seed}`).toBeLessThanOrEqual(
-          18,
+          17,
         );
         for (const orn of studio.ornaments.filter((o) => o.zone === 'spine')) {
           expect(
-            TEXT_SAFE_SPINE_ORNAMENT_IDS.has(orn.presetId),
+            isTextSafeSpineOrnamentPreset(orn.presetId),
             `${testCase.name} seed ${seed} spine ornament ${orn.presetId} clashes with text`,
           ).toBe(true);
         }
@@ -483,5 +514,80 @@ describe('Design Muse — Rule-Based Cover & Spine Generator', () => {
         ).toEqual([]);
       }
     }
+  });
+
+  it('visibly varies spine decorations, typography, layouts, colors, and coordinated spine artwork across consecutive seeds', () => {
+    const { params, geometry } = makeParamsAndGeometry({
+      pbThicknessMm: 30,
+      bindingStyle: 'rigid-case',
+    });
+    const baseStudio = {
+      ...CoverStudioModel.createDefault(),
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'The Grand Pavilion',
+        author: 'Vivian Sterling',
+      },
+    };
+
+    const spineColors = new Set<string>();
+    const spineFonts = new Set<string>();
+    const spineLayouts = new Set<string>();
+    const spineAuthorOrientations = new Set<string>();
+    const spineSizes = new Set<number>();
+    const spineOrnamentPresets = new Set<string>();
+    let observedSpineEmblem = false;
+    let observedCartouche = false;
+    let observedClassicBands = false;
+    let observedHeadTailRules = false;
+    let observedQuarterBoundSpineArt = false;
+
+    let seed = 4217;
+    for (let step = 0; step < 36; step++) {
+      seed = (((seed * 1664525 + 1013904223) >>> 0) % 999983) + 1;
+      const { studio } = generateBookCoverDesign(geometry, baseStudio, {
+        genre: 'surprise',
+        seed,
+        includeBackgroundArt: true,
+        locks: DEFAULT_DESIGN_GENERATOR_LOCKS,
+      });
+
+      spineColors.add(studio.spineBgColor.toLowerCase());
+      spineFonts.add(studio.spineText.fontId);
+      spineLayouts.add(studio.spineText.layout);
+      spineAuthorOrientations.add(studio.spineText.authorOrientation);
+      spineSizes.add(studio.spineText.fontSizePt);
+
+      const spineOrns = studio.ornaments.filter((o) => o.zone === 'spine');
+      expect(spineOrns.length).toBeGreaterThanOrEqual(1);
+      for (const orn of spineOrns) {
+        spineOrnamentPresets.add(orn.presetId);
+        if (orn.presetId.startsWith('emblem-')) observedSpineEmblem = true;
+        if (orn.presetId === 'spine-title-cartouche') observedCartouche = true;
+        if (orn.presetId === 'spine-classic-bands') observedClassicBands = true;
+        if (orn.presetId === 'spine-head-tail-bands') observedHeadTailRules = true;
+      }
+
+      if (studio.frontBgColor.toLowerCase() !== studio.spineBgColor.toLowerCase()) {
+        const spineArt = studio.layers.find((l) => l.clipZone === 'spine');
+        expect(spineArt).toBeDefined();
+        observedQuarterBoundSpineArt = true;
+      }
+
+      const preflight = PreflightEngine.evaluate(params, geometry, studio);
+      expect(preflight.issues.filter((i) => i.category === 'typography')).toEqual([]);
+    }
+
+    expect(spineColors.size).toBeGreaterThanOrEqual(5);
+    expect(spineFonts.size).toBeGreaterThanOrEqual(5);
+    expect(spineLayouts.size).toBe(2);
+    expect(spineAuthorOrientations.size).toBe(2);
+    expect(spineSizes.size).toBeGreaterThanOrEqual(2);
+    expect(spineOrnamentPresets.size).toBeGreaterThanOrEqual(5);
+    expect(observedSpineEmblem).toBe(true);
+    expect(observedCartouche).toBe(true);
+    expect(observedClassicBands).toBe(true);
+    expect(observedHeadTailRules).toBe(true);
+    expect(observedQuarterBoundSpineArt).toBe(true);
   });
 });

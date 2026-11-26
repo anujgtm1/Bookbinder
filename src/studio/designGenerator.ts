@@ -67,6 +67,7 @@ export interface GeneratedDesignSummary {
   readonly paletteName: string;
   readonly titleFontId: CuratedFontId;
   readonly authorFontId: CuratedFontId;
+  readonly spineFontId: CuratedFontId;
   readonly artworkId: ProceduralArtworkId | null;
   readonly seed: number;
 }
@@ -78,9 +79,18 @@ export interface GeneratedDesignResult {
 
 const LIGHT_CONTRAST_CANDIDATES = ['#f6f0e4', '#e6c97a', '#d9b566', '#dce2ea', '#ffffff'] as const;
 const DARK_CONTRAST_CANDIDATES = ['#181615', '#0f172a', '#000000'] as const;
-const TEXT_SAFE_SPINE_ORNAMENTS: readonly ClassicOrnamentId[] = [
-  'spine-head-tail-bands',
-  'spine-classic-bands',
+
+type SpineDecorationArchetype =
+  | 'head-tail-emblems'
+  | 'title-cartouche'
+  | 'classic-bands'
+  | 'head-tail-rules-with-emblem';
+
+const SPINE_DECORATION_ARCHETYPES: readonly SpineDecorationArchetype[] = [
+  'head-tail-emblems',
+  'title-cartouche',
+  'classic-bands',
+  'head-tail-rules-with-emblem',
 ];
 
 /**
@@ -368,6 +378,32 @@ function buildCenterAccentOrnament(
   return clampOrnamentInsideRect(resolved, board, 8);
 }
 
+function buildSpineMiniEmblem(
+  id: string,
+  presetId: ClassicOrnamentId,
+  spineBoardRect: Rect2D,
+  sizeMm: number,
+  yMm: number,
+  color: string,
+): CoverOrnamentLayer {
+  const xMm = roundTo(spineBoardRect.x + (spineBoardRect.width - sizeMm) / 2, 2);
+  return clampOrnamentInsideRect(
+    {
+      id,
+      presetId,
+      zone: 'spine',
+      xMm,
+      yMm: roundTo(yMm, 2),
+      widthMm: sizeMm,
+      heightMm: sizeMm,
+      color,
+      strokeWidthMm: 0.65,
+    },
+    spineBoardRect,
+    1.2,
+  );
+}
+
 /**
  * Rule-based Design Muse generator producing bookstore-grade, WCAG-verified,
  * margin-safe cover & spine compositions across 8 genres and 7 archetypes.
@@ -420,11 +456,14 @@ export function generateBookCoverDesign(
     : pickedAuthorFont;
   const spineFontId: StudioFontId = locks.lockFonts
     ? currentStudio.spineText.fontId
-    : pickedTitleFont;
+    : rng() > 0.45
+      ? pickedTitleFont
+      : pickedAuthorFont;
 
   const summaryTitleFont: CuratedFontId = titleFontId === 'custom' ? pickedTitleFont : titleFontId;
   const summaryAuthorFont: CuratedFontId =
     authorFontId === 'custom' ? pickedAuthorFont : authorFontId;
+  const summarySpineFont: CuratedFontId = spineFontId === 'custom' ? pickedTitleFont : spineFontId;
 
   // 3. Text Content (honoring lockTextContent verbatim when non-empty)
   const lockedFrontTitle = existingTitleLayer?.text.trim() || currentStudio.spineText.title.trim();
@@ -569,9 +608,31 @@ export function generateBookCoverDesign(
   const spineHeightMm = spec.spineBoardRect.height;
   const maxSpinePt = CoverStudioModel.maxSpineFontSizePt(spineWidthMm);
   const isThinSpine = spineWidthMm < 14;
+  const hasSpineText =
+    spineTitleText.trim().length > 0 || spineAuthorText.trim().length > 0;
+
+  // Choose text-safe spine decoration archetype first so head/tail mini-emblem height
+  // is reserved in safeSpineHeightMm and spine text never collides with emblems.
+  const spineDecorationArchetype: SpineDecorationArchetype = pickOne(
+    SPINE_DECORATION_ARCHETYPES,
+    rng,
+  );
+  const spineMiniEmblemSizeMm = roundTo(
+    clampFinite(Math.min(spineWidthMm * 0.68, 13), 10, COVER_ORNAMENT_BOUNDS.minSizeMm, 13),
+    2,
+  );
+  const spineEmblemOffsetMm = roundTo(clampFinite(spineHeightMm * 0.048, 10, 8, 12), 2);
+  const usesSpineHeadTailEmblem =
+    !locks.lockOrnaments &&
+    !isThinSpine &&
+    hasSpineText &&
+    profile.emblems.length > 0 &&
+    (spineDecorationArchetype === 'head-tail-emblems' ||
+      spineDecorationArchetype === 'head-tail-rules-with-emblem');
+
   const spineLayout: SpineLayoutPreset = isThinSpine
     ? 'inline'
-    : rng() > 0.35
+    : rng() > 0.45
       ? 'stacked'
       : 'inline';
 
@@ -579,15 +640,33 @@ export function generateBookCoverDesign(
     spineLayout === 'inline'
       ? [spineTitleText.trim(), spineAuthorText.trim()].filter(Boolean).join(' — ').length
       : spineTitleText.trim().length;
-  const safeSpineHeightMm =
+  const baseSafeSpineHeightMm =
     spineLayout === 'stacked' ? spineHeightMm * 0.68 : Math.max(12, spineHeightMm - 20);
+  const spineEmblemReserveMm = usesSpineHeadTailEmblem
+    ? (spineEmblemOffsetMm +
+        spineMiniEmblemSizeMm +
+        (spineDecorationArchetype === 'head-tail-rules-with-emblem' ? 14 : 6)) *
+      2
+    : 0;
+  const safeSpineHeightMm = Math.max(
+    12,
+    usesSpineHeadTailEmblem
+      ? Math.min(baseSafeSpineHeightMm, spineHeightMm - spineEmblemReserveMm)
+      : baseSafeSpineHeightMm,
+  );
   const maxVerticalSpinePt =
     combinedSpineChars > 0
       ? Math.floor(
           UnitConverter.mmToPoints(safeSpineHeightMm / (combinedSpineChars * 0.62)) * 10,
         ) / 10
       : STUDIO_BOUNDS.fontSizePt.max;
-  const editorialTargetSpinePt = clampFinite(Math.round(spineWidthMm * 0.55), 14, 10, 18);
+  const spineSizeJitterPt = Math.round((rng() - 0.5) * 4);
+  const editorialTargetSpinePt = clampFinite(
+    Math.round(spineWidthMm * 0.52) + spineSizeJitterPt,
+    13,
+    10,
+    17,
+  );
   const spineFontSizePt = roundTo(
     Math.max(
       STUDIO_BOUNDS.fontSizePt.min,
@@ -597,7 +676,7 @@ export function generateBookCoverDesign(
   );
 
   let spineAuthorOrientation: 'vertical' | 'horizontal' =
-    !isThinSpine && spineLayout === 'stacked' && spineWidthMm >= 20 && rng() > 0.35
+    !isThinSpine && spineLayout === 'stacked' && spineWidthMm >= 18 && rng() > 0.4
       ? 'horizontal'
       : 'vertical';
   if (spineAuthorOrientation === 'horizontal' && spineAuthorText.trim().length > 0) {
@@ -611,6 +690,8 @@ export function generateBookCoverDesign(
       spineAuthorOrientation = 'vertical';
     }
   }
+  const hasHorizontalTailAuthor =
+    spineAuthorOrientation === 'horizontal' && spineAuthorText.trim().length > 0;
 
   const spineText = {
     ...currentStudio.spineText,
@@ -712,32 +793,139 @@ export function generateBookCoverDesign(
       }
     }
 
-    // Add a spine ornament ONLY when spine is >= 14 mm wide.
-    // When spine text is present, pick only head/tail-framing bands so center lettering stays clear.
-    if (!isThinSpine && profile.spineOrnaments.length > 0) {
-      const hasSpineText =
-        spineTitleText.trim().length > 0 || spineAuthorText.trim().length > 0;
-      const textSafeOrnaments = profile.spineOrnaments.filter((id) =>
-        TEXT_SAFE_SPINE_ORNAMENTS.includes(id),
-      );
-      const spineOrnamentPool = hasSpineText
-        ? textSafeOrnaments.length > 0
-          ? textSafeOrnaments
-          : (['spine-head-tail-bands'] as const)
-        : profile.spineOrnaments;
-      const spinePreset = pickOne(spineOrnamentPool, rng);
-      const rawSpineOrn = CoverOrnamentLayerModel.createForZone(
-        spinePreset,
-        spec.spineBoardRect,
-        'spine',
-        spineOrnamentColor,
-      );
-      const safeSpineOrn = clampOrnamentInsideRect(
-        { ...rawSpineOrn, id: nextOrnId(), strokeWidthMm: 0.65 },
-        spec.spineBoardRect,
-        1.2,
-      );
-      builtOrnaments.push(safeSpineOrn);
+    // Add rich, text-safe spine decorations ONLY when spine is >= 14 mm wide.
+    if (!isThinSpine) {
+      if (hasSpineText) {
+        switch (spineDecorationArchetype) {
+          case 'head-tail-emblems': {
+            if (profile.emblems.length > 0) {
+              const emblemPreset = pickOne(profile.emblems, rng);
+              builtOrnaments.push(
+                buildSpineMiniEmblem(
+                  nextOrnId(),
+                  emblemPreset,
+                  spec.spineBoardRect,
+                  spineMiniEmblemSizeMm,
+                  spec.spineBoardRect.y + spineEmblemOffsetMm,
+                  spineOrnamentColor,
+                ),
+              );
+              if (!hasHorizontalTailAuthor) {
+                builtOrnaments.push(
+                  buildSpineMiniEmblem(
+                    nextOrnId(),
+                    emblemPreset,
+                    spec.spineBoardRect,
+                    spineMiniEmblemSizeMm,
+                    spec.spineBoardRect.y +
+                      spineHeightMm -
+                      spineEmblemOffsetMm -
+                      spineMiniEmblemSizeMm,
+                    spineOrnamentColor,
+                  ),
+                );
+              }
+            }
+            break;
+          }
+          case 'title-cartouche': {
+            const rawCartouche = CoverOrnamentLayerModel.createForZone(
+              'spine-title-cartouche',
+              spec.spineBoardRect,
+              'spine',
+              spineOrnamentColor,
+            );
+            builtOrnaments.push(
+              clampOrnamentInsideRect(
+                { ...rawCartouche, id: nextOrnId(), strokeWidthMm: 0.65 },
+                spec.spineBoardRect,
+                1.2,
+              ),
+            );
+            break;
+          }
+          case 'classic-bands': {
+            const rawBands = CoverOrnamentLayerModel.createForZone(
+              'spine-classic-bands',
+              spec.spineBoardRect,
+              'spine',
+              spineOrnamentColor,
+            );
+            builtOrnaments.push(
+              clampOrnamentInsideRect(
+                { ...rawBands, id: nextOrnId(), strokeWidthMm: 0.65 },
+                spec.spineBoardRect,
+                1.2,
+              ),
+            );
+            break;
+          }
+          case 'head-tail-rules-with-emblem': {
+            const rawRules = CoverOrnamentLayerModel.createForZone(
+              'spine-head-tail-bands',
+              spec.spineBoardRect,
+              'spine',
+              spineOrnamentColor,
+            );
+            const emblemClearance = spineEmblemOffsetMm + spineMiniEmblemSizeMm + 4;
+            const rulesTopY = hasHorizontalTailAuthor
+              ? spec.spineBoardRect.y + emblemClearance
+              : spec.spineBoardRect.y + 8;
+            const rulesHeight = Math.max(
+              COVER_ORNAMENT_BOUNDS.minSizeMm,
+              spineHeightMm - 8 - emblemClearance,
+            );
+            builtOrnaments.push(
+              clampOrnamentInsideRect(
+                {
+                  ...rawRules,
+                  id: nextOrnId(),
+                  yMm: roundTo(rulesTopY, 2),
+                  heightMm: roundTo(rulesHeight, 2),
+                  strokeWidthMm: 0.65,
+                },
+                spec.spineBoardRect,
+                1.2,
+              ),
+            );
+            if (profile.emblems.length > 0) {
+              const emblemPreset = pickOne(profile.emblems, rng);
+              const emblemY = hasHorizontalTailAuthor
+                ? spec.spineBoardRect.y + spineEmblemOffsetMm
+                : spec.spineBoardRect.y +
+                  spineHeightMm -
+                  spineEmblemOffsetMm -
+                  spineMiniEmblemSizeMm;
+              builtOrnaments.push(
+                buildSpineMiniEmblem(
+                  nextOrnId(),
+                  emblemPreset,
+                  spec.spineBoardRect,
+                  spineMiniEmblemSizeMm,
+                  emblemY,
+                  spineOrnamentColor,
+                ),
+              );
+            }
+            break;
+          }
+        }
+      } else if (profile.spineOrnaments.length > 0) {
+        const spinePreset = pickOne(profile.spineOrnaments, rng);
+        const rawSpineOrn = CoverOrnamentLayerModel.createForZone(
+          spinePreset,
+          spec.spineBoardRect,
+          'spine',
+          spineOrnamentColor,
+        );
+        builtOrnaments.push(
+          clampOrnamentInsideRect(
+            { ...rawSpineOrn, id: nextOrnId(), strokeWidthMm: 0.65 },
+            spec.spineBoardRect,
+            1.2,
+          ),
+        );
+      }
     }
 
     ornaments = builtOrnaments;
@@ -788,7 +976,38 @@ export function generateBookCoverDesign(
           imageFit: 'cover',
         },
       };
-      layers = [artLayer];
+
+      const generatedLayers: CoverImageLayer[] = [artLayer];
+      if (clipToFrontOnly) {
+        const spineAsset = createProceduralArtworkAsset({
+          patternId: artworkId,
+          widthMm: spec.spineArtworkRect.width,
+          heightMm: spec.spineArtworkRect.height,
+          baseColor: spineBgColor,
+          accentColor: spineOrnamentColor,
+          seed: (seed ^ 0x27d4eb2d) >>> 0,
+          intensity: 'subtle',
+        });
+        generatedLayers.push({
+          ...CoverImageLayerModel.createInRect({
+            id: makeDeterministicId('art', seed, 2),
+            dataUrl: spineAsset.dataUrl,
+            fileName: spineAsset.fileName,
+            naturalWidth: spineAsset.naturalWidth,
+            naturalHeight: spineAsset.naturalHeight,
+            targetRect: spec.spineArtworkRect,
+            clipZone: 'spine',
+            mode: 'cover',
+          }),
+          layoutConstraint: {
+            anchorZone: 'spine',
+            horizontal: { kind: 'center' },
+            vertical: { kind: 'center' },
+            imageFit: 'cover',
+          },
+        });
+      }
+      layers = generatedLayers;
     } else {
       layers = [];
     }
@@ -819,6 +1038,7 @@ export function generateBookCoverDesign(
       paletteName: locks.lockPalette ? 'Locked Palette' : palette.name,
       titleFontId: summaryTitleFont,
       authorFontId: summaryAuthorFont,
+      spineFontId: summarySpineFont,
       artworkId,
       seed,
     },

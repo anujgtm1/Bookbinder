@@ -214,7 +214,7 @@ export function CoverStyler({
   const [localPageSize, setLocalPageSize] = useState<PageSizeId>(effectiveParams.pdfPageSize);
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(effectiveParams.splitMode);
   const [museGenre, setMuseGenre] = useState<DesignGenreId>('surprise');
-  const [museIncludeArt, setMuseIncludeArt] = useState<boolean>(false);
+  const [museIncludeArt, setMuseIncludeArt] = useState<boolean>(true);
   const [museLocks, setMuseLocks] = useState<DesignGeneratorLocks>(DEFAULT_DESIGN_GENERATOR_LOCKS);
   const [museLastSummary, setMuseLastSummary] = useState<GeneratedDesignSummary | null>(null);
   const museSeedRef = useRef<number>(4217);
@@ -346,7 +346,11 @@ export function CoverStyler({
         includeBackgroundArt: museIncludeArt,
         locks: effectiveLocks,
       });
-      void ensureCuratedFontsLoaded([result.summary.titleFontId, result.summary.authorFontId]);
+      void ensureCuratedFontsLoaded([
+        result.summary.titleFontId,
+        result.summary.authorFontId,
+        result.summary.spineFontId,
+      ]);
       applyStudioChange(result.studio);
       handleClearSelection();
       setMuseLastSummary(result.summary);
