@@ -40,6 +40,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { resolveMultiBookQueueSources } from '@/core/multiBookExport';
 import { getDefaultProjectRepository, type ProjectRepository } from '@/core/projectLibrary';
+import type { UiDensity } from '@/core/uiDensity';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
@@ -119,6 +120,7 @@ export interface CoverStylerProps {
   readonly params?: BookParameters;
   readonly geometry: CaseGeometry;
   readonly studio: CoverStudioState;
+  readonly uiDensity?: UiDensity;
   readonly customFont?: CustomFontAsset | null;
   readonly onCustomFontChange?: (font: CustomFontAsset | null) => void;
   readonly savedBookSummaries?: readonly SavedProjectSummary[];
@@ -142,6 +144,7 @@ export function CoverStyler({
   params,
   geometry,
   studio,
+  uiDensity = 'clean',
   customFont: propCustomFont,
   onCustomFontChange,
   savedBookSummaries,
@@ -916,6 +919,7 @@ export function CoverStyler({
           geometry={geometry}
           spec={spec}
           unit={effectiveParams.unit}
+          uiDensity={uiDensity}
           exportingKind={actions.exportingKind}
           exportingOuterPdf={exportingOuterPdf}
           canUndo={canUndo}

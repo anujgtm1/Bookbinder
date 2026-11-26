@@ -48,6 +48,7 @@ import { UnitConverter, type UnitSystem } from '@/types/units';
 
 export interface SidebarControlsProps {
   readonly params: BookParameters;
+  readonly defaultConstructionOpen?: boolean;
   readonly onChange: (next: BookParameters) => void;
   readonly onExportJson: () => void;
   readonly onImportJson: (file: File) => void;
@@ -151,13 +152,20 @@ function MeasurementField({
 
 export function SidebarControls({
   params,
+  defaultConstructionOpen,
   onChange,
   onExportJson,
   onImportJson,
   onResetDefaults,
 }: SidebarControlsProps) {
-  const [constructionOpen, setConstructionOpen] = useState(false);
+  const [constructionOpen, setConstructionOpen] = useState(Boolean(defaultConstructionOpen));
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (defaultConstructionOpen !== undefined) {
+      setConstructionOpen(defaultConstructionOpen);
+    }
+  }, [defaultConstructionOpen]);
 
   const strategy = resolveBindingStrategy(params);
   const { capabilities, flapConfig } = strategy;
