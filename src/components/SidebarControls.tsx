@@ -295,7 +295,7 @@ export function SidebarControls({
       </div>
 
       {/* Pocket Construction Mode (Fold-and-Glue Slip Cover: 1-Piece Integrated Flaps vs Separate 2-Sheet Pockets) */}
-      {params.bindingStyle === 'softcover-jacket' && (
+      {capabilities.supportsSeparatePockets && (
         <div
           data-testid="softcover-pocket-mode-controls"
           className="space-y-1.5 rounded-md border border-border/80 bg-secondary/35 p-2.5"

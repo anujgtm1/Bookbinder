@@ -81,7 +81,11 @@ export function CoverWorkbenchHeader({
       }
     };
     const onPointerDown = (e: MouseEvent) => {
-      if (moreContainerRef.current && !moreContainerRef.current.contains(e.target as Node)) {
+      if (
+        moreContainerRef.current &&
+        e.target instanceof Node &&
+        !moreContainerRef.current.contains(e.target)
+      ) {
         setFallbackMoreOpen(false);
       }
     };
@@ -96,11 +100,13 @@ export function CoverWorkbenchHeader({
 
   const closeMorePopover = () => {
     if (hasNativePopover) {
-      const el = morePopoverRef.current as (HTMLDivElement & { hidePopover?: () => void }) | null;
-      try {
-        el?.hidePopover?.();
-      } catch {
-        // Ignore if already closed
+      const el = morePopoverRef.current;
+      if (el && typeof el.hidePopover === 'function') {
+        try {
+          el.hidePopover();
+        } catch {
+          // Ignore if already closed
+        }
       }
     } else {
       setFallbackMoreOpen(false);

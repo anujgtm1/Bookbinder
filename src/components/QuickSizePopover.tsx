@@ -14,7 +14,6 @@ import {
   BookParametersModel,
   PAPERBACK_PRESETS,
   type BookParameters,
-  type PaperbackPresetId,
 } from '@/types/bookParams';
 import { UnitConverter, type UnitSystem } from '@/types/units';
 
@@ -128,7 +127,11 @@ export function QuickSizePopover({
       }
     };
     const onPointerDown = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        e.target instanceof Node &&
+        !containerRef.current.contains(e.target)
+      ) {
         setFallbackOpen(false);
       }
     };
@@ -146,19 +149,20 @@ export function QuickSizePopover({
   };
 
   const handlePresetChange = (value: string) => {
-    if (value === 'custom') return;
-    onChange(
-      BookParametersModel.applyPreset(params, value as Exclude<PaperbackPresetId, 'custom'>),
-    );
+    const preset = PAPERBACK_PRESETS.find((item) => item.id === value);
+    if (!preset) return;
+    onChange(BookParametersModel.applyPreset(params, preset.id));
   };
 
   const closePopover = () => {
     if (hasNativePopover) {
-      const el = popoverRef.current as (HTMLDivElement & { hidePopover?: () => void }) | null;
-      try {
-        el?.hidePopover?.();
-      } catch {
-        // Ignore if already closed
+      const el = popoverRef.current;
+      if (el && typeof el.hidePopover === 'function') {
+        try {
+          el.hidePopover();
+        } catch {
+          // Ignore if already closed
+        }
       }
     } else {
       setFallbackOpen(false);
@@ -275,7 +279,7 @@ export function QuickSizePopover({
           </div>
 
           {/* Conditional Slip Cover Pocket Mode Toggle */}
-          {params.bindingStyle === 'softcover-jacket' && (
+          {strategy.capabilities.supportsSeparatePockets && (
             <div
               data-testid="quick-size-pocket-mode"
               className="space-y-1 rounded-md border border-border/80 bg-secondary/35 p-2"
