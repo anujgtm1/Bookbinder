@@ -60,6 +60,7 @@ import {
   type StubExtensionSide,
 } from '../edgeExtend';
 import { loadCustomFontFromFile, type CustomFontAsset } from '../fonts';
+import { hasImageAboveVectorElements } from '../layerStack';
 import {
   resolveImageLayerConstraint,
   resolveOrnamentLayerConstraint,
@@ -1030,7 +1031,7 @@ export function useCoverStudioActions({
     setExportingKind('svg');
     try {
       let artworkDataUrl: string | undefined;
-      if (studio.layers.length > 0) {
+      if (studio.layers.length > 0 && !hasImageAboveVectorElements(studio)) {
         const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
           includeSpineText: false,
           dpi: PRINT_DPI,
