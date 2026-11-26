@@ -10,6 +10,7 @@ import {
   type StudioCanvasSpec,
 } from './canvasSpec';
 import { cloneSnapshot } from './hooks/useStudioHistory';
+import { syncLayerOrderAfterAdd } from './layerStack';
 
 export const DEFAULT_PASTE_OFFSET_MM = 6;
 export const NUDGE_STEP_MM = 1;
@@ -192,10 +193,15 @@ export function pasteClipboardItemToStudio(
       layoutConstraint: detachConstraintOnMove(cloned.layoutConstraint, movedX, movedY),
     };
     return {
-      studio: {
-        ...studio,
-        layers: [...studio.layers, pasted],
-      },
+      studio: syncLayerOrderAfterAdd(
+        {
+          ...studio,
+          layers: [...studio.layers, pasted],
+        },
+        [pastedId],
+        'image',
+        { afterId: item.layer.id },
+      ),
       pastedId,
       pastedKind: 'image',
     };
@@ -229,10 +235,15 @@ export function pasteClipboardItemToStudio(
         }
       : movedText;
     return {
-      studio: {
-        ...studio,
-        textLayers: [...studio.textLayers, pasted],
-      },
+      studio: syncLayerOrderAfterAdd(
+        {
+          ...studio,
+          textLayers: [...studio.textLayers, pasted],
+        },
+        [pastedId],
+        'text',
+        { afterId: item.layer.id },
+      ),
       pastedId,
       pastedKind: 'text',
     };
@@ -256,10 +267,15 @@ export function pasteClipboardItemToStudio(
       layoutConstraint: detachConstraintOnMove(cloned.layoutConstraint, movedX, movedY),
     };
     return {
-      studio: {
-        ...studio,
-        ornaments: [...studio.ornaments, pasted],
-      },
+      studio: syncLayerOrderAfterAdd(
+        {
+          ...studio,
+          ornaments: [...studio.ornaments, pasted],
+        },
+        [pastedId],
+        'ornament',
+        { afterId: item.layer.id },
+      ),
       pastedId,
       pastedKind: 'ornament',
     };

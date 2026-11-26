@@ -1,12 +1,16 @@
 import {
   Bookmark,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   ImagePlus,
+  Layers,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   Type,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type {
@@ -33,9 +37,15 @@ import { ClassicDesignsCard } from './ClassicDesignsCard';
 import { CoverTextCard } from './CoverTextCard';
 import type { DesignMuseCardProps } from './DesignMuseCard';
 import { DesignPresetsCard } from './DesignPresetsCard';
+import { LayerStackPanel } from './LayerStackPanel';
 import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
 import type { CustomFontAsset } from './fonts';
+import {
+  resolveOrderedStudioElements,
+  type LayerReorderDirection,
+  type StudioStackElement,
+} from './layerStack';
 import type { PreflightQuickFix, PreflightReport } from './preflight';
 
 export type StudioToolTab = 'artwork' | 'text' | 'designs' | 'spine' | 'presets' | 'preflight';
@@ -70,6 +80,7 @@ export interface CoverStudioToolDockProps {
   readonly onToggleLayerFlip: (id: string, axis: 'x' | 'y') => void;
   readonly onUpdateLayer: (id: string, patch: Partial<CoverImageLayer>) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
+  readonly onReorderElement?: (id: string, direction: LayerReorderDirection) => void;
   readonly onDetachSeriesLayer?: (kind: 'image' | 'text' | 'ornament', id: string) => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
@@ -146,6 +157,7 @@ export function CoverStudioToolDock({
   onToggleLayerFlip,
   onUpdateLayer,
   onReorderLayer,
+  onReorderElement,
   onDetachSeriesLayer,
   onDeleteLayer,
   onUpdateStudio,
@@ -180,6 +192,37 @@ export function CoverStudioToolDock({
   onIgnoreIssue,
   onRestoreIgnored,
 }: CoverStudioToolDockProps) {
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+  const totalLayerCount = resolveOrderedStudioElements(studio).length;
+
+  const handleSelectStackElement = (kind: StudioStackElement['kind'], id: string) => {
+    if (kind === 'image') {
+      onSelectImageLayer(id);
+    } else if (kind === 'ornament') {
+      onSelectOrnament(id);
+    } else {
+      onSelectText(id);
+    }
+  };
+
+  const handleDeleteStackElement = (kind: StudioStackElement['kind'], id: string) => {
+    if (kind === 'image') {
+      onDeleteLayer(id);
+    } else if (kind === 'ornament') {
+      onDeleteOrnament(id);
+    } else {
+      onDeleteTextLayer(id);
+    }
+  };
+
+  const handleReorderStackElement = (id: string, direction: LayerReorderDirection) => {
+    if (onReorderElement) {
+      onReorderElement(id, direction);
+    } else if (direction === 'forward' || direction === 'backward') {
+      onReorderLayer(id, direction);
+    }
+  };
+
   return (
     <Tabs
       value={activeTab}
@@ -189,13 +232,30 @@ export function CoverStudioToolDock({
     >
       {/* Docked Washi Inspector Header & 6-Tool Grid Tab Bar */}
       <div className="shrink-0 border-b border-border/90 bg-secondary/35 p-2">
-        <div className="mb-1.5 flex items-center justify-between px-1">
+        <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
           <span className="font-serif text-sm font-semibold tracking-tight text-foreground">
             Design Inspector
           </span>
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground">
-            FOLIO TOOLS
-          </span>
+          <button
+            type="button"
+            aria-expanded={layersPanelOpen}
+            aria-controls="studio-layer-stack-panel"
+            data-testid="layer-stack-toggle-btn"
+            onClick={() => setLayersPanelOpen((open) => !open)}
+            className={`inline-flex cursor-pointer items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              layersPanelOpen
+                ? 'border-vermilion bg-card text-foreground shadow-2xs'
+                : 'border-border/80 bg-card/70 text-muted-foreground hover:border-vermilion/60 hover:text-foreground'
+            }`}
+          >
+            <Layers className="h-3 w-3 shrink-0 text-vermilion" aria-hidden="true" />
+            <span>Layers ({totalLayerCount})</span>
+            {layersPanelOpen ? (
+              <ChevronUp className="h-3 w-3 shrink-0 opacity-75" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3 w-3 shrink-0 opacity-75" aria-hidden="true" />
+            )}
+          </button>
         </div>
         <TabsList
           aria-label="Cover studio tools"
@@ -318,6 +378,19 @@ export function CoverStudioToolDock({
           </TabsTrigger>
         </TabsList>
       </div>
+
+      {/* Collapsible Unified All-Layers (Front to Back) Stack Panel */}
+      {layersPanelOpen && (
+        <LayerStackPanel
+          studio={studio}
+          selectedLayerId={selectedLayerId}
+          selectedTextId={selectedTextId}
+          selectedOrnamentId={selectedOrnamentId}
+          onSelectElement={handleSelectStackElement}
+          onReorderElement={handleReorderStackElement}
+          onDeleteElement={handleDeleteStackElement}
+        />
+      )}
 
       {/* Scrollable Inspector Body */}
       <div className="p-2.5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
