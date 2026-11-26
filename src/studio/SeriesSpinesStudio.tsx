@@ -47,6 +47,8 @@ import {
   type SeriesCollectionMode,
   type SeriesPanoramaConfig,
   type SeriesProject,
+  type SeriesSequenceGroup,
+  type SeriesSequenceId,
   type SeriesSharedDesign,
 } from '@/types/seriesSpines';
 import type { UnitSystem } from '@/types/units';
@@ -387,6 +389,131 @@ export function SeriesSpinesStudio({
     );
   };
 
+  const handleAddLibraryBook = async (projectId: ProjectId) => {
+    if (activeSeries.books.length >= SERIES_BOUNDS.maxBooks) {
+      onStatusMessage(`Shelf already has the maximum of ${SERIES_BOUNDS.maxBooks} books.`);
+      return;
+    }
+    const repo = await getProjectRepository();
+    const record = await repo.getProject(projectId);
+    if (!record) return;
+    const entry = createSeriesBookFromSavedRecord(record);
+    updateActiveSeries((prev) => {
+      if (prev.books.length >= SERIES_BOUNDS.maxBooks) return prev;
+      return {
+        ...prev,
+        books: [...prev.books, entry],
+      };
+    });
+    setSelectedBookId(entry.id);
+    onStatusMessage(`Added "${entry.title}" to shelf`);
+  };
+
+  const handleRemoveLibraryBook = (projectId: ProjectId) => {
+    const remaining = activeSeries.books.filter((b) => b.linkedProjectId !== projectId);
+    if (remaining.length === activeSeries.books.length) return;
+    if (remaining.length === 0) {
+      onStatusMessage('Keep at least 1 book on the shelf.');
+      return;
+    }
+    const removed = activeSeries.books.find((b) => b.linkedProjectId === projectId);
+    updateActiveSeries((prev) => {
+      const next = prev.books.filter((b) => b.linkedProjectId !== projectId);
+      return next.length > 0 ? { ...prev, books: next } : prev;
+    });
+    onStatusMessage(`Removed "${removed?.title || 'book'}" from shelf (kept in My Books)`);
+  };
+
+  const handleCreateSequence = (bookIds: readonly SeriesBookId[]) => {
+    if (bookIds.length === 0) return;
+    if (activeSeries.sequences.length >= SERIES_BOUNDS.maxSequences) {
+      onStatusMessage(`Maximum of ${SERIES_BOUNDS.maxSequences} series sequences reached.`);
+      return;
+    }
+    const idSet = new Set<SeriesBookId>(bookIds);
+    const seq = SeriesProjectModel.createSequenceGroup({
+      name: `Series ${activeSeries.sequences.length + 1}`,
+      volumeNumberStyle: 'roman',
+      startNumber: 1,
+      sharedAuthor: null,
+    });
+    updateActiveSeries((prev) => ({
+      ...prev,
+      sequences: [...prev.sequences, seq],
+      books: prev.books.map((book) => (idSet.has(book.id) ? { ...book, sequenceId: seq.id } : book)),
+    }));
+    onStatusMessage(
+      `Marked ${bookIds.length} ${bookIds.length === 1 ? 'book' : 'books'} as "${seq.name}"`,
+    );
+  };
+
+  const handleAssignBooksToSequence = (
+    bookIds: readonly SeriesBookId[],
+    sequenceId: SeriesSequenceId | null,
+  ) => {
+    if (bookIds.length === 0) return;
+    const idSet = new Set<SeriesBookId>(bookIds);
+    updateActiveSeries((prev) => ({
+      ...prev,
+      books: prev.books.map((book) => (idSet.has(book.id) ? { ...book, sequenceId } : book)),
+    }));
+  };
+
+  const handleUpdateSequence = (
+    sequenceId: SeriesSequenceId,
+    patch: Partial<SeriesSequenceGroup>,
+  ) => {
+    updateActiveSeries((prev) => ({
+      ...prev,
+      sequences: prev.sequences.map((seq) =>
+        seq.id === sequenceId ? { ...seq, ...patch } : seq,
+      ),
+    }));
+  };
+
+  const handleApplySequenceAuthor = (sequenceId: SeriesSequenceId) => {
+    const seq = activeSeries.sequences.find((s) => s.id === sequenceId);
+    const author = seq?.sharedAuthor?.trim() ?? '';
+    if (!seq || !author) return;
+    let updatedCount = 0;
+    updateActiveSeries((prev) => ({
+      ...prev,
+      books: prev.books.map((book) => {
+        if (book.sequenceId !== sequenceId) return book;
+        updatedCount += 1;
+        return { ...book, author };
+      }),
+    }));
+    onStatusMessage(
+      `Applied "${author}" to ${updatedCount || 'all'} ${updatedCount === 1 ? 'book' : 'books'} in ${seq.name}`,
+    );
+  };
+
+  const handleDeleteSequence = (sequenceId: SeriesSequenceId) => {
+    const seq = activeSeries.sequences.find((s) => s.id === sequenceId);
+    updateActiveSeries((prev) => ({
+      ...prev,
+      sequences: prev.sequences.filter((s) => s.id !== sequenceId),
+      books: prev.books.map((book) =>
+        book.sequenceId === sequenceId ? { ...book, sequenceId: null } : book,
+      ),
+    }));
+    onStatusMessage(`Unmarked "${seq?.name || 'series'}" (all books remain on shelf)`);
+  };
+
+  const handleApplyShelfAuthorToAll = (author: string) => {
+    const trimmed = author.trim();
+    updateActiveSeries((prev) => ({
+      ...prev,
+      books: prev.books.map((book) => ({ ...book, author: trimmed })),
+    }));
+    onStatusMessage(
+      trimmed
+        ? `Set author "${trimmed}" across all ${activeSeries.books.length} books on shelf`
+        : 'Cleared author on all books on shelf',
+    );
+  };
+
   const persistBookToLibrary = async (
     repo: ProjectRepository,
     series: SeriesProject,
@@ -706,11 +833,21 @@ export function SeriesSpinesStudio({
           series={activeSeries}
           layout={layout}
           selectedBookId={effectiveSelectedBookId}
+          savedSummaries={savedSummaries}
+          existingLinkedIds={existingLinkedIds}
           unit={unit}
           customFont={customFont}
           onSelectBook={setSelectedBookId}
           onAddBook={handleAddBook}
+          onAddLibraryBook={handleAddLibraryBook}
+          onRemoveLibraryBook={handleRemoveLibraryBook}
           onOpenImportLibrary={() => setImportDialogOpen(true)}
+          onCreateSequence={handleCreateSequence}
+          onAssignBooksToSequence={handleAssignBooksToSequence}
+          onUpdateSequence={handleUpdateSequence}
+          onApplySequenceAuthor={handleApplySequenceAuthor}
+          onDeleteSequence={handleDeleteSequence}
+          onApplyShelfAuthorToAll={handleApplyShelfAuthorToAll}
           onUpdateBook={handleUpdateBook}
           onUpdateShared={handleUpdateShared}
           onUpdatePanorama={handleUpdatePanorama}

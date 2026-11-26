@@ -346,7 +346,7 @@ export function SeriesShelfStage({
   const padX = 24;
   const padTop = 18;
   const shelfThicknessMm = 10;
-  const padBottom = 26;
+  const padBottom = layout.sequenceSpans.length > 0 ? 44 : 26;
   const shelfW = Math.max(80, layout.totalShelfWidthMm);
   const shelfH = Math.max(120, layout.maxSpineHeightMm);
   const svgW = shelfW + padX * 2;
@@ -609,7 +609,7 @@ export function SeriesShelfStage({
                   const cx = padX + bookLayout.spineCenterXMm;
                   const ornPath = buildInlineOrnamentPath(bookLayout, series, 0, 0);
                   const title = bookLayout.book.title.trim();
-                  const author = bookLayout.book.author.trim();
+                  const author = bookLayout.resolvedAuthor;
                   const inlineText =
                     series.shared.titleLayout === 'inline' && !isAuthorHorizontal
                       ? CoverStudioModel.formatInlineSpineText(title, author)
@@ -715,7 +715,7 @@ export function SeriesShelfStage({
                             dominantBaseline="central"
                             letterSpacing="0.08em"
                           >
-                            {series.shared.volumeNumberStyle === 'roman'
+                            {bookLayout.volumeNumberStyle === 'roman'
                               ? bookLayout.volumeLabel.toUpperCase()
                               : bookLayout.volumeLabel}
                           </text>
@@ -869,7 +869,8 @@ export function SeriesShelfStage({
                         />
                       </>
                     )}
-                    {series.shared.volumeNumberStyle !== 'none' && (
+                    {(series.shared.volumeNumberStyle !== 'none' ||
+                      layout.books.some((b) => Boolean(b.volumeLabel))) && (
                       <line
                         x1={padX - 10}
                         y1={padTop + layout.guides.volumeBadgeYMm}
@@ -901,6 +902,53 @@ export function SeriesShelfStage({
                     >
                       BASE
                     </text>
+                  </g>
+                )}
+
+                {/* Contiguous Brass Sequence Brackets Underneath Shelf */}
+                {layout.sequenceSpans.length > 0 && (
+                  <g data-testid="series-sequence-brackets" pointerEvents="none">
+                    {layout.sequenceSpans.map((span, spanIdx) => {
+                      const x1 = padX + span.startXMm + 0.8;
+                      const x2 = Math.max(x1 + 2, padX + span.endXMm - 0.8);
+                      const midX = (x1 + x2) / 2;
+                      const topY = padTop + shelfH + shelfThicknessMm + 13.5;
+                      const bottomY = topY + 4.5;
+                      const tickY = bottomY + 2.2;
+                      const bracketLabel = span.volumeRangeLabel
+                        ? `${span.sequence.name} (${span.volumeRangeLabel})`
+                        : span.sequence.name;
+
+                      return (
+                        <g
+                          key={`${span.sequence.id}-${span.startBookIndex}`}
+                          data-testid={`series-sequence-bracket-${spanIdx}`}
+                          data-sequence-id={span.sequence.id}
+                          data-start-index={span.startBookIndex}
+                          data-end-index={span.endBookIndex}
+                        >
+                          <path
+                            d={`M ${x1} ${topY} L ${x1} ${bottomY} L ${x2} ${bottomY} L ${x2} ${topY} M ${midX} ${bottomY} L ${midX} ${tickY}`}
+                            fill="none"
+                            stroke="rgba(222, 183, 101, 0.85)"
+                            strokeWidth="0.65"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <text
+                            x={midX}
+                            y={tickY + 5.2}
+                            fill="#f3d285"
+                            fontSize="4.8"
+                            fontFamily={fontFamily}
+                            fontWeight="600"
+                            textAnchor="middle"
+                          >
+                            {bracketLabel}
+                          </text>
+                        </g>
+                      );
+                    })}
                   </g>
                 )}
               </svg>
@@ -988,7 +1036,7 @@ export function SeriesShelfStage({
                       bookLayout.shelfYMm,
                     );
                     const title = bookLayout.book.title.trim();
-                    const author = bookLayout.book.author.trim();
+                    const author = bookLayout.resolvedAuthor;
                     const inlineText =
                       series.shared.titleLayout === 'inline' && !isAuthorHorizontal
                         ? CoverStudioModel.formatInlineSpineText(title, author)
@@ -1146,7 +1194,7 @@ export function SeriesShelfStage({
                                 textAnchor="middle"
                                 dominantBaseline="central"
                               >
-                                {series.shared.volumeNumberStyle === 'roman'
+                                {bookLayout.volumeNumberStyle === 'roman'
                                   ? bookLayout.volumeLabel.toUpperCase()
                                   : bookLayout.volumeLabel}
                               </text>
@@ -1279,6 +1327,11 @@ export function SeriesShelfStage({
               <Badge variant="outline" className="font-mono text-[10px]">
                 {getBindingStyleSpec(selectedLayout.book.parameters.bindingStyle).shortLabel}
               </Badge>
+              {selectedLayout.sequence && (
+                <Badge variant="brass" className="text-[10px]">
+                  {selectedLayout.sequence.name}
+                </Badge>
+              )}
               {selectedLayout.book.linkedProjectId && (
                 <Badge variant="brass" className="text-[10px]">
                   Linked to My Books

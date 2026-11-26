@@ -1,14 +1,21 @@
 import {
   BookOpen,
+  Check,
+  ChevronDown,
+  ChevronRight,
   Dices,
   Image as ImageIcon,
+  Layers,
   Library,
+  Minus,
   Palette,
   Plus,
   RotateCcw,
   Sparkles,
   Trash2,
   Upload,
+  Users,
+  X,
 } from 'lucide-react';
 import { type ChangeEvent, type KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +50,7 @@ import {
   toProceduralArtworkDataUrl,
 } from '@/studio/proceduralArtwork';
 import { BookParametersModel, type BindingStyle } from '@/types/bookParams';
+import type { ProjectId, SavedProjectSummary } from '@/types/projectLibrary';
 import {
   DEFAULT_SERIES_PANORAMA,
   SERIES_BOUNDS,
@@ -53,6 +61,8 @@ import {
   type SeriesOrnamentId,
   type SeriesPanoramaConfig,
   type SeriesProject,
+  type SeriesSequenceGroup,
+  type SeriesSequenceId,
   type SeriesSharedDesign,
   type SeriesVolumeNumberStyle,
 } from '@/types/seriesSpines';
@@ -65,11 +75,27 @@ export interface SeriesInspectorDockProps {
   readonly series: SeriesProject;
   readonly layout: SeriesShelfLayout;
   readonly selectedBookId: SeriesBookId | null;
+  readonly savedSummaries: readonly SavedProjectSummary[];
+  readonly existingLinkedIds: ReadonlySet<ProjectId>;
   readonly unit: UnitSystem;
   readonly customFont: CustomFontAsset | null;
   readonly onSelectBook: (id: SeriesBookId) => void;
   readonly onAddBook: () => void;
+  readonly onAddLibraryBook: (projectId: ProjectId) => Promise<void>;
+  readonly onRemoveLibraryBook: (projectId: ProjectId) => void;
   readonly onOpenImportLibrary: () => void;
+  readonly onCreateSequence: (bookIds: readonly SeriesBookId[]) => void;
+  readonly onAssignBooksToSequence: (
+    bookIds: readonly SeriesBookId[],
+    sequenceId: SeriesSequenceId | null,
+  ) => void;
+  readonly onUpdateSequence: (
+    sequenceId: SeriesSequenceId,
+    patch: Partial<SeriesSequenceGroup>,
+  ) => void;
+  readonly onApplySequenceAuthor: (sequenceId: SeriesSequenceId) => void;
+  readonly onDeleteSequence: (sequenceId: SeriesSequenceId) => void;
+  readonly onApplyShelfAuthorToAll: (author: string) => void;
   readonly onUpdateBook: (
     id: SeriesBookId,
     updater: (book: SeriesBookEntry) => SeriesBookEntry,
@@ -85,11 +111,21 @@ export function SeriesInspectorDock({
   series,
   layout,
   selectedBookId,
+  savedSummaries,
+  existingLinkedIds,
   unit,
   customFont,
   onSelectBook,
   onAddBook,
+  onAddLibraryBook,
+  onRemoveLibraryBook,
   onOpenImportLibrary,
+  onCreateSequence,
+  onAssignBooksToSequence,
+  onUpdateSequence,
+  onApplySequenceAuthor,
+  onDeleteSequence,
+  onApplyShelfAuthorToAll,
   onUpdateBook,
   onUpdateShared,
   onUpdatePanorama,
@@ -99,6 +135,10 @@ export function SeriesInspectorDock({
 }: SeriesInspectorDockProps) {
   const [activeTab, setActiveTab] = useState<InspectorTab>('books');
   const [panoPatternSeed, setPanoPatternSeed] = useState<number>(307);
+  const [libraryExpanded, setLibraryExpanded] = useState<boolean>(true);
+  const [busyLibraryProjectId, setBusyLibraryProjectId] = useState<ProjectId | null>(null);
+  const [checkedBookIds, setCheckedBookIds] = useState<ReadonlySet<SeriesBookId>>(new Set());
+  const [shelfAuthorDraft, setShelfAuthorDraft] = useState<string>('');
   const booksTabId = useId();
   const styleTabId = useId();
   const panoTabId = useId();
@@ -110,6 +150,36 @@ export function SeriesInspectorDock({
   const selectedLayout: SeriesBookLayout | null =
     layout.books.find((b) => b.book.id === selectedBookId) ?? layout.books[0] ?? null;
   const selectedBook = selectedLayout?.book ?? null;
+
+  // Keep checked book IDs strictly scoped to books currently on the shelf
+  const activeCheckedBookIds = useMemo(
+    () => series.books.map((b) => b.id).filter((id) => checkedBookIds.has(id)),
+    [series.books, checkedBookIds],
+  );
+
+  const onShelfLibraryCount = useMemo(
+    () => savedSummaries.filter((s) => existingLinkedIds.has(s.id)).length,
+    [savedSummaries, existingLinkedIds],
+  );
+
+  const toggleBookChecked = (bookId: SeriesBookId) => {
+    setCheckedBookIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookId)) next.delete(bookId);
+      else next.add(bookId);
+      return next;
+    });
+  };
+
+  const handleToggleLibraryAdd = async (projectId: ProjectId) => {
+    if (busyLibraryProjectId) return;
+    setBusyLibraryProjectId(projectId);
+    try {
+      await onAddLibraryBook(projectId);
+    } finally {
+      setBusyLibraryProjectId(null);
+    }
+  };
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const tabs: readonly InspectorTab[] = ['books', 'style', 'panorama'];
@@ -269,7 +339,119 @@ export function SeriesInspectorDock({
       >
         {activeTab === 'books' && (
           <div className="space-y-4">
-            {/* Shelf Book Roster */}
+            {/* Inline My Books Library Drawer (1-click Add / Remove on Shelf) */}
+            <div
+              data-testid="series-my-books-drawer"
+              className="rounded-md border border-border/85 bg-secondary/20"
+            >
+              <button
+                type="button"
+                aria-expanded={libraryExpanded}
+                data-testid="series-my-books-toggle"
+                onClick={() => setLibraryExpanded((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left transition-colors hover:bg-secondary/35"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-foreground uppercase">
+                  {libraryExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  )}
+                  <Library className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                  My Books Library
+                </span>
+                <Badge
+                  variant="outline"
+                  data-testid="series-library-count-badge"
+                  className="font-mono text-[10px]"
+                >
+                  {onShelfLibraryCount} of {savedSummaries.length} on shelf
+                </Badge>
+              </button>
+
+              {libraryExpanded && (
+                <div className="border-t border-border/70 px-2.5 py-2">
+                  {savedSummaries.length === 0 ? (
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      No books saved in My Books yet. Save books in Cover Studio or click Save All
+                      to add and remove them directly here.
+                    </p>
+                  ) : (
+                    <ul
+                      data-testid="series-library-quick-list"
+                      className="max-h-36 space-y-1.5 overflow-y-auto pr-0.5"
+                    >
+                      {savedSummaries.map((summary, idx) => {
+                        const isOnShelf = existingLinkedIds.has(summary.id);
+                        const remainingAfterRemove = series.books.filter(
+                          (b) => b.linkedProjectId !== summary.id,
+                        ).length;
+                        const isLastRemainingBook = isOnShelf && remainingAfterRemove === 0;
+                        const isBusy = busyLibraryProjectId === summary.id;
+
+                        return (
+                          <li
+                            key={summary.id}
+                            data-testid={`series-library-row-${idx}`}
+                            className="flex items-center justify-between gap-2 rounded border border-border/75 bg-card/75 px-2 py-1.5"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-foreground">
+                                {summary.name}
+                              </p>
+                              <p className="font-mono text-[10px] text-muted-foreground">
+                                {UnitConverter.formatValue(summary.pbWidthMm, unit)} ×{' '}
+                                {UnitConverter.formatValue(summary.pbHeightMm, unit)} ×{' '}
+                                {UnitConverter.formatValue(summary.pbThicknessMm, unit)} {unit}
+                              </p>
+                            </div>
+                            {isOnShelf ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isLastRemainingBook}
+                                title={
+                                  isLastRemainingBook
+                                    ? 'Keep at least 1 book on the shelf'
+                                    : 'Remove from shelf (keeps book saved in My Books)'
+                                }
+                                data-testid={`series-library-remove-${idx}`}
+                                onClick={() => onRemoveLibraryBook(summary.id)}
+                                className="h-6 shrink-0 gap-1 border-brass/50 px-2 text-[10px] text-foreground hover:border-destructive/60 hover:text-destructive"
+                              >
+                                <Check className="h-2.5 w-2.5 text-brass" aria-hidden="true" />
+                                <span>On Shelf</span>
+                                <span aria-hidden="true" className="opacity-45">
+                                  ·
+                                </span>
+                                <Minus className="h-2.5 w-2.5" aria-hidden="true" />
+                                <span>Remove</span>
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isBusy || series.books.length >= SERIES_BOUNDS.maxBooks}
+                                data-testid={`series-library-add-${idx}`}
+                                onClick={() => void handleToggleLibraryAdd(summary.id)}
+                                className="h-6 shrink-0 gap-1 px-2 text-[10px]"
+                              >
+                                <Plus className="h-2.5 w-2.5" aria-hidden="true" />
+                                {isBusy ? 'Adding…' : 'Add'}
+                              </Button>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Shelf Book Roster + Series Sequence Marking */}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
@@ -304,33 +486,53 @@ export function SeriesInspectorDock({
 
               <ol
                 data-testid="series-book-roster"
-                className="max-h-40 space-y-1 overflow-y-auto pr-0.5"
+                className="max-h-44 space-y-1 overflow-y-auto pr-0.5"
               >
                 {layout.books.map((bl) => {
                   const isSel = selectedBook?.id === bl.book.id;
+                  const isChecked = checkedBookIds.has(bl.book.id);
                   return (
-                    <li key={bl.book.id}>
+                    <li key={bl.book.id} className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        data-testid={`series-roster-check-${bl.index}`}
+                        aria-label={`Select ${bl.book.title || `Book ${bl.index + 1}`} for series grouping`}
+                        onChange={() => toggleBookChecked(bl.book.id)}
+                        className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded accent-vermilion"
+                      />
                       <button
                         type="button"
                         aria-current={isSel ? 'true' : undefined}
                         data-testid={`series-roster-item-${bl.index}`}
                         onClick={() => onSelectBook(bl.book.id)}
-                        className={`flex w-full items-center justify-between gap-2 rounded border px-2.5 py-1.5 text-left text-xs transition-colors ${
+                        className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs transition-colors ${
                           isSel
                             ? 'border-vermilion bg-secondary/60 font-medium text-foreground'
                             : 'border-border/80 bg-card/60 text-foreground hover:border-brass/70'
                         }`}
                       >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span
-                            className="inline-block h-3 w-3 shrink-0 rounded-xs border border-black/25"
-                            style={{ backgroundColor: bl.bgColor }}
-                            aria-hidden="true"
-                          />
-                          <span className="truncate">
-                            {bl.volumeLabel ? `${bl.volumeLabel}. ` : `${bl.index + 1}. `}
-                            {bl.book.title || 'Untitled'}
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className="inline-block h-3 w-3 shrink-0 rounded-xs border border-black/25"
+                              style={{ backgroundColor: bl.bgColor }}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">
+                              {bl.volumeLabel ? `${bl.volumeLabel}. ` : `${bl.index + 1}. `}
+                              {bl.book.title || 'Untitled'}
+                            </span>
                           </span>
+                          {bl.sequence && (
+                            <span
+                              data-testid={`series-roster-seq-pill-${bl.index}`}
+                              className="inline-flex w-fit max-w-full items-center truncate rounded bg-brass/15 px-1.5 py-0.25 text-[10px] font-medium text-foreground"
+                            >
+                              {bl.sequence.name}
+                              {bl.volumeLabel ? ` · ${bl.volumeLabel}` : ''}
+                            </span>
+                          )}
                         </span>
                         <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                           {UnitConverter.formatValue(bl.book.parameters.pbThicknessMm, unit)}×
@@ -341,7 +543,224 @@ export function SeriesInspectorDock({
                   );
                 })}
               </ol>
+
+              {/* Sequence Marking Action Bar */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    activeCheckedBookIds.length === 0 ||
+                    series.sequences.length >= SERIES_BOUNDS.maxSequences
+                  }
+                  data-testid="series-mark-sequence-btn"
+                  onClick={() => {
+                    onCreateSequence(activeCheckedBookIds);
+                    setCheckedBookIds(new Set());
+                  }}
+                  className="h-7 gap-1 px-2 text-[11px]"
+                >
+                  <Layers className="h-3 w-3 text-brass" aria-hidden="true" />
+                  Mark Selected as Series
+                  {activeCheckedBookIds.length > 0 ? ` (${activeCheckedBookIds.length})` : ''}
+                </Button>
+
+                {activeCheckedBookIds.length === 0 && series.books.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={series.sequences.length >= SERIES_BOUNDS.maxSequences}
+                    data-testid="series-mark-all-sequence-btn"
+                    onClick={() => onCreateSequence(series.books.map((b) => b.id))}
+                    className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    Mark All
+                  </Button>
+                )}
+
+                {activeCheckedBookIds.length > 0 && series.sequences.length > 0 && (
+                  <select
+                    aria-label="Add checked books to an existing series sequence"
+                    data-testid="series-add-checked-to-seq-select"
+                    value=""
+                    onChange={(e) => {
+                      const targetId = e.target.value;
+                      if (!targetId) return;
+                      onAssignBooksToSequence(
+                        activeCheckedBookIds,
+                        targetId === '__none__' ? null : (targetId as SeriesSequenceId),
+                      );
+                      setCheckedBookIds(new Set());
+                    }}
+                    className="h-7 rounded-md border border-input bg-card px-2 text-[11px] text-foreground"
+                  >
+                    <option value="">Assign to…</option>
+                    {series.sequences.map((seq) => (
+                      <option key={seq.id} value={seq.id}>
+                        {seq.name}
+                      </option>
+                    ))}
+                    <option value="__none__">Standalone (Remove from Series)</option>
+                  </select>
+                )}
+              </div>
             </div>
+
+            {/* Marked Series Sequences Editor */}
+            {series.sequences.length > 0 && (
+              <div
+                data-testid="series-sequences-section"
+                className="kettle-stitch-divider space-y-2.5 pt-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                    <Layers className="h-3 w-3 text-brass" aria-hidden="true" />
+                    Marked Series Sequences
+                  </span>
+                  <Badge variant="brass" className="font-mono text-[10px]">
+                    {series.sequences.length}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2.5">
+                  {series.sequences.map((seq, seqIdx) => {
+                    const memberCount = series.books.filter((b) => b.sequenceId === seq.id).length;
+                    return (
+                      <div
+                        key={seq.id}
+                        data-testid={`series-sequence-card-${seqIdx}`}
+                        className="space-y-2 rounded-md border border-brass/45 bg-secondary/20 p-2.5"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="text"
+                            aria-label={`Series ${seqIdx + 1} name`}
+                            data-testid={`series-sequence-name-${seqIdx}`}
+                            value={seq.name}
+                            onChange={(e) =>
+                              onUpdateSequence(seq.id, { name: e.target.value })
+                            }
+                            placeholder="Series Name"
+                            className="h-7 flex-1 font-serif text-xs font-semibold"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            title="Unmark series (books stay on shelf)"
+                            aria-label={`Unmark ${seq.name}`}
+                            data-testid={`series-sequence-delete-${seqIdx}`}
+                            onClick={() => onDeleteSequence(seq.id)}
+                            className="h-7 gap-1 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" aria-hidden="true" />
+                            Unmark
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-[1fr_72px] gap-2">
+                          <div className="space-y-1">
+                            <Label
+                              htmlFor={`series-seq-vol-${seq.id}`}
+                              className="text-[10px] text-muted-foreground"
+                            >
+                              Volume Numbering
+                            </Label>
+                            <select
+                              id={`series-seq-vol-${seq.id}`}
+                              data-testid={`series-sequence-vol-style-${seqIdx}`}
+                              value={seq.volumeNumberStyle}
+                              onChange={(e) =>
+                                onUpdateSequence(seq.id, {
+                                  volumeNumberStyle: e.target.value as SeriesVolumeNumberStyle,
+                                })
+                              }
+                              className="h-7 w-full rounded-md border border-input bg-card px-2 text-[11px] text-foreground"
+                            >
+                              {SERIES_VOLUME_STYLE_OPTIONS.map((opt) => (
+                                <option key={opt.id} value={opt.id}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label
+                              htmlFor={`series-seq-start-${seq.id}`}
+                              className="text-[10px] text-muted-foreground"
+                            >
+                              Start #
+                            </Label>
+                            <Input
+                              id={`series-seq-start-${seq.id}`}
+                              data-testid={`series-sequence-start-num-${seqIdx}`}
+                              type="number"
+                              min={SERIES_BOUNDS.sequenceStartNumber.min}
+                              max={SERIES_BOUNDS.sequenceStartNumber.max}
+                              step={1}
+                              value={seq.startNumber}
+                              onChange={(e) => {
+                                const parsed = Number.parseInt(e.target.value, 10);
+                                if (!Number.isFinite(parsed)) return;
+                                onUpdateSequence(seq.id, {
+                                  startNumber: Math.max(
+                                    SERIES_BOUNDS.sequenceStartNumber.min,
+                                    Math.min(SERIES_BOUNDS.sequenceStartNumber.max, parsed),
+                                  ),
+                                });
+                              }}
+                              className="h-7 font-mono text-[11px]"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label
+                            htmlFor={`series-seq-author-${seq.id}`}
+                            className="text-[10px] text-muted-foreground"
+                          >
+                            Series Author (optional)
+                          </Label>
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              id={`series-seq-author-${seq.id}`}
+                              data-testid={`series-sequence-author-${seqIdx}`}
+                              type="text"
+                              value={seq.sharedAuthor ?? ''}
+                              placeholder="Blank = per-book author"
+                              onChange={(e) =>
+                                onUpdateSequence(seq.id, {
+                                  sharedAuthor: e.target.value || null,
+                                })
+                              }
+                              className="h-7 flex-1 text-[11px]"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={!seq.sharedAuthor?.trim()}
+                              data-testid={`series-sequence-apply-author-${seqIdx}`}
+                              onClick={() => onApplySequenceAuthor(seq.id)}
+                              className="h-7 shrink-0 px-2 text-[10px]"
+                            >
+                              Apply to Books
+                            </Button>
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-muted-foreground">
+                          {memberCount} {memberCount === 1 ? 'book' : 'books'} in sequence ·
+                          Individual book authors always override blank/shared author.
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Selected Book Inline Editor */}
             {selectedBook && selectedLayout && (
@@ -370,12 +789,42 @@ export function SeriesInspectorDock({
                   />
                 </div>
 
+                {series.sequences.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="series-book-sequence">Series Sequence</Label>
+                    <select
+                      id="series-book-sequence"
+                      data-testid="series-book-sequence-select"
+                      value={selectedBook.sequenceId ?? ''}
+                      onChange={(e) =>
+                        onUpdateBook(selectedBook.id, (b) => ({
+                          ...b,
+                          sequenceId: e.target.value ? (e.target.value as SeriesSequenceId) : null,
+                        }))
+                      }
+                      className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                    >
+                      <option value="">Standalone (Not in a series)</option>
+                      {series.sequences.map((seq) => (
+                        <option key={seq.id} value={seq.id}>
+                          {seq.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="series-book-author">Author</Label>
                     <Input
                       id="series-book-author"
                       data-testid="series-book-author-input"
+                      placeholder={
+                        selectedLayout.sequence?.sharedAuthor
+                          ? `Inherits: ${selectedLayout.sequence.sharedAuthor}`
+                          : 'Author'
+                      }
                       value={selectedBook.author}
                       onChange={(e) =>
                         onUpdateBook(selectedBook.id, (b) => ({ ...b, author: e.target.value }))
@@ -801,6 +1250,46 @@ export function SeriesInspectorDock({
                     </option>
                   ))}
                 </select>
+                {series.sequences.length > 0 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Marked sequences in the Books tab use their own per-sequence numbering.
+                  </p>
+                )}
+              </div>
+
+              {/* Optional Set Author for All Books Helper */}
+              <div className="space-y-1.5 rounded-md border border-border/80 bg-secondary/20 p-2.5">
+                <Label
+                  htmlFor="series-shared-author-input"
+                  className="flex items-center gap-1.5 text-[11px]"
+                >
+                  <Users className="h-3 w-3 text-brass" aria-hidden="true" />
+                  Set Author for All Books
+                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id="series-shared-author-input"
+                    data-testid="series-shared-author-input"
+                    type="text"
+                    value={shelfAuthorDraft}
+                    placeholder="Shared author across shelf"
+                    onChange={(e) => setShelfAuthorDraft(e.target.value)}
+                    className="h-7 flex-1 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="series-apply-all-author-btn"
+                    onClick={() => onApplyShelfAuthorToAll(shelfAuthorDraft)}
+                    className="h-7 shrink-0 px-2.5 text-[11px]"
+                  >
+                    Apply All
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Applies to every book on the shelf; you can still edit any book individually.
+                </p>
               </div>
 
               <div className="space-y-1.5">
