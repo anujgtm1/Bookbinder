@@ -45,7 +45,11 @@ import {
   type StubExtensionMode,
 } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
-import { generateProceduralArtworkSvg, toProceduralArtworkDataUrl } from './proceduralArtwork';
+import {
+  generateProceduralArtworkSvg,
+  isProceduralArtworkFileName,
+  toProceduralArtworkDataUrl,
+} from './proceduralArtwork';
 
 export type EyedropperTarget = 'spine' | 'back' | 'both' | null;
 
@@ -132,12 +136,25 @@ export function ArtworkControlsCard({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [selectedPatternId, setSelectedPatternId] =
     useState<ProceduralArtworkId>('suminagashi-marble');
-  const [patternIntensity, setPatternIntensity] = useState<ProceduralArtworkIntensity>('subtle');
+  const [patternIntensity, setPatternIntensity] = useState<ProceduralArtworkIntensity>('vivid');
   const [patternTarget, setPatternTarget] = useState<ProceduralArtworkTarget>('front');
   const [patternSeed, setPatternSeed] = useState<number>(101);
 
   const selectedLayer: CoverImageLayer | null =
     studio.layers.find((l) => l.id === selectedLayerId) ?? null;
+  const hasProceduralLayer = studio.layers.some((layer) =>
+    isProceduralArtworkFileName(layer.fileName),
+  );
+
+  const applyProceduralPattern = (overrides: Partial<ApplyProceduralArtworkRequest> = {}) => {
+    if (!onApplyProceduralArtwork) return;
+    onApplyProceduralArtwork({
+      patternId: overrides.patternId ?? selectedPatternId,
+      target: overrides.target ?? patternTarget,
+      intensity: overrides.intensity ?? patternIntensity,
+      seed: overrides.seed ?? patternSeed,
+    });
+  };
 
   const previewBaseHex =
     patternTarget === 'back'
@@ -499,7 +516,12 @@ export function ArtworkControlsCard({
                       type="button"
                       aria-pressed={patternIntensity === mode}
                       data-testid={`procedural-intensity-${mode}`}
-                      onClick={() => setPatternIntensity(mode)}
+                      onClick={() => {
+                        setPatternIntensity(mode);
+                        if (hasProceduralLayer) {
+                          applyProceduralPattern({ intensity: mode });
+                        }
+                      }}
                       className={`cursor-pointer rounded-[2px] px-2 py-0.5 text-[10.5px] font-medium capitalize transition-colors ${
                         patternIntensity === mode
                           ? 'bg-primary text-primary-foreground shadow-2xs'
@@ -528,7 +550,10 @@ export function ArtworkControlsCard({
                       aria-pressed={active}
                       title={`${spec.label} — ${spec.description}`}
                       data-testid={`procedural-pattern-${spec.id}`}
-                      onClick={() => setSelectedPatternId(spec.id)}
+                      onClick={() => {
+                        setSelectedPatternId(spec.id);
+                        applyProceduralPattern({ patternId: spec.id });
+                      }}
                       className={`group flex cursor-pointer flex-col overflow-hidden rounded-md border text-left transition-colors ${
                         active
                           ? 'border-vermilion bg-primary/10 ring-1 ring-vermilion/60'
@@ -567,7 +592,12 @@ export function ArtworkControlsCard({
                       aria-pressed={patternTarget === target.id}
                       className="h-6 px-2 text-[10.5px]"
                       data-testid={`procedural-target-${target.id}`}
-                      onClick={() => setPatternTarget(target.id)}
+                      onClick={() => {
+                        setPatternTarget(target.id);
+                        if (hasProceduralLayer) {
+                          applyProceduralPattern({ target: target.id });
+                        }
+                      }}
                     >
                       {target.label}
                     </Button>
@@ -583,7 +613,13 @@ export function ArtworkControlsCard({
                   className="h-7 px-2.5 text-xs"
                   data-testid="procedural-shuffle-seed-btn"
                   title="Shuffle pattern variation seed"
-                  onClick={() => setPatternSeed((prev) => ((prev * 1664525 + 1013904223) >>> 0) % 99991 + 1)}
+                  onClick={() => {
+                    const nextSeed = (((patternSeed * 1664525 + 1013904223) >>> 0) % 99991) + 1;
+                    setPatternSeed(nextSeed);
+                    if (hasProceduralLayer) {
+                      applyProceduralPattern({ seed: nextSeed });
+                    }
+                  }}
                 >
                   <Dices className="h-3.5 w-3.5" aria-hidden="true" />
                   Shuffle Seed
@@ -594,14 +630,7 @@ export function ArtworkControlsCard({
                   variant="default"
                   className="h-7 flex-1 px-3 text-xs"
                   data-testid="procedural-apply-btn"
-                  onClick={() =>
-                    onApplyProceduralArtwork({
-                      patternId: selectedPatternId,
-                      target: patternTarget,
-                      intensity: patternIntensity,
-                      seed: patternSeed,
-                    })
-                  }
+                  onClick={() => applyProceduralPattern()}
                 >
                   <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                   Apply Pattern

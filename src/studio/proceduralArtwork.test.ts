@@ -49,13 +49,21 @@ describe('proceduralArtwork — 9 built-in procedural cover & endpaper generator
           // Determinism: identical inputs yield byte-identical SVG
           expect(svgA).toBe(svgB);
 
-          // Valid SVG root with exact viewBox in mm and zero text/image/transform tags
+          // Valid SVG root with exact viewBox in mm, valid XML (zero NaN/unescaped entities), and zero text/image/transform tags
           expect(svgA.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')).toBe(true);
           expect(svgA.endsWith('</svg>')).toBe(true);
           expect(svgA).toContain(`viewBox="0 0 ${w} ${h}"`);
+          expect(svgA).not.toMatch(/\bNaN\b|\bInfinity\b/);
+          expect(svgA).not.toMatch(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[\da-fA-F]+;)/);
           expect(svgA).not.toMatch(/<text\b/i);
           expect(svgA).not.toMatch(/<image\b/i);
           expect(svgA).not.toMatch(/\btransform=/i);
+
+          if (typeof DOMParser !== 'undefined') {
+            const parsed = new DOMParser().parseFromString(svgA, 'image/svg+xml');
+            expect(parsed.querySelector('parsererror')).toBeNull();
+            expect(parsed.documentElement.tagName.toLowerCase()).toBe('svg');
+          }
 
           // Valid UTF-8 SVG data URL that round-trips cleanly
           const dataUrl = toProceduralArtworkDataUrl(svgA);

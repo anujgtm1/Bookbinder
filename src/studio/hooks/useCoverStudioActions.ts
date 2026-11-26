@@ -773,13 +773,14 @@ export function useCoverStudioActions({
       layoutConstraint,
     };
 
-    const existingIdx = studio.layers.findIndex(
-      (layer) => isProceduralArtworkFileName(layer.fileName) && layer.clipZone === clipZone,
-    );
-    const nextLayers =
-      existingIdx >= 0
-        ? studio.layers.map((layer, idx) => (idx === existingIdx ? created : layer))
-        : [created, ...studio.layers];
+    const otherLayers =
+      target === 'fullWrap'
+        ? studio.layers.filter((layer) => !isProceduralArtworkFileName(layer.fileName))
+        : studio.layers.filter(
+            (layer) =>
+              !(isProceduralArtworkFileName(layer.fileName) && layer.clipZone === clipZone),
+          );
+    const nextLayers = [...otherLayers, created];
 
     onChange({ ...studio, layers: nextLayers });
     onSelectImageLayer(created.id);
