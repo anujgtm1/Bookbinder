@@ -254,4 +254,77 @@ test.describe('Series Spines — Multi-Book Series & Collection Workbench', () =
     await expect(page.getByTestId('cover-styler')).toBeVisible();
     await expect(page.getByTestId('studio-preview-svg')).toContainText('The Obsidian Crown Revised');
   });
+
+  test('picks a genre font and built-in procedural panoramic pattern, verifies From Series badges, deletes one layer, and detaches another in Cover Studio', async ({
+    page,
+  }) => {
+    // 1. Open Series Spines
+    await page.getByTestId('nav-series').click();
+    await expect(page.getByTestId('series-spines-studio')).toBeVisible();
+
+    // 2. Style tab: pick a curated genre font from FontSelect and one of the expanded spine ornaments
+    await page.getByTestId('series-tab-style').click();
+    await page.getByTestId('series-font-select').click();
+    await page.getByTestId('font-option-cinzel-decorative').click();
+    await expect(page.getByTestId('series-font-select')).toContainText('Cinzel Decorative');
+
+    await page.getByTestId('series-ornament-select').selectOption('spine-moon-phases');
+
+    // 3. Panorama tab: span Built-In Procedural Panoramic Pattern (Cosmic Nebula) across all spines
+    await page.getByTestId('series-tab-panorama').click();
+    const patternGrid = page.getByTestId('series-procedural-panorama-grid');
+    await expect(patternGrid.locator('button')).toHaveCount(9);
+    await page.getByTestId('series-procedural-panorama-cosmic-nebula').click();
+    await expect(page.getByTestId('series-panorama-enable-switch')).toHaveAttribute(
+      'data-state',
+      'checked',
+    );
+    await expect(page.getByTestId('series-pano-stage-controls')).toBeVisible();
+    await expect(page.locator('[data-testid="series-flat-shelf-svg"] image')).toHaveCount(3);
+
+    // 4. Edit in Cover Studio -> verify From Series badges on carried-over image, text, and ornament layers
+    await page.getByTestId('series-top-open-studio-btn').click();
+    await expect(page.getByTestId('cover-styler')).toBeVisible();
+
+    const studioSvg = page.getByTestId('studio-preview-svg');
+    await expect(studioSvg).toBeVisible();
+
+    // Artwork tab: panorama image layer carries From Series badge (both list & selection bar)
+    const layerList = page.getByTestId('studio-layer-list');
+    await expect(layerList).toContainText('Cosmic Nebula (Pattern).svg');
+    await expect(layerList.getByTestId('layer-from-series-badge')).toHaveText('From Series');
+    await page.getByTestId('layer-select-0').click();
+    const selectionBar = page.getByTestId('canvas-selection-bar');
+    await expect(selectionBar.getByTestId('layer-from-series-badge')).toHaveText('From Series');
+    await expect(selectionBar.getByTestId('selection-detach-series-btn')).toBeVisible();
+
+    // Designs tab: spine bands + Spine Moon Phases ornament both carry From Series badges
+    await page.getByTestId('studio-tool-designs').click();
+    const ornamentList = page.getByTestId('ornament-layer-list');
+    await expect(ornamentList.getByTestId('layer-from-series-badge')).toHaveCount(2);
+
+    // Text tab: volume badge carries From Series badge -> delete it individually
+    await page.getByTestId('studio-tool-text').click();
+    const textList = page.getByTestId('cover-text-layer-list');
+    await expect(textList.getByTestId('layer-from-series-badge')).toHaveText('From Series');
+    await page.getByTestId('cover-text-delete-0').click();
+    await expect(page.getByTestId('cover-text-layer-list')).toBeHidden();
+    await expect(studioSvg.locator('[data-text-id="series-vol-badge"]')).toHaveCount(0);
+
+    // 5. Detach the From Series panorama image layer -> badge clears and layer remains intact
+    await page.getByTestId('studio-tool-artwork').click();
+    await page.getByTestId('layer-select-0').click();
+    await expect(selectionBar.getByTestId('layer-from-series-badge')).toBeVisible();
+    await page.getByTestId('selection-detach-series-btn').click();
+
+    await expect(layerList.getByTestId('layer-from-series-badge')).toHaveCount(0);
+    await expect(selectionBar.getByTestId('layer-from-series-badge')).toHaveCount(0);
+    await expect(selectionBar.getByTestId('selection-detach-series-btn')).toHaveCount(0);
+    await expect(layerList).toContainText('Cosmic Nebula (Pattern).svg');
+    await expect(studioSvg.locator('image')).toHaveCount(1);
+
+    // Verify Spine font carried over from Series Spines
+    await page.getByTestId('studio-tool-spine').click();
+    await expect(page.getByTestId('studio-font-select')).toContainText('Cinzel Decorative');
+  });
 });
