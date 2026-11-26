@@ -37,7 +37,12 @@ import {
   type GlyphRunPlacement,
 } from './cricutExport';
 import { generatePrintReadyRollPdf } from './exporters/coverPdfExporter';
-import { getCuratedFont, loadCuratedFontBytes, type CustomFontAsset } from './fonts';
+import {
+  ensureCuratedFontLoaded,
+  getCuratedFont,
+  loadCuratedFontBytes,
+  type CustomFontAsset,
+} from './fonts';
 
 export interface SeriesCricutHtvOptions {
   readonly gapMm: number;
@@ -254,6 +259,9 @@ export async function generateSeriesCricutHtvSvg(
   options: SeriesCricutHtvOptions = DEFAULT_SERIES_CRICUT_OPTIONS,
   overrideFontBytes?: Uint8Array | null,
 ): Promise<SeriesCricutHtvResult> {
+  if (series.shared.fontId !== 'custom') {
+    await ensureCuratedFontLoaded(series.shared.fontId);
+  }
   const layout = computeSeriesShelfLayout(series);
   const gapMm = Math.max(0, Math.min(30, options.gapMm));
   const matPad = 6;
@@ -608,6 +616,9 @@ export async function generateSeriesSpineProofPdf(
     includeAlignmentGuides: true,
   },
 ): Promise<SeriesSpineProofPdfResult> {
+  if (series.shared.fontId !== 'custom') {
+    await ensureCuratedFontLoaded(series.shared.fontId);
+  }
   const layout = computeSeriesShelfLayout(series);
   const padX = 14;
   const headerH = 14;
@@ -874,6 +885,9 @@ export async function generateSeriesCoversPdf(
   existingStudiosByProjectId: ReadonlyMap<ProjectId, CoverStudioState>,
   options: SeriesCoversPdfOptions = {},
 ): Promise<SeriesCoversPdfResult> {
+  if (series.shared.fontId !== 'custom') {
+    await ensureCuratedFontLoaded(series.shared.fontId);
+  }
   const mergedDoc = await PDFDocument.create();
   mergedDoc.setTitle(`${series.name} — Complete Cover Set`);
   mergedDoc.setCreator('Bookbinder Studio');

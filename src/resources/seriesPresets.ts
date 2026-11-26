@@ -202,6 +202,51 @@ export const SERIES_ORNAMENT_OPTIONS: readonly SeriesLabeledOption<SeriesOrnamen
     label: 'Botanical Laurel',
     description: 'Symmetrical botanical medallion',
   },
+  {
+    id: 'spine-moon-phases',
+    label: 'Spine Moon Phases',
+    description: 'Vertical lunar cycle column from waxing crescent to waning moon',
+  },
+  {
+    id: 'spine-deco-sunburst',
+    label: 'Deco Sunburst Spine',
+    description: 'Stepped Art Deco chevron and sunburst pinnacle spine column',
+  },
+  {
+    id: 'spine-orbital-axis',
+    label: 'Spine Orbital Axis',
+    description: 'Technical sci-fi axis with ringed planetary nodes and ticks',
+  },
+  {
+    id: 'emblem-crescent-stars',
+    label: 'Crescent & Starburst',
+    description: 'Waxing crescent moon cradling an 8-point starburst',
+  },
+  {
+    id: 'emblem-filigree-crown',
+    label: 'Filigree Crown',
+    description: 'Pointed gothic filigree crown with star spire',
+  },
+  {
+    id: 'emblem-deco-sunburst',
+    label: 'Deco Sunburst Medallion',
+    description: 'Radiating Gatsby fan medallion atop a stepped chevron pedestal',
+  },
+  {
+    id: 'emblem-lunar-moth',
+    label: 'Luna Moth',
+    description: 'Symmetrical luna moth with crescent wing eyespots',
+  },
+  {
+    id: 'emblem-orbital-rings',
+    label: 'Orbital Rings',
+    description: 'Tilted planetary rings, shaded sphere, and crosshair axes',
+  },
+  {
+    id: 'emblem-rose-bloom',
+    label: 'Woodcut Rose',
+    description: 'Layered heraldic blooming rose with slender stem and leaves',
+  },
 ] as const;
 
 export const SERIES_STARTER_TEMPLATES: readonly SeriesStarterTemplate[] = [

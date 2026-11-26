@@ -29,7 +29,7 @@ import {
   SERIES_STARTER_TEMPLATES,
   type SeriesPalettePreset,
 } from '@/resources/seriesPresets';
-import type { CustomFontAsset } from '@/studio/fonts';
+import { ensureCuratedFontLoaded, type CustomFontAsset } from '@/studio/fonts';
 import { isEditableKeyboardTarget } from '@/studio/studioClipboard';
 import { renderProjectThumbnailDataUrl } from '@/studio/thumbnailRenderer';
 import { BookbinderProjectModel } from '@/types/project';
@@ -131,6 +131,13 @@ export function SeriesSpinesStudio({
       ),
     [activeSeries.books],
   );
+
+  // Ensure the active curated genre font is loaded so Flat & 2.5D shelves render immediately
+  useEffect(() => {
+    if (activeSeries.shared.fontId !== 'custom') {
+      void ensureCuratedFontLoaded(activeSeries.shared.fontId);
+    }
+  }, [activeSeries.shared.fontId]);
 
   // Persist workspace to localStorage whenever edited
   useEffect(() => {

@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Dices,
   Image as ImageIcon,
   Library,
   Palette,
@@ -9,7 +10,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { type ChangeEvent, type KeyboardEvent, useId, useRef, useState } from 'react';
+import { type ChangeEvent, type KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,11 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import type { SeriesBookLayout, SeriesShelfLayout } from '@/core/seriesSpines';
 import { BINDING_STYLES } from '@/resources/paperSpecs';
+import {
+  PROCEDURAL_ARTWORKS,
+  getProceduralArtworkSpec,
+  type ProceduralArtworkId,
+} from '@/resources/proceduralArtworks';
 import {
   SAMPLE_PANORAMA_NATURAL_HEIGHT,
   SAMPLE_PANORAMA_NATURAL_WIDTH,
@@ -29,7 +35,13 @@ import {
   createSamplePanoramaDataUrl,
   type SeriesPalettePreset,
 } from '@/resources/seriesPresets';
-import { CURATED_FONTS, type CustomFontAsset } from '@/studio/fonts';
+import { FontSelect } from '@/studio/FontSelect';
+import type { CustomFontAsset } from '@/studio/fonts';
+import {
+  createProceduralArtworkAsset,
+  generateProceduralArtworkSvg,
+  toProceduralArtworkDataUrl,
+} from '@/studio/proceduralArtwork';
 import { BookParametersModel, type BindingStyle } from '@/types/bookParams';
 import {
   DEFAULT_SERIES_PANORAMA,
@@ -86,6 +98,7 @@ export function SeriesInspectorDock({
   onStatusMessage,
 }: SeriesInspectorDockProps) {
   const [activeTab, setActiveTab] = useState<InspectorTab>('books');
+  const [panoPatternSeed, setPanoPatternSeed] = useState<number>(307);
   const booksTabId = useId();
   const styleTabId = useId();
   const panoTabId = useId();
@@ -135,6 +148,53 @@ export function SeriesInspectorDock({
       dimOpacity: 0.24,
     });
     onStatusMessage('Loaded sample celestial peaks panorama across all spines');
+  };
+
+  const proceduralThumbnails = useMemo(() => {
+    const map = new Map<ProceduralArtworkId, string>();
+    for (const spec of PROCEDURAL_ARTWORKS) {
+      const svg = generateProceduralArtworkSvg({
+        patternId: spec.id,
+        widthMm: 96,
+        heightMm: 54,
+        baseColor: series.shared.defaultBgColor,
+        accentColor: series.shared.accentColor,
+        seed: panoPatternSeed,
+        intensity: 'vivid',
+      });
+      map.set(spec.id, toProceduralArtworkDataUrl(svg));
+    }
+    return map;
+  }, [series.shared.defaultBgColor, series.shared.accentColor, panoPatternSeed]);
+
+  const handleApplyProceduralPanorama = (
+    patternId: ProceduralArtworkId,
+    seedOverride?: number,
+  ) => {
+    const seed = seedOverride ?? panoPatternSeed;
+    const asset = createProceduralArtworkAsset({
+      patternId,
+      widthMm: Math.max(120, layout.totalShelfWidthMm),
+      heightMm: Math.max(160, layout.maxSpineHeightMm),
+      baseColor: series.shared.defaultBgColor,
+      accentColor: series.shared.accentColor,
+      seed,
+      intensity: 'vivid',
+    });
+    onUpdatePanorama({
+      enabled: true,
+      dataUrl: asset.dataUrl,
+      fileName: asset.fileName,
+      naturalWidth: asset.naturalWidth,
+      naturalHeight: asset.naturalHeight,
+      fitMode: 'cover',
+      offsetXMm: 0,
+      offsetYMm: 0,
+      scale: 1,
+    });
+    onStatusMessage(
+      `Spanned ${getProceduralArtworkSpec(patternId).label} panoramic pattern across all spines`,
+    );
   };
 
   const activeTabId =
@@ -631,22 +691,15 @@ export function SeriesInspectorDock({
             <div className="kettle-stitch-divider space-y-3 pt-3">
               <div className="space-y-1.5">
                 <Label htmlFor="series-font-select">Typography</Label>
-                <select
+                <FontSelect
                   id="series-font-select"
-                  data-testid="series-font-select"
                   value={series.shared.fontId}
-                  onChange={(e) => onUpdateShared({ fontId: e.target.value as StudioFontId })}
-                  className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
-                >
-                  {CURATED_FONTS.map((font) => (
-                    <option key={font.id} value={font.id}>
-                      {font.label}
-                    </option>
-                  ))}
-                  {customFont && (
-                    <option value="custom">Custom: {customFont.fileName}</option>
-                  )}
-                </select>
+                  customFont={customFont}
+                  triggerClassName="h-8 w-full text-xs"
+                  triggerTestId="series-font-select"
+                  customLabelStyle="filename"
+                  onValueChange={(fontId: StudioFontId) => onUpdateShared({ fontId })}
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -868,6 +921,78 @@ export function SeriesInspectorDock({
                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                 Sample Panorama
               </Button>
+            </div>
+
+            {/* Built-In Panoramic Patterns (9 Procedural Artworks) */}
+            <div className="space-y-2 rounded-md border border-border/80 bg-secondary/20 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  <Sparkles className="h-3 w-3 text-brass" aria-hidden="true" />
+                  Built-In Panoramic Patterns
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                  title="Shuffle panoramic pattern variation seed"
+                  data-testid="series-procedural-panorama-shuffle-btn"
+                  onClick={() => {
+                    const nextSeed = (((panoPatternSeed * 1664525 + 1013904223) >>> 0) % 99991) + 1;
+                    setPanoPatternSeed(nextSeed);
+                    const activeSpec = PROCEDURAL_ARTWORKS.find(
+                      (spec) => series.shared.panorama.fileName === `${spec.label} (Pattern).svg`,
+                    );
+                    if (activeSpec && series.shared.panorama.enabled) {
+                      handleApplyProceduralPanorama(activeSpec.id, nextSeed);
+                    }
+                  }}
+                >
+                  <Dices className="h-3 w-3" aria-hidden="true" />
+                  Shuffle
+                </Button>
+              </div>
+              <div
+                className="grid grid-cols-3 gap-1.5"
+                role="group"
+                aria-label="Built-in panoramic patterns"
+                data-testid="series-procedural-panorama-grid"
+              >
+                {PROCEDURAL_ARTWORKS.map((spec) => {
+                  const thumbUrl = proceduralThumbnails.get(spec.id);
+                  const isActive =
+                    series.shared.panorama.enabled &&
+                    series.shared.panorama.fileName === `${spec.label} (Pattern).svg`;
+                  return (
+                    <button
+                      key={spec.id}
+                      type="button"
+                      aria-pressed={isActive}
+                      title={`${spec.label} — ${spec.description}`}
+                      data-testid={`series-procedural-panorama-${spec.id}`}
+                      onClick={() => handleApplyProceduralPanorama(spec.id)}
+                      className={`group flex cursor-pointer flex-col overflow-hidden rounded border text-left transition-colors ${
+                        isActive
+                          ? 'border-vermilion bg-primary/10 ring-1 ring-vermilion/60'
+                          : 'border-border bg-card/80 hover:border-brass/75'
+                      }`}
+                    >
+                      <div className="relative h-10 w-full overflow-hidden border-b border-border/60 bg-secondary/40">
+                        {thumbUrl && (
+                          <img
+                            src={thumbUrl}
+                            alt=""
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          />
+                        )}
+                      </div>
+                      <span className="truncate px-1.5 py-0.5 text-[10px] font-medium text-foreground">
+                        {spec.shortLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {series.shared.panorama.dataUrl && (

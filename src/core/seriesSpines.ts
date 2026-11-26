@@ -392,8 +392,10 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
     if (book.author.trim() && shared.authorOrientation === 'horizontal') {
       lowerCandidates.push(anchors.authorYMm - 10);
     }
+    const ornCategory =
+      shared.ornamentId !== 'none' ? getClassicOrnamentSpec(shared.ornamentId).category : null;
     if (shared.ornamentId !== 'none') {
-      lowerCandidates.push(anchors.ornamentYMm - 10);
+      lowerCandidates.push(anchors.ornamentYMm - (ornCategory === 'spine' ? 14 : 10));
     }
     const lowerBoundY = Math.min(...lowerCandidates);
     const titleCenterYMm =
@@ -416,10 +418,18 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
 
     let ornamentRectMm: Rect2D | null = null;
     if (shared.ornamentId !== 'none') {
-      const isDivider = getClassicOrnamentSpec(shared.ornamentId).category === 'dividers';
+      const isDivider = ornCategory === 'dividers';
+      const isSpineColumn = ornCategory === 'spine';
       const maxW = Math.max(6, spineWidthMm - 4.4);
       const ornW = roundTo(Math.min(20, maxW), 2);
-      const ornH = roundTo(isDivider ? Math.max(4.5, ornW * 0.34) : ornW, 2);
+      const ornH = roundTo(
+        isDivider
+          ? Math.max(4.5, ornW * 0.34)
+          : isSpineColumn
+            ? Math.min(28, Math.max(16, ornW * 1.45))
+            : ornW,
+        2,
+      );
       ornamentRectMm = {
         x: roundTo(spineCenterXMm - ornW / 2, 2),
         y: roundTo(anchors.ornamentYMm - ornH / 2, 2),
