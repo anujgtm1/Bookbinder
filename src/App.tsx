@@ -1087,8 +1087,42 @@ export function App() {
   }, [getActiveProjectRepository]);
 
   const handleOpenBookInStudio = async (projectId: ProjectId) => {
-    await handleSelectBook(projectId);
-    setActiveTab('outer');
+    clearPendingAutoSave();
+    const prevSnapshot = captureActiveSnapshot();
+
+    await enqueueRepoOp(async (repo) => {
+      if (
+        prevSnapshot &&
+        prevSnapshot.id !== projectId &&
+        (prevSnapshot.project !== lastPersistedProjectRef.current ||
+          prevSnapshot.customFont !== lastPersistedFontRef.current)
+      ) {
+        await persistSnapshotToRepo(repo, prevSnapshot, true);
+      }
+
+      const record = await repo.getProject(projectId);
+      if (!record) {
+        const nextSummaries = await repo.listSummaries();
+        if (isMountedRef.current) {
+          savedSummariesRef.current = nextSummaries;
+          setSavedSummaries(nextSummaries);
+          setStatusMessage('Selected book could not be found.');
+        }
+        return;
+      }
+
+      await repo.setActiveProjectId(record.id);
+      const nextSummaries = await repo.listSummaries();
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+        applyActiveRecordToState(record);
+        setActiveTab('outer');
+        setStatusMessage(
+          `Opened "${record.project.name}" in Cover Studio — tweak front, back, or spine freely`,
+        );
+      }
+    });
   };
 
   const showSidebar = sidebarOpen && activeTab !== 'series';
@@ -1128,7 +1162,13 @@ export function App() {
           {/* 4-Tab Folio Workbench Navigation sitting cleanly above the active workspace */}
           <Tabs
             value={activeTab}
-            onValueChange={(value) => setActiveTab(value as WorkspaceTab)}
+            onValueChange={(value) => {
+              const nextTab = value as WorkspaceTab;
+              if (nextTab === 'series' && activeTab !== 'series') {
+                void flushActiveSave({ renderThumbnail: false });
+              }
+              setActiveTab(nextTab);
+            }}
             className="flex flex-col gap-3"
           >
             <div className="flex flex-wrap items-end justify-between gap-2">

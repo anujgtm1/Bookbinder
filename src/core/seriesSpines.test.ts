@@ -3,6 +3,7 @@ import { calculateCaseGeometry } from '@/core/geometry';
 import {
   SERIES_BANDS_ORNAMENT_ID,
   SERIES_PANORAMA_LAYER_ID,
+  SERIES_SHARED_ORNAMENT_ID,
   SERIES_VOLUME_BADGE_LAYER_ID,
   compileSeriesBookToCoverStudio,
   computeSeriesShelfLayout,
@@ -204,6 +205,128 @@ describe('seriesSpines core layout, compilation, and storage', () => {
     expect(recompiled.layers.filter((l) => l.id === SERIES_PANORAMA_LAYER_ID)).toHaveLength(1);
     expect(recompiled.textLayers.filter((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID)).toHaveLength(1);
     expect(recompiled.ornaments.filter((o) => o.id === SERIES_BANDS_ORNAMENT_ID)).toHaveLength(1);
+  });
+
+  it('faithfully transfers panoramic slice coordinates, dimOpacity, ornament, bands, volume badge, and clamped typography to Cover Studio', () => {
+    const baseParams = BookParametersModel.createDefault();
+    const baseSeries = SeriesProjectModel.createDefault();
+    const panoUrl = createSamplePanoramaDataUrl();
+
+    const series = {
+      ...baseSeries,
+      books: [
+        SeriesProjectModel.createBookEntry({
+          title: 'Thin Prologue',
+          author: 'A. K. Sato',
+          parameters: { ...baseParams, pbThicknessMm: 8 },
+          spineBgColorOverride: '#283618',
+          opticalNudgeMm: 0.6,
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'The Obsidian Crown',
+          author: 'A. K. Sato',
+          parameters: { ...baseParams, pbThicknessMm: 36 },
+          spineBgColorOverride: '#1d2d44',
+          textColorOverride: '#f8f4e6',
+          accentColorOverride: '#e0b865',
+          opticalNudgeMm: -0.4,
+        }),
+      ],
+      shared: {
+        ...baseSeries.shared,
+        fontId: 'cormorant-garamond' as const,
+        titleSizePt: 30,
+        orientation: 'bottom-to-top' as const,
+        authorOrientation: 'horizontal' as const,
+        titleLayout: 'stacked' as const,
+        bandStyle: 'framed-label' as const,
+        volumeNumberStyle: 'roman' as const,
+        ornamentId: 'divider-diamond-rule' as const,
+        panorama: {
+          ...baseSeries.shared.panorama,
+          enabled: true,
+          dataUrl: panoUrl,
+          fileName: 'peaks.svg',
+          naturalWidth: SAMPLE_PANORAMA_NATURAL_WIDTH,
+          naturalHeight: SAMPLE_PANORAMA_NATURAL_HEIGHT,
+          offsetXMm: 12.5,
+          offsetYMm: -8,
+          scale: 1.2,
+          dimOpacity: 0.35,
+        },
+      },
+    };
+
+    const layout = computeSeriesShelfLayout(series);
+    // Book 0 is thin (10 mm), so 26 pt title is clamped and divider uses compact divider aspect ratio
+    expect(layout.books[0].isClamped).toBe(true);
+    expect(layout.books[0].ornamentRectMm).not.toBeNull();
+    expect(layout.books[0].ornamentRectMm!.height).toBeLessThan(layout.books[0].ornamentRectMm!.width);
+
+    const compiledThin = compileSeriesBookToCoverStudio(series, 0, null);
+    // Unlinked fresh book matches front/back cover base color to spine palette
+    expect(compiledThin.spineBgColor).toBe('#283618');
+    expect(compiledThin.frontBgColor).toBe('#283618');
+    expect(compiledThin.backBgColor).toBe('#283618');
+    expect(compiledThin.spineText.fontSizePt).toBe(layout.books[0].effectiveTitleSizePt);
+
+    // Book 1 carries exact panorama slice + dimOpacity, bands, divider ornament, volume badge, and typography
+    const b1 = layout.books[1];
+    const compiled1 = compileSeriesBookToCoverStudio(series, 1, null);
+
+    expect(compiled1.spineText).toMatchObject({
+      title: 'The Obsidian Crown',
+      author: 'A. K. Sato',
+      fontId: 'cormorant-garamond',
+      orientation: 'bottom-to-top',
+      authorOrientation: 'horizontal',
+      layout: 'stacked',
+      textColor: '#f8f4e6',
+      opticalNudgeMm: -0.4,
+      fontSizePt: b1.effectiveTitleSizePt,
+    });
+
+    const panoLayer = compiled1.layers.find((l) => l.id === SERIES_PANORAMA_LAYER_ID);
+    expect(panoLayer).toBeDefined();
+    expect(panoLayer!.clipZone).toBe('spine');
+    expect(panoLayer!.xMm).toBeCloseTo(b1.panoramaLayerPlacement!.xMm, 2);
+    expect(panoLayer!.yMm).toBeCloseTo(b1.panoramaLayerPlacement!.yMm, 2);
+    expect(panoLayer!.widthMm).toBeCloseTo(b1.panoramaLayerPlacement!.widthMm, 2);
+    expect(panoLayer!.heightMm).toBeCloseTo(b1.panoramaLayerPlacement!.heightMm, 2);
+    expect(panoLayer!.dimOpacity).toBe(0.35);
+
+    // Volume badge sits at exact shelf-aligned Y coordinate in Cover Studio mm space
+    const badgeLayer = compiled1.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID);
+    expect(badgeLayer).toBeDefined();
+    expect(badgeLayer!.text).toBe('II');
+    expect(badgeLayer!.zone).toBe('spine');
+    expect(badgeLayer!.color).toBe('#e0b865');
+    expect(badgeLayer!.yMm).toBeCloseTo(
+      b1.spec.spineBoardRect.y + (b1.volumeBadgeYMm - b1.shelfYMm),
+      1,
+    );
+
+    // Framed-label decorative bands + shared divider ornament are both present on spine
+    const bandsOrn = compiled1.ornaments.find((o) => o.id === SERIES_BANDS_ORNAMENT_ID);
+    expect(bandsOrn).toBeDefined();
+    expect(bandsOrn!.zone).toBe('spine');
+    expect(bandsOrn!.customSvgPaths!.length).toBeGreaterThanOrEqual(6);
+
+    const sharedOrn = compiled1.ornaments.find((o) => o.id === SERIES_SHARED_ORNAMENT_ID);
+    expect(sharedOrn).toBeDefined();
+    expect(sharedOrn!.presetId).toBe('divider-diamond-rule');
+    expect(sharedOrn!.zone).toBe('spine');
+    const sharedOrnCenterY = sharedOrn!.yMm + sharedOrn!.heightMm / 2;
+    expect(sharedOrnCenterY).toBeCloseTo(
+      b1.spec.spineBoardRect.y + (b1.ornamentYMm - b1.shelfYMm),
+      1,
+    );
+
+    // Round-trip through CoverStudioModel.deserialize preserves dimOpacity cleanly
+    const roundTripped = CoverStudioModel.deserialize(CoverStudioModel.serialize(compiled1));
+    expect(
+      roundTripped.layers.find((l) => l.id === SERIES_PANORAMA_LAYER_ID)?.dimOpacity,
+    ).toBe(0.35);
   });
 
   it('imports a SavedProjectRecord into a SeriesBookEntry preserving linkedProjectId and geometry', () => {

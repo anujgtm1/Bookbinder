@@ -1,6 +1,7 @@
 import { calculateCaseGeometry } from '@/core/geometry';
 import { fmtMm } from '@/lib/svgFormat';
 import { computeStudioCanvasSpec, type StudioCanvasSpec } from '@/studio/canvasSpec';
+import { getClassicOrnamentSpec } from '@/studio/classicOrnaments';
 import {
   COVER_ORNAMENT_BOUNDS,
   type CoverOrnamentLayer,
@@ -415,7 +416,7 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
 
     let ornamentRectMm: Rect2D | null = null;
     if (shared.ornamentId !== 'none') {
-      const isDivider = shared.ornamentId.startsWith('divider-');
+      const isDivider = getClassicOrnamentSpec(shared.ornamentId).category === 'dividers';
       const maxW = Math.max(6, spineWidthMm - 4.4);
       const ornW = roundTo(Math.min(20, maxW), 2);
       const ornH = roundTo(isDivider ? Math.max(4.5, ornW * 0.34) : ornW, 2);
@@ -602,6 +603,7 @@ export function compileSeriesBookToCoverStudio(
       widthMm: bookLayout.panoramaLayerPlacement.widthMm,
       heightMm: bookLayout.panoramaLayerPlacement.heightMm,
       clipZone: 'spine',
+      ...(shared.panorama.dimOpacity > 0 ? { dimOpacity: shared.panorama.dimOpacity } : {}),
     });
   }
   nextLayers.push(...preservedImageLayers);
@@ -674,7 +676,7 @@ export function compileSeriesBookToCoverStudio(
       authorOrientation: shared.authorOrientation,
       fontId: shared.fontId,
       customFontName: shared.customFontName,
-      fontSizePt: bookLayout.requestedTitleSizePt,
+      fontSizePt: bookLayout.effectiveTitleSizePt,
       textColor: bookLayout.textColor,
       opticalNudgeMm: book.opticalNudgeMm,
     },

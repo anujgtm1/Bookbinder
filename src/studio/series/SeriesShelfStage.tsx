@@ -635,6 +635,10 @@ export function SeriesShelfStage({
                         }
                         onSelectBook(bookLayout.book.id);
                       }}
+                      onDoubleClick={() => {
+                        if (suppressNextClickRef.current) return;
+                        onOpenInCoverStudio(bookLayout);
+                      }}
                     >
                       <g clipPath={`url(#series-spine-clip-${bookLayout.book.id})`}>
                         {/* Base Bookcloth Fill */}
@@ -1008,6 +1012,10 @@ export function SeriesShelfStage({
                           }
                           onSelectBook(bookLayout.book.id);
                         }}
+                        onDoubleClick={() => {
+                          if (suppressNextClickRef.current) return;
+                          onOpenInCoverStudio(bookLayout);
+                        }}
                         onKeyDown={(e) => handleSpineKeyDown(e, bookLayout.index)}
                         className={`series-25d-book group relative flex flex-col items-stretch border-0 bg-transparent p-0 text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-vermilion ${
                           isSelected ? 'series-25d-book-selected' : ''
@@ -1328,13 +1336,13 @@ export function SeriesShelfStage({
               type="button"
               variant="default"
               size="sm"
-              className="h-8 gap-1.5 px-2.5 text-xs"
-              aria-label={`Open ${selectedLayout.book.title || 'selected book'} in Cover Studio`}
+              className="h-8 gap-1.5 bg-vermilion px-2.5 text-xs text-white hover:bg-vermilion/90"
+              aria-label={`Edit ${selectedLayout.book.title || 'selected book'} in Cover Studio`}
               data-testid="series-open-cover-studio-btn"
               onClick={() => onOpenInCoverStudio(selectedLayout)}
             >
               <BookMarked className="h-3.5 w-3.5" aria-hidden="true" />
-              Open in Cover Studio
+              Edit in Cover Studio
             </Button>
             <Button
               type="button"

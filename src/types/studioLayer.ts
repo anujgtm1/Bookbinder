@@ -50,6 +50,8 @@ export interface CoverImageLayer {
   readonly flipY?: boolean;
   /** Clockwise quarter-turn rotation around layer center (0, 90, 180, or 270 degrees) */
   readonly rotationDeg?: QuarterTurnDeg;
+  /** Optional dark contrast scrim opacity over the image (0..0.75) so overlaid lettering stays crisp */
+  readonly dimOpacity?: number;
   /** Optional declarative layout pin/fit condition */
   readonly layoutConstraint?: LayerLayoutConstraint;
 }
@@ -207,6 +209,7 @@ export const CoverImageLayerModel = {
       flipX: layer.flipX,
       flipY: layer.flipY,
       rotationDeg: rot !== 0 ? rot : undefined,
+      ...(layer.dimOpacity && layer.dimOpacity > 0 ? { dimOpacity: layer.dimOpacity } : {}),
       ...(layer.layoutConstraint ? { layoutConstraint: layer.layoutConstraint } : {}),
     };
   },
@@ -358,6 +361,10 @@ export const CoverImageLayerModel = {
         ? obj.originalDataUrl
         : undefined;
     const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+    const parsedDimOpacity =
+      typeof obj.dimOpacity === 'number' && Number.isFinite(obj.dimOpacity)
+        ? roundTo(clampFinite(obj.dimOpacity, 0, 0, 0.75), 3)
+        : 0;
 
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateLayerId(),
@@ -388,6 +395,7 @@ export const CoverImageLayerModel = {
       flipX: obj.flipX === true ? true : undefined,
       flipY: obj.flipY === true ? true : undefined,
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
+      ...(parsedDimOpacity > 0 ? { dimOpacity: parsedDimOpacity } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
     };
   },

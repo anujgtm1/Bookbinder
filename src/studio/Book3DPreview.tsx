@@ -177,6 +177,15 @@ function CoverFaceSvg({
             )}
             preserveAspectRatio="none"
           />
+          {(layer.dimOpacity ?? 0) > 0 && (
+            <rect
+              x={layer.xMm}
+              y={layer.yMm}
+              width={layer.widthMm}
+              height={layer.heightMm}
+              fill={`rgba(10, 12, 16, ${layer.dimOpacity})`}
+            />
+          )}
         </g>
       ))}
 

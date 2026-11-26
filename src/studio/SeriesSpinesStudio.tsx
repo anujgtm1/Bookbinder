@@ -1,4 +1,5 @@
 import {
+  BookMarked,
   Download,
   FolderPlus,
   Library,
@@ -95,6 +96,7 @@ export function SeriesSpinesStudio({
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
+  const [openingStudio, setOpeningStudio] = useState(false);
   const jsonImportRef = useRef<HTMLInputElement>(null);
 
   const activeSeries: SeriesProject = useMemo(
@@ -113,6 +115,12 @@ export function SeriesSpinesStudio({
   }, [activeSeries.books, selectedBookId]);
 
   const layout = useMemo(() => computeSeriesShelfLayout(activeSeries), [activeSeries]);
+
+  const selectedBookLayout = useMemo(
+    () =>
+      layout.books.find((b) => b.book.id === effectiveSelectedBookId) ?? layout.books[0] ?? null,
+    [layout.books, effectiveSelectedBookId],
+  );
 
   const existingLinkedIds = useMemo(
     () =>
@@ -451,6 +459,8 @@ export function SeriesSpinesStudio({
   };
 
   const handleOpenBookInCoverStudio = async (bookLayout: SeriesBookLayout) => {
+    if (openingStudio) return;
+    setOpeningStudio(true);
     try {
       const repo = await getProjectRepository();
       const pid = await persistBookToLibrary(repo, activeSeries, bookLayout.index);
@@ -466,6 +476,8 @@ export function SeriesSpinesStudio({
       await onOpenBookInStudio(pid);
     } catch {
       onStatusMessage('Failed to open book in Cover Studio.');
+    } finally {
+      setOpeningStudio(false);
     }
   };
 
@@ -628,6 +640,28 @@ export function SeriesSpinesStudio({
             <Save className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
             {savingAll ? 'Saving…' : 'Save All to My Books'}
           </Button>
+
+          {selectedBookLayout && (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={openingStudio}
+              className="h-8 gap-1.5 bg-vermilion px-3 text-xs text-white shadow-xs hover:bg-vermilion/90"
+              data-testid="series-top-open-studio-btn"
+              title={`Open "${selectedBookLayout.book.title || 'selected book'}" in Cover Studio to tweak front, back, or spine`}
+              aria-label={`Edit ${selectedBookLayout.book.title || 'selected book'} in Cover Studio`}
+              onClick={() => void handleOpenBookInCoverStudio(selectedBookLayout)}
+            >
+              <BookMarked className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{openingStudio ? 'Opening…' : 'Edit in Cover Studio'}</span>
+              {selectedBookLayout.book.title.trim() && (
+                <span className="hidden max-w-[130px] truncate border-l border-white/30 pl-1.5 font-normal opacity-95 2xl:inline">
+                  {selectedBookLayout.book.title.trim()}
+                </span>
+              )}
+            </Button>
+          )}
 
           <Button
             type="button"
