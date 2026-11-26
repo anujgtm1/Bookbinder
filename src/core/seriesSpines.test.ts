@@ -1,0 +1,639 @@
+import { describe, expect, it } from 'vitest';
+import { calculateCaseGeometry } from '@/core/geometry';
+import {
+  SERIES_BANDS_ORNAMENT_ID,
+  SERIES_PANORAMA_LAYER_ID,
+  SERIES_SHARED_ORNAMENT_ID,
+  SERIES_VOLUME_BADGE_LAYER_ID,
+  compileSeriesBookToCoverStudio,
+  computeSeriesShelfLayout,
+  createSeriesBookFromSavedRecord,
+} from '@/core/seriesSpines';
+import {
+  SERIES_WORKSPACE_STORAGE_KEY,
+  loadSeriesWorkspace,
+  saveSeriesWorkspace,
+} from '@/core/seriesStorage';
+import {
+  SAMPLE_PANORAMA_NATURAL_HEIGHT,
+  SAMPLE_PANORAMA_NATURAL_WIDTH,
+  SERIES_STARTER_TEMPLATES,
+  createSamplePanoramaDataUrl,
+} from '@/resources/seriesPresets';
+import { BookParametersModel } from '@/types/bookParams';
+import { CoverOrnamentLayerModel, CoverTextLayerModel } from '@/types/coverElements';
+import { BookbinderProjectModel } from '@/types/project';
+import { asProjectId, type SavedProjectRecord } from '@/types/projectLibrary';
+import { SeriesProjectModel } from '@/types/seriesSpines';
+import { CoverStudioModel } from '@/types/studio';
+import { CoverImageLayerModel } from '@/types/studioLayer';
+
+describe('seriesSpines core layout, compilation, and storage', () => {
+  it('computes real physical spine widths from calculateCaseGeometry across distinct binding styles', () => {
+    const base = BookParametersModel.createDefault();
+    const series = {
+      ...SeriesProjectModel.createDefault(),
+      books: [
+        SeriesProjectModel.createBookEntry({
+          title: 'Hardcover',
+          parameters: { ...base, bindingStyle: 'rigid-case', pbThicknessMm: 24 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Softcover Jacket',
+          parameters: { ...base, bindingStyle: 'softcover-jacket', pbThicknessMm: 24 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Paperback Wrap',
+          parameters: { ...base, bindingStyle: 'paperback-wrap', pbThicknessMm: 24 },
+        }),
+      ],
+    };
+
+    const layout = computeSeriesShelfLayout(series);
+    for (let i = 0; i < series.books.length; i++) {
+      const expectedGeom = calculateCaseGeometry(series.books[i].parameters);
+      expect(layout.books[i].spineWidthMm).toBeCloseTo(expectedGeom.outerWrap.spineRect.width, 3);
+      expect(layout.books[i].spineHeightMm).toBeCloseTo(expectedGeom.outerWrap.spineRect.height, 3);
+    }
+
+    // Rigid-case includes spineAllowance (24 + 4 = 28 mm) whereas paperback-wrap equals raw 24 mm
+    expect(layout.books[0].spineWidthMm).toBeGreaterThan(layout.books[2].spineWidthMm);
+  });
+
+  it('bottom-aligns mixed-height collections on a shared shelf baseline with level guides', () => {
+    const collectionTpl = SERIES_STARTER_TEMPLATES.find((t) => t.id === 'personal-collection');
+    expect(collectionTpl).toBeDefined();
+    const collection = collectionTpl!.build();
+
+    const layout = computeSeriesShelfLayout(collection);
+    expect(layout.hasMixedHeights).toBe(true);
+    expect(layout.books).toHaveLength(3);
+
+    // Every book must sit flush on the wooden shelf bottom
+    for (const b of layout.books) {
+      expect(b.shelfYMm + b.spineHeightMm).toBeCloseTo(layout.maxSpineHeightMm, 2);
+    }
+
+    // Under 'shelf-bottom' anchor, head bands, tail bands, and author baselines align horizontally across heights
+    const [b0, b1, b2] = layout.books;
+    expect(b0.headBandYMm).toBeCloseTo(b1.headBandYMm, 2);
+    expect(b1.headBandYMm).toBeCloseTo(b2.headBandYMm, 2);
+    expect(b0.tailBandYMm).toBeCloseTo(b1.tailBandYMm, 2);
+    expect(b1.tailBandYMm).toBeCloseTo(b2.tailBandYMm, 2);
+    expect(b0.authorYMm).toBeCloseTo(b2.authorYMm, 2);
+
+    // Switching to 'book-top' lets each book's head band track its own top cap
+    const topAnchored = computeSeriesShelfLayout({
+      ...collection,
+      shared: { ...collection.shared, alignmentAnchor: 'book-top' },
+    });
+    expect(topAnchored.books[0].headBandYMm).toBeGreaterThan(topAnchored.books[2].headBandYMm);
+  });
+
+  it('slices panoramic artwork continuously across adjacent spines and honors shelfGapMm', () => {
+    const baseSeries = SeriesProjectModel.createDefault();
+    const panoUrl = createSamplePanoramaDataUrl();
+
+    const seamlessSeries = {
+      ...baseSeries,
+      shared: {
+        ...baseSeries.shared,
+        panorama: {
+          ...baseSeries.shared.panorama,
+          enabled: true,
+          dataUrl: panoUrl,
+          fileName: 'sample.svg',
+          naturalWidth: SAMPLE_PANORAMA_NATURAL_WIDTH,
+          naturalHeight: SAMPLE_PANORAMA_NATURAL_HEIGHT,
+          shelfGapMm: 0,
+        },
+      },
+    };
+
+    const layout0 = computeSeriesShelfLayout(seamlessSeries);
+    expect(layout0.panoramaShelfRect).not.toBeNull();
+
+    // Right edge of Book 0 spine samples exact same panorama X as left edge of Book 1 spine
+    const b0 = layout0.books[0];
+    const b1 = layout0.books[1];
+    expect(b0.panoramaLayerPlacement).not.toBeNull();
+    expect(b1.panoramaLayerPlacement).not.toBeNull();
+
+    const b0RightInPano =
+      b0.spec.spineBoardRect.x + b0.spineWidthMm - b0.panoramaLayerPlacement!.xMm;
+    const b1LeftInPano = b1.spec.spineBoardRect.x - b1.panoramaLayerPlacement!.xMm;
+    expect(b1LeftInPano - b0RightInPano).toBeCloseTo(0, 2);
+
+    // With shelfGapMm = 2.5, Book 1 starts exactly 2.5 mm further right in the panorama
+    const gappedLayout = computeSeriesShelfLayout({
+      ...seamlessSeries,
+      shared: {
+        ...seamlessSeries.shared,
+        panorama: { ...seamlessSeries.shared.panorama, shelfGapMm: 2.5 },
+      },
+    });
+    const gb0 = gappedLayout.books[0];
+    const gb1 = gappedLayout.books[1];
+    const gb0Right = gb0.spec.spineBoardRect.x + gb0.spineWidthMm - gb0.panoramaLayerPlacement!.xMm;
+    const gb1Left = gb1.spec.spineBoardRect.x - gb1.panoramaLayerPlacement!.xMm;
+    expect(gb1Left - gb0Right).toBeCloseTo(2.5, 2);
+  });
+
+  it('compiles a linked book into CoverStudioState while preserving existing front/back cover designs', () => {
+    const series = {
+      ...SeriesProjectModel.createDefault(),
+      shared: {
+        ...SeriesProjectModel.createDefault().shared,
+        bandStyle: 'classic-rules' as const,
+        volumeNumberStyle: 'roman' as const,
+        panorama: {
+          ...SeriesProjectModel.createDefault().shared.panorama,
+          enabled: true,
+          dataUrl: createSamplePanoramaDataUrl(),
+          fileName: 'peaks.svg',
+          naturalWidth: SAMPLE_PANORAMA_NATURAL_WIDTH,
+          naturalHeight: SAMPLE_PANORAMA_NATURAL_HEIGHT,
+        },
+      },
+    };
+
+    const userFrontText = CoverTextLayerModel.createPreset('front-title', {
+      x: 200,
+      y: 20,
+      width: 140,
+      height: 220,
+    });
+    const userFrontOrnament = CoverOrnamentLayerModel.createForZone(
+      'frame-double-rule',
+      { x: 200, y: 20, width: 140, height: 220 },
+      'front',
+    );
+    const userFrontImg = CoverImageLayerModel.createInRect({
+      id: 'user-front-art',
+      dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+      fileName: 'front.png',
+      naturalWidth: 800,
+      naturalHeight: 1200,
+      targetRect: { x: 200, y: 20, width: 140, height: 220 },
+      clipZone: 'front',
+    });
+
+    const existingStudio = {
+      ...CoverStudioModel.createDefault(),
+      frontBgColor: '#7a2222',
+      backBgColor: '#3a1a1a',
+      layers: [userFrontImg],
+      textLayers: [userFrontText],
+      ornaments: [userFrontOrnament],
+    };
+
+    const compiled = compileSeriesBookToCoverStudio(series, 0, existingStudio);
+    // Preserves front/back colors and user-authored front artwork, text, and ornaments
+    expect(compiled.frontBgColor).toBe('#7a2222');
+    expect(compiled.backBgColor).toBe('#3a1a1a');
+    expect(compiled.layers.some((l) => l.id === 'user-front-art')).toBe(true);
+    expect(compiled.textLayers.some((t) => t.id === userFrontText.id)).toBe(true);
+    expect(compiled.ornaments.some((o) => o.id === userFrontOrnament.id)).toBe(true);
+
+    // Adds deterministic series-* managed elements cleanly on the spine, all tagged origin: 'series-spine'
+    const compiledPano = compiled.layers.find((l) => l.id === SERIES_PANORAMA_LAYER_ID);
+    const compiledBadge = compiled.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID);
+    const compiledBands = compiled.ornaments.find((o) => o.id === SERIES_BANDS_ORNAMENT_ID);
+    expect(compiledPano?.clipZone).toBe('spine');
+    expect(compiledPano?.origin).toBe('series-spine');
+    expect(compiledBadge?.text).toBe('I');
+    expect(compiledBadge?.origin).toBe('series-spine');
+    expect(compiledBands?.origin).toBe('series-spine');
+
+    // Re-compiling a second time must not duplicate managed series-* layers
+    const recompiled = compileSeriesBookToCoverStudio(series, 0, compiled);
+    expect(recompiled.layers.filter((l) => l.id === SERIES_PANORAMA_LAYER_ID)).toHaveLength(1);
+    expect(recompiled.textLayers.filter((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID)).toHaveLength(1);
+    expect(recompiled.ornaments.filter((o) => o.id === SERIES_BANDS_ORNAMENT_ID)).toHaveLength(1);
+  });
+
+  it('tags all compiled spine layers with origin: series-spine and preserves detached layers on re-sync', () => {
+    const baseSeries = SeriesProjectModel.createDefault();
+    const series = {
+      ...baseSeries,
+      shared: {
+        ...baseSeries.shared,
+        bandStyle: 'classic-rules' as const,
+        volumeNumberStyle: 'roman' as const,
+        ornamentId: 'emblem-compass-rose' as const,
+        panorama: {
+          ...baseSeries.shared.panorama,
+          enabled: true,
+          dataUrl: createSamplePanoramaDataUrl(),
+          fileName: 'peaks.svg',
+          naturalWidth: SAMPLE_PANORAMA_NATURAL_WIDTH,
+          naturalHeight: SAMPLE_PANORAMA_NATURAL_HEIGHT,
+        },
+      },
+    };
+
+    const compiled = compileSeriesBookToCoverStudio(series, 0, null);
+    expect(compiled.layers.every((l) => l.origin === 'series-spine')).toBe(true);
+    expect(compiled.textLayers.every((t) => t.origin === 'series-spine')).toBe(true);
+    expect(compiled.ornaments.every((o) => o.origin === 'series-spine')).toBe(true);
+    expect(compiled.ornaments.find((o) => o.id === SERIES_SHARED_ORNAMENT_ID)?.origin).toBe(
+      'series-spine',
+    );
+
+    // Simulate user detaching the panorama, volume badge, and shared ornament in Cover Studio
+    const { origin: _o1, ...detachedPanoBase } = compiled.layers[0];
+    const { origin: _o2, ...detachedBadgeBase } = compiled.textLayers[0];
+    const sharedOrn = compiled.ornaments.find((o) => o.id === SERIES_SHARED_ORNAMENT_ID)!;
+    const { origin: _o3, ...detachedOrnBase } = sharedOrn;
+    void _o1;
+    void _o2;
+    void _o3;
+
+    const studioWithDetached = {
+      ...compiled,
+      layers: [{ ...detachedPanoBase, id: 'layer-detached-pano' }],
+      textLayers: [{ ...detachedBadgeBase, id: 'txt-detached-badge', text: 'PROLOGUE' }],
+      ornaments: [
+        ...compiled.ornaments.filter((o) => o.id !== SERIES_SHARED_ORNAMENT_ID),
+        { ...detachedOrnBase, id: 'orn-detached-crest', color: '#ffffff' },
+      ],
+    };
+
+    // Re-syncing from Series Spines (even with panorama disabled and updated ornament) preserves all detached layers
+    const updatedSeries = {
+      ...series,
+      shared: {
+        ...series.shared,
+        volumeNumberStyle: 'arabic' as const,
+        ornamentId: 'emblem-botanical-sprig' as const,
+        panorama: { ...series.shared.panorama, enabled: false },
+      },
+    };
+    const resynced = compileSeriesBookToCoverStudio(updatedSeries, 0, studioWithDetached);
+
+    expect(resynced.layers.some((l) => l.id === 'layer-detached-pano' && l.origin === undefined)).toBe(true);
+    expect(resynced.layers.some((l) => l.id === SERIES_PANORAMA_LAYER_ID)).toBe(false);
+    expect(resynced.textLayers.some((t) => t.id === 'txt-detached-badge' && t.text === 'PROLOGUE')).toBe(true);
+    expect(resynced.textLayers.some((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID && t.text === '1')).toBe(true);
+    expect(resynced.ornaments.some((o) => o.id === 'orn-detached-crest' && o.color === '#ffffff')).toBe(true);
+    expect(resynced.ornaments.some((o) => o.id === SERIES_SHARED_ORNAMENT_ID && o.presetId === 'emblem-botanical-sprig')).toBe(true);
+  });
+
+  it('faithfully transfers panoramic slice coordinates, dimOpacity, ornament, bands, volume badge, and clamped typography to Cover Studio', () => {
+    const baseParams = BookParametersModel.createDefault();
+    const baseSeries = SeriesProjectModel.createDefault();
+    const panoUrl = createSamplePanoramaDataUrl();
+
+    const series = {
+      ...baseSeries,
+      books: [
+        SeriesProjectModel.createBookEntry({
+          title: 'Thin Prologue',
+          author: 'A. K. Sato',
+          parameters: { ...baseParams, pbThicknessMm: 8 },
+          spineBgColorOverride: '#283618',
+          opticalNudgeMm: 0.6,
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'The Obsidian Crown',
+          author: 'A. K. Sato',
+          parameters: { ...baseParams, pbThicknessMm: 36 },
+          spineBgColorOverride: '#1d2d44',
+          textColorOverride: '#f8f4e6',
+          accentColorOverride: '#e0b865',
+          opticalNudgeMm: -0.4,
+        }),
+      ],
+      shared: {
+        ...baseSeries.shared,
+        fontId: 'cormorant-garamond' as const,
+        titleSizePt: 30,
+        orientation: 'bottom-to-top' as const,
+        authorOrientation: 'horizontal' as const,
+        titleLayout: 'stacked' as const,
+        bandStyle: 'framed-label' as const,
+        volumeNumberStyle: 'roman' as const,
+        ornamentId: 'divider-diamond-rule' as const,
+        panorama: {
+          ...baseSeries.shared.panorama,
+          enabled: true,
+          dataUrl: panoUrl,
+          fileName: 'peaks.svg',
+          naturalWidth: SAMPLE_PANORAMA_NATURAL_WIDTH,
+          naturalHeight: SAMPLE_PANORAMA_NATURAL_HEIGHT,
+          offsetXMm: 12.5,
+          offsetYMm: -8,
+          scale: 1.2,
+          dimOpacity: 0.35,
+        },
+      },
+    };
+
+    const layout = computeSeriesShelfLayout(series);
+    // Book 0 is thin (10 mm), so 26 pt title is clamped and divider uses compact divider aspect ratio
+    expect(layout.books[0].isClamped).toBe(true);
+    expect(layout.books[0].ornamentRectMm).not.toBeNull();
+    expect(layout.books[0].ornamentRectMm!.height).toBeLessThan(layout.books[0].ornamentRectMm!.width);
+
+    const compiledThin = compileSeriesBookToCoverStudio(series, 0, null);
+    // Unlinked fresh book matches front/back cover base color to spine palette
+    expect(compiledThin.spineBgColor).toBe('#283618');
+    expect(compiledThin.frontBgColor).toBe('#283618');
+    expect(compiledThin.backBgColor).toBe('#283618');
+    expect(compiledThin.spineText.fontSizePt).toBe(layout.books[0].effectiveTitleSizePt);
+
+    // Book 1 carries exact panorama slice + dimOpacity, bands, divider ornament, volume badge, and typography
+    const b1 = layout.books[1];
+    const compiled1 = compileSeriesBookToCoverStudio(series, 1, null);
+
+    expect(compiled1.spineText).toMatchObject({
+      title: 'The Obsidian Crown',
+      author: 'A. K. Sato',
+      fontId: 'cormorant-garamond',
+      orientation: 'bottom-to-top',
+      authorOrientation: 'horizontal',
+      layout: 'stacked',
+      textColor: '#f8f4e6',
+      opticalNudgeMm: -0.4,
+      fontSizePt: b1.effectiveTitleSizePt,
+    });
+
+    const panoLayer = compiled1.layers.find((l) => l.id === SERIES_PANORAMA_LAYER_ID);
+    expect(panoLayer).toBeDefined();
+    expect(panoLayer!.clipZone).toBe('spine');
+    expect(panoLayer!.xMm).toBeCloseTo(b1.panoramaLayerPlacement!.xMm, 2);
+    expect(panoLayer!.yMm).toBeCloseTo(b1.panoramaLayerPlacement!.yMm, 2);
+    expect(panoLayer!.widthMm).toBeCloseTo(b1.panoramaLayerPlacement!.widthMm, 2);
+    expect(panoLayer!.heightMm).toBeCloseTo(b1.panoramaLayerPlacement!.heightMm, 2);
+    expect(panoLayer!.dimOpacity).toBe(0.35);
+
+    // Volume badge sits at exact shelf-aligned Y coordinate in Cover Studio mm space
+    const badgeLayer = compiled1.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID);
+    expect(badgeLayer).toBeDefined();
+    expect(badgeLayer!.text).toBe('II');
+    expect(badgeLayer!.zone).toBe('spine');
+    expect(badgeLayer!.color).toBe('#e0b865');
+    expect(badgeLayer!.yMm).toBeCloseTo(
+      b1.spec.spineBoardRect.y + (b1.volumeBadgeYMm - b1.shelfYMm),
+      1,
+    );
+
+    // Framed-label decorative bands + shared divider ornament are both present on spine
+    const bandsOrn = compiled1.ornaments.find((o) => o.id === SERIES_BANDS_ORNAMENT_ID);
+    expect(bandsOrn).toBeDefined();
+    expect(bandsOrn!.zone).toBe('spine');
+    expect(bandsOrn!.customSvgPaths!.length).toBeGreaterThanOrEqual(6);
+
+    const sharedOrn = compiled1.ornaments.find((o) => o.id === SERIES_SHARED_ORNAMENT_ID);
+    expect(sharedOrn).toBeDefined();
+    expect(sharedOrn!.presetId).toBe('divider-diamond-rule');
+    expect(sharedOrn!.zone).toBe('spine');
+    const sharedOrnCenterY = sharedOrn!.yMm + sharedOrn!.heightMm / 2;
+    expect(sharedOrnCenterY).toBeCloseTo(
+      b1.spec.spineBoardRect.y + (b1.ornamentYMm - b1.shelfYMm),
+      1,
+    );
+
+    // Round-trip through CoverStudioModel.deserialize preserves dimOpacity cleanly
+    const roundTripped = CoverStudioModel.deserialize(CoverStudioModel.serialize(compiled1));
+    expect(
+      roundTripped.layers.find((l) => l.id === SERIES_PANORAMA_LAYER_ID)?.dimOpacity,
+    ).toBe(0.35);
+  });
+
+  it('imports a SavedProjectRecord into a SeriesBookEntry preserving linkedProjectId and geometry', () => {
+    const params = BookParametersModel.clampAndNormalize({
+      bindingStyle: 'flexible-spine',
+      pbHeightMm: 225,
+      pbWidthMm: 148,
+      pbThicknessMm: 31,
+    });
+    const studio = {
+      ...CoverStudioModel.createDefault(),
+      spineBgColor: '#234a3f',
+      spineText: {
+        ...CoverStudioModel.createDefault().spineText,
+        title: 'Dune Messiah',
+        author: 'Frank Herbert',
+      },
+    };
+    const record: SavedProjectRecord = {
+      id: asProjectId('proj-dune-2'),
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+      project: BookbinderProjectModel.create(params, studio, 'Dune Messiah'),
+      thumbnailDataUrl: null,
+    };
+
+    const entry = createSeriesBookFromSavedRecord(record);
+    expect(entry.linkedProjectId).toBe(record.id);
+    expect(entry.title).toBe('Dune Messiah');
+    expect(entry.author).toBe('Frank Herbert');
+    expect(entry.parameters.pbThicknessMm).toBe(31);
+    expect(entry.spineBgColorOverride).toBe('#234a3f');
+  });
+
+  it('persists series workspace to storage and gracefully strips panorama data on quota overflow', () => {
+    const store = new Map<string, string>();
+    const mockStorage = {
+      get length() {
+        return store.size;
+      },
+      clear: () => store.clear(),
+      getItem: (key: string) => store.get(key) ?? null,
+      key: (idx: number) => Array.from(store.keys())[idx] ?? null,
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+      setItem: (key: string, value: string) => {
+        if (value.length > 4000) {
+          throw new Error('QuotaExceededError');
+        }
+        store.set(key, value);
+      },
+    } as Storage;
+
+    const series = SeriesProjectModel.createDefault();
+    const hugePanoSeries = {
+      ...series,
+      name: 'Quota Resilient Set',
+      shared: {
+        ...series.shared,
+        panorama: {
+          ...series.shared.panorama,
+          enabled: true,
+          dataUrl: `data:image/png;base64,${'A'.repeat(5000)}`,
+          fileName: 'huge.png',
+          naturalWidth: 4000,
+          naturalHeight: 1200,
+        },
+      },
+    };
+
+    const saveRes = saveSeriesWorkspace(
+      { activeSeriesId: hugePanoSeries.id, seriesList: [hugePanoSeries] },
+      mockStorage,
+    );
+    expect(saveRes.saved).toBe(true);
+    expect(saveRes.omittedPanoramaForQuota).toBe(true);
+    expect(store.has(SERIES_WORKSPACE_STORAGE_KEY)).toBe(true);
+
+    const loaded = loadSeriesWorkspace(mockStorage);
+    expect(loaded.activeSeriesId).toBe(hugePanoSeries.id);
+    expect(loaded.seriesList[0].name).toBe('Quota Resilient Set');
+    expect(loaded.seriesList[0].books).toHaveLength(3);
+    expect(loaded.seriesList[0].shared.panorama.dataUrl).toBeNull();
+  });
+
+  it('numbers marked sequences independently, leaves standalone books unnumbered, resolves multi-author overrides, and computes exact sequenceSpans', () => {
+    const base = BookParametersModel.createDefault();
+    const seqTrilogy = SeriesProjectModel.createSequenceGroup({
+      name: 'Obsidian Trilogy',
+      volumeNumberStyle: 'roman',
+      startNumber: 1,
+      sharedAuthor: 'E. V. Hawthorne',
+    });
+    const seqAnthology = SeriesProjectModel.createSequenceGroup({
+      name: 'Starlight Chronicles',
+      volumeNumberStyle: 'vol-arabic',
+      startNumber: 1,
+      sharedAuthor: 'House Anthology',
+    });
+
+    const baseSeries = SeriesProjectModel.createDefault();
+    const mixedSeries = {
+      ...baseSeries,
+      sequences: [seqTrilogy, seqAnthology],
+      books: [
+        SeriesProjectModel.createBookEntry({
+          title: 'Shadow Archive',
+          author: '', // inherits seqTrilogy.sharedAuthor
+          sequenceId: seqTrilogy.id,
+          parameters: { ...base, pbHeightMm: 210, pbThicknessMm: 22 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Gilded Labyrinth',
+          author: 'Guest Co-Author', // explicit per-book author wins over sharedAuthor
+          sequenceId: seqTrilogy.id,
+          parameters: { ...base, pbHeightMm: 216, pbThicknessMm: 30 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Crown of Ash',
+          author: '  ', // blank -> inherits seqTrilogy.sharedAuthor
+          sequenceId: seqTrilogy.id,
+          parameters: { ...base, pbHeightMm: 216, pbThicknessMm: 38 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Standalone Essay',
+          author: 'C. Sato',
+          sequenceId: null, // outside any sequence -> no automatic volume badge
+          parameters: { ...base, pbHeightMm: 198, pbThicknessMm: 18 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Orbit One',
+          author: 'A. Lin',
+          sequenceId: seqAnthology.id,
+          parameters: { ...base, pbHeightMm: 228, pbThicknessMm: 26 },
+        }),
+        SeriesProjectModel.createBookEntry({
+          title: 'Orbit Two',
+          author: '', // inherits seqAnthology.sharedAuthor
+          sequenceId: seqAnthology.id,
+          parameters: { ...base, pbHeightMm: 228, pbThicknessMm: 34 },
+        }),
+      ],
+      shared: {
+        ...baseSeries.shared,
+        volumeNumberStyle: 'arabic' as const,
+        panorama: { ...baseSeries.shared.panorama, shelfGapMm: 2 },
+      },
+    };
+
+    const layout = computeSeriesShelfLayout(mixedSeries);
+    expect(layout.books).toHaveLength(6);
+
+    // Per-sequence volume labels + unnumbered standalone book
+    expect(layout.books.map((b) => b.volumeLabel)).toEqual([
+      'I',
+      'II',
+      'III',
+      '',
+      'Vol. 1',
+      'Vol. 2',
+    ]);
+
+    // Author resolution: explicit book author preserved, blank book inherits sequence sharedAuthor
+    expect(layout.books.map((b) => b.resolvedAuthor)).toEqual([
+      'E. V. Hawthorne',
+      'Guest Co-Author',
+      'E. V. Hawthorne',
+      'C. Sato',
+      'A. Lin',
+      'House Anthology',
+    ]);
+
+    // Exact millimeter sequenceSpans for both contiguous runs
+    expect(layout.sequenceSpans).toHaveLength(2);
+    const [span1, span2] = layout.sequenceSpans;
+
+    expect(span1.sequence.id).toBe(seqTrilogy.id);
+    expect(span1.startBookIndex).toBe(0);
+    expect(span1.endBookIndex).toBe(2);
+    expect(span1.bookCount).toBe(3);
+    expect(span1.volumeRangeLabel).toBe('I–III');
+    expect(span1.startXMm).toBeCloseTo(layout.books[0].shelfXMm, 3);
+    expect(span1.endXMm).toBeCloseTo(
+      layout.books[2].shelfXMm + layout.books[2].spineWidthMm,
+      3,
+    );
+
+    expect(span2.sequence.id).toBe(seqAnthology.id);
+    expect(span2.startBookIndex).toBe(4);
+    expect(span2.endBookIndex).toBe(5);
+    expect(span2.bookCount).toBe(2);
+    expect(span2.volumeRangeLabel).toBe('Vol. 1–Vol. 2');
+    expect(span2.startXMm).toBeCloseTo(layout.books[4].shelfXMm, 3);
+    expect(span2.endXMm).toBeCloseTo(
+      layout.books[5].shelfXMm + layout.books[5].spineWidthMm,
+      3,
+    );
+
+    // Custom startNumber (4 -> 4, 5)
+    const offsetSeq = {
+      ...seqAnthology,
+      volumeNumberStyle: 'arabic' as const,
+      startNumber: 4,
+    };
+    const offsetLayout = computeSeriesShelfLayout({
+      ...mixedSeries,
+      sequences: [seqTrilogy, offsetSeq],
+    });
+    expect(offsetLayout.books[4].volumeLabel).toBe('4');
+    expect(offsetLayout.books[5].volumeLabel).toBe('5');
+    expect(offsetLayout.sequenceSpans[1].volumeRangeLabel).toBe('4–5');
+
+    // compileSeriesBookToCoverStudio compiles sequence volume badge & resolved author faithfully
+    const compiledInherited = compileSeriesBookToCoverStudio(mixedSeries, 0, null);
+    expect(compiledInherited.spineText.author).toBe('E. V. Hawthorne');
+    const badge0 = compiledInherited.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID);
+    expect(badge0?.text).toBe('I');
+    expect(badge0?.uppercase).toBe(true);
+
+    const compiledExplicitAuthor = compileSeriesBookToCoverStudio(mixedSeries, 1, null);
+    expect(compiledExplicitAuthor.spineText.author).toBe('Guest Co-Author');
+
+    const compiledStandalone = compileSeriesBookToCoverStudio(mixedSeries, 3, null);
+    expect(compiledStandalone.spineText.author).toBe('C. Sato');
+    expect(
+      compiledStandalone.textLayers.find((t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID),
+    ).toBeUndefined();
+
+    const compiledAnthologyVol2 = compileSeriesBookToCoverStudio(mixedSeries, 5, null);
+    expect(compiledAnthologyVol2.spineText.author).toBe('House Anthology');
+    const badge5 = compiledAnthologyVol2.textLayers.find(
+      (t) => t.id === SERIES_VOLUME_BADGE_LAYER_ID,
+    );
+    expect(badge5?.text).toBe('Vol. 2');
+    expect(badge5?.uppercase).toBe(false);
+  });
+});

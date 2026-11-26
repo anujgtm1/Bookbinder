@@ -117,6 +117,7 @@ test.describe('Geometry Remap Stability — Notebook Presets, Binding Styles & E
     await expect(page.getByTestId('studio-cover-text-0')).toContainText('TWENTY THOUSAND');
 
     // Normalize onto exact US Trade Digest preset (139.7 x 215.9 mm) so preset round-trip returns to identical dimensions
+    await page.getByTestId('toggle-sidebar-btn').click();
     await selectDropdownOption(page, 'preset-select', /US Trade Digest/i);
     const baseline = await readCanvasSnapshot(page);
 
@@ -151,6 +152,7 @@ test.describe('Geometry Remap Stability — Notebook Presets, Binding Styles & E
     expect(Math.abs(baseline.titleX - 281.5)).toBeLessThan(0.2);
 
     // 1. Switch to Fold-and-Glue Slip Cover (1-Piece Flaps)
+    await page.getByTestId('toggle-sidebar-btn').click();
     await selectDropdownOption(page, 'binding-style-select', /Fold-and-Glue Slip Cover/i);
     const onSlipIntegrated = await readCanvasSnapshot(page);
     // Slip Cover integrated: flap=32.2, coverW=141, spineW=25, tabH=10, bleed=3 -> front x=201.2..342.2 (center 271.7), y=13..231 (center 122.0)

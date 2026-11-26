@@ -1,7 +1,9 @@
 import { useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
-import { evaluatePrintMediaFit } from '@/core/geometry';
-import type { RollNestingExportOptions } from '@/core/pdfSheetLayout';
+import type {
+  RollNestingExportOptions,
+  SheetNestingExportOptions,
+} from '@/core/pdfSheetLayout';
 import type { PrinterMargins } from '@/core/printerMargins';
 import {
   exportDesignPresetsJson,
@@ -9,11 +11,7 @@ import {
   loadSavedDesignPresets,
   saveDesignPresets,
 } from '@/core/presetStorage';
-import {
-  triggerBlobDownload,
-  triggerBytesDownload,
-  triggerTextDownload,
-} from '@/core/storage';
+import { triggerTextDownload } from '@/core/storage';
 import { rgbToHex } from '@/lib/color';
 import {
   getPrintMediaSpec,
@@ -47,15 +45,26 @@ import {
   type QuickFitTarget,
   type StubExtensionMode,
 } from '@/types/studioLayer';
-import { PRINT_DPI, roundTo } from '@/types/units';
-import type { EyedropperTarget } from '../ArtworkControlsCard';
+import { roundTo } from '@/types/units';
+import { getProceduralArtworkSpec } from '@/resources/proceduralArtworks';
+import type { ApplyProceduralArtworkRequest, EyedropperTarget } from '../ArtworkControlsCard';
 import { getClassicOrnamentSpec } from '../classicOrnaments';
 import {
   applyStubExtensionToLayer,
   detectLayerCoverSide,
   type StubExtensionSide,
 } from '../edgeExtend';
+import {
+  runStyledCoverPdfExport,
+  runStyledCoverPngExport,
+  runStyledCoverSvgExport,
+} from '../exporters/coverExportRunner';
 import { loadCustomFontFromFile, type CustomFontAsset } from '../fonts';
+import {
+  pruneLayerOrder,
+  replaceLayerIdInOrder,
+  syncLayerOrderAfterAdd,
+} from '../layerStack';
 import {
   resolveImageLayerConstraint,
   resolveOrnamentLayerConstraint,
@@ -64,9 +73,10 @@ import {
 } from '../layoutConstraints';
 import type { PreflightQuickFix } from '../preflight';
 import {
-  exportCoverPng300Dpi,
-  generateAffinityCoverSvg,
-  generatePrintReadyRollPdf,
+  createProceduralArtworkAsset,
+  isProceduralArtworkFileName,
+} from '../proceduralArtwork';
+import {
   getPanelBoardRect,
   inferZoneFromCenterX,
   renderCoverArtworkCanvas,
@@ -156,7 +166,13 @@ export function useCoverStudioActions({
       fontId: studio.spineText.fontId,
       color: studio.spineText.textColor,
     });
-    onChange({ ...studio, textLayers: [...(studio.textLayers ?? []), created] });
+    onChange(
+      syncLayerOrderAfterAdd(
+        { ...studio, textLayers: [...(studio.textLayers ?? []), created] },
+        [created.id],
+        'text',
+      ),
+    );
     onSelectText(created.id);
     onSwitchTo2D();
     onStatusMessage(`Added "${created.text.split('\n')[0]}" on ${zone} cover — drag to position`);
@@ -219,7 +235,7 @@ export function useCoverStudioActions({
 
   const handleDeleteTextLayer = (id: string) => {
     const remaining = (studio.textLayers ?? []).filter((t) => t.id !== id);
-    onChange({ ...studio, textLayers: remaining });
+    onChange(pruneLayerOrder({ ...studio, textLayers: remaining }));
     if (selectedTextId === id) {
       setSelectedTextId(remaining[remaining.length - 1]?.id ?? null);
     }
@@ -236,7 +252,13 @@ export function useCoverStudioActions({
       zone,
       color,
     );
-    onChange({ ...studio, ornaments: [...(studio.ornaments ?? []), created] });
+    onChange(
+      syncLayerOrderAfterAdd(
+        { ...studio, ornaments: [...(studio.ornaments ?? []), created] },
+        [created.id],
+        'ornament',
+      ),
+    );
     onSelectOrnament(created.id);
     onSwitchTo2D();
     onStatusMessage(`Added ${getClassicOrnamentSpec(presetId).label} on ${zone} cover`);
@@ -296,7 +318,13 @@ export function useCoverStudioActions({
         zone,
         color,
       });
-      onChange({ ...studio, ornaments: [...(studio.ornaments ?? []), created] });
+      onChange(
+        syncLayerOrderAfterAdd(
+          { ...studio, ornaments: [...(studio.ornaments ?? []), created] },
+          [created.id],
+          'ornament',
+        ),
+      );
       onSelectOrnament(created.id);
       onSwitchTo2D();
       onStatusMessage(
@@ -337,6 +365,7 @@ export function useCoverStudioActions({
           flipX: o.flipX,
           flipY: o.flipY,
           rotationDeg: o.rotationDeg,
+          ...(o.origin ? { origin: o.origin } : {}),
         };
       }),
     });
@@ -428,9 +457,81 @@ export function useCoverStudioActions({
     onStatusMessage('Unpinned element — position preserved');
   };
 
+  const createDetachedLayerId = (prefix: 'layer' | 'txt' | 'orn'): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  };
+
+  const handleDetachSeriesLayer = (kind: 'image' | 'text' | 'ornament', id: string) => {
+    const latest = studioRef.current;
+    if (kind === 'image') {
+      if (!latest.layers.some((l) => l.id === id)) return;
+      const freshId = createDetachedLayerId('layer');
+      onChange(
+        replaceLayerIdInOrder(
+          {
+            ...latest,
+            layers: latest.layers.map((layer) => {
+              if (layer.id !== id) return layer;
+              const { origin: _origin, ...rest } = layer;
+              void _origin;
+              return { ...rest, id: freshId };
+            }),
+          },
+          id,
+          freshId,
+        ),
+      );
+      setSelectedLayerId((prev) => (prev === id ? freshId : prev));
+    } else if (kind === 'text') {
+      if (!(latest.textLayers ?? []).some((t) => t.id === id)) return;
+      const freshId = createDetachedLayerId('txt');
+      onChange(
+        replaceLayerIdInOrder(
+          {
+            ...latest,
+            textLayers: (latest.textLayers ?? []).map((layer) => {
+              if (layer.id !== id) return layer;
+              const { origin: _origin, ...rest } = layer;
+              void _origin;
+              return { ...rest, id: freshId };
+            }),
+          },
+          id,
+          freshId,
+        ),
+      );
+      setSelectedTextId((prev) => (prev === id ? freshId : prev));
+    } else {
+      if (!(latest.ornaments ?? []).some((o) => o.id === id)) return;
+      const freshId = createDetachedLayerId('orn');
+      onChange(
+        replaceLayerIdInOrder(
+          {
+            ...latest,
+            ornaments: (latest.ornaments ?? []).map((layer) => {
+              if (layer.id !== id) return layer;
+              const { origin: _origin, ...rest } = layer;
+              void _origin;
+              return { ...rest, id: freshId };
+            }),
+          },
+          id,
+          freshId,
+        ),
+      );
+      setSelectedOrnamentId((prev) => (prev === id ? freshId : prev));
+    }
+    onStatusMessage(
+      'Detached layer from Series Spines — future series syncs will keep your tweaks',
+    );
+  };
+
   const handleDeleteOrnament = (id: string) => {
     const remaining = (studio.ornaments ?? []).filter((o) => o.id !== id);
-    onChange({ ...studio, ornaments: remaining });
+    onChange(pruneLayerOrder({ ...studio, ornaments: remaining }));
     if (selectedOrnamentId === id) {
       setSelectedOrnamentId(remaining[remaining.length - 1]?.id ?? null);
     }
@@ -713,7 +814,13 @@ export function useCoverStudioActions({
     }
 
     if (addedLayers.length > 0) {
-      onChange({ ...studio, layers: [...studio.layers, ...addedLayers] });
+      onChange(
+        syncLayerOrderAfterAdd(
+          { ...studio, layers: [...studio.layers, ...addedLayers] },
+          addedLayers.map((l) => l.id),
+          'image',
+        ),
+      );
       onSelectImageLayer(addedLayers[addedLayers.length - 1].id);
       onStatusMessage(
         addedLayers.length === 1
@@ -721,6 +828,86 @@ export function useCoverStudioActions({
           : `Added ${addedLayers.length} artwork images to canvas`,
       );
     }
+  };
+
+  const handleApplyProceduralArtwork = ({
+    patternId,
+    target,
+    intensity,
+    seed,
+  }: ApplyProceduralArtworkRequest) => {
+    const targetRect = resolveQuickFitRect(spec, target);
+    const clipZone: LayerClipZone = target === 'fullWrap' ? 'none' : target;
+    const baseColor =
+      target === 'back'
+        ? studio.backBgColor
+        : target === 'spine'
+          ? studio.spineBgColor
+          : studio.frontBgColor;
+    const asset = createProceduralArtworkAsset({
+      patternId,
+      widthMm: targetRect.width,
+      heightMm: targetRect.height,
+      baseColor,
+      accentColor: studio.spineText.textColor,
+      seed,
+      intensity,
+    });
+    const layoutConstraint: LayerLayoutConstraint = {
+      anchorZone: target,
+      horizontal: { kind: 'center' },
+      vertical: { kind: 'center' },
+      imageFit: 'cover',
+    };
+    const created: CoverImageLayer = {
+      ...CoverImageLayerModel.createInRect({
+        dataUrl: asset.dataUrl,
+        fileName: asset.fileName,
+        naturalWidth: asset.naturalWidth,
+        naturalHeight: asset.naturalHeight,
+        targetRect,
+        clipZone,
+        mode: 'cover',
+      }),
+      layoutConstraint,
+    };
+
+    const replacedLayers =
+      target === 'fullWrap'
+        ? studio.layers.filter((layer) => isProceduralArtworkFileName(layer.fileName))
+        : studio.layers.filter(
+            (layer) => isProceduralArtworkFileName(layer.fileName) && layer.clipZone === clipZone,
+          );
+    const otherLayers =
+      target === 'fullWrap'
+        ? studio.layers.filter((layer) => !isProceduralArtworkFileName(layer.fileName))
+        : studio.layers.filter(
+            (layer) =>
+              !(isProceduralArtworkFileName(layer.fileName) && layer.clipZone === clipZone),
+          );
+    const nextLayers = [...otherLayers, created];
+    let nextStudio: CoverStudioState = { ...studio, layers: nextLayers };
+    if (replacedLayers.length > 0 && studio.layerOrder?.includes(replacedLayers[0].id)) {
+      nextStudio = pruneLayerOrder(
+        replaceLayerIdInOrder(nextStudio, replacedLayers[0].id, created.id),
+      );
+    } else {
+      nextStudio = syncLayerOrderAfterAdd(pruneLayerOrder(nextStudio), [created.id], 'image');
+    }
+
+    onChange(nextStudio);
+    onSelectImageLayer(created.id);
+    onSwitchTo2D();
+    const label = getProceduralArtworkSpec(patternId).label;
+    const targetLabel =
+      target === 'fullWrap'
+        ? 'Full Cover'
+        : target === 'front'
+          ? 'Front Cover'
+          : target === 'back'
+            ? 'Back Cover'
+            : 'Spine';
+    onStatusMessage(`Applied ${label} (${intensity}) to ${targetLabel}`);
   };
 
   const handleCustomFontUpload = async (file: File, targetTextLayerId?: string) => {
@@ -808,14 +995,11 @@ export function useCoverStudioActions({
     readonly customRollWidthMm?: number;
     readonly printerMargins?: PrinterMargins;
     readonly rollNesting?: RollNestingExportOptions;
+    readonly sheetNesting?: SheetNestingExportOptions;
+    readonly skippedMultiBookCount?: number;
   }) => {
     setExportingKind('pdf');
     try {
-      const effectiveMediaId = options?.printMediaId ?? effectiveParams.printMedia;
-      const effectiveDpi = options?.dpi ?? 300;
-      const effectiveLayerMode: CoverPdfLayerMode = options?.exportLayerMode ?? 'full';
-      const isBaseOnly = effectiveLayerMode === 'base-only';
-      const fileName = isBaseOnly ? 'outer_cover_base_for_htv.pdf' : 'outer_cover_print.pdf';
       const resolvedCutLines = options?.includeCutLines ?? options?.includeGuides;
       if (resolvedCutLines !== undefined) {
         const nextCutLineMode = resolvedCutLines ? 'full-cut-miter' : 'bleed-registration';
@@ -823,46 +1007,30 @@ export function useCoverStudioActions({
           updateStudio({ cutLineMode: nextCutLineMode });
         }
       }
-      const effectiveCustomRollWidthMm =
-        options?.customRollWidthMm ?? effectiveParams.customRollWidthMm;
-      const bytes = await generatePrintReadyRollPdf(geometry, studio, customFont, {
+      const { statusMessage } = await runStyledCoverPdfExport({
+        geometry,
+        studio,
+        customFont,
+        params: effectiveParams,
         includeCutLines: options?.includeCutLines,
         includeFoldLines: options?.includeFoldLines,
         includeFoldGuideTicks: options?.includeFoldGuideTicks,
         includeGuides: options?.includeGuides,
-        exportLayerMode: effectiveLayerMode,
-        printMediaId: effectiveMediaId,
-        dpi: effectiveDpi,
+        exportLayerMode: options?.exportLayerMode,
+        printMediaId: options?.printMediaId,
+        dpi: options?.dpi,
         tileOverlapMm: options?.tileOverlapMm,
         includeScaleBar: options?.includeScaleBar,
+        splitMode: options?.splitMode,
         appendInnerPocketsPage: options?.appendInnerPocketsPage,
         innerPageSizeId: options?.innerPageSizeId,
-        customRollWidthMm: effectiveCustomRollWidthMm,
+        customRollWidthMm: options?.customRollWidthMm,
         printerMargins: options?.printerMargins,
         rollNesting: options?.rollNesting,
+        sheetNesting: options?.sheetNesting,
+        skippedMultiBookCount: options?.skippedMultiBookCount,
       });
-      triggerBytesDownload(bytes, fileName, 'application/pdf');
-      const fit = evaluatePrintMediaFit(
-        effectiveMediaId,
-        geometry.outerWrap.widthMm,
-        geometry.outerWrap.heightMm,
-        options?.tileOverlapMm,
-        {
-          customRollWidthMm: effectiveCustomRollWidthMm,
-          margins: options?.printerMargins,
-        },
-      );
-      const layerTag = isBaseOnly ? ', Base Only for HTV' : '';
-      const pocketsTag = options?.appendInnerPocketsPage ? ' + Pockets' : '';
-      onStatusMessage(
-        fit.status === 'fits-1-sheet'
-          ? `Exported ${fileName} (centered on 1× ${fit.mediaLabel}${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
-          : fit.status === 'fits-2-sheet-tile'
-            ? `Exported ${fileName} (2 tiled ${fit.mediaLabel} pages with ${fit.tileOverlapMm} mm overlap${pocketsTag}, ${effectiveDpi} DPI${layerTag})`
-            : isBaseOnly
-              ? `Exported ${fileName} (${effectiveDpi} DPI, Base Only for HTV${pocketsTag})`
-              : `Exported ${fileName} (${effectiveDpi} DPI + vector spine text${pocketsTag})`,
-      );
+      onStatusMessage(statusMessage);
     } catch {
       onStatusMessage('Failed to generate Print-Ready Roll PDF.');
     } finally {
@@ -873,11 +1041,8 @@ export function useCoverStudioActions({
   const handleExportAffinityPng = async () => {
     setExportingKind('png');
     try {
-      const blob = await exportCoverPng300Dpi(geometry, studio, customFont);
-      triggerBlobDownload(blob, 'outer_cover_300dpi.png');
-      onStatusMessage(
-        `Exported outer_cover_300dpi.png (${spec.pixelWidth}×${spec.pixelHeight}px @ 300 DPI)`,
-      );
+      const { statusMessage } = await runStyledCoverPngExport(geometry, studio, customFont);
+      onStatusMessage(statusMessage);
     } catch {
       onStatusMessage('Failed to export 300 DPI PNG.');
     } finally {
@@ -888,17 +1053,8 @@ export function useCoverStudioActions({
   const handleExportAffinitySvg = async () => {
     setExportingKind('svg');
     try {
-      let artworkDataUrl: string | undefined;
-      if (studio.layers.length > 0) {
-        const canvas = await renderCoverArtworkCanvas(geometry, studio, customFont, {
-          includeSpineText: false,
-          dpi: PRINT_DPI,
-        });
-        artworkDataUrl = canvas.toDataURL('image/png');
-      }
-      const svg = generateAffinityCoverSvg(geometry, studio, customFont, artworkDataUrl);
-      triggerTextDownload(svg, 'outer_cover_300dpi.svg', 'image/svg+xml;charset=utf-8');
-      onStatusMessage('Exported outer_cover_300dpi.svg (Affinity round-trip)');
+      const { statusMessage } = await runStyledCoverSvgExport(geometry, studio, customFont);
+      onStatusMessage(statusMessage);
     } catch {
       onStatusMessage('Failed to export Affinity SVG.');
     } finally {
@@ -929,6 +1085,7 @@ export function useCoverStudioActions({
     handleQuickAlignOrnament,
     handleQuickAlignImage,
     handleDetachConstraint,
+    handleDetachSeriesLayer,
     handleDeleteOrnament,
     handleSaveDesignPreset,
     handleApplyDesignPreset,
@@ -939,6 +1096,7 @@ export function useCoverStudioActions({
     handleQuickFitLayer,
     handleApplyQuickFix,
     handleAddImageFiles,
+    handleApplyProceduralArtwork,
     handleCustomFontUpload,
     sampleColorAtSvgClick,
     handleExportPrintPdf,

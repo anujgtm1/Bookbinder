@@ -1,18 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { CoverOrnamentLayerModel, rotateOrnament90 } from '@/types/coverElements';
+import { calculateCaseGeometry } from '@/core/geometry';
+import { BookParametersModel } from '@/types/bookParams';
+import {
+  CLASSIC_ORNAMENT_IDS,
+  CoverOrnamentLayerModel,
+  rotateOrnament90,
+} from '@/types/coverElements';
+import { CoverStudioModel } from '@/types/studio';
 import {
   CLASSIC_ORNAMENTS,
+  ORNAMENT_STYLE_FILTERS,
   buildOrnamentClosedPaths,
   buildOrnamentCompoundPath,
 } from './classicOrnaments';
+import { DEFAULT_CRICUT_EXPORT_OPTIONS, generateCricutHtvSvg } from './cricutExport';
 
 describe('classicOrnaments parametric vector library', () => {
   const board = { x: 20, y: 20, width: 106, height: 150 };
 
-  it('generates valid closed SVG contours (M ... Z) for every classic bookbindery ornament', () => {
-    expect(CLASSIC_ORNAMENTS.length).toBeGreaterThanOrEqual(12);
+  it('registers all 40 built-in ornaments with valid style tags, categories, and closed SVG contours', () => {
+    expect(CLASSIC_ORNAMENTS).toHaveLength(40);
+    const builtInIds = CLASSIC_ORNAMENT_IDS.filter((id) => id !== 'custom-svg');
+    expect(new Set(CLASSIC_ORNAMENTS.map((o) => o.id))).toEqual(new Set(builtInIds));
+
+    const validCategories = new Set(['frames', 'corners', 'dividers', 'emblems', 'spine']);
+    const validStyles = new Set(
+      ORNAMENT_STYLE_FILTERS.filter((f) => f.id !== 'all').map((f) => f.id),
+    );
 
     for (const spec of CLASSIC_ORNAMENTS) {
+      expect(validCategories.has(spec.category), `category for ${spec.id}`).toBe(true);
+      expect(validStyles.has(spec.styleTag), `styleTag for ${spec.id}`).toBe(true);
+
       const orn = CoverOrnamentLayerModel.createForZone(spec.id, board, spec.defaultZone);
       const paths = buildOrnamentClosedPaths(orn);
       expect(paths.length, `preset ${spec.id} should produce closed contours`).toBeGreaterThan(0);
@@ -31,6 +50,47 @@ describe('classicOrnaments parametric vector library', () => {
       });
       expect(compound.length).toBeGreaterThan(10);
       expect(compound).not.toContain('NaN');
+    }
+  });
+
+  it('passes Cricut HTV SVG export hygiene (zero <text>, zero <image>, zero transform=) for all 40 ornaments', async () => {
+    const geometry = calculateCaseGeometry(BookParametersModel.createDefault());
+    const frontBoard = {
+      x: geometry.outerWrap.frontBoardRect.x + geometry.outerWrap.bleedMm,
+      y: geometry.outerWrap.frontBoardRect.y + geometry.outerWrap.bleedMm,
+      width: geometry.outerWrap.frontBoardRect.width,
+      height: geometry.outerWrap.frontBoardRect.height,
+    };
+    const spineBoard = {
+      x: geometry.outerWrap.spineRect.x + geometry.outerWrap.bleedMm,
+      y: geometry.outerWrap.spineRect.y + geometry.outerWrap.bleedMm,
+      width: geometry.outerWrap.spineRect.width,
+      height: geometry.outerWrap.spineRect.height,
+    };
+
+    for (const spec of CLASSIC_ORNAMENTS) {
+      const targetRect = spec.defaultZone === 'spine' ? spineBoard : frontBoard;
+      const orn = CoverOrnamentLayerModel.createForZone(spec.id, targetRect, spec.defaultZone);
+      const studio = {
+        ...CoverStudioModel.createDefault(),
+        ornaments: [orn],
+      };
+
+      const result = await generateCricutHtvSvg(geometry, studio, null, {
+        ...DEFAULT_CRICUT_EXPORT_OPTIONS,
+        scope: spec.defaultZone === 'spine' ? 'spine-only' : 'front-cover',
+        includeLettering: false,
+        includeOrnaments: true,
+      });
+
+      expect(result.pathCount, `Cricut pathCount for ${spec.id}`).toBeGreaterThan(0);
+      expect(result.svg, `Cricut SVG <path> for ${spec.id}`).toContain('<path ');
+      expect(result.svg, `Cricut SVG zero <text> for ${spec.id}`).not.toMatch(/<text\b/i);
+      expect(result.svg, `Cricut SVG zero <image> for ${spec.id}`).not.toMatch(/<image\b/i);
+      expect(result.svg, `Cricut SVG zero transform= for ${spec.id}`).not.toMatch(
+        /\btransform\s*=/i,
+      );
+      expect(result.svg, `Cricut SVG zero NaN for ${spec.id}`).not.toContain('NaN');
     }
   });
 

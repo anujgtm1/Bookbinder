@@ -226,7 +226,8 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
     expect(pdfBytes.byteLength).toBeGreaterThan(5000);
 
-    // 2. Export Affinity 300 DPI PNG
+    // 2. Export Affinity 300 DPI PNG (via More popover in Clean Mode)
+    await page.getByTestId('studio-more-exports-btn').click();
     const pngPromise = page.waitForEvent('download');
     await page.getByTestId('studio-export-png-btn').click();
     const pngDownload = await pngPromise;
@@ -235,6 +236,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     expect(pngBytes.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
     // 3. Export Affinity 1:1 mm SVG
+    await page.getByTestId('studio-more-exports-btn').click();
     const svgPromise = page.waitForEvent('download');
     await page.getByTestId('studio-export-svg-btn').click();
     const svgDownload = await svgPromise;
@@ -250,13 +252,13 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
   test('toggles collapsible book spec rail and interactive 3D folded book preview with angle presets and orbit', async ({
     page,
   }) => {
-    // Collapse and re-expand the Book Spec rail in the Folio Workbench
+    // Expand and re-collapse the Book Spec rail (starts collapsed in Clean Mode)
     const toggleRailBtn = page.getByTestId('toggle-sidebar-btn');
-    await expect(page.getByTestId('input-pb-width')).toBeVisible();
-    await toggleRailBtn.click();
     await expect(page.getByTestId('input-pb-width')).toBeHidden();
     await toggleRailBtn.click();
     await expect(page.getByTestId('input-pb-width')).toBeVisible();
+    await toggleRailBtn.click();
+    await expect(page.getByTestId('input-pb-width')).toBeHidden();
 
     // Populate spine title & author, then switch to 3D Book Preview via the Floating HUD
     await page.getByTestId('studio-tool-spine').click();
@@ -536,6 +538,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('preflight-dpi-toggle').click();
 
     // 3. Resize the book dimensions dramatically and click Fit to Front
+    await page.getByTestId('toggle-sidebar-btn').click();
     const widthInput = page.getByTestId('input-pb-width');
     const heightInput = page.getByTestId('input-pb-height');
     await widthInput.fill('190');
@@ -562,6 +565,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     page,
   }) => {
     // 1. Choose A6 Pocket Notebook preset + 5 mm spine thickness
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('preset-select').click();
     await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
     await page.getByTestId('input-pb-thickness').fill('5');
@@ -635,6 +639,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('blueprint-miter-callout')).toContainText('45° MITER LEG');
 
     // Toggle unit to inches -> Blueprint dimension lines & ruler update immediately
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('unit-toggle-in').click();
     await expect(page.getByTestId('blueprint-cumulative-ruler')).toContainText('RULER (in)');
 
@@ -844,6 +849,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await page.getByTestId('nav-pockets').click();
     await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
 
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('binding-style-select').click();
     await page.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }).click();
     await expect(page.getByTestId('cover-styler')).toBeVisible();
@@ -931,6 +937,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     await expect(page.getByTestId('saved-preset-card-0')).toContainText('My A6 Series');
 
     // 3. Switch to A6 Pocket Notebook + Fold-and-Glue Slip Cover and give Book 2 its own spine title
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('preset-select').click();
     await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
     await page.getByTestId('binding-style-select').click();
@@ -959,6 +966,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     page,
   }) => {
     // 1. Select US Letter on default Trade Digest hardcover (366 x 259 mm -> fits as 2 Portrait tiled sheets)
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('print-media-select').click();
     await page.getByRole('option', { name: /US Letter/i }).click();
 
@@ -1013,6 +1021,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     page,
   }) => {
     // 1. Switch to A6 Softcover Slip Cover with 5 mm spine & 52.5 mm flaps (323 x 170 mm)
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('preset-select').click();
     await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
     await page.getByTestId('input-pb-thickness').fill('5');
@@ -1379,6 +1388,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     page,
   }) => {
     // 1. Set A6 (105 x 148 x 10 mm) and switch to Replacement Paperback Cover
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('preset-select').click();
     await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
     await page.getByTestId('input-pb-thickness').fill('10');
@@ -1446,6 +1456,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     page,
   }) => {
     // 1. Default Trade Digest (140 mm wide) -> switch to Classic Dust Jacket (default 70 mm flaps >= 63.0 mm rec.)
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('binding-style-select').click();
     await page.getByRole('option', { name: /Classic Dust Jacket/i }).click();
 
@@ -1555,6 +1566,7 @@ test.describe('Phase 2 — Unified Cover & Inner Pockets Studio', () => {
     page,
   }) => {
     // 1. Configure A6 (105 × 148 × 8 mm) Fold-and-Glue Slip Cover with 50 mm flaps
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('preset-select').click();
     await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
 

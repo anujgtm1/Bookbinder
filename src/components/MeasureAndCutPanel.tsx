@@ -44,12 +44,17 @@ import {
 } from '@/types/bookParams';
 import type { CaseGeometry } from '@/types/geometry';
 import type { PdfGuideOptionsInput } from '@/types/pdfGuides';
+import type { ProjectId, SavedProjectSummary } from '@/types/projectLibrary';
 import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
 
 export interface MeasureAndCutPanelProps {
   readonly geometry: CaseGeometry;
   readonly params?: BookParameters;
   readonly bookTitle?: string;
+  readonly savedBookSummaries?: readonly SavedProjectSummary[];
+  readonly activeProjectId?: ProjectId | null;
+  readonly activeBookName?: string;
+  readonly exportProgressLabel?: string | null;
   readonly splitMode: SplitMode;
   readonly printMediaId?: PrintMediaId;
   readonly pageSizeId?: PageSizeId;
@@ -69,6 +74,10 @@ export function MeasureAndCutPanel({
   geometry,
   params,
   bookTitle,
+  savedBookSummaries,
+  activeProjectId = null,
+  activeBookName,
+  exportProgressLabel = null,
   splitMode,
   printMediaId = 'exact-auto',
   pageSizeId = 'letter',
@@ -120,6 +129,8 @@ export function MeasureAndCutPanel({
       customRollWidthMm: selection.customRollWidthMm,
       printerMargins: selection.printerMargins,
       rollNesting: selection.rollNesting,
+      sheetNesting: selection.sheetNesting,
+      multiBookQueueEntries: selection.multiBookQueueEntries,
     });
   };
 
@@ -418,6 +429,10 @@ export function MeasureAndCutPanel({
         defaultIncludeCutLines={showCutLines}
         defaultIncludeFoldLines={showFoldLines}
         defaultIncludeFoldGuideTicks={showFoldGuideTicks}
+        savedBookSummaries={savedBookSummaries}
+        activeProjectId={activeProjectId}
+        activeBookName={activeBookName}
+        exportProgressLabel={exportProgressLabel}
         exporting={exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}
         onClose={() => setPdfDialogOpen(false)}

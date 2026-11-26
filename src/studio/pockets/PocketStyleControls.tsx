@@ -2,6 +2,7 @@ import {
   ArrowDown,
   ArrowUp,
   Copy,
+  Dices,
   FlipHorizontal2,
   FlipVertical2,
   Grid2x2,
@@ -10,9 +11,10 @@ import {
   Palette,
   Plus,
   RotateCw,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
-import { useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +27,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import {
+  PROCEDURAL_ARTWORKS,
+  type ProceduralArtworkId,
+} from '@/resources/proceduralArtworks';
+import {
+  generateProceduralArtworkSvg,
+  toProceduralArtworkDataUrl,
+} from '@/studio/proceduralArtwork';
 import {
   ENDPAPER_SWATCHES,
   STUDIO_BOUNDS,
@@ -45,6 +55,7 @@ export type PocketQuickFitTarget = 'front' | 'back' | 'liner' | 'all';
 export interface PocketStyleControlsProps {
   readonly pocketStyle: PocketStyleConfig;
   readonly coverMatchColor: string;
+  readonly accentColor?: string;
   readonly isFoldedEndpapers?: boolean;
   readonly layers: readonly CoverImageLayer[];
   readonly selectedLayerId: string | null;
@@ -56,6 +67,7 @@ export interface PocketStyleControlsProps {
   ) => void;
   readonly onSelectLayer: (id: string | null) => void;
   readonly onAddImageFiles: (files: readonly File[]) => Promise<void>;
+  readonly onApplyEndpaperPattern?: (patternId: ProceduralArtworkId, seed: number) => void;
   readonly onQuickFitLayer: (id: string, target: PocketQuickFitTarget) => void;
   readonly onToggleLayerTile: (layer: CoverImageLayer) => void;
   readonly onCopyToOtherPocket: (layer: CoverImageLayer) => void;
@@ -80,6 +92,7 @@ const FOLDED_ENDPAPER_QUICK_FIT_OPTIONS = [
 export function PocketStyleControls({
   pocketStyle,
   coverMatchColor,
+  accentColor = '#d9b566',
   isFoldedEndpapers = false,
   layers,
   selectedLayerId,
@@ -88,15 +101,37 @@ export function PocketStyleControls({
   onUpdateLayer,
   onSelectLayer,
   onAddImageFiles,
+  onApplyEndpaperPattern,
   onQuickFitLayer,
   onToggleLayerTile,
   onCopyToOtherPocket,
   onStatusMessage,
 }: PocketStyleControlsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [patternSeed, setPatternSeed] = useState(209);
   const quickFitOptions = isFoldedEndpapers
     ? FOLDED_ENDPAPER_QUICK_FIT_OPTIONS
     : SLIP_POCKET_QUICK_FIT_OPTIONS;
+
+  const endpaperPatterns = useMemo(
+    () =>
+      PROCEDURAL_ARTWORKS.filter((spec) => spec.recommendedForEndpapers).map((spec) => {
+        const svg = generateProceduralArtworkSvg({
+          patternId: spec.id,
+          widthMm: 54,
+          heightMm: 44,
+          baseColor: pocketStyle.backgroundColor,
+          accentColor,
+          seed: patternSeed,
+          intensity: 'subtle',
+        });
+        return {
+          spec,
+          thumbUrl: toProceduralArtworkDataUrl(svg),
+        };
+      }),
+    [pocketStyle.backgroundColor, accentColor, patternSeed],
+  );
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -251,6 +286,54 @@ export function PocketStyleControls({
         </CardHeader>
 
         <CardContent className="space-y-3.5">
+          {/* Built-In Endpaper Patterns Quick-Apply Strip */}
+          {onApplyEndpaperPattern && (
+            <div className="space-y-2 rounded-md border border-border bg-secondary/20 p-2.5" data-testid="endpaper-patterns-strip">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Sparkles className="h-3 w-3 text-brass" aria-hidden="true" />
+                  Built-In Endpaper Patterns
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[10.5px]"
+                  data-testid="endpaper-pattern-shuffle-btn"
+                  onClick={() =>
+                    setPatternSeed((prev) => ((prev * 1664525 + 1013904223) >>> 0) % 99991 + 1)
+                  }
+                >
+                  <Dices className="h-3 w-3" aria-hidden="true" />
+                  Shuffle
+                </Button>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+                {endpaperPatterns.map(({ spec, thumbUrl }) => (
+                  <button
+                    key={spec.id}
+                    type="button"
+                    title={`Apply ${spec.label} to ${isFoldedEndpapers ? 'endpapers' : 'inner pockets'}`}
+                    data-testid={`endpaper-pattern-${spec.id}`}
+                    onClick={() => onApplyEndpaperPattern(spec.id, patternSeed)}
+                    className="group flex cursor-pointer flex-col overflow-hidden rounded border border-border bg-card text-left transition-colors hover:border-brass"
+                  >
+                    <div className="h-9 w-full overflow-hidden border-b border-border/60">
+                      <img
+                        src={thumbUrl}
+                        alt=""
+                        className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                      />
+                    </div>
+                    <span className="truncate px-1 py-0.5 text-[9.5px] font-medium text-foreground">
+                      {spec.shortLabel}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {selectedLayer && (() => {
             const selectedVisualRect = getLayerVisualRect(selectedLayer);
             const selectedRotationDeg = normalizeQuarterTurn(selectedLayer.rotationDeg);

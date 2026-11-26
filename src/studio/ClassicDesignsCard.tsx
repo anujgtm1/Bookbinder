@@ -7,6 +7,7 @@ import {
   RotateCw,
   Sparkles,
   Trash2,
+  Unlink,
   Upload,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -18,17 +19,20 @@ import { Separator } from '@/components/ui/separator';
 import { FOIL_SWATCHES } from '@/resources/palettes';
 import {
   COVER_ORNAMENT_BOUNDS,
+  isSeriesOriginLayer,
   rotateOrnament90,
   type ClassicOrnamentCategory,
   type ClassicOrnamentId,
   type CoverElementZone,
   type CoverOrnamentLayer,
   type CustomSvgRenderMode,
+  type OrnamentStyleTag,
 } from '@/types/coverElements';
 import { normalizeQuarterTurn } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
 import {
   CLASSIC_ORNAMENTS,
+  ORNAMENT_STYLE_FILTERS,
   buildOrnamentCompoundPath,
   getClassicOrnamentSpec,
 } from './classicOrnaments';
@@ -52,10 +56,13 @@ export interface ClassicDesignsCardProps {
     id: string,
     verticalSlot: 'upper' | 'center' | 'lower',
   ) => void;
+  readonly onDetachSeriesLayer?: (id: string) => void;
   readonly onDeleteOrnament: (id: string) => void;
   /** When true, omits the outer Card wrapper and header (used inside CoverElementsCard). */
   readonly embedded?: boolean;
 }
+
+const SPINE_ORNAMENT_COUNT = CLASSIC_ORNAMENTS.filter((o) => o.category === 'spine').length;
 
 const ORNAMENT_CATEGORY_TABS: readonly {
   readonly id: 'all' | ClassicOrnamentCategory;
@@ -66,7 +73,7 @@ const ORNAMENT_CATEGORY_TABS: readonly {
   { id: 'corners', label: 'Corners' },
   { id: 'dividers', label: 'Dividers' },
   { id: 'emblems', label: 'Emblems' },
-  { id: 'spine', label: 'Spine (6)' },
+  { id: 'spine', label: `Spine (${SPINE_ORNAMENT_COUNT})` },
 ];
 
 function OrnamentThumb({ presetId }: { readonly presetId: ClassicOrnamentId }) {
@@ -103,15 +110,22 @@ export function ClassicDesignsCard({
   onFitOrnamentWithMargin,
   onCenterOrnament,
   onQuickAlignOrnament,
+  onDetachSeriesLayer,
   onDeleteOrnament,
   embedded = false,
 }: ClassicDesignsCardProps) {
+  const [ornamentStyle, setOrnamentStyle] = useState<'all' | OrnamentStyleTag>('all');
   const [ornamentCategory, setOrnamentCategory] = useState<'all' | ClassicOrnamentCategory>('all');
   const [ornamentZone, setOrnamentZone] = useState<CoverElementZone>('front');
   const [defaultFoilColor, setDefaultFoilColor] = useState<string>('#d9b566');
   const svgStampInputRef = useRef<HTMLInputElement>(null);
 
   const selectedOrnament = ornaments.find((o) => o.id === selectedOrnamentId) ?? null;
+  const filteredOrnaments = CLASSIC_ORNAMENTS.filter(
+    (spec) =>
+      (ornamentStyle === 'all' || spec.styleTag === ornamentStyle) &&
+      (ornamentCategory === 'all' || spec.category === ornamentCategory),
+  );
 
   const content = (
     <>
@@ -187,6 +201,29 @@ export function ClassicDesignsCard({
         </div>
       </div>
 
+      {/* Style / Genre Filter Pills (All / Classic / Fantasy / Art Deco / Botanical / Sci-Fi & Modern) */}
+      <div
+        className="flex flex-wrap items-center gap-1"
+        role="group"
+        aria-label="Filter classic designs by style"
+        data-testid="ornament-style-filter-bar"
+      >
+        {ORNAMENT_STYLE_FILTERS.map((style) => (
+          <Button
+            key={style.id}
+            type="button"
+            size="sm"
+            variant={ornamentStyle === style.id ? 'default' : 'outline'}
+            aria-pressed={ornamentStyle === style.id}
+            className="h-6 px-2 text-[11px]"
+            data-testid={`ornament-style-${style.id}`}
+            onClick={() => setOrnamentStyle(style.id)}
+          >
+            {style.label}
+          </Button>
+        ))}
+      </div>
+
       {/* Category Filter Pills (All / Frames / Corners / Dividers / Emblems / Spine) */}
       <div
         className="flex flex-wrap items-center gap-1"
@@ -213,31 +250,53 @@ export function ClassicDesignsCard({
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" data-testid="classic-ornament-gallery">
-        {CLASSIC_ORNAMENTS.filter(
-          (spec) => ornamentCategory === 'all' || spec.category === ornamentCategory,
-        ).map((spec) => (
-          <button
-            key={spec.id}
+      {filteredOrnaments.length > 0 ? (
+        <div
+          className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto pr-0.5"
+          data-testid="classic-ornament-gallery"
+        >
+          {filteredOrnaments.map((spec) => (
+            <button
+              key={spec.id}
+              type="button"
+              data-testid={`add-ornament-${spec.id}`}
+              title={spec.description}
+              onClick={() =>
+                onAddOrnament(
+                  spec.id,
+                  spec.category === 'spine' ? 'spine' : ornamentZone,
+                  defaultFoilColor,
+                )
+              }
+              className="flex min-w-0 w-full items-center gap-2 rounded-md border border-border bg-secondary/25 px-2 py-1.5 text-left transition-colors hover:border-brass/70 hover:bg-accent/50 cursor-pointer"
+            >
+              <OrnamentThumb presetId={spec.id} />
+              <span className="min-w-0 flex-1 break-words text-balance text-[11px] leading-tight font-medium text-foreground">
+                {spec.label}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div
+          className="flex items-center justify-between gap-2 rounded-md border border-dashed border-border bg-secondary/20 px-3 py-2.5 text-xs text-muted-foreground"
+          data-testid="classic-ornament-empty"
+        >
+          <span>No motifs match this style and category combination.</span>
+          <Button
             type="button"
-            data-testid={`add-ornament-${spec.id}`}
-            title={spec.description}
-            onClick={() =>
-              onAddOrnament(
-                spec.id,
-                spec.category === 'spine' ? 'spine' : ornamentZone,
-                defaultFoilColor,
-              )
-            }
-            className="flex items-center gap-2 rounded-md border border-border bg-secondary/25 px-2 py-1.5 text-left transition-colors hover:border-brass/70 hover:bg-accent/50 cursor-pointer"
+            size="sm"
+            variant="outline"
+            className="h-6 shrink-0 px-2 text-[11px]"
+            onClick={() => {
+              setOrnamentStyle('all');
+              setOrnamentCategory('all');
+            }}
           >
-            <OrnamentThumb presetId={spec.id} />
-            <span className="min-w-0 text-[11px] leading-tight font-medium text-foreground">
-              {spec.label}
-            </span>
-          </button>
-        ))}
-      </div>
+            Show All
+          </Button>
+        </div>
+      )}
 
       {/* Placed Ornaments List */}
       {ornaments.length > 0 && (
@@ -255,10 +314,11 @@ export function ClassicDesignsCard({
                   ? orn.customSvgName
                   : spec.label;
               const isSelected = orn.id === selectedOrnamentId;
+              const fromSeries = isSeriesOriginLayer(orn);
               return (
                 <li
                   key={orn.id}
-                  className={`flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-xs ${
+                  className={`flex items-center justify-between gap-1.5 rounded-sm px-2 py-1 text-xs ${
                     isSelected
                       ? 'bg-primary/12 text-foreground ring-1 ring-primary/40'
                       : 'hover:bg-accent/60'
@@ -275,15 +335,42 @@ export function ClassicDesignsCard({
                       style={{ backgroundColor: orn.color }}
                     />
                     <span className="truncate font-medium">{displayLabel}</span>
-                    <Badge variant="outline" className="ml-auto shrink-0 font-mono text-[9px] uppercase">
+                    {fromSeries && (
+                      <Badge
+                        variant="brass"
+                        data-testid="layer-from-series-badge"
+                        className="ml-auto shrink-0 px-1.5 py-0 text-[9px] font-semibold"
+                      >
+                        From Series
+                      </Badge>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className={`${fromSeries ? '' : 'ml-auto '}shrink-0 font-mono text-[9px] uppercase`}
+                    >
                       {orn.zone}
                     </Badge>
                   </button>
+                  {fromSeries && onDetachSeriesLayer && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 shrink-0 gap-0.5 px-1.5 text-[10px] text-brass hover:text-foreground"
+                      title="Detach from Series Spines so future series syncs keep your tweaks"
+                      aria-label={`Detach ornament ${displayLabel} from Series Spines`}
+                      data-testid={`ornament-detach-series-${idx}`}
+                      onClick={() => onDetachSeriesLayer(orn.id)}
+                    >
+                      <Unlink className="h-3 w-3" aria-hidden="true" />
+                      Detach
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-destructive hover:text-destructive"
+                    className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
                     aria-label={`Remove ornament ${displayLabel}`}
                     data-testid={`ornament-delete-${idx}`}
                     onClick={() => onDeleteOrnament(orn.id)}

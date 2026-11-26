@@ -8,11 +8,32 @@ importers:
 
   .:
     dependencies:
+      '@fontsource/almendra-display':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/audiowide':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/bebas-neue':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/bricolage-grotesque':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/cinzel-decorative':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource/cormorant-garamond':
         specifier: ^5.2.5
         version: 5.3.0
       '@fontsource/eb-garamond':
         specifier: ^5.2.5
+        version: 5.3.0
+      '@fontsource/fraunces':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/great-vibes':
+        specifier: ^5.3.0
         version: 5.3.0
       '@fontsource/inter':
         specifier: ^5.2.5
@@ -20,11 +41,41 @@ importers:
       '@fontsource/libre-baskerville':
         specifier: ^5.2.5
         version: 5.3.0
+      '@fontsource/limelight':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@fontsource/lora':
         specifier: ^5.2.5
         version: 5.3.0
       '@fontsource/montserrat':
         specifier: ^5.2.5
+        version: 5.3.0
+      '@fontsource/orbitron':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/pinyon-script':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/pirata-one':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/playfair-display':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/poiret-one':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/special-elite':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/syne':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/uncial-antiqua':
+        specifier: ^5.3.0
+        version: 5.3.0
+      '@fontsource/unifrakturmaguntia':
+        specifier: ^5.3.0
         version: 5.3.0
       '@pdf-lib/fontkit':
         specifier: ^1.1.1
@@ -482,11 +533,32 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
+  '@fontsource/almendra-display@5.3.0':
+    resolution: {integrity: sha512-QCNgs4kAJLq3JkJFYbGd910iWAVBzNFXNGodaWUaiAbHSq5vBC/EW9/5b1+Af/wSza/DxZ8EiTobKwVA6mqqcA==}
+
+  '@fontsource/audiowide@5.3.0':
+    resolution: {integrity: sha512-ECBdWgQPaCSuwlFyeXzV0i2DAGq0SKID7jxD1oHhYTObx3wz26YKs3F9Ic/EO369Anzld9IqxflRukJm6nVxpw==}
+
+  '@fontsource/bebas-neue@5.3.0':
+    resolution: {integrity: sha512-nCxMEb9Bg9sjNWm9TIOsvHKDMLRUfEZPWpLgYu6m9KavZZVSA/WoHzI5wROwqA+eNwEi/PNBAcB5Co7HA3S0Cw==}
+
+  '@fontsource/bricolage-grotesque@5.3.0':
+    resolution: {integrity: sha512-MdOVb/5in11IfN/IQJOExMuu6AroCIQbirl0yX7NUvKk+h0HYIKfGaVAXRS/gCPil4aFxWhjZnOw28tUwv7tFw==}
+
+  '@fontsource/cinzel-decorative@5.3.0':
+    resolution: {integrity: sha512-9T6Fsv6l+5CUjvKWcTlMtkAYR/C8p2ll0bgT5krOU+DTLJRmaZYpXzcRoxPvENA6+uApa+Yyn0Ft/hdq083iVA==}
+
   '@fontsource/cormorant-garamond@5.3.0':
     resolution: {integrity: sha512-weuGsCirGVWBWqpt6YUp0yLThTe4G8YO45noq8wxeJCRvEpq5lFrxNMFSTxcyOyV5k5otzJ8guDzYegdYlcLMQ==}
 
   '@fontsource/eb-garamond@5.3.0':
     resolution: {integrity: sha512-VplwHpB8FLuzl+4G5LDci1b3Z4SghiuXH8XEgaxjnOb5aue5mEt1njmDKeO6iyLeGa73LffU7PC7hzncLRx0ZA==}
+
+  '@fontsource/fraunces@5.3.0':
+    resolution: {integrity: sha512-LEHTOBiZufQzAvnAe2rZ8ZknbDS28Q9kzwb0L+gZJEmjLGr8hhZ/5NuHXwDuHBWhVXYoiGGXmrb0H6Ko/RrHTg==}
+
+  '@fontsource/great-vibes@5.3.0':
+    resolution: {integrity: sha512-1w60cXzXnC9V4y943po8044O1mqRQBiTTK75h7OpZE+1VQtx+KlAAzoIyEE5KNzu05gUpxaCQg7cbL7ITSwegQ==}
 
   '@fontsource/inter@5.3.0':
     resolution: {integrity: sha512-RofMylZmjlJEfELXeNHFWBRcSs75rGU/6bV2S2jfnvv/3rPXPGe0LgUJTklcHZ9lM4OZmAVFhcJPnACfb91A3g==}
@@ -494,11 +566,41 @@ packages:
   '@fontsource/libre-baskerville@5.3.0':
     resolution: {integrity: sha512-IA6OLq36/JWMX70Fha15sri2qWsijFh7hgdDXCRZHjKUHtWarLQoiGilvm7iMqm7HiYFEv9acF3+IuRHO9kUiA==}
 
+  '@fontsource/limelight@5.3.0':
+    resolution: {integrity: sha512-jiuuCdbk9/u0TA/bIZfp35cvJrfz1CJFSEFh4lk5Ma8Nh42897GbF0ny85emdYiJ6WJQjnD/BK/X0D5Oe6bxbg==}
+
   '@fontsource/lora@5.3.0':
     resolution: {integrity: sha512-OK1g1z01rHVPqO5aw/FOIoDqc46KKYZdgL3NOLkxLWDk6QhDHhdr/h2BV1cke6gTvR1tzpDfdKyUkGsC+sQLeQ==}
 
   '@fontsource/montserrat@5.3.0':
     resolution: {integrity: sha512-iQPDtZOnmM5ih4JBGaMSXisRap0ixb9bAUw2hDtY7EjVfaqiiNlKtVuJl9XclxUwtwMMHNcWXfQR6zI9x05+Tg==}
+
+  '@fontsource/orbitron@5.3.0':
+    resolution: {integrity: sha512-+BhPsbUAo/AF7sRcf+TEexm+EWWkgTiR9Zwb7AhYIPkc5oplfvw0C45Oc2xlKPhwVEmxG8hHuA6/Ansbl+Bc6w==}
+
+  '@fontsource/pinyon-script@5.3.0':
+    resolution: {integrity: sha512-ilhy4l5apzyDkfuKb7PZBUT5Sf6nfxucdXT5TQ0wQDyWtDPlouLy1lQq3lMEPk1lPsHHVrd11EkPnEG8FqDgUA==}
+
+  '@fontsource/pirata-one@5.3.0':
+    resolution: {integrity: sha512-qeaDy+F+TcCVdODaIvD4U0ZoaWPejpkXwHAAHIBtauwP/9mf+Sj8ORX5UYcnBpnyhd7ihYPpW+WWPbz9FryrJQ==}
+
+  '@fontsource/playfair-display@5.3.0':
+    resolution: {integrity: sha512-uJSABalvdWc10fEPppQjQocamT21LEyRfzzWfRfqbkPz+sRv+kKpYDKyluBUskvJREkJTos9epj1WjQROGu99Q==}
+
+  '@fontsource/poiret-one@5.3.0':
+    resolution: {integrity: sha512-nCAUIB6f5805lUG7t0ES0W0YhJHcKa2EPlafb7/0AU1W/V4tQvmoSbwNNUnt6nVIagvyStxLG5nzqMptQ3FCgQ==}
+
+  '@fontsource/special-elite@5.3.0':
+    resolution: {integrity: sha512-fOQ9XU8m4KnqzcLibAXCxTsKzbxePNDjPqVss5GSMcPVCY1TuCv+Wq8gm1ebqIR6XS1rhMbQ7ECP9ocKVEEpTA==}
+
+  '@fontsource/syne@5.3.0':
+    resolution: {integrity: sha512-kRWNVsrdYw+08I4EM1SYPe2JovdTzUI0kMVALVRsKmjRdkrVoun1qddSlDAglz5J9LbgUpJSkWmw6BYnmKdGuw==}
+
+  '@fontsource/uncial-antiqua@5.3.0':
+    resolution: {integrity: sha512-HA/cOSbmAt+RQniolOzckWYOzVUBg3YgczkVD01rRO61ErT9PYN3frgqvH7JqN5/7wg+W05EYY/7MbPdtgT0gw==}
+
+  '@fontsource/unifrakturmaguntia@5.3.0':
+    resolution: {integrity: sha512-z8NGOUeAu0T534Z8tEyuNbuUZsUiRoQKzg3gRB5sb2o2DipxEqmYQqHdlwxsbN0gpwhgcClKrCuB/AhVeY2UOQ==}
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -2743,17 +2845,51 @@ snapshots:
 
   '@floating-ui/utils@0.2.12': {}
 
+  '@fontsource/almendra-display@5.3.0': {}
+
+  '@fontsource/audiowide@5.3.0': {}
+
+  '@fontsource/bebas-neue@5.3.0': {}
+
+  '@fontsource/bricolage-grotesque@5.3.0': {}
+
+  '@fontsource/cinzel-decorative@5.3.0': {}
+
   '@fontsource/cormorant-garamond@5.3.0': {}
 
   '@fontsource/eb-garamond@5.3.0': {}
+
+  '@fontsource/fraunces@5.3.0': {}
+
+  '@fontsource/great-vibes@5.3.0': {}
 
   '@fontsource/inter@5.3.0': {}
 
   '@fontsource/libre-baskerville@5.3.0': {}
 
+  '@fontsource/limelight@5.3.0': {}
+
   '@fontsource/lora@5.3.0': {}
 
   '@fontsource/montserrat@5.3.0': {}
+
+  '@fontsource/orbitron@5.3.0': {}
+
+  '@fontsource/pinyon-script@5.3.0': {}
+
+  '@fontsource/pirata-one@5.3.0': {}
+
+  '@fontsource/playfair-display@5.3.0': {}
+
+  '@fontsource/poiret-one@5.3.0': {}
+
+  '@fontsource/special-elite@5.3.0': {}
+
+  '@fontsource/syne@5.3.0': {}
+
+  '@fontsource/uncial-antiqua@5.3.0': {}
+
+  '@fontsource/unifrakturmaguntia@5.3.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

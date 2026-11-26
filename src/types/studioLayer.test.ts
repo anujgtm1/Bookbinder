@@ -3,6 +3,7 @@ import {
   CoverImageLayerModel,
   LAYER_MIN_SIZE_MM,
   getLayerVisualRect,
+  isSeriesOriginLayer,
   nextQuarterTurn,
   normalizeQuarterTurn,
 } from './studioLayer';
@@ -189,5 +190,39 @@ describe('CoverImageLayerModel', () => {
     });
     expect(deserialized?.rotationDeg).toBe(270);
     expect(CoverImageLayerModel.deserialize({ ...rotatedFitted, rotationDeg: 0 })?.rotationDeg).toBeUndefined();
+  });
+
+  it('serializes and deserializes optional series-spine origin cleanly and resolves isSeriesOriginLayer', () => {
+    const base = CoverImageLayerModel.createInRect({
+      id: 'layer-plain',
+      dataUrl: 'data:image/png;base64,abc',
+      fileName: 'plain.png',
+      naturalWidth: 400,
+      naturalHeight: 600,
+      targetRect: sampleRect,
+    });
+
+    expect(isSeriesOriginLayer(base)).toBe(false);
+    expect('origin' in CoverImageLayerModel.serialize(base)).toBe(false);
+
+    const tagged = { ...base, id: 'series-panorama', origin: 'series-spine' as const };
+    expect(isSeriesOriginLayer(tagged)).toBe(true);
+    const serialized = CoverImageLayerModel.serialize(tagged);
+    expect(serialized.origin).toBe('series-spine');
+    const restored = CoverImageLayerModel.deserialize(serialized);
+    expect(restored?.origin).toBe('series-spine');
+
+    // Backward-compatible legacy series-* ID without explicit origin
+    expect(isSeriesOriginLayer({ id: 'series-legacy-layer' })).toBe(true);
+    expect(isSeriesOriginLayer({ id: 'custom-layer', origin: 'series-spine' })).toBe(true);
+
+    // Invalid origin values are dropped on deserialize and omitted when not 'series-spine'
+    const invalid = CoverImageLayerModel.deserialize({ ...base, origin: 'unknown-origin' });
+    expect(invalid?.origin).toBeUndefined();
+    expect('origin' in invalid!).toBe(false);
+
+    // fitToRect preserves series-spine origin
+    const fitted = CoverImageLayerModel.fitToRect(tagged, sampleRect, 'spine');
+    expect(fitted.origin).toBe('series-spine');
   });
 });

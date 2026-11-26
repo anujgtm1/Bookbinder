@@ -190,4 +190,46 @@ describe('CoverTextLayerModel & CoverOrnamentLayerModel', () => {
       1,
     );
   });
+
+  it('serializes and deserializes optional series-spine origin on text and ornament layers', () => {
+    const seriesText = {
+      ...CoverTextLayerModel.createPreset('front-title', frontBoard),
+      id: 'series-vol-badge',
+      origin: 'series-spine' as const,
+    };
+    const plainText = CoverTextLayerModel.createPreset('front-author', frontBoard);
+
+    const serializedSeriesText = CoverTextLayerModel.serialize(seriesText);
+    expect(serializedSeriesText.origin).toBe('series-spine');
+    expect(CoverTextLayerModel.deserialize(serializedSeriesText)?.origin).toBe('series-spine');
+
+    const serializedPlainText = CoverTextLayerModel.serialize(plainText);
+    expect('origin' in serializedPlainText).toBe(false);
+    const invalidTextOrigin = CoverTextLayerModel.deserialize({
+      ...plainText,
+      origin: 'other',
+    });
+    expect(invalidTextOrigin?.origin).toBeUndefined();
+    expect('origin' in invalidTextOrigin!).toBe(false);
+
+    const seriesOrn: CoverOrnamentLayer = {
+      ...CoverOrnamentLayerModel.createForZone('emblem-compass-rose', spineRect, 'spine'),
+      id: 'series-ornament',
+      origin: 'series-spine',
+    };
+    const plainOrn = CoverOrnamentLayerModel.createForZone('frame-single-rule', frontBoard, 'front');
+
+    const serializedSeriesOrn = CoverOrnamentLayerModel.serialize(seriesOrn);
+    expect(serializedSeriesOrn.origin).toBe('series-spine');
+    expect(CoverOrnamentLayerModel.deserialize(serializedSeriesOrn)?.origin).toBe('series-spine');
+
+    const serializedPlainOrn = CoverOrnamentLayerModel.serialize(plainOrn);
+    expect('origin' in serializedPlainOrn).toBe(false);
+    const invalidOrnOrigin = CoverOrnamentLayerModel.deserialize({
+      ...plainOrn,
+      origin: 'invalid',
+    });
+    expect(invalidOrnOrigin?.origin).toBeUndefined();
+    expect('origin' in invalidOrnOrigin!).toBe(false);
+  });
 });

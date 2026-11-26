@@ -1,12 +1,16 @@
 import {
   Bookmark,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   ImagePlus,
+  Layers,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   Type,
 } from 'lucide-react';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type {
@@ -24,13 +28,24 @@ import type {
   QuickFitTarget,
   StubExtensionMode,
 } from '@/types/studioLayer';
-import { ArtworkControlsCard, type EyedropperTarget } from './ArtworkControlsCard';
+import {
+  ArtworkControlsCard,
+  type ApplyProceduralArtworkRequest,
+  type EyedropperTarget,
+} from './ArtworkControlsCard';
 import { ClassicDesignsCard } from './ClassicDesignsCard';
 import { CoverTextCard } from './CoverTextCard';
+import type { DesignMuseCardProps } from './DesignMuseCard';
 import { DesignPresetsCard } from './DesignPresetsCard';
+import { LayerStackPanel } from './LayerStackPanel';
 import { PreflightCard } from './PreflightCard';
 import { SpineTypographyCard } from './SpineTypographyCard';
 import type { CustomFontAsset } from './fonts';
+import {
+  resolveOrderedStudioElements,
+  type LayerReorderDirection,
+  type StudioStackElement,
+} from './layerStack';
 import type { PreflightQuickFix, PreflightReport } from './preflight';
 
 export type StudioToolTab = 'artwork' | 'text' | 'designs' | 'spine' | 'presets' | 'preflight';
@@ -56,6 +71,7 @@ export interface CoverStudioToolDockProps {
   // Artwork actions
   readonly onSelectImageLayer: (id: string | null) => void;
   readonly onAddImageFiles: (files: readonly File[]) => void;
+  readonly onApplyProceduralArtwork?: (request: ApplyProceduralArtworkRequest) => void;
   readonly onQuickFitLayer: (id: string, target: QuickFitTarget) => void;
   readonly onExtendLayerStub: (id: string, mode: StubExtensionMode) => void;
   readonly onMatchSpineBackToEdge: (hex: string) => void;
@@ -64,6 +80,8 @@ export interface CoverStudioToolDockProps {
   readonly onToggleLayerFlip: (id: string, axis: 'x' | 'y') => void;
   readonly onUpdateLayer: (id: string, patch: Partial<CoverImageLayer>) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
+  readonly onReorderElement?: (id: string, direction: LayerReorderDirection) => void;
+  readonly onDetachSeriesLayer?: (kind: 'image' | 'text' | 'ornament', id: string) => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
   readonly onToggleEyedropper: (target: Exclude<EyedropperTarget, null>) => void;
@@ -94,7 +112,8 @@ export interface CoverStudioToolDockProps {
   readonly onDeleteOrnament: (id: string) => void;
   // Spine actions
   readonly onUpdateSpineText: (patch: Partial<SpineTypographyConfig>) => void;
-  // Presets actions
+  // Presets & Design Muse actions
+  readonly designMuse?: DesignMuseCardProps;
   readonly onSavePreset: (name: string) => void;
   readonly onApplyPreset: (preset: CoverDesignPreset) => void;
   readonly onDeletePreset: (id: string) => void;
@@ -129,6 +148,7 @@ export function CoverStudioToolDock({
   activeIssueId,
   onSelectImageLayer,
   onAddImageFiles,
+  onApplyProceduralArtwork,
   onQuickFitLayer,
   onExtendLayerStub,
   onMatchSpineBackToEdge,
@@ -137,6 +157,8 @@ export function CoverStudioToolDock({
   onToggleLayerFlip,
   onUpdateLayer,
   onReorderLayer,
+  onReorderElement,
+  onDetachSeriesLayer,
   onDeleteLayer,
   onUpdateStudio,
   onToggleEyedropper,
@@ -157,6 +179,7 @@ export function CoverStudioToolDock({
   onQuickAlignOrnament,
   onDeleteOrnament,
   onUpdateSpineText,
+  designMuse,
   onSavePreset,
   onApplyPreset,
   onDeletePreset,
@@ -169,6 +192,37 @@ export function CoverStudioToolDock({
   onIgnoreIssue,
   onRestoreIgnored,
 }: CoverStudioToolDockProps) {
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+  const totalLayerCount = resolveOrderedStudioElements(studio).length;
+
+  const handleSelectStackElement = (kind: StudioStackElement['kind'], id: string) => {
+    if (kind === 'image') {
+      onSelectImageLayer(id);
+    } else if (kind === 'ornament') {
+      onSelectOrnament(id);
+    } else {
+      onSelectText(id);
+    }
+  };
+
+  const handleDeleteStackElement = (kind: StudioStackElement['kind'], id: string) => {
+    if (kind === 'image') {
+      onDeleteLayer(id);
+    } else if (kind === 'ornament') {
+      onDeleteOrnament(id);
+    } else {
+      onDeleteTextLayer(id);
+    }
+  };
+
+  const handleReorderStackElement = (id: string, direction: LayerReorderDirection) => {
+    if (onReorderElement) {
+      onReorderElement(id, direction);
+    } else if (direction === 'forward' || direction === 'backward') {
+      onReorderLayer(id, direction);
+    }
+  };
+
   return (
     <Tabs
       value={activeTab}
@@ -178,13 +232,30 @@ export function CoverStudioToolDock({
     >
       {/* Docked Washi Inspector Header & 6-Tool Grid Tab Bar */}
       <div className="shrink-0 border-b border-border/90 bg-secondary/35 p-2">
-        <div className="mb-1.5 flex items-center justify-between px-1">
+        <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
           <span className="font-serif text-sm font-semibold tracking-tight text-foreground">
             Design Inspector
           </span>
-          <span className="font-mono text-[9.5px] uppercase tracking-[0.14em] text-muted-foreground">
-            FOLIO TOOLS
-          </span>
+          <button
+            type="button"
+            aria-expanded={layersPanelOpen}
+            aria-controls="studio-layer-stack-panel"
+            data-testid="layer-stack-toggle-btn"
+            onClick={() => setLayersPanelOpen((open) => !open)}
+            className={`inline-flex cursor-pointer items-center gap-1 rounded-[2px] border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              layersPanelOpen
+                ? 'border-vermilion bg-card text-foreground shadow-2xs'
+                : 'border-border/80 bg-card/70 text-muted-foreground hover:border-vermilion/60 hover:text-foreground'
+            }`}
+          >
+            <Layers className="h-3 w-3 shrink-0 text-vermilion" aria-hidden="true" />
+            <span>Layers ({totalLayerCount})</span>
+            {layersPanelOpen ? (
+              <ChevronUp className="h-3 w-3 shrink-0 opacity-75" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3 w-3 shrink-0 opacity-75" aria-hidden="true" />
+            )}
+          </button>
         </div>
         <TabsList
           aria-label="Cover studio tools"
@@ -308,6 +379,19 @@ export function CoverStudioToolDock({
         </TabsList>
       </div>
 
+      {/* Collapsible Unified All-Layers (Front to Back) Stack Panel */}
+      {layersPanelOpen && (
+        <LayerStackPanel
+          studio={studio}
+          selectedLayerId={selectedLayerId}
+          selectedTextId={selectedTextId}
+          selectedOrnamentId={selectedOrnamentId}
+          onSelectElement={handleSelectStackElement}
+          onReorderElement={handleReorderStackElement}
+          onDeleteElement={handleDeleteStackElement}
+        />
+      )}
+
       {/* Scrollable Inspector Body */}
       <div className="p-2.5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
         <TabsContent value="artwork" className="mt-0">
@@ -319,6 +403,7 @@ export function CoverStudioToolDock({
             sampledEdgeHex={sampledEdgeHex}
             onSelectLayer={onSelectImageLayer}
             onAddImageFiles={onAddImageFiles}
+            onApplyProceduralArtwork={onApplyProceduralArtwork}
             onQuickFitLayer={onQuickFitLayer}
             onExtendLayerStub={onExtendLayerStub}
             onMatchSpineBackToEdge={onMatchSpineBackToEdge}
@@ -327,6 +412,9 @@ export function CoverStudioToolDock({
             onToggleLayerFlip={onToggleLayerFlip}
             onUpdateLayer={onUpdateLayer}
             onReorderLayer={onReorderLayer}
+            onDetachSeriesLayer={
+              onDetachSeriesLayer ? (id) => onDetachSeriesLayer('image', id) : undefined
+            }
             onDeleteLayer={onDeleteLayer}
             onUpdateStudio={onUpdateStudio}
             onToggleEyedropper={onToggleEyedropper}
@@ -342,6 +430,9 @@ export function CoverStudioToolDock({
             onAddTextPreset={onAddTextPreset}
             onUpdateTextLayer={onUpdateTextLayer}
             onQuickAlignText={onQuickAlignText}
+            onDetachSeriesLayer={
+              onDetachSeriesLayer ? (id) => onDetachSeriesLayer('text', id) : undefined
+            }
             onDeleteTextLayer={onDeleteTextLayer}
             onCustomFontSelected={onCustomFontSelected}
           />
@@ -360,6 +451,9 @@ export function CoverStudioToolDock({
             onFitOrnamentWithMargin={onFitOrnamentWithMargin}
             onCenterOrnament={onCenterOrnament}
             onQuickAlignOrnament={onQuickAlignOrnament}
+            onDetachSeriesLayer={
+              onDetachSeriesLayer ? (id) => onDetachSeriesLayer('ornament', id) : undefined
+            }
             onDeleteOrnament={onDeleteOrnament}
           />
         </TabsContent>
@@ -379,6 +473,7 @@ export function CoverStudioToolDock({
           <DesignPresetsCard
             savedPresets={savedPresets}
             builtInPresets={BUILT_IN_DESIGN_PRESETS}
+            designMuse={designMuse}
             onSaveCurrent={onSavePreset}
             onApplyPreset={onApplyPreset}
             onDeletePreset={onDeletePreset}

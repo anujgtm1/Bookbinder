@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20">
+  <path fill="currentColor" d="M 50 1.2 L 58.5 10 L 50 18.8 L 41.5 10 Z M 50 4.6 L 44.8 10 L 50 15.4 L 55.2 10 Z" />
+  <path fill="currentColor" d="M 50 6.8 L 53 10 L 50 13.2 L 47 10 Z" />
+  <path fill="currentColor" d="M 38.5 10 L 32.5 3.2 L 35 3.2 L 40.8 10 L 35 16.8 L 32.5 16.8 Z" />
+  <path fill="currentColor" d="M 61.5 10 L 67.5 3.2 L 65 3.2 L 59.2 10 L 65 16.8 L 67.5 16.8 Z" />
+  <path fill="currentColor" d="M 10 6.6 L 31 6.6 L 33.5 8.4 L 10 8.4 Z" />
+  <path fill="currentColor" d="M 10 11.6 L 33.5 11.6 L 31 13.4 L 10 13.4 Z" />
+  <path fill="currentColor" d="M 2 9.2 L 35.5 9.2 L 35.5 10.8 L 2 10.8 Z" />
+  <path fill="currentColor" d="M 90 6.6 L 69 6.6 L 66.5 8.4 L 90 8.4 Z" />
+  <path fill="currentColor" d="M 90 11.6 L 66.5 11.6 L 69 13.4 L 90 13.4 Z" />
+  <path fill="currentColor" d="M 98 9.2 L 64.5 9.2 L 64.5 10.8 L 98 10.8 Z" />
+</svg>

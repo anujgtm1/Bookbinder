@@ -9,6 +9,7 @@ import {
   RotateCw,
   Trash2,
   Type,
+  Unlink,
   Upload,
 } from 'lucide-react';
 import { useRef } from 'react';
@@ -26,6 +27,7 @@ import {
 import { FOIL_SWATCHES } from '@/resources/palettes';
 import {
   COVER_TEXT_BOUNDS,
+  isSeriesOriginLayer,
   type CoverElementZone,
   type CoverTextLayer,
   type CoverTextPresetKind,
@@ -34,7 +36,8 @@ import {
 import type { StudioFontId } from '@/types/studio';
 import { nextQuarterTurn, normalizeQuarterTurn } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
-import { CURATED_FONTS, type CustomFontAsset } from './fonts';
+import { FontSelect } from './FontSelect';
+import type { CustomFontAsset } from './fonts';
 
 export interface CoverTextCardProps {
   readonly textLayers: readonly CoverTextLayer[];
@@ -44,6 +47,7 @@ export interface CoverTextCardProps {
   readonly onAddTextPreset: (preset: CoverTextPresetKind) => void;
   readonly onUpdateTextLayer: (id: string, patch: Partial<CoverTextLayer>) => void;
   readonly onQuickAlignText: (id: string, verticalSlot: 'upper' | 'center' | 'lower') => void;
+  readonly onDetachSeriesLayer?: (id: string) => void;
   readonly onDeleteTextLayer: (id: string) => void;
   readonly onCustomFontSelected?: (file: File, targetTextLayerId: string) => void;
   /** When true, omits the outer Card wrapper and header (used inside CoverElementsCard). */
@@ -58,6 +62,7 @@ export function CoverTextCard({
   onAddTextPreset,
   onUpdateTextLayer,
   onQuickAlignText,
+  onDetachSeriesLayer,
   onDeleteTextLayer,
   onCustomFontSelected,
   embedded = false,
@@ -131,6 +136,7 @@ export function CoverTextCard({
         >
           {textLayers.map((layer, idx) => {
             const isSelected = layer.id === selectedTextId;
+            const fromSeries = isSeriesOriginLayer(layer);
             const hasNewlines = /\r?\n/.test(layer.text);
             const inlineDisplayValue = hasNewlines
               ? layer.text.replace(/\r?\n/g, ' ↵ ')
@@ -176,6 +182,15 @@ export function CoverTextCard({
                   }}
                   className="min-w-0 flex-1 rounded-xs bg-transparent px-1 py-0.5 text-xs font-medium text-foreground placeholder:text-muted-foreground/70 hover:bg-background/60 focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring"
                 />
+                {fromSeries && (
+                  <Badge
+                    variant="brass"
+                    data-testid="layer-from-series-badge"
+                    className="shrink-0 px-1.5 py-0 text-[9px] font-semibold"
+                  >
+                    From Series
+                  </Badge>
+                )}
                 <Badge variant="outline" className="shrink-0 font-mono text-[9px] uppercase">
                   {layer.zone}
                 </Badge>
@@ -198,6 +213,21 @@ export function CoverTextCard({
                 >
                   <Pencil className="h-3 w-3" aria-hidden="true" />
                 </Button>
+                {fromSeries && onDetachSeriesLayer && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 shrink-0 gap-0.5 px-1.5 text-[10px] text-brass hover:text-foreground"
+                    title="Detach from Series Spines so future series syncs keep your tweaks"
+                    aria-label={`Detach text layer ${snippet} from Series Spines`}
+                    data-testid={`cover-text-detach-series-${idx}`}
+                    onClick={() => onDetachSeriesLayer(layer.id)}
+                  >
+                    <Unlink className="h-3 w-3" aria-hidden="true" />
+                    Detach
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="ghost"
@@ -249,26 +279,17 @@ export function CoverTextCard({
                 )}
               </div>
               <div className="flex items-center gap-1.5">
-                <Select
+                <FontSelect
+                  id="cover-text-font"
                   value={selectedText.fontId}
-                  onValueChange={(v) =>
-                    onUpdateTextLayer(selectedText.id, { fontId: v as StudioFontId })
+                  customFont={customFont}
+                  triggerClassName="h-8 flex-1 text-xs"
+                  triggerTestId="cover-text-font-select"
+                  customLabelStyle="family"
+                  onValueChange={(fontId: StudioFontId) =>
+                    onUpdateTextLayer(selectedText.id, { fontId })
                   }
-                >
-                  <SelectTrigger id="cover-text-font" className="h-8 flex-1 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CURATED_FONTS.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.label}
-                      </SelectItem>
-                    ))}
-                    {customFont && (
-                      <SelectItem value="custom">Custom ({customFont.familyName})</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                />
                 {onCustomFontSelected && (
                   <>
                     <Button

@@ -10,6 +10,7 @@ import {
   type StudioCanvasSpec,
 } from './canvasSpec';
 import { cloneSnapshot } from './hooks/useStudioHistory';
+import { syncLayerOrderAfterAdd } from './layerStack';
 
 export const DEFAULT_PASTE_OFFSET_MM = 6;
 export const NUDGE_STEP_MM = 1;
@@ -177,7 +178,8 @@ export function pasteClipboardItemToStudio(
   const offsetMm = resolvePasteOffsetMm(pasteIndex);
 
   if (item.kind === 'cover-image') {
-    const cloned = cloneSnapshot(item.layer);
+    const { origin: _origin, ...cloned } = cloneSnapshot(item.layer);
+    void _origin;
     const existingIds = new Set(studio.layers.map((layer) => layer.id));
     const pastedId = generateUniqueId('layer', existingIds);
     const pos = clampImagePosition(cloned, offsetMm, offsetMm, canvasBounds);
@@ -191,17 +193,23 @@ export function pasteClipboardItemToStudio(
       layoutConstraint: detachConstraintOnMove(cloned.layoutConstraint, movedX, movedY),
     };
     return {
-      studio: {
-        ...studio,
-        layers: [...studio.layers, pasted],
-      },
+      studio: syncLayerOrderAfterAdd(
+        {
+          ...studio,
+          layers: [...studio.layers, pasted],
+        },
+        [pastedId],
+        'image',
+        { afterId: item.layer.id },
+      ),
       pastedId,
       pastedKind: 'image',
     };
   }
 
   if (item.kind === 'cover-text') {
-    const cloned = cloneSnapshot(item.layer);
+    const { origin: _origin, ...cloned } = cloneSnapshot(item.layer);
+    void _origin;
     const existingIds = new Set(studio.textLayers.map((layer) => layer.id));
     const pastedId = generateUniqueId('txt', existingIds);
     const pos = clampTextPosition(cloned, offsetMm, offsetMm, canvasBounds);
@@ -227,17 +235,23 @@ export function pasteClipboardItemToStudio(
         }
       : movedText;
     return {
-      studio: {
-        ...studio,
-        textLayers: [...studio.textLayers, pasted],
-      },
+      studio: syncLayerOrderAfterAdd(
+        {
+          ...studio,
+          textLayers: [...studio.textLayers, pasted],
+        },
+        [pastedId],
+        'text',
+        { afterId: item.layer.id },
+      ),
       pastedId,
       pastedKind: 'text',
     };
   }
 
   if (item.kind === 'cover-ornament') {
-    const cloned = cloneSnapshot(item.layer);
+    const { origin: _origin, ...cloned } = cloneSnapshot(item.layer);
+    void _origin;
     const existingIds = new Set(studio.ornaments.map((layer) => layer.id));
     const prefix = cloned.presetId === 'custom-svg' ? 'svg' : 'orn';
     const pastedId = generateUniqueId(prefix, existingIds);
@@ -253,10 +267,15 @@ export function pasteClipboardItemToStudio(
       layoutConstraint: detachConstraintOnMove(cloned.layoutConstraint, movedX, movedY),
     };
     return {
-      studio: {
-        ...studio,
-        ornaments: [...studio.ornaments, pasted],
-      },
+      studio: syncLayerOrderAfterAdd(
+        {
+          ...studio,
+          ornaments: [...studio.ornaments, pasted],
+        },
+        [pastedId],
+        'ornament',
+        { afterId: item.layer.id },
+      ),
       pastedId,
       pastedKind: 'ornament',
     };

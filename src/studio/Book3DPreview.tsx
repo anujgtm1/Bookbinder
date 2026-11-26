@@ -11,6 +11,7 @@ import {
 } from './book3d';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
+import { resolveOrderedStudioElements } from './layerStack';
 import {
   getFoilSvgGradientDef,
   getSurfaceOverlayStyle,
@@ -73,6 +74,7 @@ function CoverFaceSvg({
   const foilGradient = getFoilSvgGradientDef(foilFinish);
   const foilGradientId = foilGradient ? `${prefix}-${faceId}-foil-${foilGradient.finishId}` : null;
   const foilPaint = foilGradientId ? `url(#${foilGradientId})` : null;
+  const orderedElements = useMemo(() => resolveOrderedStudioElements(studio), [studio]);
 
   const clipIdForZone = (zone: string) => {
     if (zone === 'back') return clipBackId;
@@ -158,56 +160,75 @@ function CoverFaceSvg({
         fill={studio.frontBgColor}
       />
 
-      {studio.layers.map((layer) => (
-        <g key={layer.id} clipPath={`url(#${clipIdForZone(layer.clipZone)})`}>
-          <image
-            href={layer.dataUrl}
-            x={layer.xMm}
-            y={layer.yMm}
-            width={layer.widthMm}
-            height={layer.heightMm}
-            transform={buildLayerFlipTransform(
-              layer.xMm,
-              layer.yMm,
-              layer.widthMm,
-              layer.heightMm,
-              layer.flipX,
-              layer.flipY,
-              layer.rotationDeg,
-            )}
-            preserveAspectRatio="none"
-          />
-        </g>
-      ))}
+      {/* Unified Cover Elements rendered in exact bottom-to-top layerOrder */}
+      {orderedElements.map((item) => {
+        if (item.kind === 'image') {
+          const { layer } = item;
+          return (
+            <g
+              key={layer.id}
+              data-layer-id={layer.id}
+              clipPath={`url(#${clipIdForZone(layer.clipZone)})`}
+            >
+              <image
+                href={layer.dataUrl}
+                x={layer.xMm}
+                y={layer.yMm}
+                width={layer.widthMm}
+                height={layer.heightMm}
+                transform={buildLayerFlipTransform(
+                  layer.xMm,
+                  layer.yMm,
+                  layer.widthMm,
+                  layer.heightMm,
+                  layer.flipX,
+                  layer.flipY,
+                  layer.rotationDeg,
+                )}
+                preserveAspectRatio="none"
+              />
+              {(layer.dimOpacity ?? 0) > 0 && (
+                <rect
+                  x={layer.xMm}
+                  y={layer.yMm}
+                  width={layer.widthMm}
+                  height={layer.heightMm}
+                  fill={`rgba(10, 12, 16, ${layer.dimOpacity})`}
+                />
+              )}
+            </g>
+          );
+        }
 
-      {/* Classic Bookbindery Vector Ornaments & Custom SVG Stamps */}
-      {(studio.ornaments ?? []).map((orn) => {
-        const d = buildOrnamentCompoundPath(orn);
-        if (!d) return null;
-        const style = getOrnamentSvgStyle(orn);
-        const ornamentFill =
-          foilPaint && style.fill && style.fill !== 'none' ? foilPaint : style.fill;
-        const ornamentStroke = style.stroke !== 'none' ? (foilPaint ?? style.stroke) : undefined;
-        return (
-          <path
-            key={orn.id}
-            d={d}
-            fill={ornamentFill}
-            stroke={ornamentStroke}
-            strokeWidth={style.strokeWidthMm > 0 ? style.strokeWidthMm : undefined}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        );
-      })}
+        if (item.kind === 'ornament') {
+          const { layer: orn } = item;
+          const d = buildOrnamentCompoundPath(orn);
+          if (!d) return null;
+          const style = getOrnamentSvgStyle(orn);
+          const ornamentFill =
+            foilPaint && style.fill && style.fill !== 'none' ? foilPaint : style.fill;
+          const ornamentStroke = style.stroke !== 'none' ? (foilPaint ?? style.stroke) : undefined;
+          return (
+            <path
+              key={orn.id}
+              data-ornament-id={orn.id}
+              d={d}
+              fill={ornamentFill}
+              stroke={ornamentStroke}
+              strokeWidth={style.strokeWidthMm > 0 ? style.strokeWidthMm : undefined}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          );
+        }
 
-      {/* Draggable Cover Text Layers (Front / Back / Spine) */}
-      {(studio.textLayers ?? []).map((layer) => {
+        const { layer } = item;
         const layerFamily = resolveFontCssFamily(layer.fontId, customFont);
         const anchor = layer.align === 'left' ? 'start' : layer.align === 'right' ? 'end' : 'middle';
         return (
           <g
             key={layer.id}
+            data-text-id={layer.id}
             transform={buildPointFlipTransform(
               layer.xMm,
               layer.yMm,
@@ -216,19 +237,19 @@ function CoverFaceSvg({
               layer.rotationDeg,
             )}
           >
-            {computeCoverTextLinePlacements(layer).map((item, idx) => (
+            {computeCoverTextLinePlacements(layer).map((lineItem, idx) => (
               <text
                 key={`${layer.id}-${idx}`}
-                x={item.anchorXMm}
-                y={item.anchorYMm}
-                fill={foilPaint ?? item.color}
+                x={lineItem.anchorXMm}
+                y={lineItem.anchorYMm}
+                fill={foilPaint ?? lineItem.color}
                 fontFamily={layerFamily}
-                fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
-                letterSpacing={`${item.letterSpacingEm}em`}
+                fontSize={UnitConverter.pointsToMm(lineItem.fontSizePt)}
+                letterSpacing={`${lineItem.letterSpacingEm}em`}
                 textAnchor={anchor}
                 dominantBaseline="middle"
               >
-                {item.text}
+                {lineItem.text}
               </text>
             ))}
           </g>

@@ -1,0 +1,218 @@
+/*
+ * Atelier Shell — Left Smoked-Walnut Navigation Rail & Viewport-Aware Native Popovers
+ * Follows modern-web-guidance:
+ * - navbar: single <nav> landmark with [aria-current="page"] non-color indicator (>= 3:1 contrast)
+ * - viewport-aware-dropdowns: native popover="auto" with @supports (position-area: block-end)
+ *   progressive enhancement (never setting inset: auto or margin: 0 unconditionally on [popover])
+ */
+
+.atelier-nav-rail {
+  --rail-bg: #1d150f;
+  --rail-bg-elevated: #2a1f17;
+  --rail-bg-hover: rgba(245, 239, 228, 0.08);
+  --rail-bg-active: rgba(245, 239, 228, 0.14);
+  --rail-fg: #f5efe4;
+  --rail-fg-muted: #d2c1a8;
+  --rail-border: rgba(222, 183, 101, 0.28);
+  --rail-divider: rgba(222, 183, 101, 0.24);
+  --rail-accent: #ef6f54;
+  --rail-brass: #e2bd6f;
+
+  background-color: var(--rail-bg);
+  background-image: linear-gradient(180deg, rgba(46, 33, 22, 0.55), rgba(20, 14, 9, 0.72));
+  color: var(--rail-fg);
+  border-color: var(--rail-border);
+  box-shadow: inset -1px 0 0 rgba(222, 183, 101, 0.14);
+}
+
+.atelier-nav-group-label {
+  color: var(--rail-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.atelier-nav-divider {
+  background-color: var(--rail-divider);
+}
+
+.atelier-nav-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-color: transparent;
+  color: var(--rail-fg-muted);
+  cursor: pointer;
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--rail-accent);
+    outline-offset: 2px;
+  }
+
+  @media (hover: hover) {
+    &:hover:not([aria-current='page']) {
+      background-color: var(--rail-bg-hover);
+      color: var(--rail-fg);
+      border-color: rgba(222, 183, 101, 0.22);
+    }
+  }
+
+  &[aria-current='page'] {
+    background-color: var(--rail-bg-active);
+    color: var(--rail-fg);
+    border-color: rgba(239, 111, 84, 0.48);
+    font-weight: 600;
+
+    & .atelier-nav-item-icon {
+      color: var(--rail-accent);
+    }
+
+    &::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0.35rem;
+      inset-block-end: 0;
+      block-size: 3px;
+      border-radius: 2px 2px 0 0;
+      background-color: var(--rail-accent);
+    }
+  }
+}
+
+@media (min-width: 1024px) {
+  .atelier-nav-item[aria-current='page']::before {
+    inset-inline: 0 auto;
+    inset-block: 0.35rem;
+    inline-size: 3px;
+    block-size: auto;
+    border-radius: 0 2px 2px 0;
+  }
+}
+
+.atelier-nav-colophon {
+  background-color: #f6f0e2;
+  border: 1px solid rgba(226, 189, 111, 0.65);
+  padding: 2px;
+}
+
+/* Native Popover API overlays with progressive CSS Anchor Positioning */
+[popover].atelier-popover {
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--brass);
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow:
+    0 20px 42px -12px rgba(8, 4, 1, 0.48),
+    0 4px 12px -2px rgba(8, 4, 1, 0.28);
+  max-inline-size: calc(100dvw - 1.5rem);
+  max-block-size: calc(100dvh - 5rem);
+  overflow: auto;
+  padding: 0;
+}
+
+[popover].atelier-popover:is(:popover-open, .\:popover-open) {
+  display: block;
+}
+
+@supports not selector(:popover-open) {
+  [popover].atelier-popover:not(.\:popover-open) {
+    display: none;
+  }
+}
+
+@supports (position-area: block-end) {
+  [popover].atelier-popover {
+    inset: auto;
+    margin: 0;
+    margin-block-start: 0.375rem;
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  }
+
+  [popover].atelier-popover.atelier-popover--end {
+    position-area: block-end span-inline-start;
+  }
+}
+
+@supports not (position-area: block-end) {
+  [popover].atelier-popover {
+    margin: auto;
+  }
+}
+
+/* Fallback floating panel styling when native Popover API is unavailable (e.g. legacy browsers / jsdom) */
+.atelier-popover-fallback {
+  position: fixed;
+  z-index: 50;
+  inset-block-start: 3.75rem;
+  inset-inline-start: 1rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--brass);
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow:
+    0 20px 42px -12px rgba(8, 4, 1, 0.48),
+    0 4px 12px -2px rgba(8, 4, 1, 0.28);
+  max-inline-size: calc(100dvw - 1.5rem);
+  max-block-size: calc(100dvh - 5rem);
+  overflow: auto;
+}
+
+.atelier-popover-fallback--end {
+  inset-inline-start: auto;
+  inset-inline-end: 1rem;
+}
+
+@media (forced-colors: active) {
+  .atelier-nav-rail {
+    background-image: none;
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+    box-shadow: none;
+  }
+
+  .atelier-nav-divider {
+    background-color: ButtonText;
+  }
+
+  .atelier-nav-item {
+    color: ButtonText;
+    border-color: transparent;
+  }
+
+  .atelier-nav-item[aria-current='page'] {
+    background-color: Canvas;
+    color: Highlight;
+    border-color: Highlight;
+
+    & .atelier-nav-item-icon {
+      color: Highlight;
+    }
+
+    &::before {
+      background-color: Highlight;
+    }
+  }
+
+  [popover].atelier-popover,
+  .atelier-popover-fallback {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+    box-shadow: none;
+  }
+}

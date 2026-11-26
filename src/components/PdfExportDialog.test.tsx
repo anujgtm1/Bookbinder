@@ -12,6 +12,11 @@ import {
   type PrintMediaId,
   type SplitMode,
 } from '@/types/bookParams';
+import {
+  asProjectId,
+  type ProjectId,
+  type SavedProjectSummary,
+} from '@/types/projectLibrary';
 import { UnitConverter } from '@/types/units';
 import {
   PdfExportDialog,
@@ -26,6 +31,10 @@ function StatefulPdfExportDialog({
   initialPageSize = 'letter',
   initialSplitMode = 'single',
   defaultExportLayerMode = 'full',
+  savedBookSummaries,
+  activeProjectId,
+  activeBookName,
+  exportProgressLabel,
   onReduceFlapWidth,
   onDetachSlipFlaps,
   onConfirmExport,
@@ -37,6 +46,10 @@ function StatefulPdfExportDialog({
   readonly initialPageSize?: PageSizeId;
   readonly initialSplitMode?: SplitMode;
   readonly defaultExportLayerMode?: CoverPdfLayerMode;
+  readonly savedBookSummaries?: readonly SavedProjectSummary[];
+  readonly activeProjectId?: ProjectId | null;
+  readonly activeBookName?: string;
+  readonly exportProgressLabel?: string | null;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
   readonly onDetachSlipFlaps?: () => void;
   readonly onConfirmExport: (selection: PdfExportSelection) => void;
@@ -61,6 +74,10 @@ function StatefulPdfExportDialog({
       onReduceFlapWidth={onReduceFlapWidth}
       onDetachSlipFlaps={onDetachSlipFlaps}
       defaultExportLayerMode={defaultExportLayerMode}
+      savedBookSummaries={savedBookSummaries}
+      activeProjectId={activeProjectId}
+      activeBookName={activeBookName}
+      exportProgressLabel={exportProgressLabel}
       onConfirmExport={onConfirmExport}
       onClose={onClose}
     />
@@ -668,5 +685,190 @@ describe('PdfExportDialog', () => {
     expect(screen.getByTestId('pdf-opt-cut-lines')).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('pdf-opt-fold-ticks')).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('pdf-opt-fold-lines')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('shows cut-sheet multi-cover toggle on Tabloid & Letter, lists other My Books, auto-switches current copies to 1 on add, and emits sheetNesting + multiBookQueueEntries', async () => {
+    const user = userEvent.setup();
+    const a6PaperbackGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 12,
+      printMedia: 'tabloid',
+    });
+    const activeId = asProjectId('book-vol-2');
+    const otherId = asProjectId('book-vol-1');
+    const savedSummaries: readonly SavedProjectSummary[] = [
+      {
+        id: activeId,
+        name: 'Volume Two',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+        bindingStyle: 'paperback-wrap',
+        pbWidthMm: 105,
+        pbHeightMm: 148,
+        pbThicknessMm: 12,
+        wrapPdfWidthMm: 228,
+        wrapPdfHeightMm: 154,
+        thumbnailDataUrl: null,
+        hasCustomFont: false,
+      },
+      {
+        id: otherId,
+        name: 'Volume One',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        bindingStyle: 'paperback-wrap',
+        pbWidthMm: 105,
+        pbHeightMm: 148,
+        pbThicknessMm: 12,
+        wrapPdfWidthMm: 228,
+        wrapPdfHeightMm: 154,
+        thumbnailDataUrl: null,
+        hasCustomFont: false,
+      },
+    ];
+    const onConfirmExport = vi.fn();
+
+    render(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={a6PaperbackGeom}
+        initialMedia="letter"
+        savedBookSummaries={savedSummaries}
+        activeProjectId={activeId}
+        activeBookName="Volume Two"
+        onConfirmExport={onConfirmExport}
+      />,
+    );
+
+    // Multi-cover section is visible on US Letter too (not restricted to rolls)
+    expect(screen.getByTestId('pdf-sheet-nesting-section')).toBeInTheDocument();
+    expect(screen.getByTestId('pdf-roll-capacity-badge')).toHaveTextContent(
+      /Fits 1 per US Letter sheet/i,
+    );
+
+    // Switch to Tabloid -> capacity updates to 2 per Tabloid sheet
+    await user.click(screen.getByTestId('pdf-media-option-tabloid'));
+    expect(screen.getByTestId('pdf-roll-capacity-badge')).toHaveTextContent(
+      /Fits 2 per Tabloid sheet/i,
+    );
+
+    // Enable Combine Multiple Covers / Multi-Up -> defaults to 2 copies since 2 fit on Tabloid
+    await user.click(screen.getByTestId('pdf-roll-nesting-toggle'));
+    expect(screen.getByTestId('pdf-roll-copies-input')).toHaveValue(2);
+    expect(screen.getByTestId('pdf-sheet-nest-preview')).toBeInTheDocument();
+
+    // "Add from My Books" picker shows Volume One and excludes active book Volume Two
+    const picker = screen.getByTestId('pdf-my-books-picker');
+    expect(picker).toHaveTextContent('Volume One');
+    expect(picker).not.toHaveTextContent('Volume Two');
+
+    // Clicking + Add on Volume One automatically switches Copies of Current Cover to 1
+    await user.click(screen.getByTestId('pdf-add-saved-book'));
+    expect(screen.getByTestId('pdf-roll-copies-input')).toHaveValue(1);
+    expect(screen.getByTestId('pdf-sheet-nest-count')).toHaveTextContent('1 sheet');
+    expect(screen.getByTestId('pdf-sheet-nest-covers')).toHaveTextContent('2 covers');
+    expect(screen.getAllByTestId('sheet-nest-placed-item')).toHaveLength(2);
+    expect(screen.getByTestId('pdf-export-summary')).toHaveTextContent(
+      /1 sheet • Tabloid .* • 2 covers/i,
+    );
+
+    // Confirm export emits sheetNesting and multiBookQueueEntries with kind: 'saved-project'
+    await user.click(screen.getByTestId('pdf-export-confirm-btn'));
+    expect(onConfirmExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: 'cover-styled',
+        printMediaId: 'tabloid',
+        sheetNesting: expect.objectContaining({
+          enabled: true,
+          copies: 1,
+          gutterMm: 10,
+          allowRotation: true,
+        }),
+        multiBookQueueEntries: [
+          expect.objectContaining({
+            kind: 'saved-project',
+            projectId: otherId,
+            label: 'Volume One',
+            copies: 1,
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('paginates multi-sheet preview when covers overflow and warns with 1-click Tabloid switch when a queued book exceeds sheet bounds', async () => {
+    const user = userEvent.setup();
+    const a6PaperbackGeom = calculateCaseGeometry({
+      ...DEFAULT_BOOK_PARAMETERS,
+      bindingStyle: 'paperback-wrap',
+      pbWidthMm: 105,
+      pbHeightMm: 148,
+      pbThicknessMm: 12,
+      printMedia: 'letter',
+    });
+    const activeId = asProjectId('book-small');
+    const largeId = asProjectId('book-large');
+    const savedSummaries: readonly SavedProjectSummary[] = [
+      {
+        id: activeId,
+        name: 'Pocket Edition',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        bindingStyle: 'paperback-wrap',
+        pbWidthMm: 105,
+        pbHeightMm: 148,
+        pbThicknessMm: 12,
+        wrapPdfWidthMm: 228,
+        wrapPdfHeightMm: 154,
+        thumbnailDataUrl: null,
+        hasCustomFont: false,
+      },
+      {
+        id: largeId,
+        name: 'Large Hardcover',
+        createdAt: '2026-01-02T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+        bindingStyle: 'rigid-case',
+        pbWidthMm: 152,
+        pbHeightMm: 228,
+        pbThicknessMm: 28,
+        wrapPdfWidthMm: 400,
+        wrapPdfHeightMm: 268,
+        thumbnailDataUrl: null,
+        hasCustomFont: false,
+      },
+    ];
+
+    render(
+      <StatefulPdfExportDialog
+        target="cover-styled"
+        geometry={a6PaperbackGeom}
+        initialMedia="letter"
+        savedBookSummaries={savedSummaries}
+        activeProjectId={activeId}
+        activeBookName="Pocket Edition"
+        onConfirmExport={vi.fn()}
+      />,
+    );
+
+    // Enable multi-cover on US Letter and set 2 copies -> overflows to 2 sheets with pagination controls
+    await user.click(screen.getByTestId('pdf-roll-nesting-toggle'));
+    await user.click(screen.getByTestId('pdf-roll-copies-2'));
+    expect(screen.getByTestId('pdf-sheet-nest-pagination')).toBeInTheDocument();
+    expect(screen.getByTestId('pdf-sheet-nest-page-1')).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByTestId('pdf-sheet-nest-page-2'));
+    expect(screen.getByTestId('pdf-sheet-nest-page-2')).toHaveAttribute('aria-pressed', 'true');
+
+    // Add oversized Large Hardcover on US Letter -> warning alert offers 1-click switch to Tabloid
+    await user.click(screen.getByTestId('pdf-add-saved-book'));
+    expect(screen.getByTestId('pdf-sheet-nest-unplaced-warning')).toHaveTextContent(
+      'Large Hardcover',
+    );
+    await user.click(screen.getByTestId('pdf-sheet-nest-switch-tabloid'));
+    expect(screen.getByTestId('pdf-media-option-tabloid')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('pdf-sheet-nest-unplaced-warning')).not.toBeInTheDocument();
   });
 });

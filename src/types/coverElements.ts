@@ -7,25 +7,21 @@ import {
   type CoverTextSemanticRole,
   type LayerLayoutConstraint,
 } from './layoutConstraints';
-import type { CuratedFontId, StudioFontId } from './studio';
+import { CURATED_FONT_IDS, type CuratedFontId, type StudioFontId } from './studio';
 import {
+  isSeriesOriginLayer,
   nextQuarterTurn,
   normalizeQuarterTurn,
+  parseLayerOrigin,
+  type LayerOrigin,
   type QuarterTurnDeg,
   type ResizeCorner,
 } from './studioLayer';
 import { UnitConverter, clampFinite, roundTo } from './units';
 
-export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
+export { isSeriesOriginLayer, type LayerOrigin };
 
-const VALID_CURATED_FONT_IDS: readonly CuratedFontId[] = [
-  'eb-garamond',
-  'libre-baskerville',
-  'cormorant-garamond',
-  'lora',
-  'inter',
-  'montserrat',
-];
+export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
 
 export type CoverElementZone = 'front' | 'back' | 'spine';
 export type TextAlign = 'left' | 'center' | 'right';
@@ -33,46 +29,53 @@ export type CoverTextPresetKind = 'text' | 'front-title' | 'front-author' | 'bac
 
 export type ClassicOrnamentCategory = 'frames' | 'corners' | 'dividers' | 'emblems' | 'spine';
 
-export type ClassicOrnamentId =
-  | 'frame-single-rule'
-  | 'frame-double-rule'
-  | 'frame-art-deco'
-  | 'frame-notched-corner'
-  | 'corners-classic-scroll'
-  | 'corners-deco-chevron'
-  | 'divider-diamond-rule'
-  | 'divider-fleuron-leaf'
-  | 'divider-celestial-stars'
-  | 'emblem-compass-rose'
-  | 'emblem-botanical-sprig'
-  | 'spine-classic-bands'
-  | 'spine-title-cartouche'
-  | 'spine-head-tail-bands'
-  | 'spine-botanical-vine'
-  | 'spine-celestial-column'
-  | 'spine-diamond-lattice'
-  | 'custom-svg';
+export type OrnamentStyleTag = 'classic' | 'fantasy' | 'art-deco' | 'botanical' | 'scifi-modern';
 
-export const CLASSIC_ORNAMENT_IDS: readonly ClassicOrnamentId[] = [
+export const CLASSIC_ORNAMENT_IDS = [
   'frame-single-rule',
   'frame-double-rule',
   'frame-art-deco',
   'frame-notched-corner',
+  'frame-gothic-arch',
+  'frame-deco-archway',
+  'frame-modern-editorial',
   'corners-classic-scroll',
   'corners-deco-chevron',
+  'corners-deco-fan',
+  'corners-botanical-vine',
   'divider-diamond-rule',
   'divider-fleuron-leaf',
   'divider-celestial-stars',
+  'divider-sword-rule',
+  'divider-deco-fan',
+  'divider-vine-flourish',
+  'divider-geometric-dots',
   'emblem-compass-rose',
   'emblem-botanical-sprig',
+  'emblem-crescent-stars',
+  'emblem-dagger-vines',
+  'emblem-coiled-serpent',
+  'emblem-filigree-crown',
+  'emblem-tarot-sun',
+  'emblem-deco-sunburst',
+  'emblem-lunar-moth',
+  'emblem-olive-wreath',
+  'emblem-rose-bloom',
+  'emblem-orbital-rings',
+  'emblem-bauhaus-arches',
   'spine-classic-bands',
   'spine-title-cartouche',
   'spine-head-tail-bands',
   'spine-botanical-vine',
   'spine-celestial-column',
   'spine-diamond-lattice',
+  'spine-moon-phases',
+  'spine-deco-sunburst',
+  'spine-orbital-axis',
   'custom-svg',
 ] as const;
+
+export type ClassicOrnamentId = (typeof CLASSIC_ORNAMENT_IDS)[number];
 
 export interface CoverTextLayer {
   readonly id: string;
@@ -99,6 +102,8 @@ export interface CoverTextLayer {
   readonly role?: CoverTextSemanticRole;
   /** Optional declarative layout pin/fit condition */
   readonly layoutConstraint?: LayerLayoutConstraint;
+  /** Optional provenance marker when layer was compiled from Series Spines */
+  readonly origin?: LayerOrigin;
 }
 
 export interface CoverOrnamentLayer {
@@ -125,6 +130,8 @@ export interface CoverOrnamentLayer {
   readonly rotationDeg?: QuarterTurnDeg;
   /** Optional declarative layout pin/margin condition */
   readonly layoutConstraint?: LayerLayoutConstraint;
+  /** Optional provenance marker when layer was compiled from Series Spines */
+  readonly origin?: LayerOrigin;
 }
 
 /**
@@ -200,7 +207,7 @@ function parseAlign(value: unknown): TextAlign {
 
 function parseFontId(value: unknown): StudioFontId {
   if (value === 'custom') return 'custom';
-  if (typeof value === 'string' && (VALID_CURATED_FONT_IDS as readonly string[]).includes(value)) {
+  if (typeof value === 'string' && (CURATED_FONT_IDS as readonly string[]).includes(value)) {
     return value as CuratedFontId;
   }
   return 'eb-garamond';
@@ -342,13 +349,16 @@ export const CoverTextLayerModel = {
   serialize(layer: CoverTextLayer): CoverTextLayer {
     const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
     const role = sanitizeCoverTextRole(layer.role);
-    const { role: _r, layoutConstraint: _c, ...rest } = layer;
+    const origin = parseLayerOrigin(layer.origin);
+    const { role: _r, layoutConstraint: _c, origin: _o, ...rest } = layer;
     void _r;
     void _c;
+    void _o;
     return {
       ...rest,
       ...(role ? { role } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 
@@ -358,6 +368,7 @@ export const CoverTextLayerModel = {
     if (typeof obj.text !== 'string') return null;
     const role = sanitizeCoverTextRole(obj.role);
     const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+    const origin = parseLayerOrigin(obj.origin);
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateElementId('txt'),
       text: obj.text.slice(0, 600),
@@ -391,6 +402,7 @@ export const CoverTextLayerModel = {
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
       ...(role ? { role } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 } as const;
@@ -670,13 +682,16 @@ export const CoverOrnamentLayerModel = {
 
   serialize(layer: CoverOrnamentLayer): CoverOrnamentLayer {
     const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
-    const { layoutConstraint: _c, ...rest } = layer;
+    const origin = parseLayerOrigin(layer.origin);
+    const { layoutConstraint: _c, origin: _o, ...rest } = layer;
     void _c;
+    void _o;
     return {
       ...rest,
       ...(layer.customSvgPaths ? { customSvgPaths: [...layer.customSvgPaths] } : {}),
       ...(layer.customSvgViewBox ? { customSvgViewBox: { ...layer.customSvgViewBox } } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 
@@ -713,6 +728,7 @@ export const CoverOrnamentLayerModel = {
     }
 
     const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+    const origin = parseLayerOrigin(obj.origin);
 
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateElementId('orn'),
@@ -747,6 +763,7 @@ export const CoverOrnamentLayerModel = {
       flipY: obj.flipY === true ? true : undefined,
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 } as const;

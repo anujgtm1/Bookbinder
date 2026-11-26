@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Layers } from 'lucide-react';
-import { useId } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import {
@@ -17,6 +17,7 @@ import {
   type PrinterMargins,
 } from '@/core/printerMargins';
 import type { RollNestPlan } from '@/core/rollNesting';
+import type { SheetNestPlan } from '@/core/sheetNesting';
 import { getPrintMediaSpec } from '@/resources/paperSpecs';
 import type { PrintMediaId, SplitMode } from '@/types/bookParams';
 import {
@@ -44,6 +45,8 @@ export interface PdfSheetPreviewProps {
   readonly printerMargins?: PrinterMargins;
   readonly customRollWidthMm?: number;
   readonly rollNestPlan?: RollNestPlan | null;
+  readonly sheetNestPlan?: SheetNestPlan | null;
+  readonly sheetNestItemLabels?: ReadonlyMap<string, string>;
   readonly onChangePrintMedia: (mediaId: PrintMediaId) => void;
   readonly onChangeSplitMode?: (mode: SplitMode) => void;
   readonly onReduceFlapWidth?: (widthMm: number) => void;
@@ -307,6 +310,8 @@ export function PdfSheetPreviewSvg({
   printerMargins,
   customRollWidthMm,
   rollNestPlan,
+  sheetNestPlan,
+  sheetNestItemLabels,
   onChangePrintMedia,
   onChangeSplitMode,
   onReduceFlapWidth,
@@ -320,6 +325,17 @@ export function PdfSheetPreviewSvg({
   const tile1HatchId = `${uid}-margin-tile-1`;
   const tile2HatchId = `${uid}-margin-tile-2`;
   const rollHatchId = `${uid}-margin-roll`;
+  const sheetNestHatchId = `${uid}-margin-sheet-nest`;
+  const [activeSheetPageIdx, setActiveSheetPageIdx] = useState(0);
+  const sheetNestPageCount = sheetNestPlan?.pages.length ?? 0;
+
+  useEffect(() => {
+    setActiveSheetPageIdx((prev) => {
+      if (sheetNestPageCount <= 1) return 0;
+      return prev >= sheetNestPageCount ? sheetNestPageCount - 1 : prev;
+    });
+  }, [sheetNestPageCount]);
+
   const effectiveMargins = printerMargins
     ? clampPrinterMargins(printerMargins)
     : DEFAULT_PRINTER_MARGINS;
@@ -812,6 +828,314 @@ export function PdfSheetPreviewSvg({
             {rollNestPlan.unplacedIds.length === 1 ? 'item exceeds' : 'items exceed'} the printable
             roll width ({roundTo(rollNestPlan.printableWidthMm, 1)} mm) and could not be placed.
           </p>
+        )}
+      </div>
+    );
+  }
+
+  // 2c. Desktop Cut-Sheet Multi-Book / Multi-Up Preview
+  if (splitMode === 'single' && sheetNestPlan) {
+    const sheetW = Math.max(1, sheetNestPlan.sheetWidthMm);
+    const sheetH = Math.max(1, sheetNestPlan.sheetHeightMm);
+    const safeBox = sheetNestPlan.printableSafeBox;
+    const activeSheetSpec = getPrintMediaSpec(sheetNestPlan.mediaId);
+    const tabloidSpec = getPrintMediaSpec('tabloid');
+    const roll24Spec = getPrintMediaSpec('roll-24');
+    const orientationLabel = sheetNestPlan.orientation === 'landscape' ? 'Landscape' : 'Portrait';
+    const safePageIdx =
+      sheetNestPlan.pages.length > 0
+        ? Math.min(activeSheetPageIdx, sheetNestPlan.pages.length - 1)
+        : 0;
+    const activePage = sheetNestPlan.pages[safePageIdx] ?? null;
+    const pagePlacements = activePage?.placements ?? [];
+
+    // Assign stable palette colors and total copy counts across all pages
+    const itemColorMap = new Map<string, (typeof ROLL_ITEM_PALETTE)[number]>();
+    const copyCounts = new Map<string, number>();
+    for (const page of sheetNestPlan.pages) {
+      for (const rect of page.placements) {
+        copyCounts.set(rect.itemId, (copyCounts.get(rect.itemId) ?? 0) + 1);
+        if (!itemColorMap.has(rect.itemId)) {
+          const idx = itemColorMap.size % ROLL_ITEM_PALETTE.length;
+          itemColorMap.set(rect.itemId, ROLL_ITEM_PALETTE[idx]);
+        }
+      }
+    }
+
+    // Group active page placements into shelf rows for dashed cut-gutter guides
+    const shelfRows = new Map<number, (typeof pagePlacements)[number][]>();
+    for (const rect of pagePlacements) {
+      const key = roundTo(rect.yMm, 1);
+      const list = shelfRows.get(key) ?? [];
+      list.push(rect);
+      shelfRows.set(key, list);
+    }
+    const sortedRowYs = [...shelfRows.keys()].sort((a, b) => a - b);
+
+    const unplacedNames = sheetNestPlan.unplacedIds.map(
+      (id) => sheetNestItemLabels?.get(id) ?? id,
+    );
+    const sheetCount = sheetNestPlan.pages.length;
+
+    return (
+      <div
+        data-testid="pdf-export-sheet-preview"
+        className="drafting-surface flex flex-col gap-2.5 rounded-lg border border-border p-3.5"
+      >
+        <div
+          data-testid="pdf-sheet-nest-preview"
+          className="flex flex-wrap items-center justify-between gap-2 text-xs"
+        >
+          <span
+            className={`flex items-center gap-1.5 font-medium ${
+              sheetNestPlan.totalPlacedCount > 0 ? 'status-success-text' : 'text-destructive'
+            }`}
+          >
+            {sheetNestPlan.totalPlacedCount > 0 ? (
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            ) : (
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            )}
+            Multi-Cover Layout — {activeSheetSpec.shortLabel} {orientationLabel}
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+            <span
+              data-testid="pdf-sheet-nest-count"
+              className="rounded-full border border-border bg-card/85 px-2 py-0.5 text-foreground"
+            >
+              {sheetCount} {sheetCount === 1 ? 'sheet' : 'sheets'}
+            </span>
+            <span
+              data-testid="pdf-sheet-nest-covers"
+              className="rounded-full border border-border bg-card/85 px-2 py-0.5 text-foreground"
+            >
+              {sheetNestPlan.totalPlacedCount}{' '}
+              {sheetNestPlan.totalPlacedCount === 1 ? 'cover' : 'covers'}
+            </span>
+            <span className="rounded-full border border-border bg-card/85 px-2 py-0.5">
+              {orientationLabel}
+            </span>
+            <span className="rounded-full border border-border bg-card/85 px-2 py-0.5">
+              {sheetNestPlan.overallEfficiencyPct}% used
+            </span>
+          </div>
+        </div>
+
+        {sheetCount > 1 && (
+          <div
+            data-testid="pdf-sheet-nest-pagination"
+            role="group"
+            aria-label="Preview sheet page"
+            className="flex flex-wrap items-center justify-center gap-1.5"
+          >
+            {sheetNestPlan.pages.map((page) => {
+              const isSelected = page.pageIndex === safePageIdx;
+              return (
+                <Button
+                  key={page.pageIndex}
+                  type="button"
+                  size="sm"
+                  variant={isSelected ? 'default' : 'outline'}
+                  aria-pressed={isSelected}
+                  data-testid={`pdf-sheet-nest-page-${page.pageIndex + 1}`}
+                  className="h-6 px-2.5 font-mono text-[11px]"
+                  onClick={() => setActiveSheetPageIdx(page.pageIndex)}
+                >
+                  Sheet {page.pageIndex + 1}
+                </Button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center justify-center py-1">
+          <svg
+            role="img"
+            aria-label={`Multi-cover sheet preview on ${activeSheetSpec.label} ${orientationLabel}${
+              sheetCount > 1 ? `, Sheet ${safePageIdx + 1} of ${sheetCount}` : ''
+            }`}
+            viewBox={`0 0 ${sheetW} ${sheetH}`}
+            style={{ aspectRatio: `${sheetW} / ${sheetH}` }}
+            className="h-52 max-w-full rounded border border-border/90 bg-[#fffdf9] shadow-xs"
+          >
+            <UnprintableMarginStrips
+              sheetW={sheetW}
+              sheetH={sheetH}
+              margins={effectiveMargins}
+              hatchId={sheetNestHatchId}
+            />
+
+            {/* Printable safe-box boundary */}
+            <rect
+              x={safeBox.xMm}
+              y={safeBox.yMm}
+              width={safeBox.widthMm}
+              height={safeBox.heightMm}
+              fill="none"
+              stroke="#94a3b8"
+              strokeWidth={Math.max(0.8, sheetW * 0.0022)}
+              strokeDasharray="5 3.5"
+            />
+
+            {/* Dashed cut-gutter lines between placed covers */}
+            {sortedRowYs.map((rowY, rowIdx) => {
+              const rowRects = (shelfRows.get(rowY) ?? []).slice().sort((a, b) => a.xMm - b.xMm);
+              const rowMaxH = Math.max(...rowRects.map((r) => r.heightMm), 0);
+              const nextRowY = sortedRowYs[rowIdx + 1];
+              return (
+                <g key={rowY} aria-hidden="true">
+                  {rowRects.slice(0, -1).map((leftRect, i) => {
+                    const rightRect = rowRects[i + 1];
+                    const midX = (leftRect.xMm + leftRect.widthMm + rightRect.xMm) / 2;
+                    return (
+                      <line
+                        key={`${leftRect.itemId}-${leftRect.copyIndex}-v`}
+                        x1={midX}
+                        y1={rowY}
+                        x2={midX}
+                        y2={rowY + rowMaxH}
+                        stroke="#64748b"
+                        strokeWidth={Math.max(0.8, sheetW * 0.002)}
+                        strokeDasharray="4 3"
+                      />
+                    );
+                  })}
+                  {nextRowY !== undefined && (
+                    <line
+                      x1={safeBox.xMm}
+                      y1={(rowY + rowMaxH + nextRowY) / 2}
+                      x2={safeBox.xMm + safeBox.widthMm}
+                      y2={(rowY + rowMaxH + nextRowY) / 2}
+                      stroke="#64748b"
+                      strokeWidth={Math.max(0.8, sheetW * 0.002)}
+                      strokeDasharray="4 3"
+                    />
+                  )}
+                </g>
+              );
+            })}
+
+            {/* Placed covers on the active sheet */}
+            {pagePlacements.map((rect) => {
+              const palette = itemColorMap.get(rect.itemId) ?? ROLL_ITEM_PALETTE[0];
+              const totalCopies = copyCounts.get(rect.itemId) ?? 1;
+              const baseName =
+                totalCopies > 1 ? `${rect.label} #${rect.copyIndex + 1}` : rect.label;
+              const titleLabel = rect.rotated90 ? `${baseName} (90°)` : baseName;
+              const fontSize = Math.max(
+                6.5,
+                Math.min(13, Math.min(rect.widthMm, rect.heightMm) * 0.095),
+              );
+              const dimFontSize = Math.max(5.5, fontSize * 0.75);
+              return (
+                <g
+                  key={`${rect.itemId}-${rect.copyIndex}`}
+                  data-testid="sheet-nest-placed-item"
+                >
+                  <rect
+                    x={rect.xMm}
+                    y={rect.yMm}
+                    width={rect.widthMm}
+                    height={rect.heightMm}
+                    fill={palette.fill}
+                    stroke={palette.stroke}
+                    strokeWidth={Math.max(1.0, sheetW * 0.003)}
+                    rx={1.5}
+                  />
+                  <text
+                    x={rect.xMm + rect.widthMm / 2}
+                    y={rect.yMm + rect.heightMm / 2 - dimFontSize * 0.5}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={fontSize}
+                    fontWeight={600}
+                    fill={palette.text}
+                  >
+                    {titleLabel}
+                  </text>
+                  <text
+                    x={rect.xMm + rect.widthMm / 2}
+                    y={rect.yMm + rect.heightMm / 2 + fontSize * 0.72}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize={dimFontSize}
+                    fontFamily="monospace"
+                    fill={palette.text}
+                    opacity={0.85}
+                  >
+                    {roundTo(rect.widthMm, 0)} × {roundTo(rect.heightMm, 0)} mm
+                  </text>
+                </g>
+              );
+            })}
+
+            {includeScaleBar && safeBox.widthMm >= 60 && safeBox.heightMm >= 20 && (
+              <ScaleBarSvg
+                x={safeBox.xMm + 2}
+                y={Math.max(safeBox.yMm + 2, safeBox.yMm + safeBox.heightMm - 11)}
+              />
+            )}
+          </svg>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>
+            Sheet:{' '}
+            <strong className="font-mono">
+              {roundTo(sheetW, 1)} × {roundTo(sheetH, 1)} mm
+            </strong>{' '}
+            • Gutter: <strong className="font-mono">{sheetNestPlan.gutterMm} mm</strong>
+          </span>
+          <span>
+            {sheetCount > 1 && activePage
+              ? `Sheet ${safePageIdx + 1} used: `
+              : 'Sheet area used: '}
+            <strong className="font-mono text-foreground">
+              {activePage ? activePage.efficiencyPct : sheetNestPlan.overallEfficiencyPct}%
+            </strong>
+          </span>
+        </div>
+
+        {sheetNestPlan.unplacedIds.length > 0 && (
+          <div
+            role="status"
+            data-testid="pdf-sheet-nest-unplaced-warning"
+            className="status-warning-surface flex flex-col gap-2 rounded-md border px-3 py-2 text-xs"
+          >
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <p className="leading-snug">
+                <strong>{unplacedNames.join(', ')}</strong>{' '}
+                {unplacedNames.length === 1 ? 'exceeds' : 'exceed'} the printable area of{' '}
+                {activeSheetSpec.label} ({roundTo(safeBox.widthMm, 1)} ×{' '}
+                {roundTo(safeBox.heightMm, 1)} mm) and cannot be placed on this sheet size.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {sheetNestPlan.mediaId !== 'tabloid' && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  data-testid="pdf-sheet-nest-switch-tabloid"
+                  className="h-7 bg-card px-2.5 text-[11px] text-foreground"
+                  onClick={() => onChangePrintMedia('tabloid')}
+                >
+                  Switch to {tabloidSpec.label}
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                data-testid="pdf-sheet-nest-switch-roll"
+                className="h-7 bg-card px-2.5 text-[11px] text-foreground"
+                onClick={() => onChangePrintMedia('roll-24')}
+              >
+                Switch to {roll24Spec.label}
+              </Button>
+            </div>
+          </div>
         )}
       </div>
     );

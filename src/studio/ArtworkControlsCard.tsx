@@ -1,6 +1,7 @@
 import {
   ArrowDown,
   ArrowUp,
+  Dices,
   Expand,
   FlipHorizontal2,
   FlipVertical2,
@@ -11,9 +12,10 @@ import {
   RotateCw,
   Sparkles,
   Trash2,
+  Unlink,
   Upload,
 } from 'lucide-react';
-import { useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,9 +28,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import {
+  PROCEDURAL_ARTWORKS,
+  PROCEDURAL_ARTWORK_TARGETS,
+  type ProceduralArtworkId,
+  type ProceduralArtworkIntensity,
+  type ProceduralArtworkTarget,
+} from '@/resources/proceduralArtworks';
 import type { CoverStudioState, CutLineExportMode } from '@/types/studio';
 import {
   getLayerVisualRect,
+  isSeriesOriginLayer,
   nextQuarterTurn,
   normalizeQuarterTurn,
   type CoverImageLayer,
@@ -37,8 +47,21 @@ import {
   type StubExtensionMode,
 } from '@/types/studioLayer';
 import { roundTo } from '@/types/units';
+import { getElementStackPosition } from './layerStack';
+import {
+  generateProceduralArtworkSvg,
+  isProceduralArtworkFileName,
+  toProceduralArtworkDataUrl,
+} from './proceduralArtwork';
 
 export type EyedropperTarget = 'spine' | 'back' | 'both' | null;
+
+export interface ApplyProceduralArtworkRequest {
+  readonly patternId: ProceduralArtworkId;
+  readonly target: ProceduralArtworkTarget;
+  readonly intensity: ProceduralArtworkIntensity;
+  readonly seed: number;
+}
 
 export interface ArtworkControlsCardProps {
   readonly studio: CoverStudioState;
@@ -48,6 +71,7 @@ export interface ArtworkControlsCardProps {
   readonly sampledEdgeHex?: string | null;
   readonly onSelectLayer: (id: string | null) => void;
   readonly onAddImageFiles: (files: readonly File[]) => void;
+  readonly onApplyProceduralArtwork?: (request: ApplyProceduralArtworkRequest) => void;
   readonly onQuickFitLayer: (id: string, target: QuickFitTarget) => void;
   readonly onExtendLayerStub?: (id: string, mode: StubExtensionMode) => void;
   readonly onMatchSpineBackToEdge?: (hex: string) => void;
@@ -56,6 +80,7 @@ export interface ArtworkControlsCardProps {
   readonly onToggleLayerFlip?: (id: string, axis: 'x' | 'y') => void;
   readonly onUpdateLayer?: (id: string, patch: Partial<CoverImageLayer>) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
+  readonly onDetachSeriesLayer?: (id: string) => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
   readonly onToggleEyedropper: (target: Exclude<EyedropperTarget, null>) => void;
@@ -99,6 +124,7 @@ export function ArtworkControlsCard({
   sampledEdgeHex = null,
   onSelectLayer,
   onAddImageFiles,
+  onApplyProceduralArtwork,
   onQuickFitLayer,
   onExtendLayerStub,
   onMatchSpineBackToEdge,
@@ -107,14 +133,58 @@ export function ArtworkControlsCard({
   onToggleLayerFlip,
   onUpdateLayer,
   onReorderLayer,
+  onDetachSeriesLayer,
   onDeleteLayer,
   onUpdateStudio,
   onToggleEyedropper,
 }: ArtworkControlsCardProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const [selectedPatternId, setSelectedPatternId] =
+    useState<ProceduralArtworkId>('suminagashi-marble');
+  const [patternIntensity, setPatternIntensity] = useState<ProceduralArtworkIntensity>('vivid');
+  const [patternTarget, setPatternTarget] = useState<ProceduralArtworkTarget>('front');
+  const [patternSeed, setPatternSeed] = useState<number>(101);
 
   const selectedLayer: CoverImageLayer | null =
     studio.layers.find((l) => l.id === selectedLayerId) ?? null;
+  const hasProceduralLayer = studio.layers.some((layer) =>
+    isProceduralArtworkFileName(layer.fileName),
+  );
+
+  const applyProceduralPattern = (overrides: Partial<ApplyProceduralArtworkRequest> = {}) => {
+    if (!onApplyProceduralArtwork) return;
+    onApplyProceduralArtwork({
+      patternId: overrides.patternId ?? selectedPatternId,
+      target: overrides.target ?? patternTarget,
+      intensity: overrides.intensity ?? patternIntensity,
+      seed: overrides.seed ?? patternSeed,
+    });
+  };
+
+  const previewBaseHex =
+    patternTarget === 'back'
+      ? studio.backBgColor
+      : patternTarget === 'spine'
+        ? studio.spineBgColor
+        : studio.frontBgColor;
+  const previewAccentHex = studio.spineText.textColor;
+
+  const patternThumbnails = useMemo(() => {
+    const map = new Map<ProceduralArtworkId, string>();
+    for (const spec of PROCEDURAL_ARTWORKS) {
+      const svg = generateProceduralArtworkSvg({
+        patternId: spec.id,
+        widthMm: 64,
+        heightMm: 52,
+        baseColor: previewBaseHex,
+        accentColor: previewAccentHex,
+        seed: patternSeed,
+        intensity: patternIntensity,
+      });
+      map.set(spec.id, toProceduralArtworkDataUrl(svg));
+    }
+    return map;
+  }, [previewBaseHex, previewAccentHex, patternSeed, patternIntensity]);
 
   return (
     <Card>
@@ -173,6 +243,8 @@ export function ArtworkControlsCard({
             {[...studio.layers].reverse().map((layer, revIdx) => {
               const actualIdx = studio.layers.length - 1 - revIdx;
               const isSelected = layer.id === selectedLayerId;
+              const fromSeries = isSeriesOriginLayer(layer);
+              const stackPos = getElementStackPosition(studio, layer.id);
               return (
                 <li
                   key={layer.id}
@@ -194,6 +266,15 @@ export function ArtworkControlsCard({
                       className="h-6 w-6 shrink-0 rounded-xs border border-border object-cover"
                     />
                     <span className="truncate font-medium">{layer.fileName}</span>
+                    {fromSeries && (
+                      <Badge
+                        variant="brass"
+                        data-testid="layer-from-series-badge"
+                        className="ml-auto shrink-0 px-1.5 py-0 text-[9px] font-semibold"
+                      >
+                        From Series
+                      </Badge>
+                    )}
                   </button>
 
                   <div className="flex shrink-0 items-center gap-0.5">
@@ -201,7 +282,7 @@ export function ArtworkControlsCard({
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      disabled={actualIdx === studio.layers.length - 1}
+                      disabled={!stackPos.canBringForward}
                       aria-label={`Bring ${layer.fileName} forward`}
                       onClick={() => onReorderLayer(layer.id, 'forward')}
                     >
@@ -211,12 +292,27 @@ export function ArtworkControlsCard({
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
-                      disabled={actualIdx === 0}
+                      disabled={!stackPos.canSendBackward}
                       aria-label={`Send ${layer.fileName} backward`}
                       onClick={() => onReorderLayer(layer.id, 'backward')}
                     >
                       <ArrowDown className="h-3 w-3" aria-hidden="true" />
                     </Button>
+                    {fromSeries && onDetachSeriesLayer && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-0.5 px-1.5 text-[10px] text-brass hover:text-foreground"
+                        title="Detach from Series Spines so future series syncs keep your tweaks"
+                        aria-label={`Detach ${layer.fileName} from Series Spines`}
+                        data-testid={`layer-detach-series-${actualIdx}`}
+                        onClick={() => onDetachSeriesLayer(layer.id)}
+                      >
+                        <Unlink className="h-3 w-3" aria-hidden="true" />
+                        Detach
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -428,6 +524,152 @@ export function ArtworkControlsCard({
           </div>
           );
         })()}
+
+        {onApplyProceduralArtwork && (
+          <>
+            <Separator />
+
+            {/* Built-In Procedural Patterns & Artworks */}
+            <div className="space-y-2.5" data-testid="procedural-artwork-section">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                  Built-In Patterns &amp; Artworks
+                </span>
+                <div
+                  role="group"
+                  aria-label="Pattern visual intensity"
+                  className="inline-flex rounded-[3px] border border-border bg-secondary/40 p-0.5"
+                >
+                  {(['subtle', 'vivid'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      aria-pressed={patternIntensity === mode}
+                      data-testid={`procedural-intensity-${mode}`}
+                      onClick={() => {
+                        setPatternIntensity(mode);
+                        if (hasProceduralLayer) {
+                          applyProceduralPattern({ intensity: mode });
+                        }
+                      }}
+                      className={`cursor-pointer rounded-[2px] px-2 py-0.5 text-[10.5px] font-medium capitalize transition-colors ${
+                        patternIntensity === mode
+                          ? 'bg-primary text-primary-foreground shadow-2xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div
+                className="grid grid-cols-3 gap-1.5"
+                role="group"
+                aria-label="Built-in procedural patterns"
+                data-testid="procedural-pattern-grid"
+              >
+                {PROCEDURAL_ARTWORKS.map((spec) => {
+                  const active = selectedPatternId === spec.id;
+                  const thumbUrl = patternThumbnails.get(spec.id);
+                  return (
+                    <button
+                      key={spec.id}
+                      type="button"
+                      aria-pressed={active}
+                      title={`${spec.label} — ${spec.description}`}
+                      data-testid={`procedural-pattern-${spec.id}`}
+                      onClick={() => {
+                        setSelectedPatternId(spec.id);
+                        applyProceduralPattern({ patternId: spec.id });
+                      }}
+                      className={`group flex cursor-pointer flex-col overflow-hidden rounded-md border text-left transition-colors ${
+                        active
+                          ? 'border-vermilion bg-primary/10 ring-1 ring-vermilion/60'
+                          : 'border-border bg-secondary/25 hover:border-brass/70'
+                      }`}
+                    >
+                      <div className="relative h-11 w-full overflow-hidden border-b border-border/60 bg-secondary/40">
+                        {thumbUrl && (
+                          <img
+                            src={thumbUrl}
+                            alt=""
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          />
+                        )}
+                      </div>
+                      <span className="truncate px-1.5 py-1 text-[10.5px] font-medium text-foreground">
+                        {spec.shortLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div
+                  role="group"
+                  aria-label="Pattern target area"
+                  className="inline-flex flex-wrap items-center gap-1"
+                >
+                  {PROCEDURAL_ARTWORK_TARGETS.map((target) => (
+                    <Button
+                      key={target.id}
+                      type="button"
+                      size="sm"
+                      variant={patternTarget === target.id ? 'default' : 'outline'}
+                      aria-pressed={patternTarget === target.id}
+                      className="h-6 px-2 text-[10.5px]"
+                      data-testid={`procedural-target-${target.id}`}
+                      onClick={() => {
+                        setPatternTarget(target.id);
+                        if (hasProceduralLayer) {
+                          applyProceduralPattern({ target: target.id });
+                        }
+                      }}
+                    >
+                      {target.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2.5 text-xs"
+                  data-testid="procedural-shuffle-seed-btn"
+                  title="Shuffle pattern variation seed"
+                  onClick={() => {
+                    const nextSeed = (((patternSeed * 1664525 + 1013904223) >>> 0) % 99991) + 1;
+                    setPatternSeed(nextSeed);
+                    if (hasProceduralLayer) {
+                      applyProceduralPattern({ seed: nextSeed });
+                    }
+                  }}
+                >
+                  <Dices className="h-3.5 w-3.5" aria-hidden="true" />
+                  Shuffle Seed
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  className="h-7 flex-1 px-3 text-xs"
+                  data-testid="procedural-apply-btn"
+                  onClick={() => applyProceduralPattern()}
+                >
+                  <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                  Apply Pattern
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
 
         <Separator />
 

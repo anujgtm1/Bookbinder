@@ -40,24 +40,35 @@ export interface PocketStyleConfig {
   styleScope: PocketStyleScope;
 }
 
-export type CuratedFontId =
-  | 'eb-garamond'
-  | 'libre-baskerville'
-  | 'cormorant-garamond'
-  | 'lora'
-  | 'inter'
-  | 'montserrat';
-
-export type StudioFontId = CuratedFontId | 'custom';
-
-export const CURATED_FONT_IDS: readonly CuratedFontId[] = [
+export const CURATED_FONT_IDS = [
   'eb-garamond',
   'libre-baskerville',
   'cormorant-garamond',
   'lora',
+  'playfair-display',
+  'fraunces',
   'inter',
   'montserrat',
+  'bricolage-grotesque',
+  'cinzel-decorative',
+  'almendra-display',
+  'uncial-antiqua',
+  'orbitron',
+  'audiowide',
+  'syne',
+  'unifrakturmaguntia',
+  'pirata-one',
+  'great-vibes',
+  'pinyon-script',
+  'bebas-neue',
+  'special-elite',
+  'poiret-one',
+  'limelight',
 ] as const;
+
+export type CuratedFontId = (typeof CURATED_FONT_IDS)[number];
+
+export type StudioFontId = CuratedFontId | 'custom';
 
 export interface SpineTypographyConfig {
   title: string;
@@ -82,6 +93,8 @@ export interface CoverStudioState {
   textLayers: readonly CoverTextLayer[];
   /** Parametric classic bookbindery vector ornaments & frames (recolorable & Cricut HTV-ready) */
   ornaments: readonly CoverOrnamentLayer[];
+  /** Optional unified bottom-to-top stacking order of element IDs across layers, ornaments, and textLayers */
+  readonly layerOrder?: readonly string[];
   frontBgColor: string;
   spineBgColor: string;
   backBgColor: string;
@@ -141,6 +154,20 @@ function parseFontId(value: unknown): StudioFontId {
     return value as CuratedFontId;
   }
   return DEFAULT_COVER_STUDIO_STATE.spineText.fontId;
+}
+
+function sanitizeLayerOrder(raw: unknown): readonly string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const id = entry.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    cleaned.push(id);
+  }
+  return cleaned.length > 0 ? cleaned : undefined;
 }
 
 export const CoverStudioModel = {
@@ -217,11 +244,30 @@ export const CoverStudioModel = {
 
   serialize(state: CoverStudioState, options?: { includeImageData?: boolean }): CoverStudioState {
     const includeImageData = options?.includeImageData ?? true;
+    const { layerOrder: rawLayerOrder, ...restState } = state;
+    const serializedLayers = includeImageData
+      ? state.layers.map((layer) => CoverImageLayerModel.serialize(layer))
+      : [];
+    const serializedTextLayers = (state.textLayers ?? []).map((layer) =>
+      CoverTextLayerModel.serialize(layer),
+    );
+    const serializedOrnaments = (state.ornaments ?? []).map((orn) =>
+      CoverOrnamentLayerModel.serialize(orn),
+    );
+    const imageIds = includeImageData ? null : new Set(state.layers.map((layer) => layer.id));
+    const sanitizedOrder = sanitizeLayerOrder(rawLayerOrder);
+    const filteredOrder =
+      sanitizedOrder && imageIds
+        ? sanitizedOrder.filter((id) => !imageIds.has(id))
+        : sanitizedOrder;
+    const layerOrder = filteredOrder && filteredOrder.length > 0 ? filteredOrder : undefined;
+
     return {
-      ...state,
-      layers: includeImageData ? state.layers.map((layer) => CoverImageLayerModel.serialize(layer)) : [],
-      textLayers: (state.textLayers ?? []).map((layer) => CoverTextLayerModel.serialize(layer)),
-      ornaments: (state.ornaments ?? []).map((orn) => CoverOrnamentLayerModel.serialize(orn)),
+      ...restState,
+      layers: serializedLayers,
+      textLayers: serializedTextLayers,
+      ornaments: serializedOrnaments,
+      ...(layerOrder ? { layerOrder } : {}),
       spineText: { ...state.spineText },
       pocketStyle: {
         ...state.pocketStyle,
@@ -282,11 +328,13 @@ export const CoverStudioModel = {
     const rawFitMode = rawPocket.imageFitMode;
     const imageFitMode: PocketImageFitMode =
       rawFitMode === 'contain' || rawFitMode === 'tile' ? rawFitMode : 'cover';
+    const layerOrder = sanitizeLayerOrder(obj.layerOrder);
 
     return {
       layers,
       textLayers,
       ornaments,
+      ...(layerOrder ? { layerOrder } : {}),
       frontBgColor: parseHexColor(obj.frontBgColor, defaults.frontBgColor),
       spineBgColor: parseHexColor(obj.spineBgColor, defaults.spineBgColor),
       backBgColor: parseHexColor(obj.backBgColor, defaults.backBgColor),

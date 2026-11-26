@@ -1,0 +1,1656 @@
+import {
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Dices,
+  Image as ImageIcon,
+  Layers,
+  Library,
+  Minus,
+  Palette,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  Upload,
+  Users,
+  X,
+} from 'lucide-react';
+import { type ChangeEvent, type KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
+import type { SeriesBookLayout, SeriesShelfLayout } from '@/core/seriesSpines';
+import { BINDING_STYLES } from '@/resources/paperSpecs';
+import {
+  PROCEDURAL_ARTWORKS,
+  getProceduralArtworkSpec,
+  type ProceduralArtworkId,
+} from '@/resources/proceduralArtworks';
+import {
+  SAMPLE_PANORAMA_NATURAL_HEIGHT,
+  SAMPLE_PANORAMA_NATURAL_WIDTH,
+  SERIES_ALIGNMENT_ANCHOR_OPTIONS,
+  SERIES_BAND_OPTIONS,
+  SERIES_ORNAMENT_OPTIONS,
+  SERIES_PALETTE_PRESETS,
+  SERIES_VOLUME_STYLE_OPTIONS,
+  createSamplePanoramaDataUrl,
+  type SeriesPalettePreset,
+} from '@/resources/seriesPresets';
+import { FontSelect } from '@/studio/FontSelect';
+import type { CustomFontAsset } from '@/studio/fonts';
+import {
+  createProceduralArtworkAsset,
+  generateProceduralArtworkSvg,
+  toProceduralArtworkDataUrl,
+} from '@/studio/proceduralArtwork';
+import { BookParametersModel, type BindingStyle } from '@/types/bookParams';
+import type { ProjectId, SavedProjectSummary } from '@/types/projectLibrary';
+import {
+  DEFAULT_SERIES_PANORAMA,
+  SERIES_BOUNDS,
+  type SeriesAlignmentAnchor,
+  type SeriesBandStyle,
+  type SeriesBookEntry,
+  type SeriesBookId,
+  type SeriesOrnamentId,
+  type SeriesPanoramaConfig,
+  type SeriesProject,
+  type SeriesSequenceGroup,
+  type SeriesSequenceId,
+  type SeriesSharedDesign,
+  type SeriesVolumeNumberStyle,
+} from '@/types/seriesSpines';
+import type { StudioFontId } from '@/types/studio';
+import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
+
+export type InspectorTab = 'books' | 'style' | 'panorama';
+
+export interface SeriesInspectorDockProps {
+  readonly series: SeriesProject;
+  readonly layout: SeriesShelfLayout;
+  readonly selectedBookId: SeriesBookId | null;
+  readonly savedSummaries: readonly SavedProjectSummary[];
+  readonly existingLinkedIds: ReadonlySet<ProjectId>;
+  readonly unit: UnitSystem;
+  readonly customFont: CustomFontAsset | null;
+  readonly onSelectBook: (id: SeriesBookId) => void;
+  readonly onAddBook: () => void;
+  readonly onAddLibraryBook: (projectId: ProjectId) => Promise<void>;
+  readonly onRemoveLibraryBook: (projectId: ProjectId) => void;
+  readonly onOpenImportLibrary: () => void;
+  readonly onCreateSequence: (bookIds: readonly SeriesBookId[]) => void;
+  readonly onAssignBooksToSequence: (
+    bookIds: readonly SeriesBookId[],
+    sequenceId: SeriesSequenceId | null,
+  ) => void;
+  readonly onUpdateSequence: (
+    sequenceId: SeriesSequenceId,
+    patch: Partial<SeriesSequenceGroup>,
+  ) => void;
+  readonly onApplySequenceAuthor: (sequenceId: SeriesSequenceId) => void;
+  readonly onDeleteSequence: (sequenceId: SeriesSequenceId) => void;
+  readonly onApplyShelfAuthorToAll: (author: string) => void;
+  readonly onUpdateBook: (
+    id: SeriesBookId,
+    updater: (book: SeriesBookEntry) => SeriesBookEntry,
+  ) => void;
+  readonly onUpdateShared: (patch: Partial<SeriesSharedDesign>) => void;
+  readonly onUpdatePanorama: (patch: Partial<SeriesPanoramaConfig>) => void;
+  readonly onUploadPanoramaFile: (file: File) => Promise<void>;
+  readonly onApplyPalette: (preset: SeriesPalettePreset) => void;
+  readonly onStatusMessage: (message: string) => void;
+}
+
+export function SeriesInspectorDock({
+  series,
+  layout,
+  selectedBookId,
+  savedSummaries,
+  existingLinkedIds,
+  unit,
+  customFont,
+  onSelectBook,
+  onAddBook,
+  onAddLibraryBook,
+  onRemoveLibraryBook,
+  onOpenImportLibrary,
+  onCreateSequence,
+  onAssignBooksToSequence,
+  onUpdateSequence,
+  onApplySequenceAuthor,
+  onDeleteSequence,
+  onApplyShelfAuthorToAll,
+  onUpdateBook,
+  onUpdateShared,
+  onUpdatePanorama,
+  onUploadPanoramaFile,
+  onApplyPalette,
+  onStatusMessage,
+}: SeriesInspectorDockProps) {
+  const [activeTab, setActiveTab] = useState<InspectorTab>('books');
+  const [panoPatternSeed, setPanoPatternSeed] = useState<number>(307);
+  const [libraryExpanded, setLibraryExpanded] = useState<boolean>(true);
+  const [busyLibraryProjectId, setBusyLibraryProjectId] = useState<ProjectId | null>(null);
+  const [checkedBookIds, setCheckedBookIds] = useState<ReadonlySet<SeriesBookId>>(new Set());
+  const [shelfAuthorDraft, setShelfAuthorDraft] = useState<string>('');
+  const booksTabId = useId();
+  const styleTabId = useId();
+  const panoTabId = useId();
+  const booksTabRef = useRef<HTMLButtonElement>(null);
+  const styleTabRef = useRef<HTMLButtonElement>(null);
+  const panoTabRef = useRef<HTMLButtonElement>(null);
+  const panoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedLayout: SeriesBookLayout | null =
+    layout.books.find((b) => b.book.id === selectedBookId) ?? layout.books[0] ?? null;
+  const selectedBook = selectedLayout?.book ?? null;
+
+  // Keep checked book IDs strictly scoped to books currently on the shelf
+  const activeCheckedBookIds = useMemo(
+    () => series.books.map((b) => b.id).filter((id) => checkedBookIds.has(id)),
+    [series.books, checkedBookIds],
+  );
+
+  const onShelfLibraryCount = useMemo(
+    () => savedSummaries.filter((s) => existingLinkedIds.has(s.id)).length,
+    [savedSummaries, existingLinkedIds],
+  );
+
+  const toggleBookChecked = (bookId: SeriesBookId) => {
+    setCheckedBookIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookId)) next.delete(bookId);
+      else next.add(bookId);
+      return next;
+    });
+  };
+
+  const handleToggleLibraryAdd = async (projectId: ProjectId) => {
+    if (busyLibraryProjectId) return;
+    setBusyLibraryProjectId(projectId);
+    try {
+      await onAddLibraryBook(projectId);
+    } finally {
+      setBusyLibraryProjectId(null);
+    }
+  };
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const tabs: readonly InspectorTab[] = ['books', 'style', 'panorama'];
+    const refs = [booksTabRef, styleTabRef, panoTabRef] as const;
+    const idx = tabs.indexOf(activeTab);
+    let nextIdx = idx;
+    if (event.key === 'ArrowRight') nextIdx = (idx + 1) % tabs.length;
+    else if (event.key === 'ArrowLeft') nextIdx = (idx - 1 + tabs.length) % tabs.length;
+    else if (event.key === 'Home') nextIdx = 0;
+    else if (event.key === 'End') nextIdx = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    setActiveTab(tabs[nextIdx]);
+    refs[nextIdx].current?.focus();
+  };
+
+  const handlePanoramaUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    await onUploadPanoramaFile(file);
+  };
+
+  const handleLoadSamplePanorama = () => {
+    const dataUrl = createSamplePanoramaDataUrl();
+    onUpdatePanorama({
+      enabled: true,
+      dataUrl,
+      fileName: 'celestial-peaks-panorama.svg',
+      naturalWidth: SAMPLE_PANORAMA_NATURAL_WIDTH,
+      naturalHeight: SAMPLE_PANORAMA_NATURAL_HEIGHT,
+      fitMode: 'cover',
+      offsetXMm: 0,
+      offsetYMm: 0,
+      scale: 1,
+      dimOpacity: 0.24,
+    });
+    onStatusMessage('Loaded sample celestial peaks panorama across all spines');
+  };
+
+  const proceduralThumbnails = useMemo(() => {
+    const map = new Map<ProceduralArtworkId, string>();
+    for (const spec of PROCEDURAL_ARTWORKS) {
+      const svg = generateProceduralArtworkSvg({
+        patternId: spec.id,
+        widthMm: 96,
+        heightMm: 54,
+        baseColor: series.shared.defaultBgColor,
+        accentColor: series.shared.accentColor,
+        seed: panoPatternSeed,
+        intensity: 'vivid',
+      });
+      map.set(spec.id, toProceduralArtworkDataUrl(svg));
+    }
+    return map;
+  }, [series.shared.defaultBgColor, series.shared.accentColor, panoPatternSeed]);
+
+  const handleApplyProceduralPanorama = (
+    patternId: ProceduralArtworkId,
+    seedOverride?: number,
+  ) => {
+    const seed = seedOverride ?? panoPatternSeed;
+    const asset = createProceduralArtworkAsset({
+      patternId,
+      widthMm: Math.max(120, layout.totalShelfWidthMm),
+      heightMm: Math.max(160, layout.maxSpineHeightMm),
+      baseColor: series.shared.defaultBgColor,
+      accentColor: series.shared.accentColor,
+      seed,
+      intensity: 'vivid',
+    });
+    onUpdatePanorama({
+      enabled: true,
+      dataUrl: asset.dataUrl,
+      fileName: asset.fileName,
+      naturalWidth: asset.naturalWidth,
+      naturalHeight: asset.naturalHeight,
+      fitMode: 'cover',
+      offsetXMm: 0,
+      offsetYMm: 0,
+      scale: 1,
+    });
+    onStatusMessage(
+      `Spanned ${getProceduralArtworkSpec(patternId).label} panoramic pattern across all spines`,
+    );
+  };
+
+  const activeTabId =
+    activeTab === 'books' ? booksTabId : activeTab === 'style' ? styleTabId : panoTabId;
+
+  return (
+    <aside
+      aria-label="Series Spines Inspector"
+      className="washi-sheet flex min-w-0 flex-col overflow-hidden rounded-md border border-border"
+    >
+      {/* 3-Tab Inspector Switcher */}
+      <div
+        role="tablist"
+        aria-label="Inspector sections"
+        onKeyDown={handleTabKeyDown}
+        {...({ focusgroup: 'tablist nomemory' } as Record<string, string>)}
+        className="flex flex-nowrap gap-1 border-b border-border bg-secondary/45 p-1.5"
+      >
+        <button
+          ref={booksTabRef}
+          type="button"
+          role="tab"
+          id={booksTabId}
+          aria-selected={activeTab === 'books'}
+          tabIndex={activeTab === 'books' ? 0 : -1}
+          data-testid="series-tab-books"
+          onClick={() => setActiveTab('books')}
+          {...(activeTab === 'books' ? { focusgroupstart: '' } : {})}
+          className="cricut-mode-tab"
+        >
+          <BookOpen className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>Books ({series.books.length})</span>
+        </button>
+        <button
+          ref={styleTabRef}
+          type="button"
+          role="tab"
+          id={styleTabId}
+          aria-selected={activeTab === 'style'}
+          tabIndex={activeTab === 'style' ? 0 : -1}
+          data-testid="series-tab-style"
+          onClick={() => setActiveTab('style')}
+          {...(activeTab === 'style' ? { focusgroupstart: '' } : {})}
+          className="cricut-mode-tab"
+        >
+          <Palette className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>Style</span>
+        </button>
+        <button
+          ref={panoTabRef}
+          type="button"
+          role="tab"
+          id={panoTabId}
+          aria-selected={activeTab === 'panorama'}
+          tabIndex={activeTab === 'panorama' ? 0 : -1}
+          data-testid="series-tab-panorama"
+          onClick={() => setActiveTab('panorama')}
+          {...(activeTab === 'panorama' ? { focusgroupstart: '' } : {})}
+          className="cricut-mode-tab"
+        >
+          <ImageIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>Panorama</span>
+        </button>
+      </div>
+
+      {/* Scrollable Inspector Body */}
+      <div
+        role="tabpanel"
+        aria-labelledby={activeTabId}
+        className="max-h-[640px] flex-1 overflow-y-auto p-3.5"
+        style={{ scrollbarGutter: 'stable', overscrollBehavior: 'contain' }}
+      >
+        {activeTab === 'books' && (
+          <div className="space-y-4">
+            {/* Inline My Books Library Drawer (1-click Add / Remove on Shelf) */}
+            <div
+              data-testid="series-my-books-drawer"
+              className="rounded-md border border-border/85 bg-secondary/20"
+            >
+              <button
+                type="button"
+                aria-expanded={libraryExpanded}
+                data-testid="series-my-books-toggle"
+                onClick={() => setLibraryExpanded((v) => !v)}
+                className="flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left transition-colors hover:bg-secondary/35"
+              >
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-foreground uppercase">
+                  {libraryExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  )}
+                  <Library className="h-3.5 w-3.5 text-brass" aria-hidden="true" />
+                  My Books Library
+                </span>
+                <Badge
+                  variant="outline"
+                  data-testid="series-library-count-badge"
+                  className="font-mono text-[10px]"
+                >
+                  {onShelfLibraryCount} of {savedSummaries.length} on shelf
+                </Badge>
+              </button>
+
+              {libraryExpanded && (
+                <div className="border-t border-border/70 px-2.5 py-2">
+                  {savedSummaries.length === 0 ? (
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      No books saved in My Books yet. Save books in Cover Studio or click Save All
+                      to add and remove them directly here.
+                    </p>
+                  ) : (
+                    <ul
+                      data-testid="series-library-quick-list"
+                      className="max-h-36 space-y-1.5 overflow-y-auto pr-0.5"
+                    >
+                      {savedSummaries.map((summary, idx) => {
+                        const isOnShelf = existingLinkedIds.has(summary.id);
+                        const remainingAfterRemove = series.books.filter(
+                          (b) => b.linkedProjectId !== summary.id,
+                        ).length;
+                        const isLastRemainingBook = isOnShelf && remainingAfterRemove === 0;
+                        const isBusy = busyLibraryProjectId === summary.id;
+
+                        return (
+                          <li
+                            key={summary.id}
+                            data-testid={`series-library-row-${idx}`}
+                            className="flex items-center justify-between gap-2 rounded border border-border/75 bg-card/75 px-2 py-1.5"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-medium text-foreground">
+                                {summary.name}
+                              </p>
+                              <p className="font-mono text-[10px] text-muted-foreground">
+                                {UnitConverter.formatValue(summary.pbWidthMm, unit)} ×{' '}
+                                {UnitConverter.formatValue(summary.pbHeightMm, unit)} ×{' '}
+                                {UnitConverter.formatValue(summary.pbThicknessMm, unit)} {unit}
+                              </p>
+                            </div>
+                            {isOnShelf ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isLastRemainingBook}
+                                title={
+                                  isLastRemainingBook
+                                    ? 'Keep at least 1 book on the shelf'
+                                    : 'Remove from shelf (keeps book saved in My Books)'
+                                }
+                                aria-label={`On Shelf, remove ${summary.name} from shelf`}
+                                data-testid={`series-library-remove-${idx}`}
+                                onClick={() => onRemoveLibraryBook(summary.id)}
+                                className="h-6 shrink-0 gap-1 border-brass/50 px-2 text-[10px] text-foreground hover:border-destructive/60 hover:text-destructive"
+                              >
+                                <Check className="h-2.5 w-2.5 text-brass" aria-hidden="true" />
+                                <span>On Shelf</span>
+                                <span aria-hidden="true" className="opacity-45">
+                                  ·
+                                </span>
+                                <Minus className="h-2.5 w-2.5" aria-hidden="true" />
+                                <span>Remove</span>
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isBusy || series.books.length >= SERIES_BOUNDS.maxBooks}
+                                aria-label={
+                                  isBusy
+                                    ? `Adding ${summary.name} to shelf`
+                                    : `Add ${summary.name} to shelf`
+                                }
+                                data-testid={`series-library-add-${idx}`}
+                                onClick={() => void handleToggleLibraryAdd(summary.id)}
+                                className="h-6 shrink-0 gap-1 px-2 text-[10px]"
+                              >
+                                <Plus className="h-2.5 w-2.5" aria-hidden="true" />
+                                {isBusy ? 'Adding…' : 'Add'}
+                              </Button>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Shelf Book Roster + Series Sequence Marking */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  Books on Shelf
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-[11px]"
+                    disabled={series.books.length >= SERIES_BOUNDS.maxBooks}
+                    data-testid="series-add-book-btn"
+                    onClick={onAddBook}
+                  >
+                    <Plus className="h-3 w-3" aria-hidden="true" />
+                    Add Book
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-[11px]"
+                    data-testid="series-import-books-btn"
+                    onClick={onOpenImportLibrary}
+                  >
+                    <Library className="h-3 w-3" aria-hidden="true" />
+                    Import
+                  </Button>
+                </div>
+              </div>
+
+              <ol
+                data-testid="series-book-roster"
+                className="max-h-44 space-y-1 overflow-y-auto pr-0.5"
+              >
+                {layout.books.map((bl) => {
+                  const isSel = selectedBook?.id === bl.book.id;
+                  const isChecked = checkedBookIds.has(bl.book.id);
+                  return (
+                    <li key={bl.book.id} className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        data-testid={`series-roster-check-${bl.index}`}
+                        aria-label={`Select ${bl.book.title || `Book ${bl.index + 1}`} for series grouping`}
+                        onChange={() => toggleBookChecked(bl.book.id)}
+                        className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded accent-vermilion"
+                      />
+                      <button
+                        type="button"
+                        aria-current={isSel ? 'true' : undefined}
+                        data-testid={`series-roster-item-${bl.index}`}
+                        onClick={() => onSelectBook(bl.book.id)}
+                        className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs transition-colors ${
+                          isSel
+                            ? 'border-vermilion bg-secondary/60 font-medium text-foreground'
+                            : 'border-border/80 bg-card/60 text-foreground hover:border-brass/70'
+                        }`}
+                      >
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className="inline-block h-3 w-3 shrink-0 rounded-xs border border-black/25"
+                              style={{ backgroundColor: bl.bgColor }}
+                              aria-hidden="true"
+                            />
+                            <span className="truncate">
+                              {bl.volumeLabel ? `${bl.volumeLabel}. ` : `${bl.index + 1}. `}
+                              {bl.book.title || 'Untitled'}
+                            </span>
+                          </span>
+                          {bl.sequence && (
+                            <span
+                              data-testid={`series-roster-seq-pill-${bl.index}`}
+                              className="inline-flex w-fit max-w-full items-center truncate rounded bg-brass/15 px-1.5 py-0.25 text-[10px] font-medium text-foreground"
+                            >
+                              {bl.sequence.name}
+                              {bl.volumeLabel ? ` · ${bl.volumeLabel}` : ''}
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                          {UnitConverter.formatValue(bl.book.parameters.pbThicknessMm, unit)}×
+                          {UnitConverter.formatValue(bl.book.parameters.pbHeightMm, unit)}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              {/* Sequence Marking Action Bar */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    activeCheckedBookIds.length === 0 ||
+                    series.sequences.length >= SERIES_BOUNDS.maxSequences
+                  }
+                  data-testid="series-mark-sequence-btn"
+                  onClick={() => {
+                    onCreateSequence(activeCheckedBookIds);
+                    setCheckedBookIds(new Set());
+                  }}
+                  className="h-7 gap-1 px-2 text-[11px]"
+                >
+                  <Layers className="h-3 w-3 text-brass" aria-hidden="true" />
+                  Mark Selected as Series
+                  {activeCheckedBookIds.length > 0 ? ` (${activeCheckedBookIds.length})` : ''}
+                </Button>
+
+                {activeCheckedBookIds.length === 0 && series.books.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={series.sequences.length >= SERIES_BOUNDS.maxSequences}
+                    data-testid="series-mark-all-sequence-btn"
+                    onClick={() => onCreateSequence(series.books.map((b) => b.id))}
+                    className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    Mark All
+                  </Button>
+                )}
+
+                {activeCheckedBookIds.length > 0 && series.sequences.length > 0 && (
+                  <select
+                    aria-label="Add checked books to an existing series sequence"
+                    data-testid="series-add-checked-to-seq-select"
+                    value=""
+                    onChange={(e) => {
+                      const targetId = e.target.value;
+                      if (!targetId) return;
+                      onAssignBooksToSequence(
+                        activeCheckedBookIds,
+                        targetId === '__none__' ? null : (targetId as SeriesSequenceId),
+                      );
+                      setCheckedBookIds(new Set());
+                    }}
+                    className="h-7 rounded-md border border-input bg-card px-2 text-[11px] text-foreground"
+                  >
+                    <option value="">Assign to…</option>
+                    {series.sequences.map((seq) => (
+                      <option key={seq.id} value={seq.id}>
+                        {seq.name}
+                      </option>
+                    ))}
+                    <option value="__none__">Standalone (Remove from Series)</option>
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {/* Marked Series Sequences Editor */}
+            {series.sequences.length > 0 && (
+              <div
+                data-testid="series-sequences-section"
+                className="kettle-stitch-divider space-y-2.5 pt-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                    <Layers className="h-3 w-3 text-brass" aria-hidden="true" />
+                    Marked Series Sequences
+                  </span>
+                  <Badge variant="brass" className="font-mono text-[10px]">
+                    {series.sequences.length}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2.5">
+                  {series.sequences.map((seq, seqIdx) => {
+                    const memberCount = series.books.filter((b) => b.sequenceId === seq.id).length;
+                    return (
+                      <div
+                        key={seq.id}
+                        data-testid={`series-sequence-card-${seqIdx}`}
+                        className="space-y-2 rounded-md border border-brass/45 bg-secondary/20 p-2.5"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="text"
+                            aria-label={`Series ${seqIdx + 1} name`}
+                            data-testid={`series-sequence-name-${seqIdx}`}
+                            value={seq.name}
+                            onChange={(e) =>
+                              onUpdateSequence(seq.id, { name: e.target.value })
+                            }
+                            placeholder="Series Name"
+                            className="h-7 flex-1 font-serif text-xs font-semibold"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            title="Unmark series (books stay on shelf)"
+                            aria-label={`Unmark ${seq.name}`}
+                            data-testid={`series-sequence-delete-${seqIdx}`}
+                            onClick={() => onDeleteSequence(seq.id)}
+                            className="h-7 gap-1 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" aria-hidden="true" />
+                            Unmark
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-[1fr_72px] gap-2">
+                          <div className="space-y-1">
+                            <Label
+                              htmlFor={`series-seq-vol-${seq.id}`}
+                              className="text-[10px] text-muted-foreground"
+                            >
+                              Volume Numbering
+                            </Label>
+                            <select
+                              id={`series-seq-vol-${seq.id}`}
+                              data-testid={`series-sequence-vol-style-${seqIdx}`}
+                              value={seq.volumeNumberStyle}
+                              onChange={(e) =>
+                                onUpdateSequence(seq.id, {
+                                  volumeNumberStyle: e.target.value as SeriesVolumeNumberStyle,
+                                })
+                              }
+                              className="h-7 w-full rounded-md border border-input bg-card px-2 text-[11px] text-foreground"
+                            >
+                              {SERIES_VOLUME_STYLE_OPTIONS.map((opt) => (
+                                <option key={opt.id} value={opt.id}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label
+                              htmlFor={`series-seq-start-${seq.id}`}
+                              className="text-[10px] text-muted-foreground"
+                            >
+                              Start #
+                            </Label>
+                            <Input
+                              id={`series-seq-start-${seq.id}`}
+                              data-testid={`series-sequence-start-num-${seqIdx}`}
+                              type="number"
+                              min={SERIES_BOUNDS.sequenceStartNumber.min}
+                              max={SERIES_BOUNDS.sequenceStartNumber.max}
+                              step={1}
+                              value={seq.startNumber}
+                              onChange={(e) => {
+                                const parsed = Number.parseInt(e.target.value, 10);
+                                if (!Number.isFinite(parsed)) return;
+                                onUpdateSequence(seq.id, {
+                                  startNumber: Math.max(
+                                    SERIES_BOUNDS.sequenceStartNumber.min,
+                                    Math.min(SERIES_BOUNDS.sequenceStartNumber.max, parsed),
+                                  ),
+                                });
+                              }}
+                              className="h-7 font-mono text-[11px]"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label
+                            htmlFor={`series-seq-author-${seq.id}`}
+                            className="text-[10px] text-muted-foreground"
+                          >
+                            Series Author (optional)
+                          </Label>
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              id={`series-seq-author-${seq.id}`}
+                              data-testid={`series-sequence-author-${seqIdx}`}
+                              type="text"
+                              value={seq.sharedAuthor ?? ''}
+                              placeholder="Blank = per-book author"
+                              onChange={(e) =>
+                                onUpdateSequence(seq.id, {
+                                  sharedAuthor: e.target.value || null,
+                                })
+                              }
+                              className="h-7 flex-1 text-[11px]"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={!seq.sharedAuthor?.trim()}
+                              aria-label={`Apply to Books in ${seq.name}`}
+                              data-testid={`series-sequence-apply-author-${seqIdx}`}
+                              onClick={() => onApplySequenceAuthor(seq.id)}
+                              className="h-7 shrink-0 px-2 text-[10px]"
+                            >
+                              Apply to Books
+                            </Button>
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-muted-foreground">
+                          {memberCount} {memberCount === 1 ? 'book' : 'books'} in sequence ·
+                          Individual book authors always override blank/shared author.
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Selected Book Inline Editor */}
+            {selectedBook && selectedLayout && (
+              <div className="kettle-stitch-divider space-y-3 pt-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-serif text-sm font-semibold text-foreground">
+                    Selected Book #{selectedLayout.index + 1}
+                  </h3>
+                  {selectedBook.linkedProjectId && (
+                    <Badge variant="brass" className="text-[10px]">
+                      Linked
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="series-book-title">Title</Label>
+                  <Input
+                    id="series-book-title"
+                    data-testid="series-book-title-input"
+                    value={selectedBook.title}
+                    onChange={(e) =>
+                      onUpdateBook(selectedBook.id, (b) => ({ ...b, title: e.target.value }))
+                    }
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                {series.sequences.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="series-book-sequence">Series Sequence</Label>
+                    <select
+                      id="series-book-sequence"
+                      data-testid="series-book-sequence-select"
+                      value={selectedBook.sequenceId ?? ''}
+                      onChange={(e) =>
+                        onUpdateBook(selectedBook.id, (b) => ({
+                          ...b,
+                          sequenceId: e.target.value ? (e.target.value as SeriesSequenceId) : null,
+                        }))
+                      }
+                      className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                    >
+                      <option value="">Standalone (Not in a series)</option>
+                      {series.sequences.map((seq) => (
+                        <option key={seq.id} value={seq.id}>
+                          {seq.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="series-book-author">Author</Label>
+                    <Input
+                      id="series-book-author"
+                      data-testid="series-book-author-input"
+                      placeholder={
+                        selectedLayout.sequence?.sharedAuthor
+                          ? `Inherits: ${selectedLayout.sequence.sharedAuthor}`
+                          : 'Author'
+                      }
+                      value={selectedBook.author}
+                      onChange={(e) =>
+                        onUpdateBook(selectedBook.id, (b) => ({ ...b, author: e.target.value }))
+                      }
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="series-book-vol-override">Badge Override</Label>
+                    <Input
+                      id="series-book-vol-override"
+                      data-testid="series-book-vol-override-input"
+                      placeholder={selectedLayout.volumeLabel || 'Auto'}
+                      value={selectedBook.volumeLabelOverride}
+                      onChange={(e) =>
+                        onUpdateBook(selectedBook.id, (b) => ({
+                          ...b,
+                          volumeLabelOverride: e.target.value,
+                        }))
+                      }
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Physical Dimensions (mm) */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="series-book-thickness" className="text-[11px]">
+                      Thickness (mm)
+                    </Label>
+                    <Input
+                      id="series-book-thickness"
+                      data-testid="series-book-thickness-input"
+                      type="number"
+                      min={4}
+                      max={120}
+                      step={1}
+                      value={selectedBook.parameters.pbThicknessMm}
+                      onChange={(e) => {
+                        const val = Number.parseFloat(e.target.value);
+                        if (!Number.isFinite(val)) return;
+                        onUpdateBook(selectedBook.id, (b) => ({
+                          ...b,
+                          parameters: BookParametersModel.clampAndNormalize({
+                            ...b.parameters,
+                            pbThicknessMm: val,
+                          }),
+                        }));
+                      }}
+                      className="h-8 font-mono text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="series-book-height" className="text-[11px]">
+                      Height (mm)
+                    </Label>
+                    <Input
+                      id="series-book-height"
+                      data-testid="series-book-height-input"
+                      type="number"
+                      min={80}
+                      max={450}
+                      step={1}
+                      value={selectedBook.parameters.pbHeightMm}
+                      onChange={(e) => {
+                        const val = Number.parseFloat(e.target.value);
+                        if (!Number.isFinite(val)) return;
+                        onUpdateBook(selectedBook.id, (b) => ({
+                          ...b,
+                          parameters: BookParametersModel.clampAndNormalize({
+                            ...b.parameters,
+                            pbHeightMm: val,
+                          }),
+                        }));
+                      }}
+                      className="h-8 font-mono text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="series-book-width" className="text-[11px]">
+                      Width (mm)
+                    </Label>
+                    <Input
+                      id="series-book-width"
+                      data-testid="series-book-width-input"
+                      type="number"
+                      min={60}
+                      max={350}
+                      step={1}
+                      value={selectedBook.parameters.pbWidthMm}
+                      onChange={(e) => {
+                        const val = Number.parseFloat(e.target.value);
+                        if (!Number.isFinite(val)) return;
+                        onUpdateBook(selectedBook.id, (b) => ({
+                          ...b,
+                          parameters: BookParametersModel.clampAndNormalize({
+                            ...b.parameters,
+                            pbWidthMm: val,
+                          }),
+                        }));
+                      }}
+                      className="h-8 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Binding Style */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="series-book-binding">Binding Style</Label>
+                  <select
+                    id="series-book-binding"
+                    data-testid="series-book-binding-select"
+                    value={selectedBook.parameters.bindingStyle}
+                    onChange={(e) =>
+                      onUpdateBook(selectedBook.id, (b) => ({
+                        ...b,
+                        parameters: BookParametersModel.clampAndNormalize({
+                          ...b.parameters,
+                          bindingStyle: e.target.value as BindingStyle,
+                        }),
+                      }))
+                    }
+                    className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                  >
+                    {BINDING_STYLES.map((style) => (
+                      <option key={style.id} value={style.id}>
+                        {style.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Per-Book Color Overrides */}
+                <div className="space-y-2 rounded-md border border-border/80 bg-secondary/20 p-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-foreground">
+                      Book Color Overrides
+                    </span>
+                    {(selectedBook.spineBgColorOverride ||
+                      selectedBook.textColorOverride ||
+                      selectedBook.accentColorOverride) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-1 px-1.5 text-[10px]"
+                        onClick={() =>
+                          onUpdateBook(selectedBook.id, (b) => ({
+                            ...b,
+                            spineBgColorOverride: null,
+                            textColorOverride: null,
+                            accentColorOverride: null,
+                          }))
+                        }
+                      >
+                        <RotateCcw className="h-2.5 w-2.5" aria-hidden="true" />
+                        Reset
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                      Cloth
+                      <input
+                        type="color"
+                        aria-label="Book spine cloth color"
+                        value={selectedLayout.bgColor}
+                        onChange={(e) =>
+                          onUpdateBook(selectedBook.id, (b) => ({
+                            ...b,
+                            spineBgColorOverride: e.target.value,
+                          }))
+                        }
+                        className="h-7 w-full cursor-pointer rounded border border-input bg-transparent p-0.5"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                      Text
+                      <input
+                        type="color"
+                        aria-label="Book spine text color"
+                        value={selectedLayout.textColor}
+                        onChange={(e) =>
+                          onUpdateBook(selectedBook.id, (b) => ({
+                            ...b,
+                            textColorOverride: e.target.value,
+                          }))
+                        }
+                        className="h-7 w-full cursor-pointer rounded border border-input bg-transparent p-0.5"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[10px] text-muted-foreground">
+                      Accent
+                      <input
+                        type="color"
+                        aria-label="Book spine accent foil color"
+                        value={selectedLayout.accentColor}
+                        onChange={(e) =>
+                          onUpdateBook(selectedBook.id, (b) => ({
+                            ...b,
+                            accentColorOverride: e.target.value,
+                          }))
+                        }
+                        className="h-7 w-full cursor-pointer rounded border border-input bg-transparent p-0.5"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Optical Nudge */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <Label htmlFor="series-book-nudge">Optical Center Nudge</Label>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {selectedBook.opticalNudgeMm >= 0 ? '+' : ''}
+                      {selectedBook.opticalNudgeMm.toFixed(1)} mm
+                    </span>
+                  </div>
+                  <Slider
+                    id="series-book-nudge"
+                    min={-2}
+                    max={2}
+                    step={0.1}
+                    value={[selectedBook.opticalNudgeMm]}
+                    onValueChange={([v]) =>
+                      onUpdateBook(selectedBook.id, (b) => ({
+                        ...b,
+                        opticalNudgeMm: roundTo(v, 1),
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'style' && (
+          <div className="space-y-4">
+            {/* Curated Palette Presets */}
+            <div className="space-y-2">
+              <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Curated Bookcloth Palettes
+              </span>
+              <div className="grid grid-cols-2 gap-1.5">
+                {SERIES_PALETTE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    data-testid={`series-palette-${preset.id}`}
+                    onClick={() => onApplyPalette(preset)}
+                    className="flex flex-col gap-1.5 rounded border border-border bg-card/80 p-2 text-left transition-colors hover:border-brass"
+                  >
+                    <div className="flex items-center gap-1">
+                      {(preset.perBookBgColors ?? [preset.defaultBgColor]).slice(0, 5).map((hex, i) => (
+                        <span
+                          key={`${preset.id}-${i}`}
+                          className="h-3 flex-1 rounded-xs border border-black/20"
+                          style={{ backgroundColor: hex }}
+                          aria-hidden="true"
+                        />
+                      ))}
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-full border border-black/20"
+                        style={{ backgroundColor: preset.accentColor }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                    <span className="text-[11px] font-medium leading-tight text-foreground">
+                      {preset.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Series Base Colors */}
+            <div className="kettle-stitch-divider grid grid-cols-3 gap-2 pt-3">
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                Default Cloth
+                <input
+                  type="color"
+                  aria-label="Default series cloth color"
+                  value={series.shared.defaultBgColor}
+                  onChange={(e) => onUpdateShared({ defaultBgColor: e.target.value })}
+                  className="h-8 w-full cursor-pointer rounded border border-input bg-transparent p-0.5"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                Lettering
+                <input
+                  type="color"
+                  aria-label="Default series lettering color"
+                  value={series.shared.defaultTextColor}
+                  onChange={(e) => onUpdateShared({ defaultTextColor: e.target.value })}
+                  className="h-8 w-full cursor-pointer rounded border border-input bg-transparent p-0.5"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                Bands &amp; Foil
+                <input
+                  type="color"
+                  aria-label="Default series accent foil color"
+                  value={series.shared.accentColor}
+                  onChange={(e) => onUpdateShared({ accentColor: e.target.value })}
+                  className="h-8 w-full cursor-pointer rounded border border-input bg-transparent p-0.5"
+                />
+              </label>
+            </div>
+
+            {/* Shared Typography */}
+            <div className="kettle-stitch-divider space-y-3 pt-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="series-font-select">Typography</Label>
+                <FontSelect
+                  id="series-font-select"
+                  value={series.shared.fontId}
+                  customFont={customFont}
+                  triggerClassName="h-8 w-full text-xs"
+                  triggerTestId="series-font-select"
+                  customLabelStyle="filename"
+                  onValueChange={(fontId: StudioFontId) => onUpdateShared({ fontId })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <Label htmlFor="series-title-size">Title Size</Label>
+                  <span className="font-mono text-[11px] text-muted-foreground">
+                    {series.shared.titleSizePt} pt
+                  </span>
+                </div>
+                <Slider
+                  id="series-title-size"
+                  min={SERIES_BOUNDS.titleSizePt.min}
+                  max={36}
+                  step={0.5}
+                  value={[series.shared.titleSizePt]}
+                  onValueChange={([v]) => onUpdateShared({ titleSizePt: v })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="series-orientation-select" className="text-[11px]">
+                    Spine Direction
+                  </Label>
+                  <select
+                    id="series-orientation-select"
+                    value={series.shared.orientation}
+                    onChange={(e) =>
+                      onUpdateShared({
+                        orientation:
+                          e.target.value === 'bottom-to-top' ? 'bottom-to-top' : 'top-to-bottom',
+                      })
+                    }
+                    className="h-8 w-full rounded-md border border-input bg-card px-2 text-xs text-foreground"
+                  >
+                    <option value="top-to-bottom">Top → Bottom (US/UK)</option>
+                    <option value="bottom-to-top">Bottom → Top (EU)</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="series-author-orient-select" className="text-[11px]">
+                    Author Layout
+                  </Label>
+                  <select
+                    id="series-author-orient-select"
+                    value={series.shared.authorOrientation}
+                    onChange={(e) =>
+                      onUpdateShared({
+                        authorOrientation:
+                          e.target.value === 'vertical' ? 'vertical' : 'horizontal',
+                      })
+                    }
+                    className="h-8 w-full rounded-md border border-input bg-card px-2 text-xs text-foreground"
+                  >
+                    <option value="horizontal">Horizontal Tail Block</option>
+                    <option value="vertical">Vertical Along Spine</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Alignment Anchor & Volume Numbering */}
+            <div className="kettle-stitch-divider space-y-3 pt-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="series-alignment-anchor">Alignment Anchor</Label>
+                <select
+                  id="series-alignment-anchor"
+                  data-testid="series-alignment-anchor-select"
+                  value={series.shared.alignmentAnchor}
+                  onChange={(e) =>
+                    onUpdateShared({ alignmentAnchor: e.target.value as SeriesAlignmentAnchor })
+                  }
+                  className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                >
+                  {SERIES_ALIGNMENT_ANCHOR_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="series-volume-style">Volume Numbering</Label>
+                <select
+                  id="series-volume-style"
+                  data-testid="series-volume-style-select"
+                  value={series.shared.volumeNumberStyle}
+                  onChange={(e) =>
+                    onUpdateShared({
+                      volumeNumberStyle: e.target.value as SeriesVolumeNumberStyle,
+                    })
+                  }
+                  className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                >
+                  {SERIES_VOLUME_STYLE_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                {series.sequences.length > 0 && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Marked sequences in the Books tab use their own per-sequence numbering.
+                  </p>
+                )}
+              </div>
+
+              {/* Optional Set Author for All Books Helper */}
+              <div className="space-y-1.5 rounded-md border border-border/80 bg-secondary/20 p-2.5">
+                <Label
+                  htmlFor="series-shared-author-input"
+                  className="flex items-center gap-1.5 text-[11px]"
+                >
+                  <Users className="h-3 w-3 text-brass" aria-hidden="true" />
+                  Set Author for All Books
+                </Label>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id="series-shared-author-input"
+                    data-testid="series-shared-author-input"
+                    type="text"
+                    value={shelfAuthorDraft}
+                    placeholder="Shared author across shelf"
+                    onChange={(e) => setShelfAuthorDraft(e.target.value)}
+                    className="h-7 flex-1 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="series-apply-all-author-btn"
+                    onClick={() => onApplyShelfAuthorToAll(shelfAuthorDraft)}
+                    className="h-7 shrink-0 px-2.5 text-[11px]"
+                  >
+                    Apply All
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Applies to every book on the shelf; you can still edit any book individually.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="series-band-style">Aligned Spine Bands</Label>
+                <select
+                  id="series-band-style"
+                  data-testid="series-band-style-select"
+                  value={series.shared.bandStyle}
+                  onChange={(e) =>
+                    onUpdateShared({ bandStyle: e.target.value as SeriesBandStyle })
+                  }
+                  className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                >
+                  {SERIES_BAND_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {series.shared.bandStyle !== 'none' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px]">
+                      <Label htmlFor="series-band-head">Head Band</Label>
+                      <span className="font-mono text-muted-foreground">
+                        {series.shared.bandHeadOffsetMm} mm
+                      </span>
+                    </div>
+                    <Slider
+                      id="series-band-head"
+                      min={6}
+                      max={60}
+                      step={1}
+                      value={[series.shared.bandHeadOffsetMm]}
+                      onValueChange={([v]) => onUpdateShared({ bandHeadOffsetMm: v })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[11px]">
+                      <Label htmlFor="series-band-tail">Tail Band</Label>
+                      <span className="font-mono text-muted-foreground">
+                        {series.shared.bandTailOffsetMm} mm
+                      </span>
+                    </div>
+                    <Slider
+                      id="series-band-tail"
+                      min={6}
+                      max={60}
+                      step={1}
+                      value={[series.shared.bandTailOffsetMm]}
+                      onValueChange={([v]) => onUpdateShared({ bandTailOffsetMm: v })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="series-ornament-select">Shared Spine Emblem</Label>
+                <select
+                  id="series-ornament-select"
+                  data-testid="series-ornament-select"
+                  value={series.shared.ornamentId}
+                  onChange={(e) =>
+                    onUpdateShared({ ornamentId: e.target.value as SeriesOrnamentId })
+                  }
+                  className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                >
+                  {SERIES_ORNAMENT_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'panorama' && (
+          <div className="space-y-4">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Upload one wide artwork image and slice it seamlessly across every spine in the shelf,
+              compensating automatically for distinct spine widths and heights.
+            </p>
+
+            <input
+              ref={panoFileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              className="hidden"
+              aria-label="Upload panoramic spine artwork"
+              data-testid="series-panorama-upload-input"
+              onChange={(e) => void handlePanoramaUpload(e)}
+            />
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5 text-xs"
+                data-testid="series-upload-panorama-btn"
+                onClick={() => panoFileInputRef.current?.click()}
+              >
+                <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                Upload Image
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className="w-full gap-1.5 text-xs"
+                data-testid="series-load-sample-panorama-btn"
+                onClick={handleLoadSamplePanorama}
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                Sample Panorama
+              </Button>
+            </div>
+
+            {/* Built-In Panoramic Patterns (9 Procedural Artworks) */}
+            <div className="space-y-2 rounded-md border border-border/80 bg-secondary/20 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  <Sparkles className="h-3 w-3 text-brass" aria-hidden="true" />
+                  Built-In Panoramic Patterns
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                  title="Shuffle panoramic pattern variation seed"
+                  data-testid="series-procedural-panorama-shuffle-btn"
+                  onClick={() => {
+                    const nextSeed = (((panoPatternSeed * 1664525 + 1013904223) >>> 0) % 99991) + 1;
+                    setPanoPatternSeed(nextSeed);
+                    const activeSpec = PROCEDURAL_ARTWORKS.find(
+                      (spec) => series.shared.panorama.fileName === `${spec.label} (Pattern).svg`,
+                    );
+                    if (activeSpec && series.shared.panorama.enabled) {
+                      handleApplyProceduralPanorama(activeSpec.id, nextSeed);
+                    }
+                  }}
+                >
+                  <Dices className="h-3 w-3" aria-hidden="true" />
+                  Shuffle
+                </Button>
+              </div>
+              <div
+                className="grid grid-cols-3 gap-1.5"
+                role="group"
+                aria-label="Built-in panoramic patterns"
+                data-testid="series-procedural-panorama-grid"
+              >
+                {PROCEDURAL_ARTWORKS.map((spec) => {
+                  const thumbUrl = proceduralThumbnails.get(spec.id);
+                  const isActive =
+                    series.shared.panorama.enabled &&
+                    series.shared.panorama.fileName === `${spec.label} (Pattern).svg`;
+                  return (
+                    <button
+                      key={spec.id}
+                      type="button"
+                      aria-pressed={isActive}
+                      title={`${spec.label} — ${spec.description}`}
+                      data-testid={`series-procedural-panorama-${spec.id}`}
+                      onClick={() => handleApplyProceduralPanorama(spec.id)}
+                      className={`group flex cursor-pointer flex-col overflow-hidden rounded border text-left transition-colors ${
+                        isActive
+                          ? 'border-vermilion bg-primary/10 ring-1 ring-vermilion/60'
+                          : 'border-border bg-card/80 hover:border-brass/75'
+                      }`}
+                    >
+                      <div className="relative h-10 w-full overflow-hidden border-b border-border/60 bg-secondary/40">
+                        {thumbUrl && (
+                          <img
+                            src={thumbUrl}
+                            alt=""
+                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          />
+                        )}
+                      </div>
+                      <span className="truncate px-1.5 py-0.5 text-[10px] font-medium text-foreground">
+                        {spec.shortLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {series.shared.panorama.dataUrl && (
+              <div className="space-y-3.5 rounded-md border border-border bg-secondary/25 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <Label htmlFor="series-panorama-enable">Enable Panoramic Art</Label>
+                    <p className="truncate font-mono text-[10px] text-muted-foreground">
+                      {series.shared.panorama.fileName ?? 'Loaded artwork'} (
+                      {series.shared.panorama.naturalWidth}×{series.shared.panorama.naturalHeight})
+                    </p>
+                  </div>
+                  <Switch
+                    id="series-panorama-enable"
+                    data-testid="series-panorama-enable-switch"
+                    checked={series.shared.panorama.enabled}
+                    onCheckedChange={(enabled) => onUpdatePanorama({ enabled })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="series-panorama-fit">Fit Mode</Label>
+                  <select
+                    id="series-panorama-fit"
+                    value={series.shared.panorama.fitMode}
+                    onChange={(e) =>
+                      onUpdatePanorama({
+                        fitMode: e.target.value === 'fit-height' ? 'fit-height' : 'cover',
+                      })
+                    }
+                    className="h-8 w-full rounded-md border border-input bg-card px-2.5 text-xs text-foreground"
+                  >
+                    <option value="cover">Cover Entire Shelf</option>
+                    <option value="fit-height">Fit Tallest Spine Height</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <Label htmlFor="series-panorama-scale">Zoom Scale</Label>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {Math.round(series.shared.panorama.scale * 100)}%
+                    </span>
+                  </div>
+                  <Slider
+                    id="series-panorama-scale"
+                    min={0.5}
+                    max={2.5}
+                    step={0.05}
+                    value={[series.shared.panorama.scale]}
+                    onValueChange={([scale]) => onUpdatePanorama({ scale: roundTo(scale, 2) })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <Label htmlFor="series-panorama-offset-x">Horizontal Pan</Label>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {series.shared.panorama.offsetXMm} mm
+                    </span>
+                  </div>
+                  <Slider
+                    id="series-panorama-offset-x"
+                    min={-180}
+                    max={180}
+                    step={1}
+                    value={[series.shared.panorama.offsetXMm]}
+                    onValueChange={([offsetXMm]) => onUpdatePanorama({ offsetXMm })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <Label htmlFor="series-panorama-offset-y">Vertical Pan</Label>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {series.shared.panorama.offsetYMm} mm
+                    </span>
+                  </div>
+                  <Slider
+                    id="series-panorama-offset-y"
+                    min={-120}
+                    max={120}
+                    step={1}
+                    value={[series.shared.panorama.offsetYMm]}
+                    onValueChange={([offsetYMm]) => onUpdatePanorama({ offsetYMm })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <Label htmlFor="series-panorama-gap">Shelf Gap Compensation</Label>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {series.shared.panorama.shelfGapMm.toFixed(1)} mm
+                    </span>
+                  </div>
+                  <Slider
+                    id="series-panorama-gap"
+                    min={0}
+                    max={4}
+                    step={0.5}
+                    value={[series.shared.panorama.shelfGapMm]}
+                    onValueChange={([shelfGapMm]) => onUpdatePanorama({ shelfGapMm })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <Label htmlFor="series-panorama-scrim">Contrast Scrim</Label>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {Math.round(series.shared.panorama.dimOpacity * 100)}%
+                    </span>
+                  </div>
+                  <Slider
+                    id="series-panorama-scrim"
+                    min={0}
+                    max={0.75}
+                    step={0.05}
+                    value={[series.shared.panorama.dimOpacity]}
+                    onValueChange={([dimOpacity]) =>
+                      onUpdatePanorama({ dimOpacity: roundTo(dimOpacity, 2) })
+                    }
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={() =>
+                      onUpdatePanorama({
+                        offsetXMm: 0,
+                        offsetYMm: 0,
+                        scale: 1,
+                        shelfGapMm: 0,
+                      })
+                    }
+                  >
+                    <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                    Reset Framing
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-destructive"
+                    data-testid="series-clear-panorama-btn"
+                    onClick={() => {
+                      onUpdatePanorama({ ...DEFAULT_SERIES_PANORAMA });
+                      onStatusMessage('Cleared panoramic spine artwork');
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" aria-hidden="true" />
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}

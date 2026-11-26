@@ -16,7 +16,15 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import {
   FloatingHudToolbar,
   HudButton,
@@ -30,11 +38,15 @@ import {
   type PdfExportSelection,
 } from '@/components/PdfExportDialog';
 import { Badge } from '@/components/ui/badge';
+import { resolveMultiBookQueueSources } from '@/core/multiBookExport';
+import { getDefaultProjectRepository, type ProjectRepository } from '@/core/projectLibrary';
+import type { UiDensity } from '@/core/uiDensity';
 import {
   FULL_PAGE_EXIT_BUTTON_CLASS,
   getFullPageStageClass,
   useFullPageCanvas,
 } from '@/hooks/useFullPageCanvas';
+import type { DesignGenreId } from '@/resources/generatorProfiles';
 import {
   BookParametersModel,
   type BookParameters,
@@ -45,6 +57,7 @@ import {
 import { rotateOrnament90 } from '@/types/coverElements';
 import type { CaseGeometry, Rect2D } from '@/types/geometry';
 import { detachConstraintOnResize } from '@/types/layoutConstraints';
+import type { ProjectId, SavedProjectSummary } from '@/types/projectLibrary';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { CoverImageLayerModel, nextQuarterTurn } from '@/types/studioLayer';
 import { PRINT_DPI, roundTo } from '@/types/units';
@@ -65,10 +78,27 @@ import {
   DEFAULT_BOOK_3D_ANGLE,
   type Book3DCameraAngle,
 } from './book3d';
-import type { CustomFontAsset } from './fonts';
+import {
+  DEFAULT_DESIGN_GENERATOR_LOCKS,
+  generateBookCoverDesign,
+  type DesignGeneratorLocks,
+  type GeneratedDesignSummary,
+} from './designGenerator';
+import {
+  collectStudioCuratedFontIds,
+  ensureCuratedFontsLoaded,
+  getCuratedFont,
+  type CustomFontAsset,
+} from './fonts';
 import { useCoverElementsInteraction } from './hooks/useCoverElementsInteraction';
 import { useCoverStudioActions } from './hooks/useCoverStudioActions';
 import { useStudioHistory, type StudioHistoryPushOptions } from './hooks/useStudioHistory';
+import {
+  getElementStackPosition,
+  pruneLayerOrder,
+  reorderStudioElement,
+  type LayerReorderDirection,
+} from './layerStack';
 import {
   FOIL_FINISHES,
   SURFACE_MATERIALS,
@@ -96,6 +126,15 @@ export interface CoverStylerProps {
   readonly params?: BookParameters;
   readonly geometry: CaseGeometry;
   readonly studio: CoverStudioState;
+  readonly uiDensity?: UiDensity;
+  readonly customFont?: CustomFontAsset | null;
+  readonly onCustomFontChange?: (font: CustomFontAsset | null) => void;
+  readonly savedBookSummaries?: readonly SavedProjectSummary[];
+  readonly activeProjectId?: ProjectId | null;
+  readonly activeBookName?: string;
+  readonly exportProgressLabel?: string | null;
+  readonly onFlushActiveBook?: () => Promise<void>;
+  readonly getProjectRepository?: () => Promise<ProjectRepository>;
   readonly exportingOuterPdf?: boolean;
   readonly onChange: (next: CoverStudioState) => void;
   readonly onUpdateParams?: (patch: Partial<BookParameters>) => void;
@@ -111,6 +150,15 @@ export function CoverStyler({
   params,
   geometry,
   studio,
+  uiDensity = 'clean',
+  customFont: propCustomFont,
+  onCustomFontChange,
+  savedBookSummaries,
+  activeProjectId = null,
+  activeBookName,
+  exportProgressLabel = null,
+  onFlushActiveBook,
+  getProjectRepository,
   exportingOuterPdf = false,
   onChange,
   onUpdateParams,
@@ -137,7 +185,25 @@ export function CoverStyler({
   );
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedOrnamentId, setSelectedOrnamentId] = useState<string | null>(null);
-  const [customFont, setCustomFont] = useState<CustomFontAsset | null>(null);
+  const [localCustomFont, setLocalCustomFont] = useState<CustomFontAsset | null>(null);
+  const isControlledCustomFont = onCustomFontChange !== undefined;
+  const customFont = isControlledCustomFont ? (propCustomFont ?? null) : localCustomFont;
+  const customFontRef = useRef<CustomFontAsset | null>(customFont);
+  useEffect(() => {
+    customFontRef.current = customFont;
+  }, [customFont]);
+  const setCustomFont = useCallback<Dispatch<SetStateAction<CustomFontAsset | null>>>(
+    (next) => {
+      const resolved = typeof next === 'function' ? next(customFontRef.current) : next;
+      customFontRef.current = resolved;
+      if (onCustomFontChange) {
+        onCustomFontChange(resolved);
+      } else {
+        setLocalCustomFont(resolved);
+      }
+    },
+    [onCustomFontChange],
+  );
   const [eyedropperTarget, setEyedropperTarget] = useState<EyedropperTarget>(null);
   const [showGuides, setShowGuides] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -152,9 +218,15 @@ export function CoverStyler({
   );
   const [pdfExportLayerModeDefault, setPdfExportLayerModeDefault] =
     useState<CoverPdfLayerMode>('full');
+  const [localExportProgressLabel, setLocalExportProgressLabel] = useState<string | null>(null);
   const [localPrintMedia, setLocalPrintMedia] = useState<PrintMediaId>(effectiveParams.printMedia);
   const [localPageSize, setLocalPageSize] = useState<PageSizeId>(effectiveParams.pdfPageSize);
   const [localSplitMode, setLocalSplitMode] = useState<SplitMode>(effectiveParams.splitMode);
+  const [museGenre, setMuseGenre] = useState<DesignGenreId>('surprise');
+  const [museIncludeArt, setMuseIncludeArt] = useState<boolean>(true);
+  const [museLocks, setMuseLocks] = useState<DesignGeneratorLocks>(DEFAULT_DESIGN_GENERATOR_LOCKS);
+  const [museLastSummary, setMuseLastSummary] = useState<GeneratedDesignSummary | null>(null);
+  const museSeedRef = useRef<number>(4217);
   const { isExpanded, toggleExpanded, exitExpanded } = useFullPageCanvas();
 
   const activePrintMedia = onUpdateParams ? effectiveParams.printMedia : localPrintMedia;
@@ -172,6 +244,17 @@ export function CoverStyler({
     onChangeRef.current = onChange;
     onStatusMessageRef.current = onStatusMessage;
   }, [studio, onChange, onStatusMessage]);
+
+  const activeStudioFontKey = useMemo(
+    () => [...collectStudioCuratedFontIds(studio)].sort().join(','),
+    [studio],
+  );
+  useEffect(() => {
+    const ids = collectStudioCuratedFontIds(studioRef.current);
+    if (ids.length > 0) {
+      void ensureCuratedFontsLoaded(ids);
+    }
+  }, [activeStudioFontKey]);
 
   const handleApplyFromHistory = useCallback((next: CoverStudioState) => {
     studioRef.current = next;
@@ -256,6 +339,39 @@ export function CoverStyler({
     setSelectedOrnamentId(null);
   }, []);
 
+  const handleToggleMuseLock = useCallback((key: keyof DesignGeneratorLocks) => {
+    setMuseLocks((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const handleGenerateMuseDesign = useCallback(
+    (quickShuffle = false) => {
+      museSeedRef.current = (((museSeedRef.current * 1664525 + 1013904223) >>> 0) % 999983) + 1;
+      const effectiveLocks: DesignGeneratorLocks = quickShuffle
+        ? { ...museLocks, lockTextContent: true }
+        : museLocks;
+      const result = generateBookCoverDesign(geometry, studioRef.current, {
+        genre: museGenre,
+        seed: museSeedRef.current,
+        includeBackgroundArt: museIncludeArt,
+        locks: effectiveLocks,
+      });
+      void ensureCuratedFontsLoaded([
+        result.summary.titleFontId,
+        result.summary.authorFontId,
+        result.summary.spineFontId,
+      ]);
+      applyStudioChange(result.studio);
+      handleClearSelection();
+      setMuseLastSummary(result.summary);
+      const titleLabel = getCuratedFont(result.summary.titleFontId).label;
+      const authorLabel = getCuratedFont(result.summary.authorFontId).label;
+      onStatusMessageRef.current(
+        `Design Muse: ${result.summary.genreLabel} · ${result.summary.archetypeLabel} (${titleLabel} + ${authorLabel})`,
+      );
+    },
+    [geometry, museGenre, museIncludeArt, museLocks, applyStudioChange, handleClearSelection],
+  );
+
   const selectPastedResult = useCallback(
     (result: StudioPasteResult) => {
       if (result.pastedKind === 'image') {
@@ -294,6 +410,16 @@ export function CoverStyler({
     onStatusMessageRef.current('Redid change');
     return true;
   }, [redo, reconcileSelectionWithStudio]);
+
+  const handleReorderElement = useCallback(
+    (id: string, direction: LayerReorderDirection) => {
+      const cur = studioRef.current;
+      const next = reorderStudioElement(cur, id, direction);
+      if (next === cur) return;
+      applyStudioChange(next);
+    },
+    [applyStudioChange],
+  );
 
   const handleDuplicateSelected = useCallback(() => {
     const selection: StudioElementSelection = {
@@ -335,8 +461,11 @@ export function CoverStyler({
     onChangeLayers: (nextLayers) => {
       const cur = studioRef.current;
       const isStructuralDelete = nextLayers.length !== cur.layers.length;
+      const nextStudio = isStructuralDelete
+        ? pruneLayerOrder({ ...cur, layers: nextLayers })
+        : { ...cur, layers: nextLayers };
       applyStudioChange(
-        { ...cur, layers: nextLayers },
+        nextStudio,
         isStructuralDelete ? undefined : { coalesceKey: 'drag' },
       );
     },
@@ -460,6 +589,26 @@ export function CoverStyler({
         }
       }
 
+      if (viewMode === '2d' && !e.altKey) {
+        const activeElementId = selectedTextId ?? selectedOrnamentId ?? selectedLayerId;
+        if (activeElementId) {
+          const isBracketRight = e.code === 'BracketRight' || e.key === ']' || e.key === '}';
+          const isBracketLeft = e.code === 'BracketLeft' || e.key === '[' || e.key === '{';
+          if (isBracketRight) {
+            e.preventDefault();
+            const dir: LayerReorderDirection = e.shiftKey || e.key === '}' ? 'front' : 'forward';
+            handleReorderElement(activeElementId, dir);
+            return;
+          }
+          if (isBracketLeft) {
+            e.preventDefault();
+            const dir: LayerReorderDirection = e.shiftKey || e.key === '{' ? 'back' : 'backward';
+            handleReorderElement(activeElementId, dir);
+            return;
+          }
+        }
+      }
+
       if (
         viewMode === '2d' &&
         !mod &&
@@ -503,6 +652,7 @@ export function CoverStyler({
     handleUndo,
     handleRedo,
     handleDuplicateSelected,
+    handleReorderElement,
     applyStudioChange,
     selectPastedResult,
   ]);
@@ -577,6 +727,10 @@ export function CoverStyler({
     if (selectedLayer) return { kind: 'image', layer: selectedLayer };
     return null;
   }, [selectedTextLayer, selectedOrnamentLayer, selectedLayer]);
+  const activeSelectionStackPosition = useMemo(
+    () => (activeSelection ? getElementStackPosition(studio, activeSelection.layer.id) : null),
+    [studio, activeSelection],
+  );
   const hasSelectedElement = activeSelection !== null;
 
   const handleSelectionFlipH = () => {
@@ -684,7 +838,7 @@ export function CoverStyler({
       actions.handleDeleteOrnament(activeSelection.layer.id);
     } else {
       const remaining = studio.layers.filter((l) => l.id !== activeSelection.layer.id);
-      applyStudioChange({ ...studio, layers: remaining });
+      applyStudioChange(pruneLayerOrder({ ...studio, layers: remaining }));
       setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
     }
   };
@@ -720,26 +874,82 @@ export function CoverStyler({
           customRollWidthMm: selection.customRollWidthMm,
           printerMargins: selection.printerMargins,
           rollNesting: selection.rollNesting,
+          sheetNesting: selection.sheetNesting,
+          multiBookQueueEntries: selection.multiBookQueueEntries,
         });
         return;
       }
     }
-    await actions.handleExportPrintPdf({
-      includeCutLines: selection.includeCutLines,
-      includeFoldLines: selection.includeFoldLines,
-      includeFoldGuideTicks: selection.includeFoldGuideTicks,
-      printMediaId: selection.printMediaId,
-      dpi: selection.dpi,
-      tileOverlapMm: selection.tileOverlapMm,
-      includeScaleBar: selection.includeScaleBar,
-      splitMode: selection.splitMode,
-      exportLayerMode: selection.exportLayerMode,
-      appendInnerPocketsPage: selection.appendInnerPocketsPage,
-      innerPageSizeId: selection.pageSizeId,
-      customRollWidthMm: selection.customRollWidthMm,
-      printerMargins: selection.printerMargins,
-      rollNesting: selection.rollNesting,
-    });
+
+    let resolvedRollNesting = selection.rollNesting;
+    let resolvedSheetNesting = selection.sheetNesting;
+    let skippedMultiBookCount = 0;
+
+    try {
+      const queueEntries = selection.multiBookQueueEntries;
+      if (
+        queueEntries &&
+        queueEntries.length > 0 &&
+        (selection.sheetNesting?.enabled || selection.rollNesting?.enabled)
+      ) {
+        await onFlushActiveBook?.();
+        const repository = await (getProjectRepository
+          ? getProjectRepository()
+          : getDefaultProjectRepository());
+        setLocalExportProgressLabel(
+          `Rendering 1/${queueEntries.length}: ${queueEntries[0].label}…`,
+        );
+        const resolved = await resolveMultiBookQueueSources(queueEntries, {
+          repository,
+          target: 'cover-styled',
+          dpi: selection.dpi,
+          includeGuides: selection.includeGuides,
+          exportLayerMode: selection.exportLayerMode,
+          onProgress: (done, total) => {
+            const nextEntry = queueEntries[done];
+            setLocalExportProgressLabel(
+              done < total && nextEntry
+                ? `Rendering ${done + 1}/${total}: ${nextEntry.label}…`
+                : 'Composing PDF…',
+            );
+          },
+        });
+        skippedMultiBookCount = resolved.skippedIds.length;
+        if (resolvedSheetNesting?.enabled) {
+          resolvedSheetNesting = {
+            ...resolvedSheetNesting,
+            extraQueueItems: resolved.items,
+          };
+        }
+        if (resolvedRollNesting?.enabled) {
+          resolvedRollNesting = {
+            ...resolvedRollNesting,
+            extraQueueItems: resolved.items,
+          };
+        }
+      }
+
+      await actions.handleExportPrintPdf({
+        includeCutLines: selection.includeCutLines,
+        includeFoldLines: selection.includeFoldLines,
+        includeFoldGuideTicks: selection.includeFoldGuideTicks,
+        printMediaId: selection.printMediaId,
+        dpi: selection.dpi,
+        tileOverlapMm: selection.tileOverlapMm,
+        includeScaleBar: selection.includeScaleBar,
+        splitMode: selection.splitMode,
+        exportLayerMode: selection.exportLayerMode,
+        appendInnerPocketsPage: selection.appendInnerPocketsPage,
+        innerPageSizeId: selection.pageSizeId,
+        customRollWidthMm: selection.customRollWidthMm,
+        printerMargins: selection.printerMargins,
+        rollNesting: resolvedRollNesting,
+        sheetNesting: resolvedSheetNesting,
+        skippedMultiBookCount,
+      });
+    } finally {
+      setLocalExportProgressLabel(null);
+    }
   };
 
   return (
@@ -753,6 +963,7 @@ export function CoverStyler({
           geometry={geometry}
           spec={spec}
           unit={effectiveParams.unit}
+          uiDensity={uiDensity}
           exportingKind={actions.exportingKind}
           exportingOuterPdf={exportingOuterPdf}
           canUndo={canUndo}
@@ -767,6 +978,7 @@ export function CoverStyler({
           onDuplicate={() => {
             handleDuplicateSelected();
           }}
+          onShuffleDesign={() => handleGenerateMuseDesign(true)}
           onOpenMeasureAndCut={onOpenMeasureAndCut}
           onExportPrintPdf={() => {
             setPdfExportLayerModeDefault('full');
@@ -843,11 +1055,17 @@ export function CoverStyler({
             {viewMode === '2d' && (
               <CanvasSelectionBar
                 selection={activeSelection}
-              controlsId="studio-mat-viewport"
-              onFlipH={handleSelectionFlipH}
-              onFlipV={handleSelectionFlipV}
-              onRotate90={handleSelectionRotate90}
-              onQuickAlign={handleSelectionQuickAlign}
+                controlsId="studio-mat-viewport"
+                stackPosition={activeSelectionStackPosition}
+                onFlipH={handleSelectionFlipH}
+                onFlipV={handleSelectionFlipV}
+                onRotate90={handleSelectionRotate90}
+                onReorder={(direction) => {
+                  if (activeSelection) {
+                    handleReorderElement(activeSelection.layer.id, direction);
+                  }
+                }}
+                onQuickAlign={handleSelectionQuickAlign}
               onFitMargin={
                 activeSelection?.kind === 'ornament'
                   ? (marginMm) =>
@@ -861,6 +1079,15 @@ export function CoverStyler({
                         kind: activeSelection.kind,
                         id: activeSelection.layer.id,
                       })
+                  : undefined
+              }
+              onDetachSeriesLayer={
+                activeSelection
+                  ? () =>
+                      actions.handleDetachSeriesLayer(
+                        activeSelection.kind,
+                        activeSelection.layer.id,
+                      )
                   : undefined
               }
               onChangeColor={handleSelectionChangeColor}
@@ -1283,6 +1510,7 @@ export function CoverStyler({
         activeIssueId={activeIssueId}
         onSelectImageLayer={handleSelectImageLayer}
         onAddImageFiles={(files) => void actions.handleAddImageFiles(files)}
+        onApplyProceduralArtwork={actions.handleApplyProceduralArtwork}
         onQuickFitLayer={actions.handleQuickFitLayer}
         onExtendLayerStub={(id, mode) => void actions.handleExtendLayerStub(id, mode)}
         onMatchSpineBackToEdge={(hex) => {
@@ -1326,15 +1554,12 @@ export function CoverStyler({
             return next;
           })
         }
-        onReorderLayer={(id, direction) =>
-          applyStudioChange({
-            ...studio,
-            layers: CoverImageLayerModel.reorder(studio.layers, id, direction),
-          })
-        }
+        onReorderLayer={(id, direction) => handleReorderElement(id, direction)}
+        onReorderElement={handleReorderElement}
+        onDetachSeriesLayer={actions.handleDetachSeriesLayer}
         onDeleteLayer={(id) => {
           const remaining = studio.layers.filter((l) => l.id !== id);
-          applyStudioChange({ ...studio, layers: remaining });
+          applyStudioChange(pruneLayerOrder({ ...studio, layers: remaining }));
           if (selectedLayerId === id) {
             setSelectedLayerId(remaining[remaining.length - 1]?.id ?? null);
           }
@@ -1372,6 +1597,16 @@ export function CoverStyler({
         onQuickAlignOrnament={actions.handleQuickAlignOrnament}
         onDeleteOrnament={actions.handleDeleteOrnament}
         onUpdateSpineText={actions.updateSpineText}
+        designMuse={{
+          genre: museGenre,
+          includeBackgroundArt: museIncludeArt,
+          locks: museLocks,
+          lastSummary: museLastSummary,
+          onGenreChange: setMuseGenre,
+          onIncludeBackgroundArtChange: setMuseIncludeArt,
+          onToggleLock: handleToggleMuseLock,
+          onGenerate: () => handleGenerateMuseDesign(false),
+        }}
         onSavePreset={actions.handleSaveDesignPreset}
         onApplyPreset={actions.handleApplyDesignPreset}
         onDeletePreset={actions.handleDeleteDesignPreset}
@@ -1452,6 +1687,10 @@ export function CoverStyler({
           pdfDialogTarget === 'cover-styled' ? studio.cutLineMode === 'full-cut-miter' : true
         }
         defaultExportLayerMode={pdfExportLayerModeDefault}
+        savedBookSummaries={savedBookSummaries}
+        activeProjectId={activeProjectId}
+        activeBookName={activeBookName}
+        exportProgressLabel={localExportProgressLabel ?? exportProgressLabel}
         exporting={actions.exportingKind === 'pdf' || exportingOuterPdf}
         onConfirmExport={handleConfirmPdfExport}
         onClose={() => setPdfDialogTarget(null)}

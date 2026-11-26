@@ -6,6 +6,7 @@ import {
   PAPERBACK_PRESETS,
   PRIMARY_SHEET_MEDIA_IDS,
   PRINT_MEDIA_OPTIONS,
+  getBindingStyleSpec,
   getPageSizeSpec,
   getPrintMediaSpec,
 } from '@/resources/paperSpecs';
@@ -17,6 +18,7 @@ export {
   PAPERBACK_PRESETS,
   PRIMARY_SHEET_MEDIA_IDS,
   PRINT_MEDIA_OPTIONS,
+  getBindingStyleSpec,
   getPageSizeSpec,
   getPrintMediaSpec,
 };

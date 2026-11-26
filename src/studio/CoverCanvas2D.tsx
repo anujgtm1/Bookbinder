@@ -13,6 +13,7 @@ import type { EyedropperTarget } from './ArtworkControlsCard';
 import { LayerSelectionOverlay } from './LayerSelectionOverlay';
 import { buildOrnamentCompoundPath, getOrnamentSvgStyle } from './classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from './fonts';
+import { resolveOrderedStudioElements } from './layerStack';
 import { getSurfaceOverlayStyle, type SurfaceMaterialId } from './materialPreview';
 import type { PreflightReport } from './preflight';
 import {
@@ -95,6 +96,7 @@ export function CoverCanvas2D({
   onStartOrnamentResize,
 }: CoverCanvas2DProps) {
   const bindingStrategy = resolveBindingStrategy(geometry);
+  const orderedElements = useMemo(() => resolveOrderedStudioElements(studio), [studio]);
   const spinePlacements = useMemo(
     () => computeSpineTextPlacements(geometry, studio),
     [geometry, studio],
@@ -266,144 +268,158 @@ export function CoverCanvas2D({
           }}
         />
 
-        {/* Free-Form Draggable & Resizable Artwork Layers */}
-        {studio.layers.map((layer, index) => {
-          const clipId = `studio-clip-${layer.clipZone}`;
-          return (
-            <g key={layer.id} clipPath={`url(#${clipId})`}>
-              <image
-                href={layer.dataUrl}
-                x={layer.xMm}
-                y={layer.yMm}
-                width={layer.widthMm}
-                height={layer.heightMm}
-                transform={buildLayerFlipTransform(
-                  layer.xMm,
-                  layer.yMm,
-                  layer.widthMm,
-                  layer.heightMm,
-                  layer.flipX,
-                  layer.flipY,
-                  layer.rotationDeg,
+        {/* Unified Front-to-Back Cover Elements (Images, Ornaments & Text in exact layerOrder) */}
+        {orderedElements.map((item) => {
+          if (item.kind === 'image') {
+            const { layer, index } = item;
+            const clipId = `studio-clip-${layer.clipZone}`;
+            return (
+              <g key={layer.id} clipPath={`url(#${clipId})`}>
+                <image
+                  href={layer.dataUrl}
+                  x={layer.xMm}
+                  y={layer.yMm}
+                  width={layer.widthMm}
+                  height={layer.heightMm}
+                  transform={buildLayerFlipTransform(
+                    layer.xMm,
+                    layer.yMm,
+                    layer.widthMm,
+                    layer.heightMm,
+                    layer.flipX,
+                    layer.flipY,
+                    layer.rotationDeg,
+                  )}
+                  preserveAspectRatio="none"
+                  data-testid={`studio-layer-${index}`}
+                  data-layer-id={layer.id}
+                  className={
+                    eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+                  }
+                  onClick={(e) => {
+                    if (eyedropperTarget) return;
+                    e.stopPropagation();
+                    onSelectImageLayer(layer.id);
+                  }}
+                  onPointerDown={(e) => {
+                    if (eyedropperTarget) return;
+                    e.stopPropagation();
+                    onStartLayerMove(layer, e.clientX, e.clientY);
+                  }}
+                />
+                {(layer.dimOpacity ?? 0) > 0 && (
+                  <rect
+                    x={layer.xMm}
+                    y={layer.yMm}
+                    width={layer.widthMm}
+                    height={layer.heightMm}
+                    fill={`rgba(10, 12, 16, ${layer.dimOpacity})`}
+                    pointerEvents="none"
+                    data-testid={`studio-layer-scrim-${index}`}
+                  />
                 )}
-                preserveAspectRatio="none"
-                data-testid={`studio-layer-${index}`}
+              </g>
+            );
+          }
+
+          if (item.kind === 'ornament') {
+            const { layer: orn, index } = item;
+            const compoundD = buildOrnamentCompoundPath(orn);
+            if (!compoundD) return null;
+            const style = getOrnamentSvgStyle(orn);
+            const isSelected = orn.id === selectedOrnamentId && !eyedropperTarget;
+            const ornHandleHalf = Math.min(3.2, handleCornerSize * 0.42);
+            const ornCorners: readonly {
+              readonly corner: ResizeCorner;
+              readonly cx: number;
+              readonly cy: number;
+              readonly cursor: string;
+            }[] = [
+              { corner: 'nw', cx: orn.xMm, cy: orn.yMm, cursor: 'nwse-resize' },
+              { corner: 'ne', cx: orn.xMm + orn.widthMm, cy: orn.yMm, cursor: 'nesw-resize' },
+              {
+                corner: 'se',
+                cx: orn.xMm + orn.widthMm,
+                cy: orn.yMm + orn.heightMm,
+                cursor: 'nwse-resize',
+              },
+              { corner: 'sw', cx: orn.xMm, cy: orn.yMm + orn.heightMm, cursor: 'nesw-resize' },
+            ];
+            return (
+              <g
+                key={orn.id}
+                data-testid={`studio-ornament-${index}`}
+                data-ornament-id={orn.id}
                 className={
                   eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
                 }
                 onClick={(e) => {
                   if (eyedropperTarget) return;
                   e.stopPropagation();
-                  onSelectImageLayer(layer.id);
+                  onSelectOrnament(orn.id);
                 }}
                 onPointerDown={(e) => {
                   if (eyedropperTarget) return;
                   e.stopPropagation();
-                  onStartLayerMove(layer, e.clientX, e.clientY);
+                  onStartOrnamentDrag(orn, e.clientX, e.clientY);
                 }}
-              />
-            </g>
-          );
-        })}
-
-        {/* Classic Bookbindery Vector Ornaments & Custom SVG Stamps (draggable & 4-corner resizable) */}
-        {(studio.ornaments ?? []).map((orn, index) => {
-          const compoundD = buildOrnamentCompoundPath(orn);
-          if (!compoundD) return null;
-          const style = getOrnamentSvgStyle(orn);
-          const isSelected = orn.id === selectedOrnamentId && !eyedropperTarget;
-          const ornHandleHalf = Math.min(3.2, handleCornerSize * 0.42);
-          const ornCorners: readonly {
-            readonly corner: ResizeCorner;
-            readonly cx: number;
-            readonly cy: number;
-            readonly cursor: string;
-          }[] = [
-            { corner: 'nw', cx: orn.xMm, cy: orn.yMm, cursor: 'nwse-resize' },
-            { corner: 'ne', cx: orn.xMm + orn.widthMm, cy: orn.yMm, cursor: 'nesw-resize' },
-            {
-              corner: 'se',
-              cx: orn.xMm + orn.widthMm,
-              cy: orn.yMm + orn.heightMm,
-              cursor: 'nwse-resize',
-            },
-            { corner: 'sw', cx: orn.xMm, cy: orn.yMm + orn.heightMm, cursor: 'nesw-resize' },
-          ];
-          return (
-            <g
-              key={orn.id}
-              data-testid={`studio-ornament-${index}`}
-              className={
-                eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
-              }
-              onClick={(e) => {
-                if (eyedropperTarget) return;
-                e.stopPropagation();
-                onSelectOrnament(orn.id);
-              }}
-              onPointerDown={(e) => {
-                if (eyedropperTarget) return;
-                e.stopPropagation();
-                onStartOrnamentDrag(orn, e.clientX, e.clientY);
-              }}
-            >
-              {/* Transparent hit target so thin frames/dividers are easy to grab */}
-              <rect
-                x={orn.xMm}
-                y={orn.yMm}
-                width={orn.widthMm}
-                height={orn.heightMm}
-                fill="transparent"
-              />
-              <path
-                d={compoundD}
-                fill={style.fill}
-                stroke={style.stroke !== 'none' ? style.stroke : undefined}
-                strokeWidth={style.strokeWidthMm > 0 ? style.strokeWidthMm : undefined}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-              {isSelected && (
-                <>
-                  <rect
-                    x={orn.xMm - 1.5}
-                    y={orn.yMm - 1.5}
-                    width={orn.widthMm + 3}
-                    height={orn.heightMm + 3}
-                    fill="none"
-                    stroke="#facc15"
-                    strokeWidth="0.9"
-                    strokeDasharray="3.5 2"
-                    pointerEvents="none"
-                  />
-                  {ornCorners.map(({ corner, cx, cy, cursor }) => (
+              >
+                {/* Transparent hit target so thin frames/dividers are easy to grab */}
+                <rect
+                  x={orn.xMm}
+                  y={orn.yMm}
+                  width={orn.widthMm}
+                  height={orn.heightMm}
+                  fill="transparent"
+                />
+                <path
+                  d={compoundD}
+                  fill={style.fill}
+                  stroke={style.stroke !== 'none' ? style.stroke : undefined}
+                  strokeWidth={style.strokeWidthMm > 0 ? style.strokeWidthMm : undefined}
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+                {isSelected && (
+                  <>
                     <rect
-                      key={corner}
-                      x={cx - ornHandleHalf}
-                      y={cy - ornHandleHalf}
-                      width={ornHandleHalf * 2}
-                      height={ornHandleHalf * 2}
-                      rx={0.8}
-                      fill="#faf6ee"
-                      stroke="#b48327"
-                      strokeWidth="0.85"
-                      style={{ cursor }}
-                      data-testid={`ornament-resize-${corner}`}
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        onStartOrnamentResize(orn, corner);
-                      }}
+                      x={orn.xMm - 1.5}
+                      y={orn.yMm - 1.5}
+                      width={orn.widthMm + 3}
+                      height={orn.heightMm + 3}
+                      fill="none"
+                      stroke="#facc15"
+                      strokeWidth="0.9"
+                      strokeDasharray="3.5 2"
+                      pointerEvents="none"
                     />
-                  ))}
-                </>
-              )}
-            </g>
-          );
-        })}
+                    {ornCorners.map(({ corner, cx, cy, cursor }) => (
+                      <rect
+                        key={corner}
+                        x={cx - ornHandleHalf}
+                        y={cy - ornHandleHalf}
+                        width={ornHandleHalf * 2}
+                        height={ornHandleHalf * 2}
+                        rx={0.8}
+                        fill="#faf6ee"
+                        stroke="#b48327"
+                        strokeWidth="0.85"
+                        style={{ cursor }}
+                        data-testid={`ornament-resize-${corner}`}
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          onStartOrnamentResize(orn, corner);
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+              </g>
+            );
+          }
 
-        {/* Draggable Front / Back / Spine Cover Text Layers */}
-        {(studio.textLayers ?? []).map((layer, index) => {
+          const { layer, index } = item;
           const lineItems = computeCoverTextLinePlacements(layer);
           const layerFamily = resolveFontCssFamily(layer.fontId, customFont);
           const anchor =
@@ -414,6 +430,7 @@ export function CoverCanvas2D({
             <g
               key={layer.id}
               data-testid={`studio-cover-text-${index}`}
+              data-text-id={layer.id}
               transform={buildPointFlipTransform(
                 layer.xMm,
                 layer.yMm,
@@ -445,19 +462,19 @@ export function CoverCanvas2D({
                 strokeWidth={isSelected ? '0.9' : '0'}
                 strokeDasharray={isSelected ? '3.5 2' : undefined}
               />
-              {lineItems.map((item, lineIdx) => (
+              {lineItems.map((lineItem, lineIdx) => (
                 <text
                   key={`${layer.id}-${lineIdx}`}
-                  x={item.anchorXMm}
-                  y={item.anchorYMm}
-                  fill={item.color}
+                  x={lineItem.anchorXMm}
+                  y={lineItem.anchorYMm}
+                  fill={lineItem.color}
                   fontFamily={layerFamily}
-                  fontSize={UnitConverter.pointsToMm(item.fontSizePt)}
-                  letterSpacing={`${item.letterSpacingEm}em`}
+                  fontSize={UnitConverter.pointsToMm(lineItem.fontSizePt)}
+                  letterSpacing={`${lineItem.letterSpacingEm}em`}
                   textAnchor={anchor}
                   dominantBaseline="middle"
                 >
-                  {item.text}
+                  {lineItem.text}
                 </text>
               ))}
             </g>
