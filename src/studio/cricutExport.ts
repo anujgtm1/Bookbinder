@@ -369,7 +369,7 @@ export function detectCricutScopePresence(
  * Loads font bytes for fontkit glyph outlining (prefers uploaded .ttf/.otf/.woff custom font,
  * otherwise loads the active bundled curated .woff font).
  */
-async function resolveFontBytesById(
+export async function resolveFontBytesById(
   fontId: StudioFontId,
   customFont: CustomFontAsset | null,
   overrideBytes?: Uint8Array | null,
@@ -394,12 +394,12 @@ export async function resolveOutlineFontBytes(
   return resolveFontBytesById(studio.spineText.fontId, customFont, overrideBytes);
 }
 
-interface BakedLetteringPaths {
+export interface BakedLetteringPaths {
   readonly compoundD: string;
   readonly bounds: Rect2D | null;
 }
 
-interface GlyphRunPlacement {
+export interface GlyphRunPlacement {
   readonly text: string;
   readonly anchorXMm: number;
   readonly anchorYMm: number;
@@ -543,7 +543,7 @@ function bakeGlyphRunsWithFont(
   };
 }
 
-function bakeGlyphRunsToPaths(
+export function bakeGlyphRunsToPaths(
   runs: readonly GlyphRunPlacement[],
   fontBytes: Uint8Array,
   originXMm: number,
@@ -652,7 +652,7 @@ function mergeBounds(a: Rect2D | null, b: Rect2D | null): Rect2D | null {
 }
 
 /** Builds crisp closed L-bracket corner registration marks as filled polygons (no stroke ambiguity in Cricut). */
-function buildCornerBracketsPath(
+export function buildCornerBracketsPath(
   rects: readonly Rect2D[],
   canvasWidthMm: number,
   mirrorX: boolean,

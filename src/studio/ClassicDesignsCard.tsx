@@ -7,6 +7,7 @@ import {
   RotateCw,
   Sparkles,
   Trash2,
+  Unlink,
   Upload,
 } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -18,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { FOIL_SWATCHES } from '@/resources/palettes';
 import {
   COVER_ORNAMENT_BOUNDS,
+  isSeriesOriginLayer,
   rotateOrnament90,
   type ClassicOrnamentCategory,
   type ClassicOrnamentId,
@@ -54,6 +56,7 @@ export interface ClassicDesignsCardProps {
     id: string,
     verticalSlot: 'upper' | 'center' | 'lower',
   ) => void;
+  readonly onDetachSeriesLayer?: (id: string) => void;
   readonly onDeleteOrnament: (id: string) => void;
   /** When true, omits the outer Card wrapper and header (used inside CoverElementsCard). */
   readonly embedded?: boolean;
@@ -107,6 +110,7 @@ export function ClassicDesignsCard({
   onFitOrnamentWithMargin,
   onCenterOrnament,
   onQuickAlignOrnament,
+  onDetachSeriesLayer,
   onDeleteOrnament,
   embedded = false,
 }: ClassicDesignsCardProps) {
@@ -310,10 +314,11 @@ export function ClassicDesignsCard({
                   ? orn.customSvgName
                   : spec.label;
               const isSelected = orn.id === selectedOrnamentId;
+              const fromSeries = isSeriesOriginLayer(orn);
               return (
                 <li
                   key={orn.id}
-                  className={`flex items-center justify-between gap-2 rounded-sm px-2 py-1 text-xs ${
+                  className={`flex items-center justify-between gap-1.5 rounded-sm px-2 py-1 text-xs ${
                     isSelected
                       ? 'bg-primary/12 text-foreground ring-1 ring-primary/40'
                       : 'hover:bg-accent/60'
@@ -330,15 +335,42 @@ export function ClassicDesignsCard({
                       style={{ backgroundColor: orn.color }}
                     />
                     <span className="truncate font-medium">{displayLabel}</span>
-                    <Badge variant="outline" className="ml-auto shrink-0 font-mono text-[9px] uppercase">
+                    {fromSeries && (
+                      <Badge
+                        variant="brass"
+                        data-testid="layer-from-series-badge"
+                        className="ml-auto shrink-0 px-1.5 py-0 text-[9px] font-semibold"
+                      >
+                        From Series
+                      </Badge>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className={`${fromSeries ? '' : 'ml-auto '}shrink-0 font-mono text-[9px] uppercase`}
+                    >
                       {orn.zone}
                     </Badge>
                   </button>
+                  {fromSeries && onDetachSeriesLayer && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 shrink-0 gap-0.5 px-1.5 text-[10px] text-brass hover:text-foreground"
+                      title="Detach from Series Spines so future series syncs keep your tweaks"
+                      aria-label={`Detach ornament ${displayLabel} from Series Spines`}
+                      data-testid={`ornament-detach-series-${idx}`}
+                      onClick={() => onDetachSeriesLayer(orn.id)}
+                    >
+                      <Unlink className="h-3 w-3" aria-hidden="true" />
+                      Detach
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-destructive hover:text-destructive"
+                    className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
                     aria-label={`Remove ornament ${displayLabel}`}
                     data-testid={`ornament-delete-${idx}`}
                     onClick={() => onDeleteOrnament(orn.id)}

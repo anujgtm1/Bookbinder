@@ -9,12 +9,17 @@ import {
 } from './layoutConstraints';
 import { CURATED_FONT_IDS, type CuratedFontId, type StudioFontId } from './studio';
 import {
+  isSeriesOriginLayer,
   nextQuarterTurn,
   normalizeQuarterTurn,
+  parseLayerOrigin,
+  type LayerOrigin,
   type QuarterTurnDeg,
   type ResizeCorner,
 } from './studioLayer';
 import { UnitConverter, clampFinite, roundTo } from './units';
+
+export { isSeriesOriginLayer, type LayerOrigin };
 
 export type CustomSvgRenderMode = 'fill' | 'stroke' | 'fill-and-stroke';
 
@@ -97,6 +102,8 @@ export interface CoverTextLayer {
   readonly role?: CoverTextSemanticRole;
   /** Optional declarative layout pin/fit condition */
   readonly layoutConstraint?: LayerLayoutConstraint;
+  /** Optional provenance marker when layer was compiled from Series Spines */
+  readonly origin?: LayerOrigin;
 }
 
 export interface CoverOrnamentLayer {
@@ -123,6 +130,8 @@ export interface CoverOrnamentLayer {
   readonly rotationDeg?: QuarterTurnDeg;
   /** Optional declarative layout pin/margin condition */
   readonly layoutConstraint?: LayerLayoutConstraint;
+  /** Optional provenance marker when layer was compiled from Series Spines */
+  readonly origin?: LayerOrigin;
 }
 
 /**
@@ -340,13 +349,16 @@ export const CoverTextLayerModel = {
   serialize(layer: CoverTextLayer): CoverTextLayer {
     const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
     const role = sanitizeCoverTextRole(layer.role);
-    const { role: _r, layoutConstraint: _c, ...rest } = layer;
+    const origin = parseLayerOrigin(layer.origin);
+    const { role: _r, layoutConstraint: _c, origin: _o, ...rest } = layer;
     void _r;
     void _c;
+    void _o;
     return {
       ...rest,
       ...(role ? { role } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 
@@ -356,6 +368,7 @@ export const CoverTextLayerModel = {
     if (typeof obj.text !== 'string') return null;
     const role = sanitizeCoverTextRole(obj.role);
     const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+    const origin = parseLayerOrigin(obj.origin);
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateElementId('txt'),
       text: obj.text.slice(0, 600),
@@ -389,6 +402,7 @@ export const CoverTextLayerModel = {
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
       ...(role ? { role } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 } as const;
@@ -668,13 +682,16 @@ export const CoverOrnamentLayerModel = {
 
   serialize(layer: CoverOrnamentLayer): CoverOrnamentLayer {
     const layoutConstraint = cloneLayerLayoutConstraint(layer.layoutConstraint);
-    const { layoutConstraint: _c, ...rest } = layer;
+    const origin = parseLayerOrigin(layer.origin);
+    const { layoutConstraint: _c, origin: _o, ...rest } = layer;
     void _c;
+    void _o;
     return {
       ...rest,
       ...(layer.customSvgPaths ? { customSvgPaths: [...layer.customSvgPaths] } : {}),
       ...(layer.customSvgViewBox ? { customSvgViewBox: { ...layer.customSvgViewBox } } : {}),
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 
@@ -711,6 +728,7 @@ export const CoverOrnamentLayerModel = {
     }
 
     const layoutConstraint = sanitizeLayerLayoutConstraint(obj.layoutConstraint);
+    const origin = parseLayerOrigin(obj.origin);
 
     return {
       id: typeof obj.id === 'string' && obj.id.trim() ? obj.id : generateElementId('orn'),
@@ -745,6 +763,7 @@ export const CoverOrnamentLayerModel = {
       flipY: obj.flipY === true ? true : undefined,
       rotationDeg: normalizeQuarterTurn(obj.rotationDeg) || undefined,
       ...(layoutConstraint ? { layoutConstraint } : {}),
+      ...(origin ? { origin } : {}),
     };
   },
 } as const;

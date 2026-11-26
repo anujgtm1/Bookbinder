@@ -627,4 +627,93 @@ describe('CoverStyler docked CanvasSelectionBar & unified Top ⅓ · Center · B
     expect(latestState.layers[0].rotationDeg).toBe(180);
     expect(latestState.layers[0].layoutConstraint?.imageFit).toBeUndefined();
   }, 15_000);
+
+  it('displays From Series badges and supports detaching and deleting series-origin layers', async () => {
+    const user = userEvent.setup();
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+    const spec = computeStudioCanvasSpec(geom);
+    const statusSpy = vi.fn();
+
+    const seriesImage: CoverImageLayer = {
+      ...CoverImageLayerModel.createInRect({
+        id: 'series-panorama',
+        dataUrl: 'data:image/png;base64,AAA',
+        fileName: 'Cosmic Nebula (Pattern).svg',
+        naturalWidth: 1600,
+        naturalHeight: 900,
+        targetRect: spec.spineArtworkRect,
+        clipZone: 'spine',
+      }),
+      origin: 'series-spine',
+    };
+    const seriesText: CoverTextLayer = {
+      ...CoverTextLayerModel.createPreset('front-title', spec.spineBoardRect),
+      id: 'series-vol-badge',
+      text: 'I',
+      zone: 'spine',
+      origin: 'series-spine',
+    };
+    const seriesOrn: CoverOrnamentLayer = {
+      ...CoverOrnamentLayerModel.createForZone('emblem-compass-rose', spec.spineBoardRect, 'spine'),
+      id: 'series-ornament',
+      origin: 'series-spine',
+    };
+
+    let latestState: CoverStudioState = {
+      ...CoverStudioModel.createDefault(),
+      layers: [seriesImage],
+      textLayers: [seriesText],
+      ornaments: [seriesOrn],
+    };
+
+    function StatefulHarness() {
+      const [studio, setStudio] = useState<CoverStudioState>(latestState);
+      return (
+        <CoverStyler
+          params={DEFAULT_BOOK_PARAMETERS}
+          geometry={geom}
+          studio={studio}
+          onChange={(next) => {
+            latestState = next;
+            setStudio(next);
+          }}
+          onStatusMessage={statusSpy}
+        />
+      );
+    }
+
+    render(<StatefulHarness />);
+
+    // Image layer is initially selected: From Series badge appears in both CanvasSelectionBar and ArtworkControlsCard
+    expect(screen.getAllByTestId('layer-from-series-badge')).toHaveLength(2);
+    expect(screen.getByTestId('selection-detach-series-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('layer-detach-series-0')).toBeInTheDocument();
+
+    // Detach image layer from CanvasSelectionBar -> badge clears, fresh non-series ID assigned, layer remains intact
+    await user.click(screen.getByTestId('selection-detach-series-btn'));
+    expect(latestState.layers).toHaveLength(1);
+    expect(latestState.layers[0].origin).toBeUndefined();
+    expect(latestState.layers[0].id.startsWith('series-')).toBe(false);
+    expect(screen.queryByTestId('layer-from-series-badge')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('selection-detach-series-btn')).not.toBeInTheDocument();
+    expect(statusSpy).toHaveBeenCalledWith(
+      'Detached layer from Series Spines — future series syncs will keep your tweaks',
+    );
+
+    // Text tab: series badge visible and can be deleted individually
+    await user.click(screen.getByTestId('studio-tool-text'));
+    expect(screen.getByTestId('layer-from-series-badge')).toHaveTextContent('From Series');
+    expect(screen.getByTestId('cover-text-detach-series-0')).toBeInTheDocument();
+    await user.click(screen.getByTestId('cover-text-delete-0'));
+    expect(latestState.textLayers).toHaveLength(0);
+
+    // Designs tab: series ornament shows badge and detaches cleanly
+    await user.click(screen.getByTestId('studio-tool-designs'));
+    expect(screen.getByTestId('layer-from-series-badge')).toHaveTextContent('From Series');
+    await user.click(screen.getByTestId('ornament-detach-series-0'));
+    expect(latestState.ornaments).toHaveLength(1);
+    expect(latestState.ornaments![0].origin).toBeUndefined();
+    expect(latestState.ornaments![0].id.startsWith('series-')).toBe(false);
+    expect(screen.queryByTestId('layer-from-series-badge')).not.toBeInTheDocument();
+  }, 15_000);
 });

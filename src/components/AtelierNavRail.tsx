@@ -1,7 +1,7 @@
-import { BookMarked, FolderOpen, Printer, Ruler, type LucideIcon } from 'lucide-react';
+import { BookMarked, FolderOpen, Library, Printer, Ruler, type LucideIcon } from 'lucide-react';
 import atelierColophonImg from '@/assets/atelier/atelier-colophon.jpg';
 
-export type WorkspaceTab = 'measure' | 'outer' | 'pockets' | 'make';
+export type WorkspaceTab = 'measure' | 'outer' | 'pockets' | 'series' | 'make';
 
 interface AtelierNavItemSpec {
   readonly id: WorkspaceTab;
@@ -44,6 +44,12 @@ export const ATELIER_NAV_GROUPS: readonly AtelierNavGroupSpec[] = [
         label: 'Endpapers',
         testId: 'nav-pockets',
         icon: FolderOpen,
+      },
+      {
+        id: 'series',
+        label: 'Series',
+        testId: 'nav-series',
+        icon: Library,
       },
     ],
   },

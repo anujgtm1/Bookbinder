@@ -97,6 +97,15 @@ export async function drawCoverArtworkLayers(
         toPx(layer.heightMm),
       );
     }
+    if (layer.dimOpacity && layer.dimOpacity > 0) {
+      ctx.fillStyle = `rgba(10, 12, 16, ${layer.dimOpacity})`;
+      ctx.fillRect(
+        toPx(clipRect.x),
+        toPx(clipRect.y),
+        toPx(clipRect.width),
+        toPx(clipRect.height),
+      );
+    }
     ctx.restore();
   }
 }

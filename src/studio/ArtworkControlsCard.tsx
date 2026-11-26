@@ -12,6 +12,7 @@ import {
   RotateCw,
   Sparkles,
   Trash2,
+  Unlink,
   Upload,
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
@@ -37,6 +38,7 @@ import {
 import type { CoverStudioState, CutLineExportMode } from '@/types/studio';
 import {
   getLayerVisualRect,
+  isSeriesOriginLayer,
   nextQuarterTurn,
   normalizeQuarterTurn,
   type CoverImageLayer,
@@ -77,6 +79,7 @@ export interface ArtworkControlsCardProps {
   readonly onToggleLayerFlip?: (id: string, axis: 'x' | 'y') => void;
   readonly onUpdateLayer?: (id: string, patch: Partial<CoverImageLayer>) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
+  readonly onDetachSeriesLayer?: (id: string) => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
   readonly onToggleEyedropper: (target: Exclude<EyedropperTarget, null>) => void;
@@ -129,6 +132,7 @@ export function ArtworkControlsCard({
   onToggleLayerFlip,
   onUpdateLayer,
   onReorderLayer,
+  onDetachSeriesLayer,
   onDeleteLayer,
   onUpdateStudio,
   onToggleEyedropper,
@@ -238,6 +242,7 @@ export function ArtworkControlsCard({
             {[...studio.layers].reverse().map((layer, revIdx) => {
               const actualIdx = studio.layers.length - 1 - revIdx;
               const isSelected = layer.id === selectedLayerId;
+              const fromSeries = isSeriesOriginLayer(layer);
               return (
                 <li
                   key={layer.id}
@@ -259,6 +264,15 @@ export function ArtworkControlsCard({
                       className="h-6 w-6 shrink-0 rounded-xs border border-border object-cover"
                     />
                     <span className="truncate font-medium">{layer.fileName}</span>
+                    {fromSeries && (
+                      <Badge
+                        variant="brass"
+                        data-testid="layer-from-series-badge"
+                        className="ml-auto shrink-0 px-1.5 py-0 text-[9px] font-semibold"
+                      >
+                        From Series
+                      </Badge>
+                    )}
                   </button>
 
                   <div className="flex shrink-0 items-center gap-0.5">
@@ -282,6 +296,21 @@ export function ArtworkControlsCard({
                     >
                       <ArrowDown className="h-3 w-3" aria-hidden="true" />
                     </Button>
+                    {fromSeries && onDetachSeriesLayer && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 gap-0.5 px-1.5 text-[10px] text-brass hover:text-foreground"
+                        title="Detach from Series Spines so future series syncs keep your tweaks"
+                        aria-label={`Detach ${layer.fileName} from Series Spines`}
+                        data-testid={`layer-detach-series-${actualIdx}`}
+                        onClick={() => onDetachSeriesLayer(layer.id)}
+                      >
+                        <Unlink className="h-3 w-3" aria-hidden="true" />
+                        Detach
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"

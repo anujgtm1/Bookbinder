@@ -70,6 +70,7 @@ export interface CoverStudioToolDockProps {
   readonly onToggleLayerFlip: (id: string, axis: 'x' | 'y') => void;
   readonly onUpdateLayer: (id: string, patch: Partial<CoverImageLayer>) => void;
   readonly onReorderLayer: (id: string, direction: 'forward' | 'backward') => void;
+  readonly onDetachSeriesLayer?: (kind: 'image' | 'text' | 'ornament', id: string) => void;
   readonly onDeleteLayer: (id: string) => void;
   readonly onUpdateStudio: (patch: Partial<CoverStudioState>) => void;
   readonly onToggleEyedropper: (target: Exclude<EyedropperTarget, null>) => void;
@@ -145,6 +146,7 @@ export function CoverStudioToolDock({
   onToggleLayerFlip,
   onUpdateLayer,
   onReorderLayer,
+  onDetachSeriesLayer,
   onDeleteLayer,
   onUpdateStudio,
   onToggleEyedropper,
@@ -337,6 +339,9 @@ export function CoverStudioToolDock({
             onToggleLayerFlip={onToggleLayerFlip}
             onUpdateLayer={onUpdateLayer}
             onReorderLayer={onReorderLayer}
+            onDetachSeriesLayer={
+              onDetachSeriesLayer ? (id) => onDetachSeriesLayer('image', id) : undefined
+            }
             onDeleteLayer={onDeleteLayer}
             onUpdateStudio={onUpdateStudio}
             onToggleEyedropper={onToggleEyedropper}
@@ -352,6 +357,9 @@ export function CoverStudioToolDock({
             onAddTextPreset={onAddTextPreset}
             onUpdateTextLayer={onUpdateTextLayer}
             onQuickAlignText={onQuickAlignText}
+            onDetachSeriesLayer={
+              onDetachSeriesLayer ? (id) => onDetachSeriesLayer('text', id) : undefined
+            }
             onDeleteTextLayer={onDeleteTextLayer}
             onCustomFontSelected={onCustomFontSelected}
           />
@@ -370,6 +378,9 @@ export function CoverStudioToolDock({
             onFitOrnamentWithMargin={onFitOrnamentWithMargin}
             onCenterOrnament={onCenterOrnament}
             onQuickAlignOrnament={onQuickAlignOrnament}
+            onDetachSeriesLayer={
+              onDetachSeriesLayer ? (id) => onDetachSeriesLayer('ornament', id) : undefined
+            }
             onDeleteOrnament={onDeleteOrnament}
           />
         </TabsContent>

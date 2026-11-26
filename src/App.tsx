@@ -40,6 +40,7 @@ import {
 import { createSampleBookProject } from '@/resources/sampleProject';
 import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
+import { SeriesSpinesStudio } from '@/studio/SeriesSpinesStudio';
 import { registerCustomFontAsset, type CustomFontAsset } from '@/studio/fonts';
 import { remapStudioForGeometryChange } from '@/studio/studioGeometryRemap';
 import { renderProjectThumbnailDataUrl } from '@/studio/thumbnailRenderer';
@@ -1106,6 +1107,64 @@ export function App() {
     });
   }, []);
 
+  const handleRefreshLibrary = useCallback(async () => {
+    const repo = await getActiveProjectRepository();
+    const nextSummaries = await repo.listSummaries();
+    if (isMountedRef.current) {
+      savedSummariesRef.current = nextSummaries;
+      setSavedSummaries(nextSummaries);
+    }
+  }, [getActiveProjectRepository]);
+
+  const handleOpenBookInStudio = async (projectId: ProjectId) => {
+    clearPendingAutoSave();
+    const prevSnapshot = captureActiveSnapshot();
+
+    await enqueueRepoOp(async (repo) => {
+      if (
+        prevSnapshot &&
+        prevSnapshot.id !== projectId &&
+        (prevSnapshot.project !== lastPersistedProjectRef.current ||
+          prevSnapshot.customFont !== lastPersistedFontRef.current)
+      ) {
+        await persistSnapshotToRepo(repo, prevSnapshot, true);
+      }
+
+      const record = await repo.getProject(projectId);
+      if (!record) {
+        const nextSummaries = await repo.listSummaries();
+        if (isMountedRef.current) {
+          savedSummariesRef.current = nextSummaries;
+          setSavedSummaries(nextSummaries);
+          setStatusMessage('Selected book could not be found.');
+        }
+        return;
+      }
+
+      await repo.setActiveProjectId(record.id);
+      const nextSummaries = await repo.listSummaries();
+      if (isMountedRef.current) {
+        savedSummariesRef.current = nextSummaries;
+        setSavedSummaries(nextSummaries);
+        applyActiveRecordToState(record);
+        setActiveTab('outer');
+        setStatusMessage(
+          `Opened "${record.project.name}" in Cover Studio — tweak front, back, or spine freely`,
+        );
+      }
+    });
+  };
+
+  const handleSelectTab = useCallback(
+    (nextTab: WorkspaceTab) => {
+      if (nextTab === 'series' && activeTabRef.current !== 'series') {
+        void flushActiveSave({ renderThumbnail: false });
+      }
+      setActiveTab(nextTab);
+    },
+    [flushActiveSave],
+  );
+
   const canToggleSidebar = activeTab === 'outer' || activeTab === 'pockets';
   const showSidebar = activeTab === 'measure' || (canToggleSidebar && sidebarOpen);
 
@@ -1113,7 +1172,7 @@ export function App() {
     <div className="bindery-walnut-desk flex min-h-screen flex-col text-foreground lg:flex-row">
       <AtelierNavRail
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
         usesInnerPockets={usesInnerPockets}
         pocketsBadgeLabel={bindingStrategy.innerPocketsNotice?.tabBadge ?? null}
       />
@@ -1132,7 +1191,7 @@ export function App() {
           onOpenMyBooks={handleOpenMyBooks}
           params={project.parameters}
           onChangeParams={handleParamsChange}
-          onOpenMeasureBench={() => setActiveTab('measure')}
+          onOpenMeasureBench={() => handleSelectTab('measure')}
           uiDensity={uiDensity}
           onToggleUiDensity={handleToggleUiDensity}
         />
@@ -1279,6 +1338,18 @@ export function App() {
                   onStatusMessage={setStatusMessage}
                 />
               ))}
+
+            {activeTab === 'series' && (
+              <SeriesSpinesStudio
+                savedSummaries={savedSummaries}
+                getProjectRepository={getActiveProjectRepository}
+                customFont={activeCustomFont}
+                unit={project.parameters.unit}
+                onRefreshLibrary={handleRefreshLibrary}
+                onOpenBookInStudio={handleOpenBookInStudio}
+                onStatusMessage={setStatusMessage}
+              />
+            )}
 
             {activeTab === 'make' && (
               <MakeAndPrintPanel

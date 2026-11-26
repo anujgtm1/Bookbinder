@@ -288,6 +288,7 @@ export function CoverCanvas2D({
                 )}
                 preserveAspectRatio="none"
                 data-testid={`studio-layer-${index}`}
+                data-layer-id={layer.id}
                 className={
                   eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
                 }
@@ -302,6 +303,17 @@ export function CoverCanvas2D({
                   onStartLayerMove(layer, e.clientX, e.clientY);
                 }}
               />
+              {(layer.dimOpacity ?? 0) > 0 && (
+                <rect
+                  x={layer.xMm}
+                  y={layer.yMm}
+                  width={layer.widthMm}
+                  height={layer.heightMm}
+                  fill={`rgba(10, 12, 16, ${layer.dimOpacity})`}
+                  pointerEvents="none"
+                  data-testid={`studio-layer-scrim-${index}`}
+                />
+              )}
             </g>
           );
         })}
@@ -333,6 +345,7 @@ export function CoverCanvas2D({
             <g
               key={orn.id}
               data-testid={`studio-ornament-${index}`}
+              data-ornament-id={orn.id}
               className={
                 eyedropperTarget ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
               }
@@ -414,6 +427,7 @@ export function CoverCanvas2D({
             <g
               key={layer.id}
               data-testid={`studio-cover-text-${index}`}
+              data-text-id={layer.id}
               transform={buildPointFlipTransform(
                 layer.xMm,
                 layer.yMm,
