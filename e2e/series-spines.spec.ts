@@ -144,4 +144,114 @@ test.describe('Series Spines — Multi-Book Series & Collection Workbench', () =
     const pdfBytes = await readFile(pdfPath!);
     expect(pdfBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
   });
+
+  test('drops panoramic image onto Series Shelf, drags & zooms artwork live on canvas, and hands off faithfully into Cover Studio', async ({
+    page,
+  }) => {
+    await page.getByTestId('nav-series').click();
+    await expect(page.getByTestId('series-spines-studio')).toBeVisible();
+
+    const dropzone = page.getByTestId('series-shelf-dropzone');
+    await expect(dropzone).toBeVisible();
+
+    // Guides button is visible in Flat Shelf view and hidden in 2.5D Wooden Shelf view
+    await expect(page.getByTestId('series-toggle-guides')).toBeVisible();
+    await page.getByTestId('series-view-25d').click();
+    await expect(page.getByTestId('series-toggle-guides')).toBeHidden();
+    await page.getByTestId('series-view-flat').click();
+    await expect(page.getByTestId('series-toggle-guides')).toBeVisible();
+
+    // Select book #2 and customize its title so we can verify faithful handoff
+    await page.getByTestId('series-roster-item-1').click();
+    await page.getByTestId('series-book-title-input').fill('The Obsidian Crown');
+    await expect(page.getByTestId('series-top-open-studio-btn')).toContainText(
+      'Edit in Cover Studio',
+    );
+
+    // 1. Dispatch a real DataTransfer image file drop onto the Series Shelf dropzone
+    const dataTransfer = await page.evaluateHandle(() => {
+      const svgMarkup =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400">' +
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0%" stop-color="#1e3a5f"/><stop offset="50%" stop-color="#8b4513"/><stop offset="100%" stop-color="#2b4c3f"/>' +
+        '</linearGradient></defs><rect width="1200" height="400" fill="url(#g)"/>' +
+        '<circle cx="600" cy="200" r="140" fill="#e5c158"/></svg>';
+      const DataTransferCtor = Reflect.get(globalThis, 'DataTransfer') as new () => {
+        items: { add: (file: unknown) => void };
+      };
+      const FileCtor = Reflect.get(globalThis, 'File') as new (
+        parts: readonly string[],
+        name: string,
+        opts: { readonly type: string },
+      ) => unknown;
+      const dt = new DataTransferCtor();
+      const file = new FileCtor([svgMarkup], 'mountain-panorama.svg', { type: 'image/svg+xml' });
+      dt.items.add(file);
+      return dt;
+    });
+
+    await dropzone.dispatchEvent('dragover', { dataTransfer });
+    await expect(page.getByTestId('series-shelf-drop-overlay')).toBeVisible();
+
+    await dropzone.dispatchEvent('drop', { dataTransfer });
+    await expect(page.getByTestId('series-shelf-drop-overlay')).toBeHidden();
+
+    // Panoramic artwork activates and renders across all 3 spines + stage pan/zoom HUD appears
+    await expect(page.getByTestId('series-pano-stage-controls')).toBeVisible();
+    await expect(page.locator('[data-testid="series-flat-shelf-svg"] image')).toHaveCount(3);
+
+    // 2. Drag panorama directly on the shelf SVG canvas and verify offsetXMm / offsetYMm update live
+    const shelfSvg = page.getByTestId('series-flat-shelf-svg');
+    const box = await shelfSvg.boundingBox();
+    expect(box).not.toBeNull();
+    const startX = box!.x + box!.width * 0.5;
+    const startY = box!.y + box!.height * 0.45;
+
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 60, startY - 30, { steps: 6 });
+    await page.mouse.up();
+
+    const offsetXAfterDrag = Number(await dropzone.getAttribute('data-pano-offset-x'));
+    const offsetYAfterDrag = Number(await dropzone.getAttribute('data-pano-offset-y'));
+    expect(offsetXAfterDrag).toBeGreaterThan(5);
+    expect(offsetYAfterDrag).toBeLessThan(-2);
+    // All 3 panoramic spine slices stay rendered and selected book stays Book #2 (drag did not misfire click)
+    await expect(page.locator('[data-testid="series-flat-shelf-svg"] image')).toHaveCount(3);
+    await expect(page.getByTestId('series-book-title-input')).toHaveValue('The Obsidian Crown');
+
+    // Zoom in via quick stage HUD button and verify scale updates
+    await page.getByTestId('series-pano-zoom-in-btn').click();
+    await expect(page.getByTestId('series-pano-scale-readout')).toHaveText('110%');
+
+    // 3. Click prominent top-bar "Edit in Cover Studio" button and verify faithful spine transfer
+    await page.getByTestId('series-top-open-studio-btn').click();
+    await expect(page.getByTestId('cover-styler')).toBeVisible();
+    const studioSvg = page.getByTestId('studio-preview-svg');
+    await expect(studioSvg).toBeVisible();
+
+    // Exact spine title, panoramic slice layer, contrast scrim, volume badge, and bands transferred
+    await expect(studioSvg).toContainText('The Obsidian Crown');
+    await expect(studioSvg.locator('image[data-layer-id="series-panorama"]')).toBeVisible();
+    await expect(studioSvg.locator('[data-testid="studio-layer-scrim-0"]')).toBeVisible();
+    await expect(studioSvg.locator('[data-text-id="series-vol-badge"]')).toContainText('II');
+    await expect(studioSvg.locator('[data-ornament-id="series-bands"]')).toBeVisible();
+    await expect(studioSvg.getByTestId('studio-spine-fill')).toHaveAttribute('fill', '#1b222c');
+
+    // Verify user can immediately tweak the opened book in Cover Studio (e.g., change spine title)
+    await page.getByTestId('studio-tool-spine').click();
+    const studioSpineTitle = page.getByTestId('studio-spine-title-input');
+    await expect(studioSpineTitle).toHaveValue('The Obsidian Crown');
+    await studioSpineTitle.fill('The Obsidian Crown — Collector Ed.');
+    await expect(studioSvg).toContainText('The Obsidian Crown — Collector Ed.');
+
+    // Round-trip: return to Series Spines, tweak the SAME linked book's spine, and re-open in Cover Studio
+    await page.getByTestId('nav-series').click();
+    await expect(page.getByTestId('series-spines-studio')).toBeVisible();
+    await page.getByTestId('series-roster-item-1').click();
+    await page.getByTestId('series-book-title-input').fill('The Obsidian Crown Revised');
+    await page.getByTestId('series-top-open-studio-btn').click();
+    await expect(page.getByTestId('cover-styler')).toBeVisible();
+    await expect(page.getByTestId('studio-preview-svg')).toContainText('The Obsidian Crown Revised');
+  });
 });
