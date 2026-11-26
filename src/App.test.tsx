@@ -35,39 +35,56 @@ describe('App', () => {
     resetDefaultProjectRepository();
   });
 
-  it('renders the main Bookbinder Studio shell and toggles the Book Specifications sidebar', async () => {
+  it('renders the main Bookbinder Studio shell in Clean Mode by default and toggles the Book Specifications sidebar and All Controls density', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Bookbinder Studio');
     expect(screen.getByTestId('cover-styler')).toBeInTheDocument();
+    // Clean Mode starts with the sidebar collapsed for a spacious Cover Studio hero
+    expect(screen.queryByTestId('input-pb-width')).not.toBeInTheDocument();
+
+    // Expanding the sidebar on demand reveals Book Specifications
+    await user.click(screen.getByTestId('toggle-sidebar-btn'));
     expect(screen.getByTestId('input-pb-width')).toBeInTheDocument();
 
     await user.click(screen.getByTestId('toggle-sidebar-btn'));
     expect(screen.queryByTestId('input-pb-width')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTestId('toggle-sidebar-btn'));
+    // Toggling UI density to All Controls expands the sidebar and persists the preference
+    await user.click(screen.getByTestId('ui-density-toggle-btn'));
+    expect(screen.getByTestId('ui-density-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('input-pb-width')).toBeInTheDocument();
   });
 
-  it('switches cleanly between Cover Studio, Measure & Cut, and Inner Pockets tabs', async () => {
+  it('switches cleanly between Cover, Measure, Endpapers, and Make & Print rooms', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    // Default active tab is Cover Studio
+    // Default active room is Cover Studio
     expect(screen.getByTestId('cover-styler')).toBeInTheDocument();
+    expect(screen.getByTestId('nav-outer')).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByTestId('measure-and-cut-panel')).not.toBeInTheDocument();
 
-    // Switch to Measure & Cut
+    // Switch to Measure -> sidebar is always visible on the Measure bench
     await user.click(screen.getByTestId('nav-measure'));
+    expect(screen.getByTestId('nav-measure')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('measure-and-cut-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('input-pb-width')).toBeInTheDocument();
     expect(screen.getByTestId('cut-list-card')).toBeInTheDocument();
     expect(screen.getByTestId('outer-blueprint-svg')).toBeInTheDocument();
 
-    // Switch to Inner Pockets
+    // Switch to Endpapers
     await user.click(screen.getByTestId('nav-pockets'));
+    expect(screen.getByTestId('nav-pockets')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('inner-pockets-studio')).toBeInTheDocument();
     expect(screen.getByTestId('inner-blueprint-svg')).toBeInTheDocument();
+
+    // Switch to Make & Print -> full-width production hub (no sidebar)
+    await user.click(screen.getByTestId('nav-make'));
+    expect(screen.getByTestId('nav-make')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('make-print-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('input-pb-width')).not.toBeInTheDocument();
 
     // Switch back to Cover Studio
     await user.click(screen.getByTestId('nav-outer'));
@@ -80,7 +97,8 @@ describe('App', () => {
 
     expect(screen.queryByTestId('pockets-builtin-badge')).not.toBeInTheDocument();
 
-    // Switch binding style to Fold-and-Glue Slip Cover (0-Board Softcover)
+    // Expand Book Specifications sidebar and switch binding style to Fold-and-Glue Slip Cover
+    await user.click(screen.getByTestId('toggle-sidebar-btn'));
     await user.click(screen.getByTestId('binding-style-select'));
     await user.click(screen.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }));
 
@@ -108,8 +126,9 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    // Open Inner Pockets first
+    // Open Inner Pockets and expand sidebar
     await user.click(screen.getByTestId('nav-pockets'));
+    await user.click(screen.getByTestId('toggle-sidebar-btn'));
     expect(screen.getByTestId('inner-pockets-studio')).toBeInTheDocument();
 
     // Switch to Replacement Paperback Cover -> auto-switches to Cover Studio and shows Not Needed badge
@@ -139,7 +158,8 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    // Select Fold-and-Glue Slip Cover (1-Piece default -> Built-In badge on Inner Pockets tab)
+    // Expand sidebar & select Fold-and-Glue Slip Cover (1-Piece default -> Built-In badge on Inner Pockets tab)
+    await user.click(screen.getByTestId('toggle-sidebar-btn'));
     await user.click(screen.getByTestId('binding-style-select'));
     await user.click(screen.getByRole('option', { name: /Fold-and-Glue Slip Cover/i }));
     expect(screen.getByTestId('pockets-builtin-badge')).toHaveTextContent('Built-In');
@@ -243,7 +263,8 @@ describe('App', () => {
       expect(screen.getByTestId('my-books-count-badge')).toHaveTextContent('2');
     });
 
-    // Edit active book width (triggers pending debounced auto-save)
+    // Edit active book width via expanded sidebar (triggers pending debounced auto-save)
+    await user.click(screen.getByTestId('toggle-sidebar-btn'));
     const widthInput = screen.getByTestId('input-pb-width');
     await user.clear(widthInput);
     await user.type(widthInput, '162');
