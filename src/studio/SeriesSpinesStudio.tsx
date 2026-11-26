@@ -5,7 +5,7 @@ import {
   Save,
   Upload,
 } from 'lucide-react';
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { calculateCaseGeometry } from '@/core/geometry';
@@ -29,6 +29,7 @@ import {
   type SeriesPalettePreset,
 } from '@/resources/seriesPresets';
 import type { CustomFontAsset } from '@/studio/fonts';
+import { isEditableKeyboardTarget } from '@/studio/studioClipboard';
 import { renderProjectThumbnailDataUrl } from '@/studio/thumbnailRenderer';
 import { BookbinderProjectModel } from '@/types/project';
 import {
@@ -52,6 +53,10 @@ import { ImportFromLibraryDialog } from './series/ImportFromLibraryDialog';
 import { SeriesExportDialog } from './series/SeriesExportDialog';
 import { SeriesInspectorDock } from './series/SeriesInspectorDock';
 import { SeriesShelfStage } from './series/SeriesShelfStage';
+import {
+  isSupportedPanoramaImageFile,
+  readPanoramaImageFile,
+} from './series/panoramaImageLoader';
 
 export interface SeriesSpinesStudioProps {
   readonly savedSummaries: readonly SavedProjectSummary[];
@@ -127,16 +132,16 @@ export function SeriesSpinesStudio({
     }
   }, [workspace, onStatusMessage]);
 
-  const updateActiveSeries = (updater: (prev: SeriesProject) => SeriesProject) => {
+  const updateActiveSeries = useCallback((updater: (prev: SeriesProject) => SeriesProject) => {
     setWorkspace((prev) => ({
       ...prev,
       seriesList: prev.seriesList.map((s) =>
-        s.id === activeSeries.id
+        s.id === prev.activeSeriesId
           ? { ...updater(s), updatedAt: new Date().toISOString() }
           : s,
       ),
     }));
-  };
+  }, []);
 
   const handleModeChange = (mode: SeriesCollectionMode) => {
     updateActiveSeries((prev) => ({
@@ -242,15 +247,85 @@ export function SeriesSpinesStudio({
     }));
   };
 
-  const handleUpdatePanorama = (patch: Partial<SeriesPanoramaConfig>) => {
-    updateActiveSeries((prev) => ({
-      ...prev,
-      shared: {
-        ...prev.shared,
-        panorama: { ...prev.shared.panorama, ...patch },
-      },
-    }));
-  };
+  const handleUpdatePanorama = useCallback(
+    (patch: Partial<SeriesPanoramaConfig>) => {
+      updateActiveSeries((prev) => ({
+        ...prev,
+        shared: {
+          ...prev.shared,
+          panorama: { ...prev.shared.panorama, ...patch },
+        },
+      }));
+    },
+    [updateActiveSeries],
+  );
+
+  const bookCountRef = useRef(activeSeries.books.length);
+  bookCountRef.current = activeSeries.books.length;
+
+  const handleUploadPanoramaFile = useCallback(
+    async (file: File) => {
+      if (!isSupportedPanoramaImageFile(file)) {
+        onStatusMessage('Unsupported image format — use PNG, JPG, WebP, or SVG.');
+        return;
+      }
+      try {
+        const loaded = await readPanoramaImageFile(file);
+        handleUpdatePanorama({
+          enabled: true,
+          dataUrl: loaded.dataUrl,
+          fileName: loaded.fileName,
+          naturalWidth: loaded.naturalWidth,
+          naturalHeight: loaded.naturalHeight,
+          offsetXMm: 0,
+          offsetYMm: 0,
+          scale: 1,
+        });
+        const count = bookCountRef.current;
+        onStatusMessage(
+          `Loaded panorama "${loaded.fileName}" across ${count} ${count === 1 ? 'spine' : 'spines'} — drag canvas to reposition`,
+        );
+      } catch {
+        onStatusMessage('Could not load selected panorama image.');
+      }
+    },
+    [handleUpdatePanorama, onStatusMessage],
+  );
+
+  // OS Clipboard Image Paste (Cmd/Ctrl+V) while Series Spines is active
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (isEditableKeyboardTarget(event.target)) return;
+      if (document.querySelector('dialog[open]')) return;
+
+      const items = Array.from(event.clipboardData?.items ?? []);
+      let imageFile: File | null = null;
+      for (const item of items) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const candidate = item.getAsFile();
+          if (candidate) {
+            imageFile = candidate;
+            break;
+          }
+        }
+      }
+      if (!imageFile && event.clipboardData?.files) {
+        for (const file of Array.from(event.clipboardData.files)) {
+          if (isSupportedPanoramaImageFile(file)) {
+            imageFile = file;
+            break;
+          }
+        }
+      }
+      if (imageFile) {
+        event.preventDefault();
+        void handleUploadPanoramaFile(imageFile);
+      }
+    };
+
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [handleUploadPanoramaFile]);
 
   const handleApplyPalette = (preset: SeriesPalettePreset) => {
     updateActiveSeries((prev) => ({
@@ -580,7 +655,10 @@ export function SeriesSpinesStudio({
           onMoveBook={handleMoveBook}
           onDuplicateBook={handleDuplicateBook}
           onRemoveBook={handleRemoveBook}
+          onUpdatePanorama={handleUpdatePanorama}
+          onUploadPanoramaFile={handleUploadPanoramaFile}
           onOpenInCoverStudio={(bl) => void handleOpenBookInCoverStudio(bl)}
+          onStatusMessage={onStatusMessage}
         />
 
         <SeriesInspectorDock
@@ -595,6 +673,7 @@ export function SeriesSpinesStudio({
           onUpdateBook={handleUpdateBook}
           onUpdateShared={handleUpdateShared}
           onUpdatePanorama={handleUpdatePanorama}
+          onUploadPanoramaFile={handleUploadPanoramaFile}
           onApplyPalette={handleApplyPalette}
           onStatusMessage={onStatusMessage}
         />

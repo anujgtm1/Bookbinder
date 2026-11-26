@@ -17,7 +17,6 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import type { SeriesBookLayout, SeriesShelfLayout } from '@/core/seriesSpines';
-import { loadHtmlImage } from '@/lib/canvasImage';
 import { BINDING_STYLES } from '@/resources/paperSpecs';
 import {
   SAMPLE_PANORAMA_NATURAL_HEIGHT,
@@ -65,20 +64,9 @@ export interface SeriesInspectorDockProps {
   ) => void;
   readonly onUpdateShared: (patch: Partial<SeriesSharedDesign>) => void;
   readonly onUpdatePanorama: (patch: Partial<SeriesPanoramaConfig>) => void;
+  readonly onUploadPanoramaFile: (file: File) => Promise<void>;
   readonly onApplyPalette: (preset: SeriesPalettePreset) => void;
   readonly onStatusMessage: (message: string) => void;
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') resolve(reader.result);
-      else reject(new Error('Could not decode image file.'));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image file.'));
-    reader.readAsDataURL(file);
-  });
 }
 
 export function SeriesInspectorDock({
@@ -93,6 +81,7 @@ export function SeriesInspectorDock({
   onUpdateBook,
   onUpdateShared,
   onUpdatePanorama,
+  onUploadPanoramaFile,
   onApplyPalette,
   onStatusMessage,
 }: SeriesInspectorDockProps) {
@@ -128,23 +117,7 @@ export function SeriesInspectorDock({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const img = await loadHtmlImage(dataUrl, 'Could not load panoramic artwork image.');
-      onUpdatePanorama({
-        enabled: true,
-        dataUrl,
-        fileName: file.name,
-        naturalWidth: img.naturalWidth || 1800,
-        naturalHeight: img.naturalHeight || 600,
-        offsetXMm: 0,
-        offsetYMm: 0,
-        scale: 1,
-      });
-      onStatusMessage(`Loaded panorama "${file.name}" across ${series.books.length} spines`);
-    } catch {
-      onStatusMessage('Could not load selected panorama image.');
-    }
+    await onUploadPanoramaFile(file);
   };
 
   const handleLoadSamplePanorama = () => {

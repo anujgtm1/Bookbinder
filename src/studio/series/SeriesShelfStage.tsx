@@ -5,11 +5,24 @@ import {
   BookMarked,
   Copy,
   Eye,
+  ImagePlus,
   Layers,
+  Minus,
+  Move,
+  Plus,
+  RotateCcw,
   Ruler,
   Trash2,
 } from 'lucide-react';
-import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
+import {
+  type DragEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { SeriesBookLayout, SeriesShelfLayout } from '@/core/seriesSpines';
@@ -17,11 +30,35 @@ import { getBindingStyleSpec } from '@/resources/paperSpecs';
 import { buildOrnamentCompoundPath } from '@/studio/classicOrnaments';
 import { resolveFontCssFamily, type CustomFontAsset } from '@/studio/fonts';
 import type { CoverOrnamentLayer } from '@/types/coverElements';
-import type { SeriesBookId, SeriesProject } from '@/types/seriesSpines';
+import {
+  SERIES_BOUNDS,
+  type SeriesBookId,
+  type SeriesPanoramaConfig,
+  type SeriesProject,
+} from '@/types/seriesSpines';
 import { CoverStudioModel } from '@/types/studio';
-import { UnitConverter, type UnitSystem } from '@/types/units';
+import { UnitConverter, roundTo, type UnitSystem } from '@/types/units';
+import { isSupportedPanoramaImageFile } from './panoramaImageLoader';
 
 export type SeriesStageViewMode = 'flat' | 'shelf-25d';
+
+const PANORAMA_DRAG_THRESHOLD_PX = 4;
+const PANORAMA_ZOOM_STEP = 0.1;
+
+interface PanoramaDragSession {
+  readonly pointerId: number;
+  readonly startClientX: number;
+  readonly startClientY: number;
+  readonly startOffsetXMm: number;
+  readonly startOffsetYMm: number;
+  readonly pxPerMm: number;
+  moved: boolean;
+  captured: boolean;
+}
+
+function clampRange(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
 
 export interface SeriesShelfStageProps {
   readonly series: SeriesProject;
@@ -33,7 +70,10 @@ export interface SeriesShelfStageProps {
   readonly onMoveBook: (id: SeriesBookId, direction: 'left' | 'right') => void;
   readonly onDuplicateBook: (id: SeriesBookId) => void;
   readonly onRemoveBook: (id: SeriesBookId) => void;
+  readonly onUpdatePanorama: (patch: Partial<SeriesPanoramaConfig>) => void;
+  readonly onUploadPanoramaFile: (file: File) => Promise<void>;
   readonly onOpenInCoverStudio: (bookLayout: SeriesBookLayout) => void;
+  readonly onStatusMessage: (message: string) => void;
 }
 
 function buildInlineOrnamentPath(
@@ -68,11 +108,77 @@ export function SeriesShelfStage({
   onMoveBook,
   onDuplicateBook,
   onRemoveBook,
+  onUpdatePanorama,
+  onUploadPanoramaFile,
   onOpenInCoverStudio,
+  onStatusMessage,
 }: SeriesShelfStageProps) {
   const [viewMode, setViewMode] = useState<SeriesStageViewMode>('flat');
   const [showGuides, setShowGuides] = useState(true);
+  const [isDraggingFileOver, setIsDraggingFileOver] = useState(false);
+  const [isPanningPanorama, setIsPanningPanorama] = useState(false);
+
   const spineBtnRefs = useRef<Map<SeriesBookId, HTMLButtonElement>>(new Map());
+  const flatSvgRef = useRef<SVGSVGElement>(null);
+  const shelf25dRowRef = useRef<HTMLDivElement>(null);
+  const dragSessionRef = useRef<PanoramaDragSession | null>(null);
+  const suppressNextClickRef = useRef(false);
+
+  const hasActivePanorama = Boolean(
+    series.shared.panorama.enabled && series.shared.panorama.dataUrl,
+  );
+  const panoramaScaleRef = useRef(series.shared.panorama.scale);
+  panoramaScaleRef.current = series.shared.panorama.scale;
+  const onUpdatePanoramaRef = useRef(onUpdatePanorama);
+  onUpdatePanoramaRef.current = onUpdatePanorama;
+
+  // Clear uncaptured drag sessions if pointer is released outside the shelf element
+  useEffect(() => {
+    const clearUncapturedSession = () => {
+      const session = dragSessionRef.current;
+      if (session && !session.captured) {
+        dragSessionRef.current = null;
+        setIsPanningPanorama(false);
+      }
+    };
+    window.addEventListener('pointerup', clearUncapturedSession);
+    window.addEventListener('pointercancel', clearUncapturedSession);
+    return () => {
+      window.removeEventListener('pointerup', clearUncapturedSession);
+      window.removeEventListener('pointercancel', clearUncapturedSession);
+    };
+  }, []);
+
+  // Non-passive wheel zoom over the active shelf stage when panoramic artwork is active
+  useEffect(() => {
+    if (!hasActivePanorama) return;
+    const targetEl = viewMode === 'flat' ? flatSvgRef.current : shelf25dRowRef.current;
+    if (!targetEl) return;
+
+    const handleWheel = (event: Event) => {
+      if (!(event instanceof WheelEvent)) return;
+      event.preventDefault();
+      const clampedDelta = clampRange(event.deltaY, -120, 120);
+      const factor = Math.exp(-clampedDelta * 0.0022);
+      const currentScale = panoramaScaleRef.current;
+      const nextScale = roundTo(
+        clampRange(
+          currentScale * factor,
+          SERIES_BOUNDS.panoramaScale.min,
+          SERIES_BOUNDS.panoramaScale.max,
+        ),
+        2,
+      );
+      if (nextScale !== currentScale) {
+        onUpdatePanoramaRef.current({ scale: nextScale });
+      }
+    };
+
+    targetEl.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      targetEl.removeEventListener('wheel', handleWheel);
+    };
+  }, [hasActivePanorama, viewMode]);
 
   const fontFamily = useMemo(
     () => resolveFontCssFamily(series.shared.fontId, customFont),
@@ -83,6 +189,136 @@ export function SeriesShelfStage({
     () => layout.books.find((b) => b.book.id === selectedBookId) ?? layout.books[0] ?? null,
     [layout.books, selectedBookId],
   );
+
+  const handleStageDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'copy';
+    }
+    if (!isDraggingFileOver) {
+      setIsDraggingFileOver(true);
+    }
+  };
+
+  const handleStageDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsDraggingFileOver(false);
+    }
+  };
+
+  const handleStageDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDraggingFileOver(false);
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    const imageFile = files.find((f) => isSupportedPanoramaImageFile(f));
+    if (imageFile) {
+      void onUploadPanoramaFile(imageFile);
+    } else {
+      onStatusMessage('Drop a PNG, JPG, WebP, or SVG image to span across the spines.');
+    }
+  };
+
+  const beginPanoramaPointerDrag = (
+    event: PointerEvent<Element>,
+    pxPerMm: number,
+  ) => {
+    if (!hasActivePanorama) return;
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (!Number.isFinite(pxPerMm) || pxPerMm <= 0.0001) return;
+
+    dragSessionRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startOffsetXMm: series.shared.panorama.offsetXMm,
+      startOffsetYMm: series.shared.panorama.offsetYMm,
+      pxPerMm,
+      moved: false,
+      captured: false,
+    };
+  };
+
+  const handlePanoramaPointerMove = (event: PointerEvent<Element>) => {
+    const session = dragSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+
+    const dxPx = event.clientX - session.startClientX;
+    const dyPx = event.clientY - session.startClientY;
+
+    if (!session.moved) {
+      if (Math.hypot(dxPx, dyPx) < PANORAMA_DRAG_THRESHOLD_PX) return;
+      session.moved = true;
+      suppressNextClickRef.current = true;
+      setIsPanningPanorama(true);
+      if (!session.captured) {
+        try {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          session.captured = true;
+        } catch {
+          // Synthetic pointer events in automated tests may not have an active pointer ID
+        }
+      }
+    }
+
+    const nextOffsetXMm = roundTo(
+      clampRange(
+        session.startOffsetXMm + dxPx / session.pxPerMm,
+        SERIES_BOUNDS.panoramaOffsetMm.min,
+        SERIES_BOUNDS.panoramaOffsetMm.max,
+      ),
+      1,
+    );
+    const nextOffsetYMm = roundTo(
+      clampRange(
+        session.startOffsetYMm + dyPx / session.pxPerMm,
+        SERIES_BOUNDS.panoramaOffsetMm.min,
+        SERIES_BOUNDS.panoramaOffsetMm.max,
+      ),
+      1,
+    );
+    onUpdatePanorama({ offsetXMm: nextOffsetXMm, offsetYMm: nextOffsetYMm });
+  };
+
+  const handlePanoramaPointerEnd = (event: PointerEvent<Element>) => {
+    const session = dragSessionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+
+    if (session.captured) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Ignore if capture was already released
+      }
+    }
+
+    const didMove = session.moved;
+    dragSessionRef.current = null;
+    setIsPanningPanorama(false);
+
+    if (didMove) {
+      suppressNextClickRef.current = true;
+      window.setTimeout(() => {
+        suppressNextClickRef.current = false;
+      }, 0);
+    }
+  };
+
+  const handleStepPanoramaZoom = (delta: number) => {
+    const nextScale = roundTo(
+      clampRange(
+        series.shared.panorama.scale + delta,
+        SERIES_BOUNDS.panoramaScale.min,
+        SERIES_BOUNDS.panoramaScale.max,
+      ),
+      2,
+    );
+    onUpdatePanorama({ scale: nextScale });
+  };
+
+  const handleResetPanoramaFraming = () => {
+    onUpdatePanorama({ offsetXMm: 0, offsetYMm: 0, scale: 1 });
+  };
 
   const handleSpineKeyDown = (event: KeyboardEvent<HTMLButtonElement>, idx: number) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') {
@@ -125,7 +361,18 @@ export function SeriesShelfStage({
   return (
     <section className="flex min-w-0 flex-col gap-3">
       {/* Stage Canvas Viewport */}
-      <div className="cutting-mat-surface cutting-mat-on-desk relative flex min-h-[470px] flex-col overflow-hidden rounded-md">
+      <div
+        data-testid="series-shelf-dropzone"
+        data-pano-offset-x={series.shared.panorama.offsetXMm}
+        data-pano-offset-y={series.shared.panorama.offsetYMm}
+        data-pano-scale={series.shared.panorama.scale}
+        onDragOver={handleStageDragOver}
+        onDragLeave={handleStageDragLeave}
+        onDrop={handleStageDrop}
+        className={`cutting-mat-surface cutting-mat-on-desk relative flex min-h-[470px] flex-col overflow-hidden rounded-md motion-safe:transition-colors ${
+          isDraggingFileOver ? 'ring-2 ring-inset ring-brass-bright/85' : ''
+        }`}
+      >
         {/* Top Floating HUD */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brass/25 bg-black/25 px-3 py-2">
           <div className="hud-toolbar" role="toolbar" aria-label="Shelf preview mode">
@@ -149,17 +396,21 @@ export function SeriesShelfStage({
               <Layers className="h-3.5 w-3.5" aria-hidden="true" />
               2.5D Wooden Shelf
             </button>
-            <span className="hud-toolbar-separator" aria-hidden="true" />
-            <button
-              type="button"
-              className="hud-toolbar-btn"
-              aria-pressed={showGuides}
-              data-testid="series-toggle-guides"
-              onClick={() => setShowGuides((v) => !v)}
-            >
-              <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-              Guides
-            </button>
+            {viewMode === 'flat' && (
+              <>
+                <span className="hud-toolbar-separator" aria-hidden="true" />
+                <button
+                  type="button"
+                  className="hud-toolbar-btn"
+                  aria-pressed={showGuides}
+                  data-testid="series-toggle-guides"
+                  onClick={() => setShowGuides((v) => !v)}
+                >
+                  <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                  Guides
+                </button>
+              </>
+            )}
           </div>
 
           <div
@@ -183,6 +434,70 @@ export function SeriesShelfStage({
             </span>
           </div>
         </div>
+
+        {/* Inline Panoramic Art Repositioning & Zoom HUD */}
+        {hasActivePanorama && (
+          <div
+            data-testid="series-pano-stage-controls"
+            className="flex flex-wrap items-center justify-between gap-2 border-b border-brass/20 bg-black/30 px-3 py-1.5 text-[11px] text-[#f3ecdd]"
+          >
+            <span className="inline-flex items-center gap-1.5 text-[#f3ecdd]/90">
+              <Move className="h-3.5 w-3.5 text-brass-bright" aria-hidden="true" />
+              <span>Drag canvas to reposition art · Scroll to zoom</span>
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="hud-toolbar-btn h-6 px-1.5"
+                aria-label="Zoom out panoramic artwork"
+                data-testid="series-pano-zoom-out-btn"
+                disabled={series.shared.panorama.scale <= SERIES_BOUNDS.panoramaScale.min}
+                onClick={() => handleStepPanoramaZoom(-PANORAMA_ZOOM_STEP)}
+              >
+                <Minus className="h-3 w-3" aria-hidden="true" />
+              </button>
+              <span
+                data-testid="series-pano-scale-readout"
+                className="min-w-[3.2rem] text-center font-mono text-[11px] text-brass-bright"
+              >
+                {Math.round(series.shared.panorama.scale * 100)}%
+              </span>
+              <button
+                type="button"
+                className="hud-toolbar-btn h-6 px-1.5"
+                aria-label="Zoom in panoramic artwork"
+                data-testid="series-pano-zoom-in-btn"
+                disabled={series.shared.panorama.scale >= SERIES_BOUNDS.panoramaScale.max}
+                onClick={() => handleStepPanoramaZoom(PANORAMA_ZOOM_STEP)}
+              >
+                <Plus className="h-3 w-3" aria-hidden="true" />
+              </button>
+              <span className="hud-toolbar-separator mx-0.5" aria-hidden="true" />
+              <button
+                type="button"
+                className="hud-toolbar-btn h-6 gap-1 px-2 text-[11px]"
+                data-testid="series-pano-reset-btn"
+                onClick={handleResetPanoramaFraming}
+              >
+                <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                Reset Art
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Tokyo Bindery Desk Brass Dropzone Overlay */}
+        {isDraggingFileOver && (
+          <div
+            data-testid="series-shelf-drop-overlay"
+            className="pointer-events-none absolute inset-4 z-30 flex items-center justify-center rounded-lg border-2 border-dashed border-brass-bright bg-black/50 backdrop-blur-[1px]"
+          >
+            <span className="inline-flex items-center gap-2 rounded-full border border-brass-bright/65 bg-black/80 px-4 py-2 font-serif text-sm font-semibold text-[#faf6ee] shadow-lg">
+              <ImagePlus className="h-4 w-4 text-brass-bright" aria-hidden="true" />
+              Drop image onto spines to span as panoramic artwork
+            </span>
+          </div>
+        )}
 
         {/* Thin-spine clamp alert banner */}
         {layout.clampedBookCount > 0 && (
@@ -209,10 +524,30 @@ export function SeriesShelfStage({
               className="flex w-full max-w-[960px] flex-col items-center gap-3"
             >
               <svg
+                ref={flatSvgRef}
                 role="img"
+                data-testid="series-flat-shelf-svg"
                 aria-label={`${series.name} flat 1:1 millimeter spine lineup (${layout.books.length} books)`}
                 viewBox={`0 0 ${svgW} ${svgH}`}
-                className="h-auto max-h-[430px] w-full drop-shadow-xl"
+                className={`h-auto max-h-[430px] w-full select-none drop-shadow-xl ${
+                  hasActivePanorama
+                    ? isPanningPanorama
+                      ? 'cursor-grabbing'
+                      : 'cursor-grab active:cursor-grabbing'
+                    : ''
+                }`}
+                style={{ touchAction: hasActivePanorama ? 'none' : undefined }}
+                onPointerDown={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const pxPerMm = Math.min(
+                    rect.width / Math.max(1, svgW),
+                    rect.height / Math.max(1, svgH),
+                  );
+                  beginPanoramaPointerDrag(e, pxPerMm);
+                }}
+                onPointerMove={handlePanoramaPointerMove}
+                onPointerUp={handlePanoramaPointerEnd}
+                onPointerCancel={handlePanoramaPointerEnd}
               >
                 <title>
                   {series.name} — {layout.books.length} standing spines at exact millimeter scale
@@ -286,8 +621,20 @@ export function SeriesShelfStage({
                       data-testid={`series-spine-svg-${bookLayout.index}`}
                       data-book-id={bookLayout.book.id}
                       data-selected={isSelected ? 'true' : 'false'}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => onSelectBook(bookLayout.book.id)}
+                      style={{
+                        cursor: hasActivePanorama
+                          ? isPanningPanorama
+                            ? 'grabbing'
+                            : 'grab'
+                          : 'pointer',
+                      }}
+                      onClick={() => {
+                        if (suppressNextClickRef.current) {
+                          suppressNextClickRef.current = false;
+                          return;
+                        }
+                        onSelectBook(bookLayout.book.id);
+                      }}
                     >
                       <g clipPath={`url(#series-spine-clip-${bookLayout.book.id})`}>
                         {/* Base Bookcloth Fill */}
@@ -606,10 +953,25 @@ export function SeriesShelfStage({
               <div className="series-25d-scene relative flex flex-col items-center">
                 {/* Standing 2.5D Books Row (bottom-aligned on shelf, strict left-to-right DOM order) */}
                 <div
+                  ref={shelf25dRowRef}
                   role="group"
                   aria-label="Books standing on wooden shelf"
-                  className="flex items-end justify-center px-6"
-                  style={{ gap: `${Math.max(1, layout.shelfGapMm * shelf25dScale)}px` }}
+                  data-testid="series-25d-books-row"
+                  className={`flex select-none items-end justify-center px-6 ${
+                    hasActivePanorama
+                      ? isPanningPanorama
+                        ? 'cursor-grabbing'
+                        : 'cursor-grab active:cursor-grabbing'
+                      : ''
+                  }`}
+                  style={{
+                    gap: `${Math.max(1, layout.shelfGapMm * shelf25dScale)}px`,
+                    touchAction: hasActivePanorama ? 'none' : undefined,
+                  }}
+                  onPointerDown={(e) => beginPanoramaPointerDrag(e, shelf25dScale)}
+                  onPointerMove={handlePanoramaPointerMove}
+                  onPointerUp={handlePanoramaPointerEnd}
+                  onPointerCancel={handlePanoramaPointerEnd}
                 >
                   {layout.books.map((bookLayout) => {
                     const isSelected = selectedLayout?.book.id === bookLayout.book.id;
@@ -639,10 +1001,22 @@ export function SeriesShelfStage({
                         aria-pressed={isSelected}
                         aria-label={`Select ${bookLayout.book.title || `Book ${bookLayout.index + 1}`} (${bookLayout.spineWidthMm.toFixed(1)} mm spine)`}
                         data-testid={`series-25d-book-${bookLayout.index}`}
-                        onClick={() => onSelectBook(bookLayout.book.id)}
+                        onClick={() => {
+                          if (suppressNextClickRef.current) {
+                            suppressNextClickRef.current = false;
+                            return;
+                          }
+                          onSelectBook(bookLayout.book.id);
+                        }}
                         onKeyDown={(e) => handleSpineKeyDown(e, bookLayout.index)}
                         className={`series-25d-book group relative flex flex-col items-stretch border-0 bg-transparent p-0 text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-vermilion ${
                           isSelected ? 'series-25d-book-selected' : ''
+                        } ${
+                          hasActivePanorama
+                            ? isPanningPanorama
+                              ? 'cursor-grabbing'
+                              : 'cursor-grab'
+                            : 'cursor-pointer'
                         }`}
                         style={{
                           width: `${pxW}px`,
@@ -871,6 +1245,13 @@ export function SeriesShelfStage({
                 />
               </div>
             </div>
+          )}
+
+          {!hasActivePanorama && (
+            <p className="mt-3 text-center text-[11px] text-[#f3ecdd]/70">
+              Tip: Drag &amp; drop or paste an image onto the shelf to span panoramic artwork across
+              all spines.
+            </p>
           )}
         </div>
       </div>
