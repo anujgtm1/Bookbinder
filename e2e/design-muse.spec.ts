@@ -132,4 +132,165 @@ test.describe('Design Muse, Genre Fonts, Foil Ornaments & Procedural Artworks', 
     await expect(page.getByTestId('pocket-layer-0')).toBeVisible();
     await expect(page.getByTestId('status-message')).toContainText('Seigaiha Waves');
   });
+
+  test('applies built-in procedural cover artwork immediately on thumbnail click, stacks visibly above existing images and full-wrap patterns, and live-updates intensity and target', async ({
+    page,
+  }) => {
+    // 1. Seed an existing uploaded image on the cover (e.g. photo / sample book cover)
+    const tinyPngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+    await page.getByTestId('studio-upload-image-input').setInputFiles({
+      name: 'existing-cover-photo.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(tinyPngBase64, 'base64'),
+    });
+    await expect(page.getByTestId('layer-count-badge')).toContainText('1 image');
+    await expect(page.getByTestId('studio-layer-0')).toBeVisible();
+
+    // 2. Default pattern intensity should be Vivid so clicked patterns are immediately bold
+    await expect(page.getByTestId('procedural-intensity-vivid')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    // 3. Clicking a pattern thumbnail directly applies immediately on TOP of studio.layers (no Apply click needed)
+    await page.getByTestId('procedural-pattern-art-deco-fans').click();
+    await expect(page.getByTestId('layer-count-badge')).toContainText('2 images');
+    await expect(page.getByTestId('status-message')).toContainText('Art Deco Fans (vivid)');
+
+    const topFrontLayer = page.getByTestId('studio-layer-1');
+    await expect(topFrontLayer).toBeVisible();
+    const firstPatternHref = await topFrontLayer.getAttribute('href');
+    expect(firstPatternHref).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+    await expect(topFrontLayer.locator('..')).toHaveAttribute('clip-path', 'url(#studio-clip-front)');
+    const frontBox = await topFrontLayer.boundingBox();
+    expect(frontBox).not.toBeNull();
+    expect((frontBox?.width ?? 0) > 20 && (frontBox?.height ?? 0) > 20).toBe(true);
+
+    // 4. Clicking another pattern thumbnail replaces the front procedural layer live (stays on top)
+    await page.getByTestId('procedural-pattern-cosmic-nebula').click();
+    await expect(page.getByTestId('layer-count-badge')).toContainText('2 images');
+    await expect(page.getByTestId('status-message')).toContainText('Cosmic Nebula (vivid)');
+    const vividHref = await page.getByTestId('studio-layer-1').getAttribute('href');
+    expect(vividHref).not.toBe(firstPatternHref);
+
+    // 5. Toggling Subtle / Vivid live-updates the applied pattern immediately
+    await page.getByTestId('procedural-intensity-subtle').click();
+    await expect(page.getByTestId('status-message')).toContainText('Cosmic Nebula (subtle)');
+    const subtleHref = await page.getByTestId('studio-layer-1').getAttribute('href');
+    expect(subtleHref).not.toBe(vividHref);
+
+    await page.getByTestId('procedural-intensity-vivid').click();
+    await expect(page.getByTestId('status-message')).toContainText('Cosmic Nebula (vivid)');
+    const vividAgainHref = await page.getByTestId('studio-layer-1').getAttribute('href');
+    expect(vividAgainHref).toBe(vividHref);
+
+    // 6. Switching target to Spine appends a visible spine pattern at the top of studio.layers
+    await page.getByTestId('procedural-target-spine').click();
+    await expect(page.getByTestId('layer-count-badge')).toContainText('3 images');
+    const spineLayer = page.getByTestId('studio-layer-2');
+    await expect(spineLayer).toBeVisible();
+    await expect(spineLayer.locator('..')).toHaveAttribute('clip-path', 'url(#studio-clip-spine)');
+    const spineBox = await spineLayer.boundingBox();
+    expect((spineBox?.width ?? 0) > 5 && (spineBox?.height ?? 0) > 20).toBe(true);
+
+    // 7. Switching target to Full Cover replaces prior procedural layers cleanly on top of the uploaded photo
+    await page.getByTestId('procedural-target-fullWrap').click();
+    await expect(page.getByTestId('layer-count-badge')).toContainText('2 images');
+    const fullWrapLayer = page.getByTestId('studio-layer-1');
+    await expect(fullWrapLayer.locator('..')).toHaveAttribute('clip-path', 'url(#studio-clip-none)');
+
+    // 8. Applying Front target on top of an existing Full Cover pattern stacks Front visibly ABOVE Full Cover
+    await page.getByTestId('procedural-target-front').click();
+    await expect(page.getByTestId('layer-count-badge')).toContainText('3 images');
+    const topFrontOverFullWrap = page.getByTestId('studio-layer-2');
+    await expect(topFrontOverFullWrap.locator('..')).toHaveAttribute(
+      'clip-path',
+      'url(#studio-clip-front)',
+    );
+  });
+
+  test('visibly transforms the spine across Design Muse generations and quick shuffles with zero Preflight warnings', async ({
+    page,
+  }) => {
+    // Open Design Muse tab and confirm + Artwork mode is enabled by default
+    await page.getByTestId('studio-tool-presets').click();
+    await expect(page.getByTestId('design-muse-card')).toBeVisible();
+    await expect(page.getByTestId('muse-mode-artwork')).toHaveAttribute('aria-pressed', 'true');
+
+    // Allow sample titles/authors so spine typography is always populated on fresh canvas
+    await page.getByTestId('muse-lock-text').click();
+    await expect(page.getByTestId('muse-lock-text')).toHaveAttribute('aria-pressed', 'false');
+
+    const spineFills = new Set<string>();
+    const spineFonts = new Set<string>();
+    const spineOrnamentSigs = new Set<string>();
+    const spineArtHrefs = new Set<string>();
+
+    const captureSpineSnapshot = async () => {
+      const spineFillRect = page.getByTestId('studio-spine-fill');
+      const spineFill = (await spineFillRect.getAttribute('fill')) ?? '';
+      const spineX = Number((await spineFillRect.getAttribute('x')) ?? '0');
+      const spineW = Number((await spineFillRect.getAttribute('width')) ?? '0');
+
+      const spineTexts = page.locator('[data-testid="studio-spine-typography"] text');
+      const spineTextCount = await spineTexts.count();
+      expect(spineTextCount).toBeGreaterThan(0);
+      const spineFont = (await spineTexts.first().getAttribute('font-family')) ?? '';
+
+      const ornLocators = await page.locator('[data-testid^="studio-ornament-"]').all();
+      const spineOrns: string[] = [];
+      for (const ornGroup of ornLocators) {
+        const hitRect = ornGroup.locator('rect').first();
+        const x = Number((await hitRect.getAttribute('x')) ?? '-999');
+        const w = Number((await hitRect.getAttribute('width')) ?? '0');
+        const centerX = x + w / 2;
+        if (centerX >= spineX && centerX <= spineX + spineW) {
+          const pathEl = ornGroup.locator('path').first();
+          const fill = (await pathEl.getAttribute('fill')) ?? '';
+          const d = ((await pathEl.getAttribute('d')) ?? '').slice(0, 80);
+          spineOrns.push(`${fill}:${d}`);
+        }
+      }
+
+      const layerLocators = await page.locator('[data-testid^="studio-layer-"]').all();
+      const spineArts: string[] = [];
+      for (const img of layerLocators) {
+        const clip = (await img.locator('..').getAttribute('clip-path')) ?? '';
+        if (clip === 'url(#studio-clip-spine)' || clip === 'url(#studio-clip-none)') {
+          const href = ((await img.getAttribute('href')) ?? '').slice(0, 140);
+          spineArts.push(`${clip}:${href}`);
+        }
+      }
+
+      expect(spineOrns.length).toBeGreaterThan(0);
+      expect(spineArts.length).toBeGreaterThan(0);
+      spineFills.add(spineFill);
+      spineFonts.add(spineFont);
+      spineOrnamentSigs.add(spineOrns.join('|'));
+      spineArtHrefs.add(spineArts.join('|'));
+    };
+
+    // Run 4 Design Muse generations + 2 quick shuffles
+    for (let i = 0; i < 4; i++) {
+      await page.getByTestId('muse-generate-btn').click();
+      await expect(page.getByTestId('muse-recipe-pill')).toBeVisible();
+      await captureSpineSnapshot();
+    }
+    for (let i = 0; i < 2; i++) {
+      await page.getByTestId('studio-shuffle-design-btn').click();
+      await expect(page.getByTestId('status-message')).toContainText('Design Muse:');
+      await captureSpineSnapshot();
+    }
+
+    // Assert every aspect of the spine visibly changed across generations
+    expect(spineFills.size).toBeGreaterThanOrEqual(2);
+    expect(spineFonts.size).toBeGreaterThanOrEqual(2);
+    expect(spineOrnamentSigs.size).toBeGreaterThanOrEqual(2);
+    expect(spineArtHrefs.size).toBeGreaterThanOrEqual(2);
+
+    // Assert 0 Preflight warnings/errors
+    await page.getByTestId('studio-tool-preflight').click();
+    await expect(page.getByTestId('preflight-status-badge')).toContainText('All Checks Passed');
+  });
 });
