@@ -416,6 +416,7 @@ export function SeriesInspectorDock({
                                     ? 'Keep at least 1 book on the shelf'
                                     : 'Remove from shelf (keeps book saved in My Books)'
                                 }
+                                aria-label={`On Shelf, remove ${summary.name} from shelf`}
                                 data-testid={`series-library-remove-${idx}`}
                                 onClick={() => onRemoveLibraryBook(summary.id)}
                                 className="h-6 shrink-0 gap-1 border-brass/50 px-2 text-[10px] text-foreground hover:border-destructive/60 hover:text-destructive"
@@ -434,6 +435,11 @@ export function SeriesInspectorDock({
                                 variant="outline"
                                 size="sm"
                                 disabled={isBusy || series.books.length >= SERIES_BOUNDS.maxBooks}
+                                aria-label={
+                                  isBusy
+                                    ? `Adding ${summary.name} to shelf`
+                                    : `Add ${summary.name} to shelf`
+                                }
                                 data-testid={`series-library-add-${idx}`}
                                 onClick={() => void handleToggleLibraryAdd(summary.id)}
                                 className="h-6 shrink-0 gap-1 px-2 text-[10px]"
@@ -742,6 +748,7 @@ export function SeriesInspectorDock({
                               variant="outline"
                               size="sm"
                               disabled={!seq.sharedAuthor?.trim()}
+                              aria-label={`Apply to Books in ${seq.name}`}
                               data-testid={`series-sequence-apply-author-${seqIdx}`}
                               onClick={() => onApplySequenceAuthor(seq.id)}
                               className="h-7 shrink-0 px-2 text-[10px]"
