@@ -14,6 +14,9 @@ import {
   type SeriesBandStyle,
   type SeriesBookEntry,
   type SeriesProject,
+  type SeriesSequenceGroup,
+  type SeriesSequenceId,
+  type SeriesVolumeNumberStyle,
 } from '@/types/seriesSpines';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
 import { isSeriesOriginLayer, type CoverImageLayer } from '@/types/studioLayer';
@@ -41,9 +44,21 @@ export interface SeriesShelfPanoramaRect {
   readonly heightMm: number;
 }
 
+export interface SeriesSequenceSpan {
+  readonly sequence: SeriesSequenceGroup;
+  readonly startBookIndex: number;
+  readonly endBookIndex: number;
+  readonly startXMm: number;
+  readonly endXMm: number;
+  readonly bookCount: number;
+  readonly volumeRangeLabel: string;
+}
+
 export interface SeriesBookLayout {
   readonly index: number;
   readonly book: SeriesBookEntry;
+  readonly sequence: SeriesSequenceGroup | null;
+  readonly sequenceIndex: number | null;
   readonly geometry: CaseGeometry;
   readonly spec: StudioCanvasSpec;
   /** Standing left X on the shared shelf (mm) */
@@ -56,6 +71,8 @@ export interface SeriesBookLayout {
   readonly textColor: string;
   readonly accentColor: string;
   readonly volumeLabel: string;
+  readonly volumeNumberStyle: SeriesVolumeNumberStyle;
+  readonly resolvedAuthor: string;
   readonly requestedTitleSizePt: number;
   readonly effectiveTitleSizePt: number;
   readonly maxTitleSizePt: number;
@@ -82,6 +99,7 @@ export interface SeriesBookLayout {
 
 export interface SeriesShelfLayout {
   readonly books: readonly SeriesBookLayout[];
+  readonly sequenceSpans: readonly SeriesSequenceSpan[];
   readonly totalShelfWidthMm: number;
   readonly maxSpineHeightMm: number;
   readonly minSpineHeightMm: number;
@@ -215,6 +233,7 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
   if (rawBooks.length === 0) {
     return {
       books: [],
+      sequenceSpans: [],
       totalShelfWidthMm: 0,
       maxSpineHeightMm: 0,
       minSpineHeightMm: 0,
@@ -325,6 +344,12 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
     };
   };
 
+  const sequenceById = new Map<SeriesSequenceId, SeriesSequenceGroup>(
+    (series.sequences ?? []).map((seq) => [seq.id, seq]),
+  );
+  const hasExplicitSequences = sequenceById.size > 0;
+  const sequenceCounters = new Map<SeriesSequenceId, number>();
+
   let clampedBookCount = 0;
 
   const books: SeriesBookLayout[] = placedBooks.map((item) => {
@@ -335,11 +360,35 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
     const textColor = book.textColorOverride ?? shared.defaultTextColor;
     const accentColor = book.accentColorOverride ?? shared.accentColor;
 
-    const volumeLabel = SeriesProjectModel.formatVolumeLabel(
-      index,
-      shared.volumeNumberStyle,
-      book.volumeLabelOverride,
-    );
+    const sequence = book.sequenceId ? (sequenceById.get(book.sequenceId) ?? null) : null;
+    let sequenceIndex: number | null = null;
+    let volumeNumberStyle: SeriesVolumeNumberStyle;
+    let volumeLabel: string;
+
+    if (sequence) {
+      sequenceIndex = sequenceCounters.get(sequence.id) ?? 0;
+      sequenceCounters.set(sequence.id, sequenceIndex + 1);
+      const startNum = Math.max(1, Math.round(sequence.startNumber || 1));
+      const effectiveNum = startNum + sequenceIndex;
+      volumeNumberStyle = sequence.volumeNumberStyle;
+      volumeLabel = SeriesProjectModel.formatVolumeLabel(
+        effectiveNum - 1,
+        sequence.volumeNumberStyle,
+        book.volumeLabelOverride,
+      );
+    } else if (hasExplicitSequences) {
+      volumeNumberStyle = 'custom';
+      volumeLabel = book.volumeLabelOverride.trim();
+    } else {
+      volumeNumberStyle = shared.volumeNumberStyle;
+      volumeLabel = SeriesProjectModel.formatVolumeLabel(
+        index,
+        shared.volumeNumberStyle,
+        book.volumeLabelOverride,
+      );
+    }
+
+    const resolvedAuthor = book.author.trim() || sequence?.sharedAuthor?.trim() || '';
 
     const requestedTitleSizePt = book.fontSizeOverridePt ?? shared.titleSizePt;
     const maxTitleSizePt = CoverStudioModel.maxSpineFontSizePt(spineWidthMm);
@@ -354,9 +403,9 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
 
     const effectiveAuthorLines =
       shared.authorOrientation === 'horizontal'
-        ? CoverStudioModel.splitHorizontalAuthorLines(book.author)
-        : book.author.trim()
-          ? [book.author.trim()]
+        ? CoverStudioModel.splitHorizontalAuthorLines(resolvedAuthor)
+        : resolvedAuthor
+          ? [resolvedAuthor]
           : [];
 
     const effectiveAuthorSizePt =
@@ -389,7 +438,7 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
 
     const lowerCandidates: number[] = [bookBottomY - 12];
     if (shared.bandStyle !== 'none') lowerCandidates.push(anchors.tailBandYMm - 6);
-    if (book.author.trim() && shared.authorOrientation === 'horizontal') {
+    if (resolvedAuthor && shared.authorOrientation === 'horizontal') {
       lowerCandidates.push(anchors.authorYMm - 10);
     }
     const ornCategory =
@@ -451,6 +500,8 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
     return {
       index,
       book,
+      sequence,
+      sequenceIndex,
       geometry,
       spec,
       shelfXMm,
@@ -461,6 +512,8 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
       textColor,
       accentColor,
       volumeLabel,
+      volumeNumberStyle,
+      resolvedAuthor,
       requestedTitleSizePt,
       effectiveTitleSizePt,
       maxTitleSizePt,
@@ -481,10 +534,63 @@ export function computeSeriesShelfLayout(series: SeriesProject): SeriesShelfLayo
     };
   });
 
+  // Compute contiguous visual sequence spans on the shelf
+  const sequenceSpans: SeriesSequenceSpan[] = [];
+  let runStart = -1;
+  let runSeq: SeriesSequenceGroup | null = null;
+
+  const flushRun = (endIdx: number) => {
+    if (!runSeq || runStart < 0 || endIdx < runStart) return;
+    const first = books[runStart];
+    const last = books[endIdx];
+    const labels: string[] = [];
+    for (let j = runStart; j <= endIdx; j++) {
+      if (books[j].volumeLabel) labels.push(books[j].volumeLabel);
+    }
+    const volumeRangeLabel =
+      labels.length === 0
+        ? ''
+        : labels.length === 1 || labels[0] === labels[labels.length - 1]
+          ? labels[0]
+          : `${labels[0]}–${labels[labels.length - 1]}`;
+
+    sequenceSpans.push({
+      sequence: runSeq,
+      startBookIndex: first.index,
+      endBookIndex: last.index,
+      startXMm: roundTo(first.shelfXMm, 3),
+      endXMm: roundTo(last.shelfXMm + last.spineWidthMm, 3),
+      bookCount: endIdx - runStart + 1,
+      volumeRangeLabel,
+    });
+  };
+
+  for (let i = 0; i < books.length; i++) {
+    const seq = books[i].sequence;
+    if (seq) {
+      if (runSeq && runSeq.id === seq.id) {
+        continue;
+      }
+      if (runSeq) {
+        flushRun(i - 1);
+      }
+      runStart = i;
+      runSeq = seq;
+    } else if (runSeq) {
+      flushRun(i - 1);
+      runStart = -1;
+      runSeq = null;
+    }
+  }
+  if (runSeq) {
+    flushRun(books.length - 1);
+  }
+
   const referenceAnchors = computeVerticalAnchors(shelfRefTopY, maxSpineHeightMm);
 
   return {
     books,
+    sequenceSpans,
     totalShelfWidthMm,
     maxSpineHeightMm,
     minSpineHeightMm,
@@ -632,7 +738,7 @@ export function compileSeriesBookToCoverStudio(
       lineHeight: 1.1,
       align: 'center',
       color: bookLayout.accentColor,
-      uppercase: shared.volumeNumberStyle === 'roman',
+      uppercase: bookLayout.volumeNumberStyle === 'roman',
       origin: 'series-spine',
     });
   }
@@ -680,7 +786,7 @@ export function compileSeriesBookToCoverStudio(
     ornaments: nextOrnaments,
     spineText: {
       title: book.title,
-      author: book.author,
+      author: bookLayout.resolvedAuthor,
       layout: shared.titleLayout,
       orientation: shared.orientation,
       authorOrientation: shared.authorOrientation,

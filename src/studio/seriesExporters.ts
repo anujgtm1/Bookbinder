@@ -159,7 +159,7 @@ function buildBookSpineGlyphRuns(
   const { shared } = series;
   const { book } = bookLayout;
   const title = book.title.trim();
-  const author = book.author.trim();
+  const author = bookLayout.resolvedAuthor;
   const verticalRotDeg: 90 | -90 = shared.orientation === 'top-to-bottom' ? 90 : -90;
   const isAuthorHorizontal = shared.authorOrientation === 'horizontal';
 
@@ -169,7 +169,7 @@ function buildBookSpineGlyphRuns(
   if (bookLayout.volumeLabel) {
     badgeRuns.push({
       text:
-        shared.volumeNumberStyle === 'roman'
+        bookLayout.volumeNumberStyle === 'roman'
           ? bookLayout.volumeLabel.toUpperCase()
           : bookLayout.volumeLabel,
       anchorXMm: gangCenterXMm,
