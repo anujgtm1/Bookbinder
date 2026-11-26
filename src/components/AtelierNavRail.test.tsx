@@ -4,15 +4,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { AtelierNavRail } from './AtelierNavRail';
 
 describe('AtelierNavRail', () => {
-  it('renders the Bookbinder Studio H1 heading and chronological craft groups', () => {
+  it('renders the Bookbinder Studio H1 heading and chronological craft groups without inline-start clipping', () => {
     render(<AtelierNavRail activeTab="outer" onSelectTab={vi.fn()} />);
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Bookbinder Studio');
-    expect(screen.getByRole('navigation', { name: 'Workbench modes' })).toBeInTheDocument();
+    const nav = screen.getByRole('navigation', { name: 'Workbench modes' });
+    expect(nav).toBeInTheDocument();
+    expect(nav.className).toContain('justify-start');
+    expect(nav.className).not.toContain('justify-end');
 
     expect(screen.getByTestId('nav-measure')).toHaveTextContent('Measure');
     expect(screen.getByTestId('nav-outer')).toHaveTextContent('Cover');
     expect(screen.getByTestId('nav-pockets')).toHaveTextContent('Endpapers');
+    expect(screen.getByTestId('nav-series')).toHaveTextContent('Series');
     expect(screen.getByTestId('nav-make')).toHaveTextContent('Make & Print');
   });
 
@@ -25,10 +29,14 @@ describe('AtelierNavRail', () => {
     expect(screen.getByTestId('nav-outer')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByTestId('nav-measure')).not.toHaveAttribute('aria-current');
     expect(screen.getByTestId('nav-pockets')).not.toHaveAttribute('aria-current');
+    expect(screen.getByTestId('nav-series')).not.toHaveAttribute('aria-current');
     expect(screen.getByTestId('nav-make')).not.toHaveAttribute('aria-current');
 
     await user.click(screen.getByTestId('nav-measure'));
     expect(onSelectTab).toHaveBeenCalledWith('measure');
+
+    await user.click(screen.getByTestId('nav-series'));
+    expect(onSelectTab).toHaveBeenCalledWith('series');
 
     await user.click(screen.getByTestId('nav-make'));
     expect(onSelectTab).toHaveBeenCalledWith('make');

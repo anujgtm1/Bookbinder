@@ -84,7 +84,7 @@ export function AtelierNavRail({
     <aside
       aria-label="Atelier Navigation"
       data-testid="atelier-nav-rail"
-      className="atelier-nav-rail flex shrink-0 flex-row items-center justify-between gap-2 border-b px-3 py-2 lg:sticky lg:top-0 lg:h-screen lg:w-[96px] lg:flex-col lg:justify-start lg:gap-3 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:px-2 lg:py-3.5"
+      className="atelier-nav-rail flex shrink-0 flex-col items-stretch gap-2 border-b px-3 py-2 md:flex-row md:items-center md:justify-between lg:sticky lg:top-0 lg:h-screen lg:w-[96px] lg:flex-col lg:items-stretch lg:justify-start lg:gap-3 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:px-2 lg:py-3.5"
     >
       {/* Top Press Colophon Brand Block */}
       <div className="flex shrink-0 items-center gap-2 lg:flex-col lg:gap-1.5 lg:text-center">
@@ -117,7 +117,7 @@ export function AtelierNavRail({
       {/* Chronological Craft Room Navigation */}
       <nav
         aria-label="Workbench modes"
-        className="flex min-w-0 flex-1 items-center justify-end gap-1 overflow-x-auto lg:w-full lg:flex-col lg:items-stretch lg:justify-start lg:gap-2 lg:overflow-visible"
+        className="flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto lg:w-full lg:flex-col lg:items-stretch lg:justify-start lg:gap-2 lg:overflow-visible"
       >
         {ATELIER_NAV_GROUPS.map((group, groupIdx) => (
           <div

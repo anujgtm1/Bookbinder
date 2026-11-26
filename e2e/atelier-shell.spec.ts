@@ -163,6 +163,12 @@ test.describe('Atelier Shell — Left Rail, Quick Size Popover, Clean/All Contro
     await expect(page.getByTestId('nav-pockets')).toHaveAttribute('aria-current', 'page');
     await expect(page.getByTestId('inner-pockets-studio')).toBeVisible();
 
+    // Series Spines (full-width shelf stage, no single-book sidebar)
+    await page.getByTestId('nav-series').click();
+    await expect(page.getByTestId('nav-series')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('series-spines-studio')).toBeVisible();
+    await expect(page.getByTestId('input-pb-width')).toBeHidden();
+
     // Make & Print hub (full-width stage, no sidebar)
     await page.getByTestId('nav-make').click();
     await expect(page.getByTestId('nav-make')).toHaveAttribute('aria-current', 'page');
@@ -188,5 +194,34 @@ test.describe('Atelier Shell — Left Rail, Quick Size Popover, Clean/All Contro
     expect(benchDownload.suggestedFilename()).toBe('bindery_bench_recipe_and_jigs.pdf');
     const benchBytes = await readFile((await benchDownload.path())!);
     expect(benchBytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+  });
+
+  test('keeps Measure and Cover nav items unclipped inside 390×844 mobile viewport', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const measureBtn = page.getByTestId('nav-measure');
+    const coverBtn = page.getByTestId('nav-outer');
+    await expect(measureBtn).toBeVisible();
+    await expect(coverBtn).toBeVisible();
+
+    const measureBox = await measureBtn.boundingBox();
+    const coverBox = await coverBtn.boundingBox();
+    expect(measureBox).not.toBeNull();
+    expect(coverBox).not.toBeNull();
+
+    // Zero left-edge clipping on narrow mobile viewport
+    expect(measureBox!.x).toBeGreaterThanOrEqual(0);
+    expect(coverBox!.x).toBeGreaterThanOrEqual(0);
+    expect(measureBox!.x + measureBox!.width).toBeLessThanOrEqual(390);
+    expect(coverBox!.x + coverBox!.width).toBeLessThanOrEqual(390);
+
+    // Every room button remains reachable on mobile
+    await measureBtn.click();
+    await expect(page.getByTestId('measure-and-cut-panel')).toBeVisible();
+    await page.getByTestId('nav-make').scrollIntoViewIfNeeded();
+    await page.getByTestId('nav-make').click();
+    await expect(page.getByTestId('make-print-panel')).toBeVisible();
   });
 });
