@@ -193,6 +193,7 @@ test.describe('Unified Front-to-Back Layer Ordering (Cross-Type Z-Order)', () =>
     expect(face3dOrder).toEqual([textId, ornamentId, imageId]);
 
     // 7. Export Affinity SVG -> verify custom stacking order is preserved in exported SVG markup
+    await page.getByTestId('studio-more-exports-btn').click();
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByTestId('studio-export-svg-btn').click(),

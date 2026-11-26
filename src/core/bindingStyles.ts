@@ -25,6 +25,7 @@ export interface BindingStyleCapabilities {
   readonly hasHingeSpacers: boolean;
   readonly supportsThreePieceSplit: boolean;
   readonly usesInnerPockets: boolean;
+  readonly supportsSeparatePockets: boolean;
   readonly hasFlaps: boolean;
   readonly hasGlueTabs: boolean;
   readonly hasTurnIns: boolean;
@@ -299,6 +300,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       hasHingeSpacers: true,
       supportsThreePieceSplit: true,
       usesInnerPockets: true,
+      supportsSeparatePockets: false,
       hasFlaps: false,
       hasGlueTabs: false,
       hasTurnIns: true,
@@ -347,6 +349,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       hasHingeSpacers: false,
       supportsThreePieceSplit: true,
       usesInnerPockets: true,
+      supportsSeparatePockets: false,
       hasFlaps: false,
       hasGlueTabs: false,
       hasTurnIns: true,
@@ -396,6 +399,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       hasHingeSpacers: false,
       supportsThreePieceSplit: false,
       usesInnerPockets: false,
+      supportsSeparatePockets: true,
       hasFlaps: true,
       hasGlueTabs: true,
       hasTurnIns: false,
@@ -576,6 +580,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       hasHingeSpacers: false,
       supportsThreePieceSplit: false,
       usesInnerPockets: false,
+      supportsSeparatePockets: false,
       hasFlaps: true,
       hasGlueTabs: false,
       hasTurnIns: false,
@@ -688,6 +693,7 @@ export const BINDING_STYLE_STRATEGIES: Readonly<Record<BindingStyle, BindingStyl
       hasHingeSpacers: false,
       supportsThreePieceSplit: false,
       usesInnerPockets: false,
+      supportsSeparatePockets: false,
       hasFlaps: false,
       hasGlueTabs: false,
       hasTurnIns: false,
@@ -787,6 +793,7 @@ export const SOFTCOVER_SEPARATE_POCKETS_STRATEGY: BindingStyleStrategy = {
     hasHingeSpacers: false,
     supportsThreePieceSplit: false,
     usesInnerPockets: true,
+    supportsSeparatePockets: true,
     hasFlaps: false,
     hasGlueTabs: true,
     hasTurnIns: false,

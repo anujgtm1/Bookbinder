@@ -1,4 +1,5 @@
 import {
+  ChevronDown,
   Copy,
   Dices,
   FileCode2,
@@ -9,7 +10,9 @@ import {
   Scissors,
   Undo2,
 } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import type { UiDensity } from '@/core/uiDensity';
 import type { CaseGeometry } from '@/types/geometry';
 import { UnitConverter, type UnitSystem } from '@/types/units';
 import type { StudioCanvasSpec } from './renderEngine';
@@ -18,6 +21,7 @@ export interface CoverWorkbenchHeaderProps {
   readonly geometry: CaseGeometry;
   readonly spec: StudioCanvasSpec;
   readonly unit: UnitSystem;
+  readonly uiDensity?: UiDensity;
   readonly exportingKind: 'pdf' | 'png' | 'svg' | null;
   readonly exportingOuterPdf: boolean;
   readonly canUndo?: boolean;
@@ -36,10 +40,15 @@ export interface CoverWorkbenchHeaderProps {
   readonly onDownloadOuterPdf?: () => void;
 }
 
+function supportsNativePopoverApi(): boolean {
+  return typeof HTMLElement !== 'undefined' && 'popover' in HTMLElement.prototype;
+}
+
 export function CoverWorkbenchHeader({
   geometry,
   spec,
   unit,
+  uiDensity = 'clean',
   exportingKind,
   exportingOuterPdf,
   canUndo = false,
@@ -57,6 +66,53 @@ export function CoverWorkbenchHeader({
   onDownloadOuterSvg,
   onDownloadOuterPdf,
 }: CoverWorkbenchHeaderProps) {
+  const morePopoverId = useId();
+  const hasNativePopover = supportsNativePopoverApi();
+  const [fallbackMoreOpen, setFallbackMoreOpen] = useState(false);
+  const moreContainerRef = useRef<HTMLDivElement>(null);
+  const morePopoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (hasNativePopover || !fallbackMoreOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setFallbackMoreOpen(false);
+      }
+    };
+    const onPointerDown = (e: MouseEvent) => {
+      if (
+        moreContainerRef.current &&
+        e.target instanceof Node &&
+        !moreContainerRef.current.contains(e.target)
+      ) {
+        setFallbackMoreOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onPointerDown);
+    };
+  }, [hasNativePopover, fallbackMoreOpen]);
+
+  const closeMorePopover = () => {
+    if (hasNativePopover) {
+      const el = morePopoverRef.current;
+      if (el && typeof el.hidePopover === 'function') {
+        try {
+          el.hidePopover();
+        } catch {
+          // Ignore if already closed
+        }
+      }
+    } else {
+      setFallbackMoreOpen(false);
+    }
+  };
+
   return (
     <div className="washi-sheet flex flex-wrap items-center justify-between gap-2.5 rounded-md border border-border border-t-2 border-t-brass/80 px-3.5 py-2.5">
       {/* Left Zone: Cover Title, Roll-Fit Stamp & Compact History Controls */}
@@ -179,7 +235,7 @@ export function CoverWorkbenchHeader({
         )}
       </div>
 
-      {/* Right Zone: Calm Primary Print CTA + Craft Cricut CTA + Utility Strip */}
+      {/* Right Zone: Calm Primary Print CTA + Craft Cricut CTA + Density-Aware Secondary Exports */}
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
           variant="default"
@@ -205,59 +261,154 @@ export function CoverWorkbenchHeader({
           Cricut / HTV SVG
         </Button>
 
-        {/* Bordered Utility Strip: PNG, Affinity SVG, and Structural Cut-Only */}
-        <div
-          className="inline-flex flex-wrap items-center divide-x divide-border/80 rounded-[3px] border border-border bg-secondary/45"
-          aria-label="Additional artwork and cut exports"
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 rounded-none px-2 text-[11px]"
-            onClick={onExportAffinityPng}
-            disabled={exportingKind !== null}
-            data-testid="studio-export-png-btn"
+        {uiDensity === 'all' ? (
+          /* Bordered Utility Strip: PNG, Affinity SVG, and Structural Cut-Only */
+          <div
+            className="inline-flex flex-wrap items-center divide-x divide-border/80 rounded-[3px] border border-border bg-secondary/45"
+            aria-label="Additional artwork and cut exports"
           >
-            <FileImage className="h-3.5 w-3.5" aria-hidden="true" />
-            {exportingKind === 'png' ? '…' : 'PNG'}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 rounded-none px-2 text-[11px]"
-            onClick={onExportAffinitySvg}
-            disabled={exportingKind !== null}
-            data-testid="studio-export-svg-btn"
-          >
-            <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
-            Affinity SVG
-          </Button>
-          {onDownloadOuterSvg && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 rounded-none px-2 text-[11px]"
-              onClick={onDownloadOuterSvg}
-              aria-label="Download Outer Case Wrap as SVG"
-              data-testid="download-outer-svg-btn"
+              onClick={onExportAffinityPng}
+              disabled={exportingKind !== null}
+              data-testid="studio-export-png-btn"
             >
-              Cut SVG
+              <FileImage className="h-3.5 w-3.5" aria-hidden="true" />
+              {exportingKind === 'png' ? '…' : 'PNG'}
             </Button>
-          )}
-          {onDownloadOuterPdf && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 rounded-none px-2 text-[11px]"
-              onClick={onDownloadOuterPdf}
-              disabled={exportingOuterPdf}
-              aria-label="Open Outer Case Wrap Cut PDF export dialog"
-              data-testid="download-outer-pdf-btn"
+              onClick={onExportAffinitySvg}
+              disabled={exportingKind !== null}
+              data-testid="studio-export-svg-btn"
             >
-              {exportingOuterPdf ? '…' : 'Cut PDF…'}
+              <FileCode2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Affinity SVG
             </Button>
-          )}
-        </div>
+            {onDownloadOuterSvg && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 rounded-none px-2 text-[11px]"
+                onClick={onDownloadOuterSvg}
+                aria-label="Download Outer Case Wrap as SVG"
+                data-testid="download-outer-svg-btn"
+              >
+                Cut SVG
+              </Button>
+            )}
+            {onDownloadOuterPdf && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 rounded-none px-2 text-[11px]"
+                onClick={onDownloadOuterPdf}
+                disabled={exportingOuterPdf}
+                aria-label="Open Outer Case Wrap Cut PDF export dialog"
+                data-testid="download-outer-pdf-btn"
+              >
+                {exportingOuterPdf ? '…' : 'Cut PDF…'}
+              </Button>
+            )}
+          </div>
+        ) : (
+          /* Clean Mode: Native Popover Overflow for Secondary Exports */
+          <div ref={moreContainerRef} className="relative inline-flex">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1 px-2.5 text-xs"
+              popoverTarget={hasNativePopover ? morePopoverId : undefined}
+              onClick={hasNativePopover ? undefined : () => setFallbackMoreOpen((open) => !open)}
+              data-testid="studio-more-exports-btn"
+              aria-label="More cover and cut export formats"
+            >
+              <span>More</span>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+            </Button>
+
+            <div
+              ref={morePopoverRef}
+              id={morePopoverId}
+              popover={hasNativePopover ? 'auto' : undefined}
+              hidden={!hasNativePopover && !fallbackMoreOpen}
+              data-testid="studio-more-exports-popover"
+              className={
+                hasNativePopover
+                  ? 'atelier-popover atelier-popover--end min-w-44'
+                  : `atelier-popover-fallback atelier-popover-fallback--end min-w-44 ${fallbackMoreOpen ? ':popover-open' : ''}`
+              }
+            >
+              <div className="flex flex-col gap-0.5 p-1.5">
+                <button
+                  type="button"
+                  disabled={exportingKind !== null}
+                  data-testid="studio-export-png-btn"
+                  onClick={() => {
+                    closeMorePopover();
+                    onExportAffinityPng();
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-[2px] px-2.5 py-1.5 text-left text-xs text-foreground motion-safe:transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  <FileImage className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span>{exportingKind === 'png' ? 'Rendering PNG…' : '300 DPI PNG'}</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={exportingKind !== null}
+                  data-testid="studio-export-svg-btn"
+                  onClick={() => {
+                    closeMorePopover();
+                    onExportAffinitySvg();
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-[2px] px-2.5 py-1.5 text-left text-xs text-foreground motion-safe:transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  <FileCode2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span>Affinity SVG</span>
+                </button>
+                {(onDownloadOuterSvg || onDownloadOuterPdf) && (
+                  <div className="my-1 border-t border-border/80" role="separator" />
+                )}
+                {onDownloadOuterSvg && (
+                  <button
+                    type="button"
+                    data-testid="download-outer-svg-btn"
+                    aria-label="Download Outer Case Wrap as SVG"
+                    onClick={() => {
+                      closeMorePopover();
+                      onDownloadOuterSvg();
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-[2px] px-2.5 py-1.5 text-left text-xs text-foreground motion-safe:transition-colors hover:bg-accent"
+                  >
+                    <FileCode2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <span>Cut SVG</span>
+                  </button>
+                )}
+                {onDownloadOuterPdf && (
+                  <button
+                    type="button"
+                    disabled={exportingOuterPdf}
+                    data-testid="download-outer-pdf-btn"
+                    aria-label="Open Outer Case Wrap Cut PDF export dialog"
+                    onClick={() => {
+                      closeMorePopover();
+                      onDownloadOuterPdf();
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-[2px] px-2.5 py-1.5 text-left text-xs text-foreground motion-safe:transition-colors hover:bg-accent disabled:opacity-50"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    <span>{exportingOuterPdf ? 'Rendering Cut PDF…' : 'Cut PDF…'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

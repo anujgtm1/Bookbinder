@@ -210,6 +210,7 @@ test.describe('Contextual Selection Bar, Custom Roll Multi-Up Nesting & Printer 
     page,
   }) => {
     // Select A6 Pocket Notebook so the cover fits US Letter cleanly even with a 20 mm bottom gripper margin
+    await page.getByTestId('toggle-sidebar-btn').click();
     await page.getByTestId('preset-select').click();
     await page.getByRole('option', { name: /A6 Pocket Notebook/i }).click();
 

@@ -1,6 +1,8 @@
-import { BookMarked, CheckCircle2, FolderOpen, Library, Ruler } from 'lucide-react';
+import { BookMarked, CheckCircle2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AtelierNavRail, type WorkspaceTab } from '@/components/AtelierNavRail';
 import { Header } from '@/components/Header';
+import { MakeAndPrintPanel } from '@/components/MakeAndPrintPanel';
 import { MeasureAndCutPanel } from '@/components/MeasureAndCutPanel';
 import { MyBooksDialog } from '@/components/MyBooksDialog';
 import type {
@@ -10,7 +12,6 @@ import type {
 import { SidebarControls } from '@/components/SidebarControls';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { resolveBindingStrategy } from '@/core/bindingStyles';
 import { calculateCaseGeometry } from '@/core/geometry';
 import { resolveMultiBookQueueSources } from '@/core/multiBookExport';
@@ -29,6 +30,13 @@ import {
   triggerTextDownload,
 } from '@/core/storage';
 import { generateInnerTemplatesSvg, generateOuterWrapSvg } from '@/core/svgExport';
+import {
+  UI_DENSITY_STORAGE_KEY,
+  parseStoredUiDensity,
+  readStoredUiDensity,
+  saveUiDensity,
+  type UiDensity,
+} from '@/core/uiDensity';
 import { createSampleBookProject } from '@/resources/sampleProject';
 import { CoverStyler } from '@/studio/CoverStyler';
 import { InnerPocketsStudio } from '@/studio/InnerPocketsStudio';
@@ -46,8 +54,6 @@ import {
   type SavedProjectSummary,
 } from '@/types/projectLibrary';
 import { CoverStudioModel, type CoverStudioState } from '@/types/studio';
-
-type WorkspaceTab = 'measure' | 'outer' | 'pockets' | 'series';
 
 const AUTO_SAVE_DEBOUNCE_MS = 350;
 
@@ -104,7 +110,8 @@ export function App() {
   const [myBooksOpen, setMyBooksOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('outer');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [uiDensity, setUiDensity] = useState<UiDensity>(() => readStoredUiDensity());
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => readStoredUiDensity() === 'all');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [exportingTarget, setExportingTarget] = useState<'outer-pdf' | 'inner-pdf' | null>(null);
   const [outerExportProgressLabel, setOuterExportProgressLabel] = useState<string | null>(null);
@@ -1077,6 +1084,29 @@ export function App() {
     setStatusMessage('Reset to default dimensions');
   };
 
+  // Sync UI density across browser tabs
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === UI_DENSITY_STORAGE_KEY) {
+        const next = parseStoredUiDensity(e.newValue);
+        setUiDensity(next);
+        setSidebarOpen(next === 'all');
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  const handleToggleUiDensity = useCallback(() => {
+    setUiDensity((prev) => {
+      const next: UiDensity = prev === 'clean' ? 'all' : 'clean';
+      saveUiDensity(next);
+      setSidebarOpen(next === 'all');
+      return next;
+    });
+  }, []);
+
   const handleRefreshLibrary = useCallback(async () => {
     const repo = await getActiveProjectRepository();
     const nextSummaries = await repo.listSummaries();
@@ -1125,108 +1155,67 @@ export function App() {
     });
   };
 
-  const showSidebar = sidebarOpen && activeTab !== 'series';
+  const handleSelectTab = useCallback(
+    (nextTab: WorkspaceTab) => {
+      if (nextTab === 'series' && activeTabRef.current !== 'series') {
+        void flushActiveSave({ renderThumbnail: false });
+      }
+      setActiveTab(nextTab);
+    },
+    [flushActiveSave],
+  );
+
+  const canToggleSidebar = activeTab === 'outer' || activeTab === 'pockets';
+  const showSidebar = activeTab === 'measure' || (canToggleSidebar && sidebarOpen);
 
   return (
-    <div className="bindery-walnut-desk flex min-h-screen flex-col text-foreground">
-      <Header
-        statusMessage={statusMessage}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((open) => !open)}
-        onLoadSampleBook={() => {
-          void handleLoadSampleBook();
-        }}
-        activeBookName={project.name}
-        savedBookCount={savedSummaries.length}
-        onOpenMyBooks={handleOpenMyBooks}
+    <div className="bindery-walnut-desk flex min-h-screen flex-col text-foreground lg:flex-row">
+      <AtelierNavRail
+        activeTab={activeTab}
+        onSelectTab={handleSelectTab}
+        usesInnerPockets={usesInnerPockets}
+        pocketsBadgeLabel={bindingStrategy.innerPocketsNotice?.tabBadge ?? null}
       />
 
-      <main
-        id="main-workspace"
-        tabIndex={-1}
-        className={`mx-auto grid w-full max-w-[1760px] flex-1 grid-cols-1 items-start gap-4 px-3 py-3.5 sm:px-5 ${
-          showSidebar ? 'lg:grid-cols-[276px_minmax(0,1fr)]' : 'lg:grid-cols-1'
-        }`}
-      >
-        {showSidebar && (
-          <SidebarControls
-            params={project.parameters}
-            onChange={handleParamsChange}
-            onExportJson={handleExportJson}
-            onImportJson={handleImportJson}
-            onResetDefaults={handleResetDefaults}
-          />
-        )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header
+          statusMessage={statusMessage}
+          sidebarOpen={showSidebar}
+          onToggleSidebar={canToggleSidebar ? () => setSidebarOpen((open) => !open) : undefined}
+          onLoadSampleBook={() => {
+            void handleLoadSampleBook();
+          }}
+          activeBookName={project.name}
+          activeBookSwatchColor={project.studio.frontBgColor}
+          savedBookCount={savedSummaries.length}
+          onOpenMyBooks={handleOpenMyBooks}
+          params={project.parameters}
+          onChangeParams={handleParamsChange}
+          onOpenMeasureBench={() => handleSelectTab('measure')}
+          uiDensity={uiDensity}
+          onToggleUiDensity={handleToggleUiDensity}
+        />
 
-        <div className="flex min-w-0 flex-col">
-          {/* 4-Tab Folio Workbench Navigation sitting cleanly above the active workspace */}
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              const nextTab = value as WorkspaceTab;
-              if (nextTab === 'series' && activeTab !== 'series') {
-                void flushActiveSave({ renderThumbnail: false });
-              }
-              setActiveTab(nextTab);
-            }}
-            className="flex flex-col gap-3"
-          >
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <TabsList
-                aria-label="Workbench modes"
-                className="h-auto flex-wrap justify-start gap-1.5 rounded-none bg-transparent p-0"
-              >
-                <TabsTrigger
-                  value="measure"
-                  data-testid="nav-measure"
-                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
-                >
-                  <Ruler className="folio-index-tab-icon h-4 w-4 shrink-0" aria-hidden="true" />
-                  Measure &amp; Cut
-                </TabsTrigger>
-                <TabsTrigger
-                  value="outer"
-                  data-testid="nav-outer"
-                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
-                >
-                  <BookMarked
-                    className="folio-index-tab-icon h-4 w-4 shrink-0"
-                    aria-hidden="true"
-                  />
-                  Cover Studio
-                </TabsTrigger>
-                <TabsTrigger
-                  value="pockets"
-                  data-testid="nav-pockets"
-                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
-                >
-                  <FolderOpen
-                    className={`folio-index-tab-icon h-4 w-4 shrink-0 ${!usesInnerPockets ? 'opacity-65' : ''}`}
-                    aria-hidden="true"
-                  />
-                  <span className={!usesInnerPockets ? 'opacity-75' : undefined}>Inner Pockets</span>
-                  {!usesInnerPockets && bindingStrategy.innerPocketsNotice && (
-                    <Badge
-                      variant="outline"
-                      data-testid="pockets-builtin-badge"
-                      className="ml-0.5 h-4 px-1.5 font-mono text-[10px]"
-                    >
-                      {bindingStrategy.innerPocketsNotice.tabBadge}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger
-                  value="series"
-                  data-testid="nav-series"
-                  className="folio-index-tab px-4 py-2 text-xs font-medium tracking-tight data-[state=active]:shadow-none sm:text-sm"
-                >
-                  <Library className="folio-index-tab-icon h-4 w-4 shrink-0" aria-hidden="true" />
-                  Series Spines
-                </TabsTrigger>
-              </TabsList>
-            </div>
+        <main
+          id="main-workspace"
+          tabIndex={-1}
+          className={`mx-auto grid w-full max-w-[1760px] flex-1 grid-cols-1 items-start gap-4 px-3 py-3.5 sm:px-5 ${
+            showSidebar ? 'lg:grid-cols-[276px_minmax(0,1fr)]' : 'lg:grid-cols-1'
+          }`}
+        >
+          {showSidebar && (
+            <SidebarControls
+              params={project.parameters}
+              defaultConstructionOpen={uiDensity === 'all'}
+              onChange={handleParamsChange}
+              onExportJson={handleExportJson}
+              onImportJson={handleImportJson}
+              onResetDefaults={handleResetDefaults}
+            />
+          )}
 
-            <TabsContent value="measure" className="mt-0">
+          <div className="flex min-w-0 flex-col">
+            {activeTab === 'measure' && (
               <MeasureAndCutPanel
                 params={project.parameters}
                 geometry={geometry}
@@ -1249,13 +1238,14 @@ export function App() {
                 onDownloadOuterPdf={handleDownloadOuterPdf}
                 onStatusMessage={setStatusMessage}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="outer" className="mt-0">
+            {activeTab === 'outer' && (
               <CoverStyler
                 params={project.parameters}
                 geometry={geometry}
                 studio={project.studio}
+                uiDensity={uiDensity}
                 customFont={activeCustomFont}
                 onCustomFontChange={handleCustomFontChange}
                 savedBookSummaries={savedSummaries}
@@ -1272,10 +1262,10 @@ export function App() {
                 onOpenMeasureAndCut={() => setActiveTab('measure')}
                 onStatusMessage={setStatusMessage}
               />
-            </TabsContent>
+            )}
 
-            <TabsContent value="pockets" className="mt-0">
-              {!usesInnerPockets ? (
+            {activeTab === 'pockets' &&
+              (!usesInnerPockets ? (
                 <section
                   aria-label="Inner Pockets Notice"
                   data-testid="pockets-not-needed-notice"
@@ -1347,9 +1337,9 @@ export function App() {
                   onDownloadInnerPdf={handleDownloadInnerPdf}
                   onStatusMessage={setStatusMessage}
                 />
-              )}
-            </TabsContent>
-            <TabsContent value="series" className="mt-0">
+              ))}
+
+            {activeTab === 'series' && (
               <SeriesSpinesStudio
                 savedSummaries={savedSummaries}
                 getProjectRepository={getActiveProjectRepository}
@@ -1359,10 +1349,34 @@ export function App() {
                 onOpenBookInStudio={handleOpenBookInStudio}
                 onStatusMessage={setStatusMessage}
               />
-            </TabsContent>
-          </Tabs>
-        </div>
-      </main>
+            )}
+
+            {activeTab === 'make' && (
+              <MakeAndPrintPanel
+                params={project.parameters}
+                geometry={geometry}
+                studio={project.studio}
+                customFont={activeCustomFont}
+                savedBookSummaries={savedSummaries}
+                activeProjectId={activeProjectId}
+                activeBookName={project.name}
+                exportProgressLabel={outerExportProgressLabel}
+                exportingOuterPdf={exportingTarget === 'outer-pdf'}
+                exportingInnerPdf={exportingTarget === 'inner-pdf'}
+                onFlushActiveBook={() => flushActiveSave({ renderThumbnail: false })}
+                getProjectRepository={getActiveProjectRepository}
+                onUpdateParams={handlePatchParams}
+                onUpdateStudio={(patch) => handleStudioChange({ ...project.studio, ...patch })}
+                onDownloadOuterSvg={handleDownloadOuterSvg}
+                onDownloadOuterPdf={handleDownloadOuterPdf}
+                onDownloadInnerSvg={handleDownloadInnerSvg}
+                onDownloadInnerPdf={handleDownloadInnerPdf}
+                onStatusMessage={setStatusMessage}
+              />
+            )}
+          </div>
+        </main>
+      </div>
 
       <MyBooksDialog
         open={myBooksOpen}

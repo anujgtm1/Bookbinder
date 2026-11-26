@@ -36,6 +36,9 @@ test.describe('My Books — Local IndexedDB Project Library', () => {
   test('persists multiple books across reload in IndexedDB, switches cleanly, duplicates, deletes with 2-step confirm, and exports backup bundle', async ({
     page,
   }) => {
+    // Enable All Controls so Book Specifications sidebar stays visible across reloads
+    await page.getByTestId('ui-density-toggle-btn').click();
+
     // 1. Customize Book A dimensions and spine title
     await page.getByTestId('input-pb-width').fill('152');
     await page.getByTestId('input-pb-width').blur();

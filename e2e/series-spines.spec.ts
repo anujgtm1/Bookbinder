@@ -333,6 +333,7 @@ test.describe('Series Spines — Multi-Book Series & Collection Workbench', () =
   }) => {
     // 1. Save 2 differently-sized books into My Books
     await expect(page.getByTestId('my-books-count-badge')).toHaveText('1');
+    await page.getByTestId('toggle-sidebar-btn').click();
 
     // Book 1: Tall Folio (152 × 236 × 32 mm)
     await page.getByTestId('input-pb-width').fill('152');

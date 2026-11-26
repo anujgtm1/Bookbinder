@@ -48,6 +48,7 @@ import { UnitConverter, type UnitSystem } from '@/types/units';
 
 export interface SidebarControlsProps {
   readonly params: BookParameters;
+  readonly defaultConstructionOpen?: boolean;
   readonly onChange: (next: BookParameters) => void;
   readonly onExportJson: () => void;
   readonly onImportJson: (file: File) => void;
@@ -151,13 +152,20 @@ function MeasurementField({
 
 export function SidebarControls({
   params,
+  defaultConstructionOpen,
   onChange,
   onExportJson,
   onImportJson,
   onResetDefaults,
 }: SidebarControlsProps) {
-  const [constructionOpen, setConstructionOpen] = useState(false);
+  const [constructionOpen, setConstructionOpen] = useState(Boolean(defaultConstructionOpen));
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (defaultConstructionOpen !== undefined) {
+      setConstructionOpen(defaultConstructionOpen);
+    }
+  }, [defaultConstructionOpen]);
 
   const strategy = resolveBindingStrategy(params);
   const { capabilities, flapConfig } = strategy;
@@ -287,7 +295,7 @@ export function SidebarControls({
       </div>
 
       {/* Pocket Construction Mode (Fold-and-Glue Slip Cover: 1-Piece Integrated Flaps vs Separate 2-Sheet Pockets) */}
-      {params.bindingStyle === 'softcover-jacket' && (
+      {capabilities.supportsSeparatePockets && (
         <div
           data-testid="softcover-pocket-mode-controls"
           className="space-y-1.5 rounded-md border border-border/80 bg-secondary/35 p-2.5"

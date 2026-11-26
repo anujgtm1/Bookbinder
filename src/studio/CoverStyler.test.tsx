@@ -188,10 +188,13 @@ describe('CoverStyler', () => {
     expect(screen.getByTestId('outer-blueprint-svg')).toBeInTheDocument();
     expect(screen.getByTestId('blueprint-split-panels')).toBeInTheDocument();
 
+    // In default Clean Mode, secondary exports live inside the More popover
+    await user.click(screen.getByTestId('studio-more-exports-btn'));
     await user.click(screen.getByTestId('download-outer-svg-btn'));
     expect(onDownloadOuterSvg).toHaveBeenCalledTimes(1);
 
     // Cut-Only PDF button opens the unified Export Dialog first
+    await user.click(screen.getByTestId('studio-more-exports-btn'));
     await user.click(screen.getByTestId('download-outer-pdf-btn'));
     expect(screen.getByTestId('pdf-export-dialog')).toHaveAttribute('open');
     expect(onDownloadOuterPdf).not.toHaveBeenCalled();
@@ -203,6 +206,43 @@ describe('CoverStyler', () => {
         splitMode: 'three-piece',
       }),
     );
+  });
+
+  it('shows secondary export buttons inline in All Controls density and inside More popover in Clean Mode', () => {
+    const geom = calculateCaseGeometry(DEFAULT_BOOK_PARAMETERS);
+
+    const { rerender } = render(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={CoverStudioModel.createDefault()}
+        uiDensity="clean"
+        onChange={vi.fn()}
+        onDownloadOuterSvg={vi.fn()}
+        onDownloadOuterPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('studio-more-exports-btn')).toBeInTheDocument();
+
+    rerender(
+      <CoverStyler
+        params={DEFAULT_BOOK_PARAMETERS}
+        geometry={geom}
+        studio={CoverStudioModel.createDefault()}
+        uiDensity="all"
+        onChange={vi.fn()}
+        onDownloadOuterSvg={vi.fn()}
+        onDownloadOuterPdf={vi.fn()}
+        onStatusMessage={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('studio-more-exports-btn')).not.toBeInTheDocument();
+    expect(screen.getByTestId('studio-export-png-btn')).toBeVisible();
+    expect(screen.getByTestId('download-outer-svg-btn')).toBeVisible();
+    expect(screen.getByTestId('download-outer-pdf-btn')).toBeVisible();
   });
 
   it('fits artwork cleanly to Front Zone with front clipZone after the book is resized', async () => {

@@ -53,6 +53,7 @@ test.describe('Declarative Layout Constraints — Pin, Resize Persistence & Deta
     // 4. Resize book to A6 Pocket Notebook (105 x 148 mm)
     // On A6 rigid-case (boardW=108, boardH=155, turnIn=18, hinge=9, spine=28, bleed=3):
     // Front board rect is x=175..283 (center 229.0), y=21..176 (center 98.5)
+    await page.getByTestId('toggle-sidebar-btn').click();
     await selectDropdownOption(page, 'preset-select', /A6 Pocket Notebook/i);
 
     // Title remains pinned to Front Center and dead-centered on A6 front board
