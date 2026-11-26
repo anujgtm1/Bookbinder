@@ -327,4 +327,120 @@ test.describe('Series Spines — Multi-Book Series & Collection Workbench', () =
     await page.getByTestId('studio-tool-spine').click();
     await expect(page.getByTestId('studio-font-select')).toContainText('Cinzel Decorative');
   });
+
+  test('toggles differently-sized My Books onto/off the shelf inline, marks a Series Sequence with volume & author controls, renders brass shelf brackets, and preserves multi-author independence', async ({
+    page,
+  }) => {
+    // 1. Save 2 differently-sized books into My Books
+    await expect(page.getByTestId('my-books-count-badge')).toHaveText('1');
+
+    // Book 1: Tall Folio (152 × 236 × 32 mm)
+    await page.getByTestId('input-pb-width').fill('152');
+    await page.getByTestId('input-pb-width').blur();
+    await page.getByTestId('input-pb-height').fill('236');
+    await page.getByTestId('input-pb-height').blur();
+    await page.getByTestId('input-pb-thickness').fill('32');
+    await page.getByTestId('input-pb-thickness').blur();
+
+    await page.getByTestId('open-my-books-btn').click();
+    const myBooksDialog = page.getByTestId('my-books-dialog');
+    await expect(myBooksDialog).toBeVisible();
+    const firstId = await myBooksDialog
+      .getByTestId('my-books-item')
+      .first()
+      .getAttribute('data-project-id');
+    expect(firstId).toBeTruthy();
+
+    await myBooksDialog.getByTestId(`my-books-rename-btn-${firstId}`).click();
+    await myBooksDialog.getByTestId('my-books-rename-input').fill('Tall Folio');
+    await myBooksDialog.getByTestId('my-books-rename-save-btn').click();
+    await expect(myBooksDialog.getByTestId(`my-books-name-${firstId}`)).toHaveText('Tall Folio');
+
+    // Book 2: Pocket Novella (112 × 178 × 18 mm)
+    await myBooksDialog.getByTestId('my-books-new-btn').click();
+    await expect(myBooksDialog).toBeHidden();
+    await expect(page.getByTestId('my-books-count-badge')).toHaveText('2');
+
+    await page.getByTestId('input-pb-width').fill('112');
+    await page.getByTestId('input-pb-width').blur();
+    await page.getByTestId('input-pb-height').fill('178');
+    await page.getByTestId('input-pb-height').blur();
+    await page.getByTestId('input-pb-thickness').fill('18');
+    await page.getByTestId('input-pb-thickness').blur();
+
+    await page.getByTestId('open-my-books-btn').click();
+    await expect(myBooksDialog).toBeVisible();
+    const secondId = await myBooksDialog
+      .locator('[data-testid="my-books-item"][data-active="true"]')
+      .getAttribute('data-project-id');
+    expect(secondId).toBeTruthy();
+    await myBooksDialog.getByTestId(`my-books-rename-btn-${secondId}`).click();
+    await myBooksDialog.getByTestId('my-books-rename-input').fill('Pocket Novella');
+    await myBooksDialog.getByTestId('my-books-rename-save-btn').click();
+    await expect(myBooksDialog.getByTestId(`my-books-name-${secondId}`)).toHaveText(
+      'Pocket Novella',
+    );
+    await myBooksDialog.getByTestId('my-books-close-btn').click();
+    await expect(myBooksDialog).toBeHidden();
+
+    // 2. Open Series Spines -> verify inline My Books Library drawer shows both books
+    await page.getByTestId('nav-series').click();
+    await expect(page.getByTestId('series-spines-studio')).toBeVisible();
+    await expect(page.getByTestId('series-shelf-telemetry')).toContainText('3 books');
+    await expect(page.getByTestId('series-library-count-badge')).toHaveText('0 of 2 on shelf');
+
+    const libraryList = page.getByTestId('series-library-quick-list');
+    await expect(libraryList).toContainText('Tall Folio');
+    await expect(libraryList).toContainText('Pocket Novella');
+
+    // Add both books directly onto the shelf via 1-click inline "+ Add" buttons
+    await page.getByTestId('series-library-add-0').click();
+    await expect(page.getByTestId('series-shelf-telemetry')).toContainText('4 books');
+    await expect(page.getByTestId('series-library-count-badge')).toHaveText('1 of 2 on shelf');
+
+    await page.getByTestId('series-library-add-1').click();
+    await expect(page.getByTestId('series-shelf-telemetry')).toContainText('5 books');
+    await expect(page.getByTestId('series-library-count-badge')).toHaveText('2 of 2 on shelf');
+    // Added books retain their distinct heights (e.g., 236 mm Tall Folio vs 178 mm Pocket Novella)
+    await expect(page.getByTestId('series-book-roster')).toContainText('236');
+    await expect(page.getByTestId('series-book-roster')).toContainText('178');
+
+    // Remove the first library book from the shelf inline — shelf drops to 4, My Books stays at 2
+    await page.getByTestId('series-library-remove-0').click();
+    await expect(page.getByTestId('series-shelf-telemetry')).toContainText('4 books');
+    await expect(page.getByTestId('series-library-count-badge')).toHaveText('1 of 2 on shelf');
+    await expect(page.getByTestId('my-books-count-badge')).toHaveText('2');
+
+    // 3. Check books #1 and #2 on the shelf -> Mark Selected as Series
+    await page.getByTestId('series-roster-check-0').check();
+    await page.getByTestId('series-roster-check-1').check();
+    await page.getByTestId('series-mark-sequence-btn').click();
+
+    await expect(page.getByTestId('series-sequence-card-0')).toBeVisible();
+    await page.getByTestId('series-sequence-name-0').fill('Obsidian Duology');
+    await page.getByTestId('series-sequence-vol-style-0').selectOption('vol-arabic');
+    await page.getByTestId('series-sequence-author-0').fill('R. K. Sterling');
+    await page.getByTestId('series-sequence-apply-author-0').click();
+
+    // 4. Verify brass sequence bracket renders cleanly beneath books 0..1 with Vol. 1–Vol. 2
+    const bracket = page.getByTestId('series-sequence-bracket-0');
+    await expect(bracket).toBeVisible();
+    await expect(bracket).toHaveAttribute('data-start-index', '0');
+    await expect(bracket).toHaveAttribute('data-end-index', '1');
+    await expect(bracket).toContainText('Obsidian Duology (Vol. 1–Vol. 2)');
+
+    // Grouped spines show Vol. 1 & Vol. 2; standalone book #3 beside them stays unnumbered
+    await expect(page.getByTestId('series-spine-svg-0')).toContainText('Vol. 1');
+    await expect(page.getByTestId('series-spine-svg-1')).toContainText('Vol. 2');
+    await expect(page.getByTestId('series-spine-svg-2')).not.toContainText('Vol.');
+    await expect(page.getByTestId('series-roster-item-2')).toContainText('3. The Crown of Ash');
+
+    // 5. Edit book #2's individual author -> multi-author independence preserved
+    await page.getByTestId('series-roster-item-1').click();
+    await page.getByTestId('series-book-author-input').fill('M. Vance');
+
+    await expect(page.getByTestId('series-spine-svg-0')).toContainText('Sterling');
+    await expect(page.getByTestId('series-spine-svg-1')).toContainText('Vance');
+    await expect(bracket).toContainText('Obsidian Duology (Vol. 1–Vol. 2)');
+  });
 });
